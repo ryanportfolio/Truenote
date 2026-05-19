@@ -12,9 +12,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@workspace/db": "workspace:*",
+    "@node-rs/argon2": "^2.0.2",
     "@replit/object-storage": "^1.0.0",
+    "@workspace/db": "workspace:*",
     "cohere-ai": "^7.14.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "drizzle-orm": "catalog:",
     "express": "^4.21.0",
@@ -27,6 +29,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/multer": "^1.4.12",
