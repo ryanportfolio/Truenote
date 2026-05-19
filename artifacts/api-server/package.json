@@ -1,0 +1,39 @@
+{
+  "name": "@workspace/api-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@workspace/db": "workspace:*",
+    "@replit/object-storage": "^1.0.0",
+    "cohere-ai": "^7.14.0",
+    "cors": "^2.8.5",
+    "drizzle-orm": "catalog:",
+    "express": "^4.21.0",
+    "js-tiktoken": "^1.0.14",
+    "mammoth": "^1.8.0",
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.62.1",
+    "pg": "^8.13.0",
+    "pg-boss": "^10.1.5",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.12",
+    "@types/node": "catalog:",
+    "@types/pg": "^8.11.10",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
