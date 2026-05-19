@@ -1,5 +1,6 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { attachCurrentUser } from "./middleware/current-user.js";
@@ -10,8 +11,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export function createApp(): Express {
   const app = express();
 
-  app.use(cors());
+  // CORS — credentials:true is required so the browser sends the session
+  // cookie on cross-origin XHR. In production the SPA and API share an
+  // origin (api-server serves the built SPA), but Vite dev proxies /api
+  // through to a different port, so we keep the permissive config.
+  app.use(cors({ credentials: true }));
   app.use(express.json({ limit: "1mb" }));
+  app.use(cookieParser());
   app.use(attachCurrentUser);
 
   registerRoutes(app);

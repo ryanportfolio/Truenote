@@ -9,13 +9,24 @@
  * When the shape drifts on the backend, fix here too.
  */
 
-export type UserRole = "admin" | "csr";
+export type UserRole = "super_user" | "senior_manager" | "manager" | "csr";
 
 export interface CurrentUser {
   id: string;
   email: string;
   role: UserRole;
-  programId: string;
+  /** Null for super_user (no implicit program scope). Non-null otherwise. */
+  programId: string | null;
+  name: string;
+  mustResetPassword: boolean;
+}
+
+export interface LoginResponse {
+  user: CurrentUser;
+}
+
+export interface ChangePasswordResponse {
+  user: CurrentUser;
 }
 
 export interface Source {

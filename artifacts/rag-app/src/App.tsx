@@ -1,15 +1,109 @@
+import { useCallback, useEffect, useState } from "react";
 import { Route, Switch, Redirect } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { ChatPage } from "@/pages/Chat";
 import { AdminPage } from "@/pages/Admin";
+import { LoginPage } from "@/pages/Login";
+import { ChangePasswordPage } from "@/pages/ChangePassword";
+import { fetchMe } from "@/lib/api";
+import type { CurrentUser } from "@/types/api";
+
+/**
+ * Auth state machine for the top-level shell:
+ *   loading        → initial /api/me probe in flight
+ *   unauthenticated → no valid session; show LoginPage
+ *   must-reset     → authenticated but mustResetPassword=true; force
+ *                    the change-password screen
+ *   authenticated  → normal app
+ *
+ * The shell handles the routing decisions; child pages never need to
+ * worry about the unauthenticated state because they're not rendered
+ * until we're in the `authenticated` branch.
+ */
+type AuthState =
+  | { status: "loading" }
+  | { status: "unauthenticated" }
+  | { status: "must-reset"; user: CurrentUser }
+  | { status: "authenticated"; user: CurrentUser };
 
 export function App(): JSX.Element {
+  const [auth, setAuth] = useState<AuthState>({ status: "loading" });
+
+  // Initial session probe on mount. fetchMe() returns null on 401 instead
+  // of throwing, so we can deterministically distinguish "not logged in"
+  // from "network error" (the latter still throws and we treat as
+  // unauthenticated — better to show login than a stuck spinner).
+  useEffect(() => {
+    let cancelled = false;
+    fetchMe()
+      .then((user) => {
+        if (cancelled) return;
+        if (!user) {
+          setAuth({ status: "unauthenticated" });
+        } else if (user.mustResetPassword) {
+          setAuth({ status: "must-reset", user });
+        } else {
+          setAuth({ status: "authenticated", user });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAuth({ status: "unauthenticated" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleAuthenticated = useCallback((user: CurrentUser): void => {
+    if (user.mustResetPassword) {
+      setAuth({ status: "must-reset", user });
+    } else {
+      setAuth({ status: "authenticated", user });
+    }
+  }, []);
+
+  const handlePasswordChanged = useCallback((user: CurrentUser): void => {
+    setAuth({ status: "authenticated", user });
+  }, []);
+
+  const handleLogout = useCallback((): void => {
+    setAuth({ status: "unauthenticated" });
+  }, []);
+
+  if (auth.status === "loading") {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-sm text-muted-foreground">Loading…</div>
+      </div>
+    );
+  }
+
+  if (auth.status === "unauthenticated") {
+    return <LoginPage onAuthenticated={handleAuthenticated} />;
+  }
+
+  if (auth.status === "must-reset") {
+    return (
+      <ChangePasswordPage
+        user={auth.user}
+        onPasswordChanged={handlePasswordChanged}
+      />
+    );
+  }
+
   return (
-    <AppShell>
+    <AppShell user={auth.user} onLogout={handleLogout}>
       <Switch>
         <Route path="/" component={() => <Redirect to="/chat" />} />
         <Route path="/chat" component={ChatPage} />
         <Route path="/admin/documents" component={AdminPage} />
+        <Route path="/login" component={() => <Redirect to="/" />} />
+        <Route path="/change-password">
+          <ChangePasswordPage
+            user={auth.user}
+            onPasswordChanged={handlePasswordChanged}
+          />
+        </Route>
         <Route>
           <div className="mx-auto max-w-3xl px-6 py-8">
             <h1 className="text-xl font-semibold tracking-tight">Not found</h1>
