@@ -1,5 +1,6 @@
 import {
   boolean,
+  customType,
   integer,
   jsonb,
   pgEnum,

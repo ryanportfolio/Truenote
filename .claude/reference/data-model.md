@@ -1,6 +1,6 @@
 # Data Model
 
-> Postgres on Replit (Neon). `vector`, `pg_trgm`, and `citext` extensions required.
+> Postgres on Replit (Neon). `vector` and `pg_trgm` extensions required.
 
 ## Core tables
 
@@ -79,13 +79,11 @@ CREATE TABLE eval_questions (
 ## Auth tables (Phase 2A)
 
 ```sql
-CREATE EXTENSION IF NOT EXISTS citext;
-
 CREATE TYPE user_role AS ENUM ('super_user', 'senior_manager', 'manager', 'csr');
 
 CREATE TABLE users (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email                 CITEXT NOT NULL UNIQUE,
+  email                 TEXT NOT NULL UNIQUE,                        -- normalized lowercase at app layer
   password_hash         TEXT NOT NULL,                              -- argon2id
   role                  user_role NOT NULL,
   program_id            UUID REFERENCES programs(id) ON DELETE RESTRICT,
@@ -123,7 +121,7 @@ CREATE INDEX sessions_expires_at_idx ON sessions(expires_at);
 - **`embedding VECTOR(1536)` is locked to `text-embedding-3-small`.** Changing embedding model = re-ingest everything.
 - **`users.role` + `users.program_id` are jointly constrained.** The DB CHECK enforces: `super_user` MUST have `program_id IS NULL`; every other role MUST have a non-null `program_id`. The app's program-scoping helpers (`canAccessProgram`, `requireRole`) rely on this. Bypassing the constraint at the SQL level (e.g., manual inserts) breaks the assumption that a manager always has a program scope.
 - **`sessions.token_hash` stores SHA-256 of the cookie value, not the cookie itself.** A leak of the sessions table does not yield active sessions on its own. Plaintext tokens are only ever in transit (cookie header) and in the cookie store on the user's browser.
-- **`users.email` is CITEXT.** `Alice@foo.com` and `alice@foo.com` are the same account; the UNIQUE constraint enforces this.
+- **`users.email` is normalized to lowercase at the application layer**, stored as plain `TEXT`. Every write and lookup calls `.toLowerCase()` before touching the DB. The original Phase 2A design used `citext` for case-insensitive comparison, but the `citext` extension isn't available in all managed Postgres environments (specifically: Replit's production publish flow does not run `CREATE EXTENSION`, only DDL diff). The app-layer normalization preserves the case-insensitive contract without the extension dependency. **Detection rule:** any new code path that writes or compares `users.email` MUST lowercase first — otherwise duplicate accounts can be created (`Alice@foo.com` vs `alice@foo.com`) and logins will silently mismatch.
 
 ## Schema change protocol
 
