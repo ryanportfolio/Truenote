@@ -1,0 +1,57 @@
+The /api/documents/upload flow accepted a doc but it's stuck on
+parseStatus="pending". The worker's [worker] ready line appeared on
+startup but the doc never moves to "parsing". Need to localize where
+the job is stuck.
+
+Step 1 — check worker logs since the upload
+Open the ingestion-worker workflow's logs. Scroll to the time of the
+upload. Look for:
+  - Any line containing "ingest-document-version"
+  - Any uncaught error or stack trace
+  - Any pg-boss internal warning (e.g., "queue not found")
+
+Paste anything noteworthy. If logs show only "[worker] ready" and
+nothing after, that's a clue — worker is alive but not receiving
+anything.
+
+Step 2 — check pg-boss tables directly
+Run these SQL queries in the Database SQL runner.
+
+  -- Confirm pg-boss schema exists and find its tables
+  SELECT table_name
+  FROM information_schema.tables
+  WHERE table_schema = 'pgboss'
+  ORDER BY table_name;
+
+  -- Look at registered queues (v10 has a queue table)
+  SELECT * FROM pgboss.queue;
+
+  -- Look at all jobs ever submitted
+  SELECT id, name, state, retry_count, created_on, started_on,
+         completed_on, output
+  FROM pgboss.job
+  ORDER BY created_on DESC
+  LIMIT 20;
+
+Step 3 — confirm both processes point at the same DB
+From a shell tab, run:
+
+  echo "api-server DB_URL:"
+  ps -ef | grep -E 'tsx.*api-server' | grep -v grep | awk '{print $2}' \
+    | head -1 \
+    | xargs -I PID tr '\0' '\n' < /proc/PID/environ 2>/dev/null \
+    | grep '^DATABASE_URL=' | sed 's|://[^@]*@|://<redacted>@|'
+  echo
+  echo "worker DB_URL:"
+  ps -ef | grep -E 'tsx.*worker' | grep -v grep | awk '{print $2}' \
+    | head -1 \
+    | xargs -I PID tr '\0' '\n' < /proc/PID/environ 2>/dev/null \
+    | grep '^DATABASE_URL=' | sed 's|://[^@]*@|://<redacted>@|'
+
+Both lines should print the SAME redacted URL. If they differ, the
+worker is watching a different DB than the one the upload wrote to.
+
+Report all three:
+  a. Anything new in worker logs since upload
+  b. Output of all three SQL queries
+  c. The two DATABASE_URLs match? (yes/no)
