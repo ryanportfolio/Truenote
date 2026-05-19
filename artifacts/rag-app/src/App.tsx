@@ -3,10 +3,29 @@ import { Route, Switch, Redirect } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { ChatPage } from "@/pages/Chat";
 import { AdminPage } from "@/pages/Admin";
+import { AdminProgramsPage } from "@/pages/AdminPrograms";
 import { LoginPage } from "@/pages/Login";
 import { ChangePasswordPage } from "@/pages/ChangePassword";
 import { fetchMe, SESSION_EXPIRED_EVENT } from "@/lib/api";
 import type { CurrentUser } from "@/types/api";
+import {
+  clearSelectedProgram,
+  getSelectedProgramId
+} from "@/lib/selectedProgram";
+
+/**
+ * Drop the picker's stored program selection if it belongs to a
+ * different user than the one we just authenticated as. Prevents user
+ * A's selection from briefly flowing in user B's first requests on a
+ * shared browser. Server-side validation makes this safe even without
+ * the clear, but the UX is cleaner with it.
+ */
+function pruneStaleProgramSelection(user: CurrentUser): void {
+  if (getSelectedProgramId(user.id) === null) {
+    // Either nothing stored, or stored under a different user id.
+    clearSelectedProgram();
+  }
+}
 
 /**
  * Auth state machine for the top-level shell:
@@ -40,10 +59,13 @@ export function App(): JSX.Element {
         if (cancelled) return;
         if (!user) {
           setAuth({ status: "unauthenticated" });
-        } else if (user.mustResetPassword) {
-          setAuth({ status: "must-reset", user });
         } else {
-          setAuth({ status: "authenticated", user });
+          pruneStaleProgramSelection(user);
+          if (user.mustResetPassword) {
+            setAuth({ status: "must-reset", user });
+          } else {
+            setAuth({ status: "authenticated", user });
+          }
         }
       })
       .catch(() => {
@@ -55,6 +77,7 @@ export function App(): JSX.Element {
   }, []);
 
   const handleAuthenticated = useCallback((user: CurrentUser): void => {
+    pruneStaleProgramSelection(user);
     if (user.mustResetPassword) {
       setAuth({ status: "must-reset", user });
     } else {
@@ -67,6 +90,10 @@ export function App(): JSX.Element {
   }, []);
 
   const handleLogout = useCallback((): void => {
+    // Don't clear the program selection here: a logout/relogin cycle on
+    // the same device should restore the same picker state. The on-
+    // login pruneStaleProgramSelection cleans up if a *different* user
+    // signs in.
     setAuth({ status: "unauthenticated" });
   }, []);
 
@@ -109,8 +136,15 @@ export function App(): JSX.Element {
     <AppShell user={auth.user} onLogout={handleLogout}>
       <Switch>
         <Route path="/" component={() => <Redirect to="/chat" />} />
-        <Route path="/chat" component={ChatPage} />
-        <Route path="/admin/documents" component={AdminPage} />
+        <Route path="/chat">
+          <ChatPage user={auth.user} />
+        </Route>
+        <Route path="/admin/documents">
+          <AdminPage user={auth.user} />
+        </Route>
+        <Route path="/admin/programs">
+          <AdminProgramsPage user={auth.user} />
+        </Route>
         <Route path="/login" component={() => <Redirect to="/" />} />
         <Route path="/change-password">
           <ChangePasswordPage

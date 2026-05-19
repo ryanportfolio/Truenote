@@ -38,7 +38,7 @@ export function TopBar({ user, onLogout }: TopBarProps): JSX.Element {
         <span className="text-xs text-muted-foreground">Knowledge Assistant</span>
       </div>
       <div className="flex items-center gap-4">
-        <ProgramSelector currentProgramId={user.programId ?? ""} />
+        <ProgramSelector user={user} />
         <div className="flex items-center gap-2 text-xs">
           <span className="text-muted-foreground">{user.email}</span>
           <span className="rounded bg-secondary px-2 py-0.5 font-medium uppercase tracking-wide text-secondary-foreground">

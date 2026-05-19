@@ -1,21 +1,31 @@
 import { useCallback, useEffect, useState } from "react";
 import { listDocuments } from "@/lib/api";
-import type { DocumentListItem } from "@/types/api";
+import type { CurrentUser, DocumentListItem } from "@/types/api";
 import { UploadForm } from "@/components/admin/UploadForm";
 import { DocumentList } from "@/components/admin/DocumentList";
+import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 
 const POLL_INTERVAL_MS = 2000;
 
-export function AdminPage(): JSX.Element {
+interface AdminPageProps {
+  user: CurrentUser;
+}
+
+export function AdminPage({ user }: AdminPageProps): JSX.Element {
   const [items, setItems] = useState<DocumentListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Super_user without a program selected: server returns
+  // noProgramSelected:true with an empty list. Render a friendly
+  // prompt instead of "no documents" (which is ambiguous).
+  const [noProgramSelected, setNoProgramSelected] = useState(false);
 
   const refresh = useCallback(async (): Promise<void> => {
     setError(null);
     try {
-      const { items } = await listDocuments();
-      setItems(items);
+      const response = await listDocuments();
+      setItems(response.items);
+      setNoProgramSelected(response.noProgramSelected === true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load documents");
     } finally {
@@ -25,6 +35,22 @@ export function AdminPage(): JSX.Element {
 
   useEffect(() => {
     void refresh();
+  }, [refresh]);
+
+  // Refetch when the super_user changes their program selection. The
+  // picker writes to localStorage and fires SELECTED_PROGRAM_CHANGED_EVENT
+  // in the same tab; `storage` covers cross-tab updates.
+  useEffect(() => {
+    function reload(): void {
+      setLoading(true);
+      void refresh();
+    }
+    window.addEventListener(SELECTED_PROGRAM_CHANGED_EVENT, reload);
+    window.addEventListener("storage", reload);
+    return () => {
+      window.removeEventListener(SELECTED_PROGRAM_CHANGED_EVENT, reload);
+      window.removeEventListener("storage", reload);
+    };
   }, [refresh]);
 
   // Auto-refresh while any document is mid-ingestion. Polling stops as soon
@@ -52,11 +78,22 @@ export function AdminPage(): JSX.Element {
           parse before the version becomes active.
         </p>
       </header>
-      <UploadForm onUploaded={() => void refresh()} />
+      {noProgramSelected ? (
+        <div
+          role="status"
+          className="rounded border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+        >
+          {user.role === "super_user"
+            ? "Select a program from the picker in the header to view or upload documents."
+            : "Your account isn't scoped to a program yet. Contact an admin."}
+        </div>
+      ) : (
+        <UploadForm onUploaded={() => void refresh()} />
+      )}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading documents…</p>
-      ) : (
+      ) : noProgramSelected ? null : (
         <DocumentList items={items} onDeleted={() => void refresh()} />
       )}
     </div>

@@ -13,6 +13,7 @@ import {
   requireManagerOrAbove
 } from "../middleware/current-user.js";
 import { canAccessProgram } from "../lib/auth/current-user.js";
+import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
 
 export const documentsRouter = Router();
 
@@ -76,9 +77,16 @@ documentsRouter.use(requireAuth, requireFreshPassword, requireManagerOrAbove);
 documentsRouter.get("/", async (req, res, next) => {
   try {
     const user = authedUser(req);
-    // Manager / Senior Manager: filter to their program. Super user: see
-    // every program's documents. (Phase 2C will add a program-picker for
-    // super_user; for 2A the list is unfiltered.)
+    // Filter to the effective program. For managers / senior managers
+    // this is their own program (DB CHECK guaranteed non-null). For
+    // super_user it's whatever they selected via X-Program-Id; if
+    // they haven't selected, return an empty list with the sentinel
+    // so the UI can prompt without a separate "no program" endpoint.
+    const programId = await resolveEffectiveProgramId(user, req);
+    if (programId === null) {
+      res.json({ items: [], noProgramSelected: true });
+      return;
+    }
     const rows = await db
       .select({
         documentId: documents.id,
@@ -90,14 +98,7 @@ documentsRouter.get("/", async (req, res, next) => {
       })
       .from(documents)
       .leftJoin(documentVersions, eq(documentVersions.documentId, documents.id))
-      .where(
-        // Non-null assertion is safe here: the DB CHECK constraint on
-        // users guarantees that any non-super_user role has a non-null
-        // program_id. TS can't see that across the ternary, so we assert.
-        user.role === "super_user"
-          ? undefined
-          : eq(documents.programId, user.programId!)
-      )
+      .where(eq(documents.programId, programId))
       .orderBy(desc(documents.createdAt), desc(documentVersions.uploadedAt));
 
     // Collapse to the newest version per documentId.
@@ -124,21 +125,24 @@ documentsRouter.post(
   async (req, res, next) => {
     try {
       const user = authedUser(req);
-      // Phase 2A: super_user uploads are blocked because there's no UI to
-      // pick a target program yet. Phase 2C adds a program-picker. For
-      // now, super_user does ops; managers upload.
-      if (user.role === "super_user" || user.programId === null) {
+      // Resolve target program from the actor's effective program: own
+      // program for manager/senior_manager (DB CHECK enforces non-null);
+      // X-Program-Id header for super_user. Refuse cleanly when a
+      // super_user hasn't selected — uploads are program-scoped and
+      // there's no "all programs" fallback that makes sense.
+      const programId = await resolveEffectiveProgramId(user, req);
+      if (programId === null) {
         res.status(400).json({
           ok: false,
           error:
-            "Super users cannot upload until a program is selected — coming in Phase 2C."
+            "No program selected. Choose a program from the picker in the header to upload a document."
         });
         return;
       }
-      // Pin the narrowed program id so TS doesn't have to chase the narrow
-      // through every downstream await. Equivalent to user.programId
-      // post-check, but explicit.
-      const programId = user.programId;
+      if (!canAccessProgram(user, programId)) {
+        res.status(403).json({ ok: false, error: "Forbidden" });
+        return;
+      }
       const file = req.file;
       const titleRaw = typeof req.body.title === "string" ? req.body.title : "";
       const title = titleRaw.trim();
@@ -341,17 +345,22 @@ documentsRouter.delete("/:id", async (req, res, next) => {
       res.status(400).json({ ok: false, error: "Invalid document id" });
       return;
     }
-    // Program scope check: managers can only delete within their program;
-    // super_user can delete anywhere. 404 (not 403) on cross-program ids
-    // to avoid leaking existence — same convention the preview route uses.
+    // Scope delete to the effective program (manager/senior_manager =
+    // own program; super_user = picker selection). If a super_user
+    // wants to delete from another program they must switch to it —
+    // this guards against deleting a stale row from the previous
+    // program if they switched while a delete was in flight.
+    const programId = await resolveEffectiveProgramId(user, req);
+    if (programId === null) {
+      res.status(400).json({
+        ok: false,
+        error: "No program selected."
+      });
+      return;
+    }
     const deleted = await db
       .delete(documents)
-      .where(
-        // Same DB-CHECK-guaranteed non-null assertion as the list query.
-        user.role === "super_user"
-          ? eq(documents.id, id)
-          : and(eq(documents.id, id), eq(documents.programId, user.programId!))
-      )
+      .where(and(eq(documents.id, id), eq(documents.programId, programId)))
       .returning({ id: documents.id });
     if (deleted.length === 0) {
       res.status(404).json({ ok: false, error: "Not found" });

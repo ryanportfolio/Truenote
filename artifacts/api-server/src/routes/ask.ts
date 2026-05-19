@@ -11,6 +11,8 @@ import {
   requireCsrOrAbove,
   requireFreshPassword
 } from "../middleware/current-user.js";
+import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
+import { canAccessProgram } from "../lib/auth/current-user.js";
 
 export const askRouter = Router();
 
@@ -63,18 +65,27 @@ askRouter.post("/ask", async (req, res, next) => {
     }
     const question = parsed.data.question.trim();
     const user = authedUser(req);
-    // /ask is program-scoped: retrieval filters chunks by program_id. A
-    // super_user has no implicit program, so they can't ask in 2A. (2C
-    // adds a program-picker that sends program_id explicitly.) Surface
-    // this as a clean refusal rather than silently broadening scope.
-    if (user.programId === null) {
+    // /ask is program-scoped: retrieval filters chunks by program_id.
+    // For non-super_user the program is fixed (DB CHECK guarantees
+    // non-null user.programId). For super_user it's resolved from the
+    // X-Program-Id header; if absent or invalid, refuse rather than
+    // silently broadening scope across all programs.
+    const programId = await resolveEffectiveProgramId(user, req);
+    if (programId === null) {
       res.status(400).json({
         error:
-          "No program selected. Super users will be able to select a program in Phase 2C."
+          "No program selected. Choose a program from the picker in the header to ask a question."
       });
       return;
     }
-    const programId = user.programId;
+    // Defense in depth: canAccessProgram is the single source of truth
+    // for program scoping. A header-resolved id for super_user passes
+    // by definition; a non-super_user with a tampered/leaked header is
+    // already ignored upstream, so this check is belt-and-suspenders.
+    if (!canAccessProgram(user, programId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     const t0 = Date.now();
 
     if (question.length > MAX_QUESTION_CHARS) {

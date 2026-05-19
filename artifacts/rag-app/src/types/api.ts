@@ -84,6 +84,13 @@ export interface DocumentListItem {
 
 export interface DocumentListResponse {
   items: DocumentListItem[];
+  /**
+   * Set to true when a super_user hasn't picked a target program yet.
+   * The UI uses this to render a "select a program" prompt instead of
+   * an empty list, which would be ambiguous (could mean "no documents"
+   * or "no scope"). Non-super_user responses never include this.
+   */
+  noProgramSelected?: boolean;
 }
 
 export interface UploadResponse {
@@ -96,4 +103,15 @@ export interface PreviewResponse {
   markdown: string | null;
   parseStatus: ParseStatus | null;
   title: string | null;
+}
+
+export interface Program {
+  id: string;
+  name: string;
+  /** ISO timestamp string (or null). */
+  createdAt: string | null;
+}
+
+export interface ProgramListResponse {
+  items: Program[];
 }

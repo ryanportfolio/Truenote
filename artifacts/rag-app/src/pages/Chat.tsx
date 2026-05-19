@@ -1,9 +1,35 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { askQuestion } from "@/lib/api";
-import type { AskResponse } from "@/types/api";
+import type { AskResponse, CurrentUser } from "@/types/api";
 import { AnswerView } from "@/components/chat/AnswerView";
+import {
+  getSelectedProgramId,
+  SELECTED_PROGRAM_CHANGED_EVENT
+} from "@/lib/selectedProgram";
 
-export function ChatPage(): JSX.Element {
+interface ChatPageProps {
+  user: CurrentUser;
+}
+
+export function ChatPage({ user }: ChatPageProps): JSX.Element {
+  // Super_users need a program selection to ask anything. Non-super_user
+  // roles always have a fixed program_id, so the picker doesn't apply.
+  const [hasProgram, setHasProgram] = useState<boolean>(() =>
+    user.role !== "super_user" || getSelectedProgramId(user.id) !== null
+  );
+  useEffect(() => {
+    if (user.role !== "super_user") return;
+    function refresh(): void {
+      setHasProgram(getSelectedProgramId(user.id) !== null);
+    }
+    window.addEventListener(SELECTED_PROGRAM_CHANGED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(SELECTED_PROGRAM_CHANGED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, [user.id, user.role]);
+
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,13 +62,24 @@ export function ChatPage(): JSX.Element {
         </p>
       </header>
       <div className="flex flex-col gap-4">
+        {!hasProgram ? (
+          <div
+            role="status"
+            className="rounded border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+          >
+            Select a program from the picker in the header to start asking
+            questions. The knowledge base is program-scoped, so every answer
+            comes from one program's documents at a time.
+          </div>
+        ) : null}
         <form onSubmit={onSubmit} className="flex flex-col gap-2">
           <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Ask the knowledge base… e.g. 'What's the cancellation fee on the Basic plan?'"
             rows={3}
-            className="rounded border border-input bg-background px-3 py-2 text-sm"
+            disabled={!hasProgram}
+            className="rounded border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
           />
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
@@ -50,7 +87,7 @@ export function ChatPage(): JSX.Element {
             </span>
             <button
               type="submit"
-              disabled={busy || question.trim().length === 0}
+              disabled={busy || !hasProgram || question.trim().length === 0}
               className="rounded bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
             >
               {busy ? "Asking…" : "Ask"}
