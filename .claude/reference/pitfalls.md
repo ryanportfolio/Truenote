@@ -38,3 +38,15 @@ Fix in code: `artifacts/api-server/src/routes/documents.ts` defines `normalizeMi
 Detection rule for the next change: when adding a new accepted file type, extend `normalizeMimeType`'s extension table FIRST, then add the canonical MIME to `ACCEPTED_MIMES`. Never trust `file.mimetype` raw — it's whatever the browser felt like sending. Test from both Firefox and Chrome before declaring done.
 
 Meta-pattern (also see pg-boss above): browser-provided values are user input. Treat them like any other untrusted input — normalize at the boundary, validate the normalized form.
+
+## 2026-05-19 — Replit's publish flow does NOT run `CREATE EXTENSION`
+
+Phase 2A's `users` table originally used `citext` for case-insensitive email comparison. The dev DB (where the Replit Agent ran our DDL prompt) had `CREATE EXTENSION IF NOT EXISTS citext` so everything worked locally. When the user clicked Publish, Replit's auto-migration generator diffed dev→prod, produced `CREATE TABLE users (... email citext NOT NULL ...)`, and the migration failed with `type "citext" does not exist`.
+
+Root cause: Replit's publish flow runs the DDL diff but does NOT run `CREATE EXTENSION` statements (likely because extension installs require superuser privileges that the migration role doesn't have in prod). Any extension dependency that's present in dev but absent in prod will silently work until publish time, then fail loudly with no inline recovery path.
+
+Fix applied (commit `c908ddf` on main): swap `citext` for plain `text` and normalize emails at the application layer — every write and lookup calls `.toLowerCase()` first. See `lib/db/src/schema.ts` (email column), `artifacts/api-server/src/lib/auth/bootstrap.ts:29` (insert path), `artifacts/api-server/src/routes/auth.ts:94` (login path). Net behavior is identical to citext for our access patterns.
+
+**Detection rule for the next change:** the only Postgres extensions safe to assume at publish time are those Replit installs by default. Currently confirmed-safe in our prod: `pgcrypto`, `vector`, `pg_trgm`. NOT safe: `citext`, anything else. If a future feature wants an extension, plan for app-layer fallback BEFORE writing the DDL — or test the publish flow explicitly before relying on it.
+
+**Cross-cutting rule for any new code touching `users.email`:** lowercase before write, lowercase before compare. Two `Alice@foo.com` users would otherwise pass uniqueness and break login. Same applies to any future user-management routes (Phase 2C.2) — bake the normalization into the route helpers, don't trust callers.
