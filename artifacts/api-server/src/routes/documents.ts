@@ -21,6 +21,25 @@ const ACCEPTED_MIMES = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 ]);
 
+/**
+ * Browsers disagree on what MIME to send for text formats. Firefox sends
+ * `application/octet-stream` for .md because it has no built-in mapping;
+ * some Chrome configs do the same. When we get the "I don't know" MIME,
+ * fall back to extension sniffing for the text formats we accept. The
+ * normalized type is what we both validate against ACCEPTED_MIMES and
+ * persist on document_versions.mime_type — keeping a single source of
+ * truth so the worker's parsing strategy lookup (run.ts) sees the same
+ * canonical value the upload route saw.
+ */
+function normalizeMimeType(mimetype: string, originalName: string): string {
+  const mime = (mimetype ?? "").toLowerCase();
+  const name = (originalName ?? "").toLowerCase();
+  if (mime && mime !== "application/octet-stream") return mime;
+  if (name.endsWith(".md") || name.endsWith(".markdown")) return "text/markdown";
+  if (name.endsWith(".txt")) return "text/plain";
+  return mime;
+}
+
 const MAX_BYTES = 20 * 1024 * 1024; // 20MB
 
 // Multer in-memory storage. The 20MB cap is enforced both by multer and by
@@ -95,10 +114,15 @@ documentsRouter.post(
         res.status(400).json({ ok: false, error: "Missing title" });
         return;
       }
-      if (!ACCEPTED_MIMES.has(file.mimetype)) {
+      const mimeType = normalizeMimeType(file.mimetype, file.originalname);
+      if (!ACCEPTED_MIMES.has(mimeType)) {
         res.status(400).json({
           ok: false,
-          error: `Unsupported file type: ${file.mimetype || "unknown"}`
+          error:
+            `Unsupported file type: ${file.mimetype || "unknown"}` +
+            ` (filename: ${file.originalname || "unknown"}).` +
+            ` Supported: PDF, DOCX, Markdown (.md/.markdown), plain text (.txt),` +
+            ` PNG/JPEG/WebP images.`
         });
         return;
       }
@@ -115,7 +139,10 @@ documentsRouter.post(
       const storage = getObjectStorage();
       const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
       const key = `uploads/${sha}-${safeName}`;
-      await storage.put(key, bytes, { contentType: file.mimetype });
+      // Persist the normalized MIME both in object storage metadata and on
+      // document_versions.mime_type so run.ts's parser-selection map sees a
+      // canonical value (not "application/octet-stream" for a markdown file).
+      await storage.put(key, bytes, { contentType: mimeType });
 
       // Re-upload semantics (.claude/reference/ingestion.md):
       // "Re-uploading a document creates a NEW version. Do not overwrite."
@@ -162,7 +189,7 @@ documentsRouter.post(
           documentId: docId,
           versionNumber,
           sourceUrl: key,
-          mimeType: file.mimetype,
+          mimeType,
           fileSha256: sha,
           parseStatus: "pending",
           uploadedBy: user.id,
