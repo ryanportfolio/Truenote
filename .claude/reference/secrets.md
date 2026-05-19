@@ -23,6 +23,7 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 | `RAG_STORAGE_DRIVER` | Set to `memory` to use the in-memory adapter (local scripts / tests). Any other value (or unset) selects Replit Object Storage | unset → Replit SDK |
 | `BOOTSTRAP_SUPER_USER_NAME` | Display name for the bootstrap super_user | `Super User` |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for cross-origin credentialed requests. Leave unset for same-origin Replit deploys. | unset → no cross-origin |
+| `MIN_PASSWORD_LENGTH` | Floor enforced by the change-password form (server-side zod + client UI mirror via `/api/config`). Read once at api-server startup; restart to apply. Clamped to `[1, 1024]`; out-of-range falls back to default. | `3` (dev-friendly; tighten for prod) |
 
 ## Pitfalls
 

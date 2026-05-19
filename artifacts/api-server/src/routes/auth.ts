@@ -14,6 +14,7 @@ import {
   SESSION_DURATION_MS
 } from "../lib/auth/sessions.js";
 import { authedUser, requireAuth } from "../middleware/current-user.js";
+import { getMinPasswordLength } from "../lib/config.js";
 
 export const authRouter = Router();
 
@@ -22,11 +23,19 @@ const LoginBody = z.object({
   password: z.string().min(1).max(1024)
 });
 
+// Read once at module load so every login / change-password request
+// sees the same value within a process. Operators tune via the env
+// var and restart the api-server workflow to roll the change out.
+const MIN_PASSWORD_LENGTH = getMinPasswordLength();
+
 const ChangePasswordBody = z.object({
   currentPassword: z.string().min(1).max(1024),
   newPassword: z
     .string()
-    .min(12, "New password must be at least 12 characters")
+    .min(
+      MIN_PASSWORD_LENGTH,
+      `New password must be at least ${MIN_PASSWORD_LENGTH} characters`
+    )
     .max(1024)
 });
 

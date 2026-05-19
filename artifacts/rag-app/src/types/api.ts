@@ -115,3 +115,13 @@ export interface Program {
 export interface ProgramListResponse {
   items: Program[];
 }
+
+/** Public, non-secret server config used by the SPA. */
+export interface AppConfig {
+  /**
+   * Minimum length the change-password form should enforce. Server is
+   * the source of truth (the zod schema rejects shorter passwords);
+   * the client mirrors it for UX consistency.
+   */
+  minPasswordLength: number;
+}
