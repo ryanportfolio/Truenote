@@ -1,4 +1,5 @@
 import type {
+  AppConfig,
   AskResponse,
   ChangePasswordResponse,
   CurrentUser,
@@ -92,6 +93,16 @@ async function asJson<T>(response: Response): Promise<T> {
  * unauthenticated. Distinct from network errors (which still throw) so
  * the App router can deterministically branch to /login on null.
  */
+/**
+ * Fetch public, non-secret config (currently just minPasswordLength).
+ * Called pre-auth from the change-password page so the UI mirrors the
+ * server's validation floor without requiring a login round-trip.
+ */
+export async function fetchConfig(): Promise<AppConfig> {
+  const response = await fetch("/api/config", withDefaults());
+  return asJson<AppConfig>(response);
+}
+
 export async function fetchMe(): Promise<CurrentUser | null> {
   const response = await fetch("/api/me", withDefaults());
   if (response.status === 401) return null;

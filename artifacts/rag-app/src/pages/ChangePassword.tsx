@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useLocation } from "wouter";
-import { changePassword } from "@/lib/api";
+import { changePassword, fetchConfig } from "@/lib/api";
 import type { CurrentUser } from "@/types/api";
 
 interface ChangePasswordPageProps {
@@ -14,11 +14,15 @@ interface ChangePasswordPageProps {
  * created by a manager). After the change, the server clears the flag,
  * re-issues a session, and we redirect to the default landing page.
  *
- * The same component is also reachable by voluntary password rotation
- * once Phase 2C wires it into a settings page — the contract is the
- * same: present current + new, server enforces both correctness and
- * length, the new password takes effect immediately.
+ * Minimum length is read from /api/config (driven by the server's
+ * MIN_PASSWORD_LENGTH env var) so a dev environment can drop the
+ * floor to 3 without code edits. Until the config loads we use the
+ * server-side default of 3 as a permissive placeholder — the real
+ * value clamps in once /api/config resolves, and the server zod
+ * schema is the final authority either way.
  */
+const PLACEHOLDER_MIN_LENGTH = 3;
+
 export function ChangePasswordPage({
   user,
   onPasswordChanged
@@ -29,6 +33,23 @@ export function ChangePasswordPage({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [minLength, setMinLength] = useState<number>(PLACEHOLDER_MIN_LENGTH);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchConfig()
+      .then((cfg) => {
+        if (!cancelled) setMinLength(cfg.minPasswordLength);
+      })
+      .catch(() => {
+        // Config fetch failure isn't fatal — the server still enforces
+        // its own floor in the zod schema and will surface the right
+        // error message on submit. Stick with the placeholder.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -63,8 +84,8 @@ export function ChangePasswordPage({
           </h1>
           <p className="text-sm text-muted-foreground">
             {user.mustResetPassword
-              ? "First-time sign-in — please choose a new password."
-              : "Pick something at least 12 characters."}
+              ? `First-time sign-in — please choose a new password (at least ${minLength} characters).`
+              : `Pick something at least ${minLength} characters.`}
           </p>
         </header>
 
@@ -92,7 +113,7 @@ export function ChangePasswordPage({
             id="new"
             type="password"
             autoComplete="new-password"
-            minLength={12}
+            minLength={minLength}
             required
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
@@ -109,7 +130,7 @@ export function ChangePasswordPage({
             id="confirm"
             type="password"
             autoComplete="new-password"
-            minLength={12}
+            minLength={minLength}
             required
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
@@ -134,7 +155,7 @@ export function ChangePasswordPage({
             !currentPassword ||
             !newPassword ||
             !confirmPassword ||
-            newPassword.length < 12
+            newPassword.length < minLength
           }
           className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
