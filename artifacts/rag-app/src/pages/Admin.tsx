@@ -4,6 +4,8 @@ import type { DocumentListItem } from "@/types/api";
 import { UploadForm } from "@/components/admin/UploadForm";
 import { DocumentList } from "@/components/admin/DocumentList";
 
+const POLL_INTERVAL_MS = 2000;
+
 export function AdminPage(): JSX.Element {
   const [items, setItems] = useState<DocumentListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +26,22 @@ export function AdminPage(): JSX.Element {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Auto-refresh while any document is mid-ingestion. Polling stops as soon
+  // as every doc reaches a terminal state (ready / failed) so an idle page
+  // costs nothing. The setTimeout is scheduled fresh on each items change,
+  // so a successful refresh that resolves all in-flight docs naturally
+  // breaks the chain.
+  useEffect(() => {
+    const hasInFlight = items.some(
+      (item) => item.parseStatus === "pending" || item.parseStatus === "parsing"
+    );
+    if (!hasInFlight) return;
+    const timer = setTimeout(() => {
+      void refresh();
+    }, POLL_INTERVAL_MS);
+    return () => clearTimeout(timer);
+  }, [items, refresh]);
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
