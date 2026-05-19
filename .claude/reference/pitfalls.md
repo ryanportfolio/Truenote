@@ -18,3 +18,23 @@ Why it just works without code changes: `artifacts/rag-app/vite.config.ts` reads
 Side effects to remember:
 - `curl /health` smoke tests have to hit `localhost:3001` (or whatever `API_PORT` is set to) from inside the repl — Vite's proxy only forwards `/api/*`, not `/health`.
 - If a workflow refuses to start with EADDRINUSE on 5000, that's the webview slot, not a stale process. Use a different port for everything except the public frontend.
+
+## 2026-05-19 — pg-boss v10 silently drops `send()` to unregistered queues
+
+If you `boss.send('some-queue', payload)` without first calling `boss.createQueue('some-queue', opts)`, pg-boss v10 returns `null` (no error, no warning, no row in `pgboss.job`). The worker side `boss.work('some-queue', …)` waits forever. The send appears to succeed (no exception), the upload flow flips to `parsing`, and nothing ever runs. Classic silent-partial-success — the bug class our meta-pattern flags.
+
+Fix in code: `artifacts/api-server/src/lib/ingestion/queue.ts` exports `ensureQueue(boss, name)` that calls `boss.createQueue(name, opts)` before send/work. Both the api-server (sender) and the ingestion-worker (receiver) call it on startup. The wrapper catches "already exists" errors since `createQueue` is idempotent at the SQL level but throws on duplicate.
+
+Detection rule for the next change: if you add a new pg-boss queue, you MUST call `ensureQueue` on it from every process that sends OR works it. If you forget, the symptom is "uploads stuck in `parsing` forever, no worker log lines, no error anywhere" — and you'll spend an hour staring at the worker before realizing the job never landed.
+
+Confirmation method when in doubt: `SELECT name, state FROM pgboss.job ORDER BY created_on DESC LIMIT 10;` against the Neon DB. If your send appeared to succeed but no row shows up, the queue isn't registered.
+
+## 2026-05-19 — Firefox sends `application/octet-stream` for `.md` uploads
+
+Firefox (and some Chrome configs) don't have a built-in MIME mapping for `.md`. The browser sends `application/octet-stream` in the multipart upload, the server-side `ACCEPTED_MIMES` check fails, and the user sees a generic "file type not accepted" rejection on a perfectly valid markdown file.
+
+Fix in code: `artifacts/api-server/src/routes/documents.ts` defines `normalizeMimeType(mimetype, originalName)` (line 34) that sniffs the filename extension when the browser-provided MIME is empty or `application/octet-stream`. The route at line 117 calls it before the `ACCEPTED_MIMES.has(…)` check, and the canonical normalized value is what gets persisted on `documents.mime_type` (line 144).
+
+Detection rule for the next change: when adding a new accepted file type, extend `normalizeMimeType`'s extension table FIRST, then add the canonical MIME to `ACCEPTED_MIMES`. Never trust `file.mimetype` raw — it's whatever the browser felt like sending. Test from both Firefox and Chrome before declaring done.
+
+Meta-pattern (also see pg-boss above): browser-provided values are user input. Treat them like any other untrusted input — normalize at the boundary, validate the normalized form.
