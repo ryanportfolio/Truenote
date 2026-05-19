@@ -11,6 +11,12 @@
     "build": "pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
     "lint": "pnpm -r run lint",
-    "clean": "pnpm -r run clean && rm -rf node_modules"
+    "clean": "pnpm -r run clean && rm -rf node_modules",
+    "dev:web": "pnpm --filter @workspace/rag-app run dev",
+    "dev:api": "pnpm --filter @workspace/api-server run dev",
+    "worker": "pnpm --filter @workspace/scripts run worker",
+    "seed": "pnpm --filter @workspace/scripts run seed",
+    "check": "pnpm -r run check",
+    "test": "pnpm -r run test"
   }
 }
