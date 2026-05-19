@@ -1,0 +1,44 @@
+Please install dependencies for this pnpm workspace.
+
+At the repo root, run:
+
+  pnpm install
+
+Background — what to expect:
+- Workspace declares 4 subpackages (artifacts/api-server,
+  artifacts/rag-app, lib/db, scripts) plus 2 empty globs reserved
+  for future use (apps/*, packages/*).
+- Common dep versions resolve from the `catalog:` block in
+  pnpm-workspace.yaml (typescript ^5.6.2, tsx ^4.19.1, react ^18.3.1,
+  vite ^5.4.8, drizzle-orm ^0.33.0, vitest ^2.1.1, tailwindcss ^3.4.11,
+  etc.). Subpackages reference these via "catalog:" — pnpm 10
+  resolves them automatically, no manual step needed.
+- The heaviest non-catalog deps that may need native builds or
+  Replit-specific handling: @replit/object-storage, pg-boss (uses
+  cron and node-pg-migrate-style bootstrap), mammoth (DOCX → MD),
+  multer (file uploads), js-tiktoken, openai, cohere-ai.
+
+Do NOT do any of the following:
+- Do NOT run `drizzle-kit push` or any other migration command. The
+  canonical schema lives in REPLIT_HANDOFF.md (raw DDL) and gets
+  applied in a separate step. lib/db/src/schema.ts is for type-safe
+  queries only.
+- Do NOT start any dev servers yet (api-server, vite, worker). Those
+  come after DDL + Secrets are set, in a later step.
+- Do NOT modify package.json, pnpm-workspace.yaml, tsconfig.base.json,
+  or any subpackage tsconfig.json. They were tuned in the previous
+  step; if install surfaces a conflict that suggests editing them,
+  STOP and report instead.
+
+After install finishes, please report:
+  1. pnpm install exit code and the final summary line it prints
+     (something like "Done in 42.1s, X packages installed").
+  2. The output of:
+       pnpm -r ls --depth 0
+     so we can confirm each subpackage's deps resolved correctly.
+  3. Any warnings about peer deps, deprecated packages, or native
+     build failures (especially around @replit/object-storage, pg-boss,
+     or mammoth). Paste them verbatim — do not interpret.
+
+If install fails outright, paste the FULL error output including the
+stack trace and stderr. Don't try to fix it; we'll diagnose together.
