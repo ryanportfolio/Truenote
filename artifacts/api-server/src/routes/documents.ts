@@ -6,7 +6,13 @@ import { documents, documentVersions } from "@workspace/db/schema";
 import { getObjectStorage } from "../lib/storage/object-storage.js";
 import { sha256Hex } from "../lib/parsing/hash.js";
 import { enqueueIngestion } from "../lib/ingestion/queue.js";
-import { requireAdmin } from "../middleware/current-user.js";
+import {
+  authedUser,
+  requireAuth,
+  requireFreshPassword,
+  requireManagerOrAbove
+} from "../middleware/current-user.js";
+import { canAccessProgram } from "../lib/auth/current-user.js";
 
 export const documentsRouter = Router();
 
@@ -58,11 +64,21 @@ export interface DocumentListItem {
   uploadedAt: string | null;
 }
 
-documentsRouter.get("/", requireAdmin, async (req, res, next) => {
+/**
+ * Auth chain for the entire documents router:
+ *   requireAuth          → must be logged in
+ *   requireFreshPassword → first-login users must change password first
+ *   requireManagerOrAbove → CSRs are read-only on their own program via
+ *                           future endpoints; no document admin for CSRs
+ */
+documentsRouter.use(requireAuth, requireFreshPassword, requireManagerOrAbove);
+
+documentsRouter.get("/", async (req, res, next) => {
   try {
-    const user = req.user;
-    // Latest version per document — for Phase 1, list shows the newest version
-    // (regardless of active state) so the admin can watch ingestion progress.
+    const user = authedUser(req);
+    // Manager / Senior Manager: filter to their program. Super user: see
+    // every program's documents. (Phase 2C will add a program-picker for
+    // super_user; for 2A the list is unfiltered.)
     const rows = await db
       .select({
         documentId: documents.id,
@@ -74,7 +90,14 @@ documentsRouter.get("/", requireAdmin, async (req, res, next) => {
       })
       .from(documents)
       .leftJoin(documentVersions, eq(documentVersions.documentId, documents.id))
-      .where(eq(documents.programId, user.programId))
+      .where(
+        // Non-null assertion is safe here: the DB CHECK constraint on
+        // users guarantees that any non-super_user role has a non-null
+        // program_id. TS can't see that across the ternary, so we assert.
+        user.role === "super_user"
+          ? undefined
+          : eq(documents.programId, user.programId!)
+      )
       .orderBy(desc(documents.createdAt), desc(documentVersions.uploadedAt));
 
     // Collapse to the newest version per documentId.
@@ -97,11 +120,25 @@ documentsRouter.get("/", requireAdmin, async (req, res, next) => {
 
 documentsRouter.post(
   "/upload",
-  requireAdmin,
   upload.single("file"),
   async (req, res, next) => {
     try {
-      const user = req.user;
+      const user = authedUser(req);
+      // Phase 2A: super_user uploads are blocked because there's no UI to
+      // pick a target program yet. Phase 2C adds a program-picker. For
+      // now, super_user does ops; managers upload.
+      if (user.role === "super_user" || user.programId === null) {
+        res.status(400).json({
+          ok: false,
+          error:
+            "Super users cannot upload until a program is selected — coming in Phase 2C."
+        });
+        return;
+      }
+      // Pin the narrowed program id so TS doesn't have to chase the narrow
+      // through every downstream await. Equivalent to user.programId
+      // post-check, but explicit.
+      const programId = user.programId;
       const file = req.file;
       const titleRaw = typeof req.body.title === "string" ? req.body.title : "";
       const title = titleRaw.trim();
@@ -152,7 +189,7 @@ documentsRouter.post(
       const existing = await db
         .select({ id: documents.id })
         .from(documents)
-        .where(and(eq(documents.programId, user.programId), eq(documents.title, title)))
+        .where(and(eq(documents.programId, programId), eq(documents.title, title)))
         .limit(1);
 
       let docId: string;
@@ -171,7 +208,7 @@ documentsRouter.post(
       } else {
         const insertedDoc = await db
           .insert(documents)
-          .values({ programId: user.programId, title })
+          .values({ programId, title })
           .returning({ id: documents.id });
         const doc = insertedDoc[0];
         if (!doc) {
@@ -231,9 +268,9 @@ documentsRouter.post(
   }
 );
 
-documentsRouter.get("/:versionId/preview", requireAdmin, async (req, res, next) => {
+documentsRouter.get("/:versionId/preview", async (req, res, next) => {
   try {
-    const user = req.user;
+    const user = authedUser(req);
     const versionId = req.params.versionId;
     const rows = await db
       .select({
@@ -251,10 +288,10 @@ documentsRouter.get("/:versionId/preview", requireAdmin, async (req, res, next) 
       res.json({ markdown: null, parseStatus: null, title: null });
       return;
     }
-    // Server-side program scope check. Even an admin can only preview within
-    // their current program. Phase 2 widens admin scope when multi-program is
-    // a real concept.
-    if (row.programId !== user.programId) {
+    // Server-side program scope check via canAccessProgram (single source
+    // of truth for "can this user touch resources in program X"). Super
+    // users see across programs; everyone else is bound to their own.
+    if (!canAccessProgram(user, row.programId)) {
       res.json({ markdown: null, parseStatus: null, title: null });
       return;
     }
@@ -296,17 +333,25 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * doc so they don't care — but a Phase 1.5 polish would teach run.ts to
  * treat a missing version as a soft no-op instead of an error.
  */
-documentsRouter.delete("/:id", requireAdmin, async (req, res, next) => {
+documentsRouter.delete("/:id", async (req, res, next) => {
   try {
-    const user = req.user;
+    const user = authedUser(req);
     const id = req.params.id;
     if (!UUID_RE.test(id)) {
       res.status(400).json({ ok: false, error: "Invalid document id" });
       return;
     }
+    // Program scope check: managers can only delete within their program;
+    // super_user can delete anywhere. 404 (not 403) on cross-program ids
+    // to avoid leaking existence — same convention the preview route uses.
     const deleted = await db
       .delete(documents)
-      .where(and(eq(documents.id, id), eq(documents.programId, user.programId)))
+      .where(
+        // Same DB-CHECK-guaranteed non-null assertion as the list query.
+        user.role === "super_user"
+          ? eq(documents.id, id)
+          : and(eq(documents.id, id), eq(documents.programId, user.programId!))
+      )
       .returning({ id: documents.id });
     if (deleted.length === 0) {
       res.status(404).json({ ok: false, error: "Not found" });

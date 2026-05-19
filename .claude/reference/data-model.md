@@ -1,6 +1,6 @@
 # Data Model
 
-> Postgres on Replit (Neon). `vector` and `pg_trgm` extensions required.
+> Postgres on Replit (Neon). `vector`, `pg_trgm`, and `citext` extensions required.
 
 ## Core tables
 
@@ -76,12 +76,54 @@ CREATE TABLE eval_questions (
 );
 ```
 
+## Auth tables (Phase 2A)
+
+```sql
+CREATE EXTENSION IF NOT EXISTS citext;
+
+CREATE TYPE user_role AS ENUM ('super_user', 'senior_manager', 'manager', 'csr');
+
+CREATE TABLE users (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email                 CITEXT NOT NULL UNIQUE,
+  password_hash         TEXT NOT NULL,                              -- argon2id
+  role                  user_role NOT NULL,
+  program_id            UUID REFERENCES programs(id) ON DELETE RESTRICT,
+  name                  TEXT NOT NULL,
+  is_active             BOOLEAN NOT NULL DEFAULT true,
+  must_reset_password   BOOLEAN NOT NULL DEFAULT true,
+  last_login_at         TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_by            UUID REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT users_role_program_check CHECK (
+    (role = 'super_user' AND program_id IS NULL)
+    OR (role <> 'super_user' AND program_id IS NOT NULL)
+  )
+);
+CREATE INDEX users_program_id_idx ON users(program_id);
+CREATE INDEX users_role_idx ON users(role);
+
+CREATE TABLE sessions (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash    TEXT NOT NULL UNIQUE,                               -- SHA-256 of cookie token
+  expires_at    TIMESTAMPTZ NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX sessions_user_id_idx ON sessions(user_id);
+CREATE INDEX sessions_expires_at_idx ON sessions(expires_at);
+```
+
 ## Invariants
 
 - **`chunks.program_id` is denormalized** from `document_versions → documents → programs`. This is intentional. Retrieval queries filter on it directly to avoid joining at query time.
 - **A document has many versions.** Re-uploading does NOT update the existing row — it creates a new `document_versions` row and flips `is_active`.
 - **Only chunks from `is_active=true` versions are searched.** Inactive versions stay for audit / rollback.
 - **`embedding VECTOR(1536)` is locked to `text-embedding-3-small`.** Changing embedding model = re-ingest everything.
+- **`users.role` + `users.program_id` are jointly constrained.** The DB CHECK enforces: `super_user` MUST have `program_id IS NULL`; every other role MUST have a non-null `program_id`. The app's program-scoping helpers (`canAccessProgram`, `requireRole`) rely on this. Bypassing the constraint at the SQL level (e.g., manual inserts) breaks the assumption that a manager always has a program scope.
+- **`sessions.token_hash` stores SHA-256 of the cookie value, not the cookie itself.** A leak of the sessions table does not yield active sessions on its own. Plaintext tokens are only ever in transit (cookie header) and in the cookie store on the user's browser.
+- **`users.email` is CITEXT.** `Alice@foo.com` and `alice@foo.com` are the same account; the UNIQUE constraint enforces this.
 
 ## Schema change protocol
 

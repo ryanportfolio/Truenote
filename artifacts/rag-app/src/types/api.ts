@@ -9,13 +9,41 @@
  * When the shape drifts on the backend, fix here too.
  */
 
-export type UserRole = "admin" | "csr";
+export type UserRole = "super_user" | "senior_manager" | "manager" | "csr";
 
 export interface CurrentUser {
   id: string;
   email: string;
   role: UserRole;
-  programId: string;
+  /** Null for super_user (no implicit program scope). Non-null otherwise. */
+  programId: string | null;
+  name: string;
+  mustResetPassword: boolean;
+}
+
+/**
+ * Role hierarchy mirror of the server-side ranking in
+ * api-server/src/lib/auth/current-user.ts. Used client-side to drive UI
+ * visibility (e.g., which nav links a CSR sees). The server still enforces
+ * auth on every endpoint — this is a UX layer, not a security boundary.
+ */
+const ROLE_RANK: Record<UserRole, number> = {
+  super_user: 100,
+  senior_manager: 80,
+  manager: 60,
+  csr: 20
+};
+
+export function hasAtLeastRole(user: CurrentUser, minimum: UserRole): boolean {
+  return ROLE_RANK[user.role] >= ROLE_RANK[minimum];
+}
+
+export interface LoginResponse {
+  user: CurrentUser;
+}
+
+export interface ChangePasswordResponse {
+  user: CurrentUser;
 }
 
 export interface Source {

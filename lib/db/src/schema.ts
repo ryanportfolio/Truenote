@@ -3,10 +3,12 @@ import {
   customType,
   integer,
   jsonb,
+  pgEnum,
   pgTable,
   text,
   timestamp,
-  uuid
+  uuid,
+  type AnyPgColumn
 } from "drizzle-orm/pg-core";
 
 // pgvector — Drizzle has no first-class vector type that we want to lock to a
@@ -34,6 +36,30 @@ const vector1536 = customType<{ data: number[]; driverData: string }>({
 // schema. We only ever reference it from raw SQL in lib/retrieval/query.ts;
 // keeping it out of Drizzle avoids any risk that the ORM tries to handle it
 // on inserts.
+
+// Drizzle has no first-class `citext` type. customType lets us emit the right
+// DDL in the reference SQL while giving us `string` reads/writes in TS.
+// Lookups against `users.email` automatically benefit from case-insensitive
+// comparison on the DB side.
+const citext = customType<{ data: string }>({
+  dataType() {
+    return "citext";
+  }
+});
+
+// --- user roles
+
+// The 4-tier role hierarchy. Capability matrix lives in CLAUDE.md / the auth
+// reference; this enum is the database-side enforcement of the set of valid
+// values. Order in the array IS the on-disk enum order — appending only.
+export const userRoleEnum = pgEnum("user_role", [
+  "super_user",
+  "senior_manager",
+  "manager",
+  "csr"
+]);
+
+export type UserRole = (typeof userRoleEnum.enumValues)[number];
 
 // --- programs
 
@@ -141,3 +167,69 @@ export const evalQuestions = pgTable("eval_questions", {
 
 export type EvalQuestion = typeof evalQuestions.$inferSelect;
 export type NewEvalQuestion = typeof evalQuestions.$inferInsert;
+
+// --- users
+//
+// A users.program_id of NULL is reserved for super_user; every other role
+// requires a non-null program_id. The DB enforces this with a CHECK
+// constraint (see the schema-handoff DDL); we mirror the nullability in the
+// type system so a TS query result correctly carries `programId: string |
+// null`. Callers MUST handle the null branch — typically by rejecting
+// program-scoped operations for super_user or routing them through a
+// program-picker (Phase 2C).
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: citext("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  role: userRoleEnum("role").notNull(),
+  programId: uuid("program_id").references(() => programs.id, {
+    onDelete: "restrict"
+  }),
+  name: text("name").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  mustResetPassword: boolean("must_reset_password").notNull().default(true),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  // Self-reference: nullable so the bootstrap super_user (no creator) has
+  // created_by IS NULL. Every other user must be created by some existing
+  // user, but ON DELETE SET NULL keeps audit rows alive when the creator is
+  // later deleted. The FK is declared in the Drizzle binding (and matches
+  // the live DDL) so a future migration or schema diff sees consistent
+  // truth on both sides. The AnyPgColumn annotation is Drizzle's pattern
+  // for self-references — without it TS can't resolve `users.id` inside
+  // the initializer of `users` itself.
+  createdBy: uuid("created_by").references(
+    (): AnyPgColumn => users.id,
+    { onDelete: "set null" }
+  )
+});
+
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+
+// --- sessions
+//
+// Server-stored sessions for instant revocation. The cookie carries an
+// opaque high-entropy token; we store its SHA-256 hash, so a DB leak does
+// not yield active sessions on its own. Sessions are looked up on every
+// authenticated request — the hot path is `WHERE token_hash = ? AND
+// expires_at > now()` which is index-covered.
+export const sessions = pgTable("sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+});
+
+export type Session = typeof sessions.$inferSelect;
+export type NewSession = typeof sessions.$inferInsert;

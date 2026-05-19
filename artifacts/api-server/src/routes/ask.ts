@@ -5,8 +5,19 @@ import { db } from "../lib/db-client.js";
 import { programs, queryLog } from "@workspace/db/schema";
 import { retrieve } from "../lib/retrieval/query.js";
 import { generateAnswer, type Source } from "../lib/generation/answer.js";
+import {
+  authedUser,
+  requireAuth,
+  requireCsrOrAbove,
+  requireFreshPassword
+} from "../middleware/current-user.js";
 
 export const askRouter = Router();
+
+// Both /ask and /feedback require a logged-in user (any role) and a fresh
+// password. Super users without a program selected can't /ask in 2A;
+// they're surfaced an explicit error below.
+askRouter.use(requireAuth, requireFreshPassword, requireCsrOrAbove);
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -51,7 +62,19 @@ askRouter.post("/ask", async (req, res, next) => {
       return;
     }
     const question = parsed.data.question.trim();
-    const user = req.user;
+    const user = authedUser(req);
+    // /ask is program-scoped: retrieval filters chunks by program_id. A
+    // super_user has no implicit program, so they can't ask in 2A. (2C
+    // adds a program-picker that sends program_id explicitly.) Surface
+    // this as a clean refusal rather than silently broadening scope.
+    if (user.programId === null) {
+      res.status(400).json({
+        error:
+          "No program selected. Super users will be able to select a program in Phase 2C."
+      });
+      return;
+    }
+    const programId = user.programId;
     const t0 = Date.now();
 
     if (question.length > MAX_QUESTION_CHARS) {
@@ -62,7 +85,7 @@ askRouter.post("/ask", async (req, res, next) => {
       const inserted = await db
         .insert(queryLog)
         .values({
-          programId: user.programId,
+          programId,
           userId: user.id,
           question: question.slice(0, MAX_QUESTION_CHARS),
           answer: TOO_LONG_TEXT,
@@ -88,11 +111,11 @@ askRouter.post("/ask", async (req, res, next) => {
     const programRows = await db
       .select({ name: programs.name })
       .from(programs)
-      .where(eq(programs.id, user.programId))
+      .where(eq(programs.id, programId))
       .limit(1);
     const programName = programRows[0]?.name ?? "the program";
 
-    const retrieval = await retrieve({ programId: user.programId, question });
+    const retrieval = await retrieve({ programId, question });
     const generation = await generateAnswer({
       programName,
       question,
@@ -106,7 +129,7 @@ askRouter.post("/ask", async (req, res, next) => {
     const inserted = await db
       .insert(queryLog)
       .values({
-        programId: user.programId,
+        programId,
         userId: user.id,
         question,
         answer: generation.payload.answer,
@@ -149,17 +172,22 @@ askRouter.post("/feedback", async (req, res, next) => {
       return;
     }
     const { queryLogId, feedback } = parsed.data;
-    const user = req.user;
+    const user = authedUser(req);
 
     // Programs are a security boundary — a CSR may only update feedback on
-    // their own program's queries.
+    // their own program's queries. Super users with no program can act
+    // across programs (and the row.programId check is bypassed below).
     const rows = await db
       .select({ programId: queryLog.programId })
       .from(queryLog)
       .where(eq(queryLog.id, queryLogId))
       .limit(1);
     const row = rows[0];
-    if (!row || row.programId !== user.programId) {
+    if (!row) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    if (user.role !== "super_user" && row.programId !== user.programId) {
       res.status(404).json({ error: "Not found" });
       return;
     }

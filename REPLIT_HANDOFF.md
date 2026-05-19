@@ -142,6 +142,68 @@ above is canonical.
 
 ---
 
+## B2. Replit Agent DDL prompt — Phase 2A (auth)
+
+```
+Ask the Replit agent to run this against the dev database. Idempotent;
+safe to re-run.
+
+CREATE EXTENSION IF NOT EXISTS citext;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+    CREATE TYPE user_role AS ENUM ('super_user', 'senior_manager', 'manager', 'csr');
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS users (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email                 CITEXT NOT NULL UNIQUE,
+  password_hash         TEXT NOT NULL,
+  role                  user_role NOT NULL,
+  program_id            UUID REFERENCES programs(id) ON DELETE RESTRICT,
+  name                  TEXT NOT NULL,
+  is_active             BOOLEAN NOT NULL DEFAULT true,
+  must_reset_password   BOOLEAN NOT NULL DEFAULT true,
+  last_login_at         TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_by            UUID REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT users_role_program_check CHECK (
+    (role = 'super_user' AND program_id IS NULL)
+    OR (role <> 'super_user' AND program_id IS NOT NULL)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS users_program_id_idx ON users(program_id);
+CREATE INDEX IF NOT EXISTS users_role_idx ON users(role);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash    TEXT NOT NULL UNIQUE,
+  expires_at    TIMESTAMPTZ NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at);
+```
+
+Notes on what this enforces:
+- The `users_role_program_check` constraint is the security spine: a
+  `super_user` MUST have `program_id IS NULL`; every other role MUST have
+  a non-null `program_id`. The app code relies on this — if the constraint
+  is missing, a manager row could be created with NULL program_id and
+  silently pass scope checks.
+- `citext` makes email lookups case-insensitive so `Alice@foo.com` and
+  `alice@foo.com` are the same account.
+- `sessions.token_hash` stores SHA-256 of the cookie token — a DB leak
+  does not yield active sessions on its own.
+
+---
+
 ## C. Replit Secrets checklist
 
 Set these in Replit Secrets (Tools → Secrets). The app reads them via
@@ -153,8 +215,9 @@ Set these in Replit Secrets (Tools → Secrets). The app reads them via
 | `OPENAI_API_KEY` | platform.openai.com → API keys. One key, used for both embeddings (`text-embedding-3-small`) and generation (`gpt-4o`). |
 | `MISTRAL_API_KEY` | console.mistral.ai → API keys. Used for `mistral-ocr-latest`. |
 | `COHERE_API_KEY` | dashboard.cohere.com → API keys. Trial key works for Phase 1. Used for `rerank-english-v3.0`. |
-| `NEXTAUTH_SECRET` | `openssl rand -base64 32`. Phase 2 (auth not wired yet in Phase 1, but set this now to avoid a surprise later). |
-| `NEXTAUTH_URL` | Your Replit deploy URL (e.g. `https://<replname>.<owner>.repl.co`). |
+| `BOOTSTRAP_SUPER_USER_EMAIL` | Email for the first super_user. Read once at startup; if no active super_user exists in the DB, one is created with these credentials. Idempotent — leaving the value in place after first login has no effect (existing super_user is left as-is). |
+| `BOOTSTRAP_SUPER_USER_PASSWORD` | Password for the first super_user. The user is forced to change it on first login. After the change, this env var is unused. |
+| `BOOTSTRAP_SUPER_USER_NAME` | *(optional)* Display name. Defaults to `Super User`. |
 | `REPLIT_OBJECT_STORAGE_BUCKET` | Replit auto-injects this when you provision Object Storage from the tools panel. If you skip provisioning, the upload form will fail at runtime with a clear error. |
 
 Optional tunables (defaults shown):
@@ -166,6 +229,7 @@ Optional tunables (defaults shown):
 | `RETRIEVAL_CANDIDATE_K` | `40` | Candidates pulled from each of vector + BM25 before reranking. |
 | `API_PORT` | `5000` | Express server port (also set in `.replit`). |
 | `PORT` | `5173` | Vite dev server port. |
+| `CORS_ALLOWED_ORIGINS` | unset | Comma-separated origin allowlist for cross-origin requests with credentials. Leave unset in the standard Replit topology (same-origin) — only set if running the SPA on a separate origin (e.g., dev tooling). |
 
 ---
 
