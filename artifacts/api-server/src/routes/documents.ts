@@ -267,3 +267,53 @@ documentsRouter.get("/:versionId/preview", requireAdmin, async (req, res, next) 
     next(err);
   }
 });
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Delete a document and everything it owns. The FK chain handles the deep
+ * cleanup atomically at the DB level:
+ *   documents → document_versions → chunks (all ON DELETE CASCADE).
+ *
+ * Scoping note: we use a combined `id AND program_id` predicate so an admin
+ * scoped to program A can't delete a doc in program B. We return 404 (not
+ * 403) on cross-program ids to avoid leaking existence — same convention
+ * the preview route uses for the same reason.
+ *
+ * Phase 1 limitation — Object Storage blob not deleted. Two reasons:
+ *   1. The ObjectStorage interface doesn't expose delete() yet.
+ *   2. Two document_versions can legitimately share a blob when the same
+ *      file is re-uploaded with the same filename (same SHA → same key).
+ *      Unconditional blob delete would risk orphaning a still-referenced
+ *      object. Safe path is to leave blobs in place and add a sweep later
+ *      that walks document_versions and removes any source_url with zero
+ *      references. Storage cost is negligible at Phase 1 doc counts.
+ *
+ * Soft edge: deleting a document while its worker job is mid-flight makes
+ * runIngestion throw "Document version not found" because the version row
+ * is gone. pg-boss retries to exhaustion (per the retry policy in
+ * queue.ts) and the job ends as failed. The user has already deleted the
+ * doc so they don't care — but a Phase 1.5 polish would teach run.ts to
+ * treat a missing version as a soft no-op instead of an error.
+ */
+documentsRouter.delete("/:id", requireAdmin, async (req, res, next) => {
+  try {
+    const user = req.user;
+    const id = req.params.id;
+    if (!UUID_RE.test(id)) {
+      res.status(400).json({ ok: false, error: "Invalid document id" });
+      return;
+    }
+    const deleted = await db
+      .delete(documents)
+      .where(and(eq(documents.id, id), eq(documents.programId, user.programId)))
+      .returning({ id: documents.id });
+    if (deleted.length === 0) {
+      res.status(404).json({ ok: false, error: "Not found" });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});

@@ -68,3 +68,20 @@ export async function getDocumentPreview(versionId: string): Promise<PreviewResp
   const response = await fetch(`/api/documents/${encodeURIComponent(versionId)}/preview`);
   return asJson<PreviewResponse>(response);
 }
+
+export async function deleteDocument(documentId: string): Promise<void> {
+  const response = await fetch(`/api/documents/${encodeURIComponent(documentId)}`, {
+    method: "DELETE"
+  });
+  if (!response.ok) {
+    // Try to surface the server's JSON error message if there is one.
+    let detail = "";
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (typeof body.error === "string") detail = body.error;
+    } catch {
+      // ignore parse errors; fall through to statusText
+    }
+    throw new Error(detail || `HTTP ${response.status}: ${response.statusText}`);
+  }
+}
