@@ -14,7 +14,7 @@ export function AppShell({ user, onLogout, children }: AppShellProps): JSX.Eleme
     <div className="flex h-screen flex-col">
       <TopBar user={user} onLogout={onLogout} />
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
+        <Sidebar user={user} />
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
     </div>

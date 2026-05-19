@@ -3,12 +3,13 @@ import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../lib/db-client.js";
-import { users } from "@workspace/db/schema";
+import { sessions, users } from "@workspace/db/schema";
 import { hashPassword, verifyPassword } from "../lib/auth/passwords.js";
 import {
   createSession,
-  deleteAllSessionsForUser,
   deleteSessionByToken,
+  generateToken,
+  hashToken,
   SESSION_COOKIE_NAME,
   SESSION_DURATION_MS
 } from "../lib/auth/sessions.js";
@@ -125,10 +126,22 @@ authRouter.post("/login", async (req, res, next) => {
     const { token } = await createSession(row.id);
     setSessionCookie(res, token);
 
-    await db
+    // Best-effort bookkeeping. If this update throws, Express's error
+    // handler would send a 500 — but the Set-Cookie header is ALREADY
+    // queued on the response by setSessionCookie, so the browser would
+    // store a valid session while the user sees "login failed." Fire and
+    // forget keeps the response contract honest: a 200 means logged in,
+    // and a stale lastLoginAt is recoverable on the next login.
+    void db
       .update(users)
       .set({ lastLoginAt: new Date() })
-      .where(eq(users.id, row.id));
+      .where(eq(users.id, row.id))
+      .catch((err: unknown) => {
+        console.warn(
+          "[auth] lastLoginAt update failed:",
+          err instanceof Error ? err.message : err
+        );
+      });
 
     res.json({
       user: {
@@ -210,17 +223,32 @@ authRouter.post("/change-password", requireAuth, async (req, res, next) => {
     }
 
     const passwordHash = await hashPassword(newPassword);
-    await db
-      .update(users)
-      .set({ passwordHash, mustResetPassword: false })
-      .where(eq(users.id, user.id));
 
-    // Kill every existing session (including this one), then mint a new
-    // one so the actor stays logged in. Net effect: anyone with a stolen
-    // cookie is out instantly; the legitimate user sees no interruption.
-    await deleteAllSessionsForUser(user.id);
-    const { token } = await createSession(user.id);
-    setSessionCookie(res, token);
+    // Password change is one ATOMIC transaction:
+    //   (1) update the password hash + clear must_reset_password
+    //   (2) delete every existing session (including this one)
+    //   (3) insert the replacement session
+    //
+    // Without the transaction, a transient DB failure between (1) and (2)
+    // would leave the password new but the OLD sessions — including any
+    // stolen cookies — still valid. The whole point of revoke-then-reissue
+    // is the security contract "stolen cookies on the old password are
+    // dead instantly"; that contract requires all-or-nothing.
+    const newToken = await db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({ passwordHash, mustResetPassword: false })
+        .where(eq(users.id, user.id));
+      await tx.delete(sessions).where(eq(sessions.userId, user.id));
+      const token = generateToken();
+      const tokenHash = hashToken(token);
+      const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+      await tx
+        .insert(sessions)
+        .values({ userId: user.id, tokenHash, expiresAt });
+      return token;
+    });
+    setSessionCookie(res, newToken);
 
     res.json({
       user: {

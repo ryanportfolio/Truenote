@@ -7,7 +7,8 @@ import {
   pgTable,
   text,
   timestamp,
-  uuid
+  uuid,
+  type AnyPgColumn
 } from "drizzle-orm/pg-core";
 
 // pgvector — Drizzle has no first-class vector type that we want to lock to a
@@ -194,8 +195,15 @@ export const users = pgTable("users", {
   // Self-reference: nullable so the bootstrap super_user (no creator) has
   // created_by IS NULL. Every other user must be created by some existing
   // user, but ON DELETE SET NULL keeps audit rows alive when the creator is
-  // later deleted.
-  createdBy: uuid("created_by")
+  // later deleted. The FK is declared in the Drizzle binding (and matches
+  // the live DDL) so a future migration or schema diff sees consistent
+  // truth on both sides. The AnyPgColumn annotation is Drizzle's pattern
+  // for self-references — without it TS can't resolve `users.id` inside
+  // the initializer of `users` itself.
+  createdBy: uuid("created_by").references(
+    (): AnyPgColumn => users.id,
+    { onDelete: "set null" }
+  )
 });
 
 export type User = typeof users.$inferSelect;

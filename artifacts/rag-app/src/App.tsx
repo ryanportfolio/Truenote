@@ -5,7 +5,7 @@ import { ChatPage } from "@/pages/Chat";
 import { AdminPage } from "@/pages/Admin";
 import { LoginPage } from "@/pages/Login";
 import { ChangePasswordPage } from "@/pages/ChangePassword";
-import { fetchMe } from "@/lib/api";
+import { fetchMe, SESSION_EXPIRED_EVENT } from "@/lib/api";
 import type { CurrentUser } from "@/types/api";
 
 /**
@@ -68,6 +68,20 @@ export function App(): JSX.Element {
 
   const handleLogout = useCallback((): void => {
     setAuth({ status: "unauthenticated" });
+  }, []);
+
+  // Listen for mid-session 401s anywhere in the app. The api layer fires
+  // SESSION_EXPIRED_EVENT on any authenticated request that comes back
+  // 401 (typically 7-day session expiry mid-shift). Flipping state to
+  // unauthenticated unmounts the current page and renders the login
+  // screen, giving the user an obvious path forward instead of a raw
+  // "Unauthorized" error toast.
+  useEffect(() => {
+    function handle(): void {
+      setAuth({ status: "unauthenticated" });
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, handle);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handle);
   }, []);
 
   if (auth.status === "loading") {

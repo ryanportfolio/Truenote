@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from "node:crypto";
-import { eq, lt } from "drizzle-orm";
+import { and, eq, gt, lt } from "drizzle-orm";
 import { db } from "../db-client.js";
 import { sessions, users } from "@workspace/db/schema";
 import type { UserRole } from "@workspace/db/schema";
@@ -33,12 +33,16 @@ export interface SessionUser {
  * cookie header without further encoding. Returned in plaintext to the
  * caller (who sets it as the cookie value); only the SHA-256 hash is
  * stored in the DB.
+ *
+ * Exported because the password-change flow needs to mint a token inside
+ * its own transaction (revoke + reissue must be atomic), so it can't go
+ * through createSession() which owns its own write.
  */
-function generateToken(): string {
+export function generateToken(): string {
   return randomBytes(32).toString("base64url");
 }
 
-function hashToken(token: string): string {
+export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
@@ -63,6 +67,10 @@ export async function createSession(userId: string): Promise<{
  * suitable for attaching to req.user, or null if the token is missing,
  * expired, or points at an inactive user.
  *
+ * Expiry is filtered in SQL (not just in app code) so the index on
+ * sessions(expires_at) actually helps, and expired rows don't waste
+ * round-trip bandwidth on every authenticated request.
+ *
  * Side effect: bumps last_used_at when a valid session is touched. This is
  * a single UPDATE per authenticated request — cheap at call-center traffic
  * levels and useful for "stale session" cleanup queries later.
@@ -75,7 +83,6 @@ export async function findSessionByToken(
   const rows = await db
     .select({
       sessionId: sessions.id,
-      expiresAt: sessions.expiresAt,
       userId: users.id,
       email: users.email,
       role: users.role,
@@ -86,22 +93,29 @@ export async function findSessionByToken(
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
-    .where(eq(sessions.tokenHash, tokenHash))
+    .where(
+      and(eq(sessions.tokenHash, tokenHash), gt(sessions.expiresAt, new Date()))
+    )
     .limit(1);
 
   const row = rows[0];
   if (!row) return null;
-  if (row.expiresAt.getTime() <= Date.now()) return null;
   if (!row.isActive) return null;
 
-  // Best-effort last-used-at touch. Failure here must not break the request,
-  // so we swallow errors — the session is still valid even if the touch
-  // doesn't land.
+  // Best-effort last-used-at touch. Failure must not break the request
+  // (the session is still valid even if the touch doesn't land), but log
+  // at warn so operators can detect DB connectivity degradation before
+  // the main query path starts failing too.
   void db
     .update(sessions)
     .set({ lastUsedAt: new Date() })
     .where(eq(sessions.id, row.sessionId))
-    .catch(() => {});
+    .catch((err: unknown) => {
+      console.warn(
+        "[auth] last_used_at touch failed:",
+        err instanceof Error ? err.message : err
+      );
+    });
 
   return {
     id: row.userId,
@@ -123,15 +137,6 @@ export async function deleteSessionByToken(
   if (!token) return;
   const tokenHash = hashToken(token);
   await db.delete(sessions).where(eq(sessions.tokenHash, tokenHash));
-}
-
-/**
- * Delete every session for a user. Used after a password change so the
- * actor is forced to re-authenticate with the new credentials everywhere
- * (revoking any stolen cookies on the old password).
- */
-export async function deleteAllSessionsForUser(userId: string): Promise<void> {
-  await db.delete(sessions).where(eq(sessions.userId, userId));
 }
 
 /**

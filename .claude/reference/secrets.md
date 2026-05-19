@@ -10,8 +10,8 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 | `OPENAI_API_KEY` | Embeddings (`text-embedding-3-small`) and generation (`gpt-4o`) | One key, two uses |
 | `MISTRAL_API_KEY` | Mistral OCR for document parsing | `mistral-ocr-latest` |
 | `COHERE_API_KEY` | Rerank v3 | Cuts irrelevant chunks from final LLM context |
-| `NEXTAUTH_SECRET` | Session signing | `openssl rand -base64 32` |
-| `NEXTAUTH_URL` | OAuth callback base | Replit deploy URL in prod |
+| `BOOTSTRAP_SUPER_USER_EMAIL` | First-login seed | Used once on api-server startup to create the initial super_user if none exists. Idempotent. |
+| `BOOTSTRAP_SUPER_USER_PASSWORD` | First-login seed | Forced reset on first login; env var unused thereafter. |
 
 ## Optional
 
@@ -21,6 +21,8 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 | `RETRIEVAL_TOP_K` | Final chunks sent to LLM after reranking | `8` |
 | `RETRIEVAL_CANDIDATE_K` | Candidates pulled from vector + BM25 before reranking | `40` each |
 | `RAG_STORAGE_DRIVER` | Set to `memory` to use the in-memory adapter (local scripts / tests). Any other value (or unset) selects Replit Object Storage | unset → Replit SDK |
+| `BOOTSTRAP_SUPER_USER_NAME` | Display name for the bootstrap super_user | `Super User` |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for cross-origin credentialed requests. Leave unset for same-origin Replit deploys. | unset → no cross-origin |
 
 ## Pitfalls
 

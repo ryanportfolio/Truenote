@@ -129,7 +129,7 @@ askRouter.post("/ask", async (req, res, next) => {
     const inserted = await db
       .insert(queryLog)
       .values({
-        programId: user.programId,
+        programId,
         userId: user.id,
         question,
         answer: generation.payload.answer,

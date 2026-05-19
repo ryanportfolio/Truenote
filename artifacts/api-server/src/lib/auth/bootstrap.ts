@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../db-client.js";
 import { users } from "@workspace/db/schema";
 import { hashPassword } from "./passwords.js";
@@ -39,15 +39,19 @@ export async function bootstrapSuperUser(): Promise<void> {
     return;
   }
 
+  // Filter on is_active too. Otherwise a deactivated super_user satisfies
+  // the idempotency check and bootstrap skips, but the operator can't log
+  // in (login rejects inactive users) and can't recover via env vars
+  // either — a permanent lockout requiring direct DB intervention.
   const existing = await db
     .select({ id: users.id, email: users.email })
     .from(users)
-    .where(eq(users.role, "super_user"))
+    .where(and(eq(users.role, "super_user"), eq(users.isActive, true)))
     .limit(1);
 
   if (existing[0]) {
     console.log(
-      `[bootstrap] super_user already present (${existing[0].email}); ` +
+      `[bootstrap] active super_user already present (${existing[0].email}); ` +
         "leaving as-is."
     );
     return;

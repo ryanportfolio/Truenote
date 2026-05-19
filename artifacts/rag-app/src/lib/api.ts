@@ -33,9 +33,28 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/**
+ * Fired whenever any authenticated API call comes back 401 — typically a
+ * mid-shift session expiry. App.tsx listens for this and flips the auth
+ * state machine back to "unauthenticated," which re-renders the login
+ * screen. Without this hook, the user sees a raw "Unauthorized" string
+ * in a page-level error toast and has no path forward except a manual
+ * reload.
+ */
+export const SESSION_EXPIRED_EVENT = "rag-csr:session-expired";
+
+function notifySessionExpired(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  }
+}
+
 async function asJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    if (response.status === 401) throw new UnauthorizedError();
+    if (response.status === 401) {
+      notifySessionExpired();
+      throw new UnauthorizedError();
+    }
     const body = await response.text().catch(() => "");
     throw new Error(
       `HTTP ${response.status}: ${body.slice(0, 500) || response.statusText}`
