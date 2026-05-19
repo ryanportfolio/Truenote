@@ -27,3 +27,4 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 - Never log API keys. Never echo `process.env.*_KEY` in error responses.
 - Embedding model is `text-embedding-3-small` (1536 dim). The `chunks.embedding VECTOR(1536)` column hardcodes that — changing models requires re-ingestion.
 - Mistral OCR uses base64 file upload OR a URL. Prefer base64 for uploaded files to avoid signed-URL plumbing.
+- Replit reserves port 5000 for the public webview, so on Replit `PORT=5000` (frontend) and `API_PORT=3001` (or any non-5000). The defaults in `.env.example` reflect this. Local-only dev can flip them back to the donor's `API_PORT=5000`/`PORT=5173` Express+Vite convention. See `.claude/reference/pitfalls.md`.
