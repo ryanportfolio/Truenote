@@ -57,7 +57,7 @@ export function AdminPage(): JSX.Element {
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading documents…</p>
       ) : (
-        <DocumentList items={items} />
+        <DocumentList items={items} onDeleted={() => void refresh()} />
       )}
     </div>
   );
