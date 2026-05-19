@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { FileText, MessageSquare } from "lucide-react";
+import { Building2, FileText, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { hasAtLeastRole } from "@/types/api";
 import type { CurrentUser, UserRole } from "@/types/api";
@@ -20,7 +20,8 @@ const NAV: ReadonlyArray<{
   minRole: UserRole;
 }> = [
   { href: "/chat", label: "Chat", icon: MessageSquare, minRole: "csr" },
-  { href: "/admin/documents", label: "Documents", icon: FileText, minRole: "manager" }
+  { href: "/admin/documents", label: "Documents", icon: FileText, minRole: "manager" },
+  { href: "/admin/programs", label: "Programs", icon: Building2, minRole: "super_user" }
 ];
 
 export function Sidebar({ user }: SidebarProps): JSX.Element {

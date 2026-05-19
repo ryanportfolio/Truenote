@@ -204,6 +204,28 @@ Notes on what this enforces:
 
 ---
 
+## B3. Replit Agent DDL prompt — Phase 2C.1 (programs)
+
+Ask the Replit agent to run this against the dev database (NOT prod —
+Replit's publish flow will diff and promote on republish).
+
+```sql
+-- Phase 2C.1: enforce case-insensitive uniqueness on program names.
+-- The api-server has an application-level pre-flight check too, but
+-- two concurrent POSTs could race past it; this index makes the
+-- duplicate impossible at the DB level. The route catches 23505 and
+-- maps it to a 409 response.
+
+CREATE UNIQUE INDEX IF NOT EXISTS programs_name_lower_uidx
+  ON programs (lower(name));
+```
+
+After applying, restart `api-server`. The route still works without
+the index (falls back to the pre-flight check, which has a narrow
+TOCTOU window) — index landing is what closes the race.
+
+---
+
 ## C. Replit Secrets checklist
 
 Set these in Replit Secrets (Tools → Secrets). The app reads them via

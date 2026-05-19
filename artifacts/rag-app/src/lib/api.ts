@@ -5,8 +5,11 @@ import type {
   DocumentListResponse,
   LoginResponse,
   PreviewResponse,
+  Program,
+  ProgramListResponse,
   UploadResponse
 } from "@/types/api";
+import { getSelectedProgramIdRaw } from "@/lib/selectedProgram";
 
 /**
  * Thin fetch wrappers. Vite proxies /api → the Express api-server (see
@@ -19,7 +22,28 @@ import type {
  * authenticated request 401s.
  */
 
-const fetchOptions: RequestInit = { credentials: "include" };
+/**
+ * Build a RequestInit with cookies + the X-Program-Id header (when a
+ * super_user has selected a program). Non-super_user roles also get
+ * the header sent if something happens to write to the storage slot;
+ * the server silently ignores it for them, so this is safe.
+ *
+ * Pass any caller-provided init through — headers from the caller
+ * win so a Content-Type override (e.g. multipart for upload) keeps
+ * the right Content-Type the browser builds for FormData.
+ */
+function withDefaults(init: RequestInit = {}): RequestInit {
+  const headers = new Headers(init.headers);
+  const programId = getSelectedProgramIdRaw();
+  if (programId !== null && !headers.has("X-Program-Id")) {
+    headers.set("X-Program-Id", programId);
+  }
+  return {
+    ...init,
+    credentials: "include",
+    headers
+  };
+}
 
 /**
  * Distinct error so callers can branch on "I need to redirect to /login"
@@ -69,7 +93,7 @@ async function asJson<T>(response: Response): Promise<T> {
  * the App router can deterministically branch to /login on null.
  */
 export async function fetchMe(): Promise<CurrentUser | null> {
-  const response = await fetch("/api/me", fetchOptions);
+  const response = await fetch("/api/me", withDefaults());
   if (response.status === 401) return null;
   const json = await asJson<{ user: CurrentUser }>(response);
   return json.user;
@@ -79,12 +103,14 @@ export async function login(
   email: string,
   password: string
 ): Promise<CurrentUser> {
-  const response = await fetch("/api/auth/login", {
-    ...fetchOptions,
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password })
-  });
+  const response = await fetch(
+    "/api/auth/login",
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    })
+  );
   if (response.status === 401) {
     const body = (await response.json().catch(() => ({}))) as {
       error?: string;
@@ -96,19 +122,21 @@ export async function login(
 }
 
 export async function logout(): Promise<void> {
-  await fetch("/api/auth/logout", { ...fetchOptions, method: "POST" });
+  await fetch("/api/auth/logout", withDefaults({ method: "POST" }));
 }
 
 export async function changePassword(
   currentPassword: string,
   newPassword: string
 ): Promise<CurrentUser> {
-  const response = await fetch("/api/auth/change-password", {
-    ...fetchOptions,
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ currentPassword, newPassword })
-  });
+  const response = await fetch(
+    "/api/auth/change-password",
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword, newPassword })
+    })
+  );
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as {
       error?: string;
@@ -120,35 +148,41 @@ export async function changePassword(
 }
 
 export async function askQuestion(question: string): Promise<AskResponse> {
-  const response = await fetch("/api/ask", {
-    ...fetchOptions,
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question })
-  });
+  const response = await fetch(
+    "/api/ask",
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question })
+    })
+  );
   return asJson<AskResponse>(response);
 }
 
 export async function submitFeedback(queryLogId: string, feedback: -1 | 0 | 1): Promise<void> {
-  await fetch("/api/feedback", {
-    ...fetchOptions,
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ queryLogId, feedback })
-  });
+  await fetch(
+    "/api/feedback",
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ queryLogId, feedback })
+    })
+  );
 }
 
 export async function listDocuments(): Promise<DocumentListResponse> {
-  const response = await fetch("/api/documents", fetchOptions);
+  const response = await fetch("/api/documents", withDefaults());
   return asJson<DocumentListResponse>(response);
 }
 
 export async function uploadDocument(formData: FormData): Promise<UploadResponse> {
-  const response = await fetch("/api/documents/upload", {
-    ...fetchOptions,
-    method: "POST",
-    body: formData
-  });
+  const response = await fetch(
+    "/api/documents/upload",
+    // Do NOT set Content-Type — the browser builds the multipart
+    // boundary header from the FormData. withDefaults() leaves it
+    // untouched when not explicitly provided.
+    withDefaults({ method: "POST", body: formData })
+  );
   // The upload endpoint always returns JSON (success or error), even on 4xx.
   // Parse regardless of status so callers see the error message.
   try {
@@ -161,16 +195,16 @@ export async function uploadDocument(formData: FormData): Promise<UploadResponse
 export async function getDocumentPreview(versionId: string): Promise<PreviewResponse> {
   const response = await fetch(
     `/api/documents/${encodeURIComponent(versionId)}/preview`,
-    fetchOptions
+    withDefaults()
   );
   return asJson<PreviewResponse>(response);
 }
 
 export async function deleteDocument(documentId: string): Promise<void> {
-  const response = await fetch(`/api/documents/${encodeURIComponent(documentId)}`, {
-    ...fetchOptions,
-    method: "DELETE"
-  });
+  const response = await fetch(
+    `/api/documents/${encodeURIComponent(documentId)}`,
+    withDefaults({ method: "DELETE" })
+  );
   if (!response.ok) {
     // Try to surface the server's JSON error message if there is one.
     let detail = "";
@@ -182,4 +216,28 @@ export async function deleteDocument(documentId: string): Promise<void> {
     }
     throw new Error(detail || `HTTP ${response.status}: ${response.statusText}`);
   }
+}
+
+export async function listPrograms(): Promise<ProgramListResponse> {
+  const response = await fetch("/api/admin/programs", withDefaults());
+  return asJson<ProgramListResponse>(response);
+}
+
+export async function createProgram(name: string): Promise<Program> {
+  const response = await fetch(
+    "/api/admin/programs",
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name })
+    })
+  );
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    throw new Error(body.error ?? `HTTP ${response.status}`);
+  }
+  const json = (await response.json()) as { item: Program };
+  return json.item;
 }
