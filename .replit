@@ -79,3 +79,6 @@ externalPort = 80
 deploymentTarget = "autoscale"
 run = ["bash", "-c", "API_PORT=5000 NODE_ENV=production pnpm --filter @workspace/api-server run start & pnpm --filter @workspace/scripts run worker & wait"]
 build = ["bash", "-c", "pnpm --filter @workspace/rag-app run build"]
+
+[objectStorage]
+defaultBucketID = "replit-objstore-a2040b63-42f1-4634-a980-06c7e837a4cb"
