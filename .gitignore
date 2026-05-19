@@ -40,3 +40,11 @@ yarn-error.log*
 # cache
 .cache/replit/
 .turbo/
+
+# claude code local-only settings (per-user permissions)
+.claude/settings.local.json
+
+# donor archive (staging tarball; remove after smoke test)
+/rag-donor/
+/rag-donor.tar.gz
+

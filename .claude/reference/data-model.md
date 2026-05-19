@@ -1,0 +1,88 @@
+# Data Model
+
+> Postgres on Replit (Neon). `vector` and `pg_trgm` extensions required.
+
+## Core tables
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE TABLE programs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  program_id UUID REFERENCES programs(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  current_version_id UUID,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE document_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+  version_number INT NOT NULL,
+  source_url TEXT,
+  mime_type TEXT,
+  file_sha256 TEXT,
+  parse_status TEXT DEFAULT 'pending',  -- pending|parsing|ready|failed
+  parsed_markdown TEXT,
+  uploaded_by TEXT,
+  uploaded_at TIMESTAMPTZ DEFAULT now(),
+  is_active BOOLEAN DEFAULT true
+);
+CREATE INDEX document_versions_sha_idx ON document_versions(file_sha256);
+
+CREATE TABLE chunks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_version_id UUID REFERENCES document_versions(id) ON DELETE CASCADE,
+  program_id UUID NOT NULL,  -- DENORMALIZED for fast scoping
+  ordinal INT,
+  content TEXT NOT NULL,
+  content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
+  embedding VECTOR(1536),
+  metadata JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX chunks_embedding_idx ON chunks USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX chunks_tsv_idx ON chunks USING gin (content_tsv);
+CREATE INDEX chunks_program_idx ON chunks (program_id);
+
+CREATE TABLE query_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  program_id UUID,
+  user_id TEXT,
+  question TEXT NOT NULL,
+  answer TEXT,
+  cited_chunk_ids UUID[],
+  refused BOOLEAN DEFAULT false,
+  latency_ms INT,
+  feedback INT,  -- -1, 0, +1
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE eval_questions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  program_id UUID,
+  question TEXT NOT NULL,
+  expected_doc_id UUID,
+  expected_answer_contains TEXT[],
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+## Invariants
+
+- **`chunks.program_id` is denormalized** from `document_versions → documents → programs`. This is intentional. Retrieval queries filter on it directly to avoid joining at query time.
+- **A document has many versions.** Re-uploading does NOT update the existing row — it creates a new `document_versions` row and flips `is_active`.
+- **Only chunks from `is_active=true` versions are searched.** Inactive versions stay for audit / rollback.
+- **`embedding VECTOR(1536)` is locked to `text-embedding-3-small`.** Changing embedding model = re-ingest everything.
+
+## Schema change protocol
+
+Claude Code cannot run migrations. For any schema change: write raw DDL only, hand it to the user for the Replit Agent. No `drizzle-kit push`, no `shared/schema.ts` edits in the same task. See CLAUDE.md → "Database Schema Changes."
