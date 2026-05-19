@@ -1,6 +1,5 @@
 import {
   boolean,
-  customType,
   integer,
   jsonb,
   pgEnum,
@@ -37,15 +36,11 @@ const vector1536 = customType<{ data: number[]; driverData: string }>({
 // keeping it out of Drizzle avoids any risk that the ORM tries to handle it
 // on inserts.
 
-// Drizzle has no first-class `citext` type. customType lets us emit the right
-// DDL in the reference SQL while giving us `string` reads/writes in TS.
-// Lookups against `users.email` automatically benefit from case-insensitive
-// comparison on the DB side.
-const citext = customType<{ data: string }>({
-  dataType() {
-    return "citext";
-  }
-});
+// Email is stored as plain `text` with lowercase normalization enforced at the
+// application layer (all writes and reads call .toLowerCase() before touching
+// the DB). This keeps the schema portable and avoids a dependency on the
+// `citext` extension, which is not always available in managed PostgreSQL
+// environments.
 
 // --- user roles
 
@@ -179,7 +174,7 @@ export type NewEvalQuestion = typeof evalQuestions.$inferInsert;
 // program-picker (Phase 2C).
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
-  email: citext("email").notNull().unique(),
+  email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   role: userRoleEnum("role").notNull(),
   programId: uuid("program_id").references(() => programs.id, {

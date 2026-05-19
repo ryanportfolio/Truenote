@@ -148,8 +148,6 @@ above is canonical.
 Ask the Replit agent to run this against the dev database. Idempotent;
 safe to re-run.
 
-CREATE EXTENSION IF NOT EXISTS citext;
-
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
@@ -159,7 +157,7 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS users (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email                 CITEXT NOT NULL UNIQUE,
+  email                 TEXT NOT NULL UNIQUE,
   password_hash         TEXT NOT NULL,
   role                  user_role NOT NULL,
   program_id            UUID REFERENCES programs(id) ON DELETE RESTRICT,
@@ -197,8 +195,10 @@ Notes on what this enforces:
   a non-null `program_id`. The app code relies on this — if the constraint
   is missing, a manager row could be created with NULL program_id and
   silently pass scope checks.
-- `citext` makes email lookups case-insensitive so `Alice@foo.com` and
-  `alice@foo.com` are the same account.
+- `email` is stored as lowercase `TEXT`; the application layer normalises
+  all email values to lowercase before insert and lookup, so `Alice@foo.com`
+  and `alice@foo.com` resolve to the same account without needing the
+  `citext` extension.
 - `sessions.token_hash` stores SHA-256 of the cookie token — a DB leak
   does not yield active sessions on its own.
 

@@ -26,7 +26,7 @@ import { hashPassword } from "./passwords.js";
  * has no effect on the live user.
  */
 export async function bootstrapSuperUser(): Promise<void> {
-  const email = process.env.BOOTSTRAP_SUPER_USER_EMAIL?.trim();
+  const email = process.env.BOOTSTRAP_SUPER_USER_EMAIL?.trim().toLowerCase();
   const password = process.env.BOOTSTRAP_SUPER_USER_PASSWORD;
   const name = process.env.BOOTSTRAP_SUPER_USER_NAME?.trim() || "Super User";
 

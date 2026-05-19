@@ -90,7 +90,8 @@ authRouter.post("/login", async (req, res, next) => {
       res.status(400).json({ error: "Invalid request" });
       return;
     }
-    const { email, password } = parsed.data;
+    const { email: rawEmail, password } = parsed.data;
+    const email = rawEmail.toLowerCase();
 
     const rows = await db
       .select({
