@@ -85,7 +85,13 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
         >
           {user.role === "super_user"
             ? "Select a program from the picker in the header to view or upload documents."
-            : "Your account isn't scoped to a program yet. Contact an admin."}
+            : // The DB CHECK constraint guarantees non-super_user roles
+              // always have a non-null program_id, so this branch is
+              // server-contract-unreachable. We render a friendly
+              // fallback rather than a 500-style "this shouldn't
+              // happen" to avoid scaring CSRs if the contract ever
+              // drifts.
+              "Your account isn't scoped to a program yet. Contact an admin."}
         </div>
       ) : (
         <UploadForm onUploaded={() => void refresh()} />

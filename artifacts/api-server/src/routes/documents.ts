@@ -292,6 +292,15 @@ documentsRouter.get("/:versionId/preview", async (req, res, next) => {
       res.json({ markdown: null, parseStatus: null, title: null });
       return;
     }
+    // The leftJoin can in principle return a row with a null programId
+    // (orphaned version with no parent document). canAccessProgram
+    // returns true for super_user on a null programId — which would
+    // expose unscoped content. Refuse explicitly when the document
+    // row didn't join, regardless of role.
+    if (row.programId === null) {
+      res.json({ markdown: null, parseStatus: null, title: null });
+      return;
+    }
     // Server-side program scope check via canAccessProgram (single source
     // of truth for "can this user touch resources in program X"). Super
     // users see across programs; everyone else is bound to their own.

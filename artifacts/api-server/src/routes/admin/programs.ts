@@ -64,7 +64,15 @@ programsRouter.get("/", async (req, res, next) => {
 });
 
 const CreateBody = z.object({
-  name: z.string().trim().min(1).max(120)
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(120)
+    // Reject embedded control characters (null bytes, tabs, newlines,
+    // etc.). A name like "Acme\x00Corp" would pass min/max/trim but
+    // render oddly in the picker and trip up lower() comparisons.
+    .regex(/^[^\x00-\x1f\x7f]+$/, "Name must not contain control characters")
 });
 
 /**
@@ -73,10 +81,19 @@ const CreateBody = z.object({
  * managers see everything in their own program, but program creation
  * is an ops decision that should sit with the platform owner).
  *
- * Duplicate detection is case-insensitive on a trimmed name. We don't
- * have a unique index in the schema yet because the dataset is tiny
- * and a future "rename" feature might want to allow temporary
- * collisions during a migration; revisit when we add archive/rename.
+ * Duplicate detection has two layers:
+ *   1. An application-level pre-flight (case-insensitive SELECT). Gives
+ *      a friendly 409 in the common case.
+ *   2. A unique index on lower(name) at the DB level (see
+ *      REPLIT_HANDOFF.md Section B3) closes the TOCTOU race: two
+ *      simultaneous POSTs that both pass the pre-flight will collide
+ *      on insert. We catch the 23505 unique-violation and map it to
+ *      the same 409.
+ *
+ * If the DB unique index hasn't been created yet (pre-DDL deploy), the
+ * 23505 branch is simply unreachable — the pre-flight still works,
+ * just with the original race window. Safe to ship the code before
+ * the index lands.
  */
 programsRouter.post("/", requireSuperUser, async (req, res, next) => {
   try {
@@ -95,25 +112,41 @@ programsRouter.post("/", requireSuperUser, async (req, res, next) => {
       res.status(409).json({ error: "A program with that name already exists" });
       return;
     }
-    const inserted = await db
-      .insert(programs)
-      .values({ name })
-      .returning({
-        id: programs.id,
-        name: programs.name,
-        createdAt: programs.createdAt
-      });
-    const row = inserted[0];
-    if (!row) {
-      res.status(500).json({ error: "Failed to create program" });
-      return;
+    try {
+      const inserted = await db
+        .insert(programs)
+        .values({ name })
+        .returning({
+          id: programs.id,
+          name: programs.name,
+          createdAt: programs.createdAt
+        });
+      const row = inserted[0];
+      if (!row) {
+        res.status(500).json({ error: "Failed to create program" });
+        return;
+      }
+      const item: ProgramListItem = {
+        id: row.id,
+        name: row.name,
+        createdAt: row.createdAt ? row.createdAt.toISOString() : null
+      };
+      res.status(201).json({ item });
+    } catch (err) {
+      // Postgres unique-violation. Drizzle / pg surface this as
+      // either a `code: "23505"` field or a wrapped error; check both.
+      const code =
+        typeof err === "object" && err !== null && "code" in err
+          ? (err as { code: unknown }).code
+          : undefined;
+      if (code === "23505") {
+        res
+          .status(409)
+          .json({ error: "A program with that name already exists" });
+        return;
+      }
+      throw err;
     }
-    const item: ProgramListItem = {
-      id: row.id,
-      name: row.name,
-      createdAt: row.createdAt ? row.createdAt.toISOString() : null
-    };
-    res.status(201).json({ item });
   } catch (err) {
     next(err);
   }

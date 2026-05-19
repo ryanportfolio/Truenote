@@ -12,18 +12,28 @@ interface ProgramSelectorProps {
 }
 
 /**
- * Header-mounted program picker for super_user. Renders nothing for
- * other roles — their program is fixed by the DB CHECK constraint and
- * a selector would just confuse them.
+ * Header-mounted program picker. Renders nothing for non-super_user
+ * roles — their program is fixed by the DB CHECK constraint and a
+ * selector would just confuse them.
  *
- * The selection lives in localStorage (see selectedProgram.ts) and is
- * read by lib/api.ts to attach X-Program-Id to every authenticated
- * request. We dispatch a custom event on writes so other in-tab
- * components (chat, docs list) can refetch when the picker changes.
+ * The outer component is a thin role gate so the inner component
+ * (which owns the hooks) is only mounted for super_user. This keeps
+ * the hook call count stable across renders no matter how the parent
+ * re-renders.
  */
 export function ProgramSelector({ user }: ProgramSelectorProps): JSX.Element | null {
   if (user.role !== "super_user") return null;
+  return <SuperUserProgramSelector user={user} />;
+}
 
+/**
+ * The actual picker. Stores selection in localStorage (see
+ * selectedProgram.ts); lib/api.ts reads from there to attach
+ * X-Program-Id on every authenticated request. We dispatch a custom
+ * event on writes so other in-tab components (chat, docs list) can
+ * refetch when the picker changes.
+ */
+function SuperUserProgramSelector({ user }: ProgramSelectorProps): JSX.Element {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [selected, setSelected] = useState<string>(

@@ -13,6 +13,12 @@ interface AdminProgramsPageProps {
  * filter here is a UX layer — it returns a 403 element rather than
  * exposing the form for an actor whose POSTs would fail anyway.
  *
+ * The role-gate wrapper conditionally mounts the inner component so
+ * the hooks inside `AdminProgramsInner` are only ever invoked for
+ * super_user. Without this split, swapping a logged-in user's role
+ * (or rendering Forbidden first) would change the hook call count
+ * across renders and crash React.
+ *
  * Phase 2C.1 scope: list + create. Rename / archive / delete are
  * intentionally out of scope — deletion cascades through documents →
  * chunks → query_log and needs an explicit "danger zone" flow.
@@ -21,7 +27,10 @@ export function AdminProgramsPage({ user }: AdminProgramsPageProps): JSX.Element
   if (user.role !== "super_user") {
     return <Forbidden />;
   }
+  return <AdminProgramsInner user={user} />;
+}
 
+function AdminProgramsInner({ user }: AdminProgramsPageProps): JSX.Element {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -45,12 +54,14 @@ export function AdminProgramsPage({ user }: AdminProgramsPageProps): JSX.Element
   function handleCreated(p: Program): void {
     // Optimistic prepend so the new program shows immediately, then
     // auto-select it so the super_user can start uploading right
-    // away without a second click. The selector header listens on
-    // the storage-change event and updates in place.
+    // away without a second click. Order matters: dispatch the
+    // programs-changed event BEFORE writing the selection. The
+    // header picker reloads its list on programs-changed; if we
+    // wrote the selection first, the picker would briefly show a
+    // selected value that isn't in its (stale) list.
     setPrograms((prev) => [p, ...prev]);
-    setSelectedProgramId(user.id, p.id);
-    // Tell the header picker to refetch (it caches the list).
     window.dispatchEvent(new Event("kbase:programs-changed"));
+    setSelectedProgramId(user.id, p.id);
   }
 
   return (

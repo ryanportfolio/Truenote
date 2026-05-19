@@ -186,8 +186,15 @@ askRouter.post("/feedback", async (req, res, next) => {
     const user = authedUser(req);
 
     // Programs are a security boundary — a CSR may only update feedback on
-    // their own program's queries. Super users with no program can act
-    // across programs (and the row.programId check is bypassed below).
+    // their own program's queries. Super users may update feedback on any
+    // program's query_log row (intentionally), so they're not routed
+    // through resolveEffectiveProgramId here. Rationale: feedback is a
+    // low-stakes write and a super_user who has just switched the picker
+    // away from program A should still be able to thumb up an answer
+    // they just received on program A. canAccessProgram-style scoping
+    // would either over-restrict (block legitimate feedback) or be
+    // equivalent (super_user always passes), so plain role check is
+    // simpler and easier to audit.
     const rows = await db
       .select({ programId: queryLog.programId })
       .from(queryLog)
