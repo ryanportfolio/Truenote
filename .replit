@@ -75,6 +75,10 @@ externalPort = 3001
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 5001
+externalPort = 3000
+
 [deployment]
 deploymentTarget = "autoscale"
 run = ["bash", "-c", "API_PORT=5000 NODE_ENV=production pnpm --filter @workspace/api-server run start & pnpm --filter @workspace/scripts run worker & wait"]
