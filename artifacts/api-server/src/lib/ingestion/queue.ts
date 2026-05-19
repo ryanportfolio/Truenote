@@ -12,6 +12,30 @@ declare global {
   var __pgBoss: PgBoss | undefined;
 }
 
+async function ensureQueue(boss: PgBoss, name: string): Promise<void> {
+  // pg-boss v10 requires queues to be explicitly registered before send() /
+  // work(). If you skip this, send() silently returns null and nothing lands
+  // in pgboss.job — the famous v9 → v10 footgun. Per-queue options live here
+  // (instead of per-send) so retry / expiration are uniform.
+  // The catch is defensive: createQueue is idempotent at the SQL level, but
+  // the JS wrapper has been known to surface unique-constraint errors when
+  // two processes race on first start (api-server + worker). Swallowing
+  // "already exists" lets both processes safely initialize.
+  try {
+    await boss.createQueue(name, {
+      retryLimit: 3,
+      retryDelay: 30,
+      retryBackoff: true,
+      expireInSeconds: 900, // 15 min — OCR + embed + chunker should be well under
+      deleteAfterSeconds: 7 * 24 * 60 * 60 // 7 days of debugging history
+    });
+  } catch (err) {
+    if (!/already exists|duplicate|unique constraint/i.test(String(err))) {
+      throw err;
+    }
+  }
+}
+
 async function getBoss(): Promise<PgBoss> {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL is not set");
@@ -19,6 +43,7 @@ async function getBoss(): Promise<PgBoss> {
   if (!globalThis.__pgBoss) {
     const boss = new PgBoss({ connectionString: process.env.DATABASE_URL });
     await boss.start();
+    await ensureQueue(boss, INGEST_DOCUMENT_VERSION_QUEUE);
     globalThis.__pgBoss = boss;
   }
   return globalThis.__pgBoss;
