@@ -223,20 +223,13 @@ usersRouter.post("/", async (req, res, next) => {
     const generatedPassword = parsed.data.password ?? generateTempPassword();
     const passwordHash = await hashPassword(generatedPassword);
 
-    // Pre-flight email check (case-insensitive). The users.email column
-    // is already lowercased on every write, so a plain equality is
-    // sufficient. The DB UNIQUE constraint on users.email is the
-    // backstop for the TOCTOU race between two concurrent POSTs.
-    const existing = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.email, email))
-      .limit(1);
-    if (existing[0]) {
-      res.status(409).json({ error: "A user with that email already exists" });
-      return;
-    }
-
+    // No pre-flight existence check — that path skipped argon2 and
+    // returned ~10x faster than the success path, letting an
+    // authenticated admin enumerate which emails are already
+    // registered by stopwatch. We always hash + always INSERT now,
+    // and rely on the DB UNIQUE constraint on users.email (23505) to
+    // surface duplicates. Timing on duplicate vs success is now
+    // dominated by the argon2 cost in both branches.
     try {
       const inserted = await db
         .insert(users)
@@ -294,6 +287,16 @@ usersRouter.post("/", async (req, res, next) => {
         res
           .status(400)
           .json({ error: "Role and program combination is not allowed" });
+        return;
+      }
+      if (code === "23503") {
+        // FK violation on users.program_id → programs.id ON DELETE
+        // RESTRICT. The program was concurrently deleted between
+        // canAssignRole and the INSERT. Surface as a clear 400 rather
+        // than a generic 500 so the admin can pick another program.
+        res
+          .status(400)
+          .json({ error: "Program not found" });
         return;
       }
       throw err;
@@ -391,6 +394,20 @@ const PatchBody = z
  * A role or programId change is validated against the FINAL pair
  * (new-role + new-programId), not against partial deltas — otherwise
  * a multi-field PATCH could pass an intermediate-illegal state.
+ *
+ * Atomicity: the load + scope check + canAssignRole + UPDATE + (on
+ * deactivate) session revoke ALL run inside a single transaction
+ * with `SELECT ... FOR UPDATE` on the target row. Without this, two
+ * concurrent admins could race — actor A loads target T at role=csr,
+ * meanwhile super_user promotes T to senior_manager, then actor A's
+ * UPDATE lands with a stale validation context (canManageUser would
+ * have rejected the new role). The row lock serializes the
+ * read/write so each PATCH sees a consistent snapshot.
+ *
+ * Session revoke on deactivation runs in the same transaction so the
+ * "deactivate but session still alive" failure mode is impossible.
+ * If anything in the tx fails, the whole PATCH rolls back rather
+ * than partially deactivating.
  */
 usersRouter.patch("/:id", async (req, res, next) => {
   try {
@@ -406,88 +423,127 @@ usersRouter.patch("/:id", async (req, res, next) => {
       res.status(400).json({ error: message });
       return;
     }
-    const target = await loadManageableTarget(actor, id);
-    if (!target) {
-      res.status(404).json({ error: "Not found" });
-      return;
+
+    // Result variants from the transaction. Encodes the auth/scope
+    // outcome so the HTTP layer below can map each to a status code
+    // without re-checking inside the tx. The row shape mirrors what
+    // toListItem expects — keeps passwordHash out of the closure
+    // even though it's harmless here.
+    interface SafeUserRow {
+      id: string;
+      email: string;
+      name: string;
+      role: UserRole;
+      programId: string | null;
+      isActive: boolean;
+      mustResetPassword: boolean;
+      lastLoginAt: Date | null;
+      createdAt: Date;
     }
+    type TxResult =
+      | { kind: "ok"; row: SafeUserRow }
+      | { kind: "not-found" }
+      | { kind: "forbidden" };
 
-    // Compute the final (role, programId) the update would land on.
-    const finalRole = parsed.data.role ?? target.role;
-    const finalProgramId =
-      parsed.data.programId !== undefined
-        ? parsed.data.programId
-        : target.programId;
-
-    // If either is changing, the actor must be permitted to assign
-    // that combination on a new user. Same predicate, same surface.
-    const roleChanging =
-      parsed.data.role !== undefined && parsed.data.role !== target.role;
-    const programChanging =
-      parsed.data.programId !== undefined &&
-      parsed.data.programId !== target.programId;
-    if (roleChanging || programChanging) {
-      if (!canAssignRole(actor, finalRole, finalProgramId)) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
-    }
-
-    // Drizzle's .set() doesn't accept undefined values cleanly — build
-    // a focused update object so we only touch the columns we mean to.
-    const update: {
-      name?: string;
-      role?: UserRole;
-      programId?: string | null;
-      isActive?: boolean;
-    } = {};
-    if (parsed.data.name !== undefined) update.name = parsed.data.name;
-    if (parsed.data.role !== undefined) update.role = parsed.data.role;
-    if (parsed.data.programId !== undefined)
-      update.programId = parsed.data.programId;
-    if (parsed.data.isActive !== undefined)
-      update.isActive = parsed.data.isActive;
-
+    let txResult: TxResult;
     try {
-      const updated = await db
-        .update(users)
-        .set(update)
-        .where(eq(users.id, id))
-        .returning({
-          id: users.id,
-          email: users.email,
-          name: users.name,
-          role: users.role,
-          programId: users.programId,
-          isActive: users.isActive,
-          mustResetPassword: users.mustResetPassword,
-          lastLoginAt: users.lastLoginAt,
-          createdAt: users.createdAt
-        });
-      const row = updated[0];
-      if (!row) {
-        res.status(404).json({ error: "Not found" });
-        return;
-      }
+      txResult = await db.transaction(async (tx): Promise<TxResult> => {
+        // SELECT FOR UPDATE — the row lock is the heart of the
+        // atomicity claim. Holds until tx commits/rolls back, so any
+        // concurrent PATCH/reset on the same user_id queues behind us.
+        const rows = await tx
+          .select({
+            id: users.id,
+            email: users.email,
+            name: users.name,
+            role: users.role,
+            programId: users.programId,
+            isActive: users.isActive,
+            mustResetPassword: users.mustResetPassword,
+            lastLoginAt: users.lastLoginAt,
+            createdAt: users.createdAt
+          })
+          .from(users)
+          .where(eq(users.id, id))
+          .for("update")
+          .limit(1);
+        const target = rows[0];
+        if (!target) return { kind: "not-found" };
+        if (
+          !canManageUser(actor, {
+            id: target.id,
+            role: target.role,
+            programId: target.programId
+          })
+        ) {
+          return { kind: "not-found" };
+        }
 
-      // If the user was just deactivated, revoke every active session
-      // so a deactivation takes effect on the next request, not at the
-      // 7-day session expiry. Fire-and-forget — leaving a stale session
-      // alive briefly is a much smaller risk than 500ing a successful
-      // PATCH.
-      if (parsed.data.isActive === false) {
-        void db
-          .delete(sessions)
-          .where(eq(sessions.userId, id))
-          .catch((err: unknown) => {
-            console.warn(
-              "[admin/users] session revoke after deactivate failed:",
-              err instanceof Error ? err.message : err
-            );
+        const finalRole = parsed.data.role ?? target.role;
+        const finalProgramId =
+          parsed.data.programId !== undefined
+            ? parsed.data.programId
+            : target.programId;
+
+        const roleChanging =
+          parsed.data.role !== undefined &&
+          parsed.data.role !== target.role;
+        const programChanging =
+          parsed.data.programId !== undefined &&
+          parsed.data.programId !== target.programId;
+        if (roleChanging || programChanging) {
+          if (!canAssignRole(actor, finalRole, finalProgramId)) {
+            return { kind: "forbidden" };
+          }
+        }
+
+        const update: {
+          name?: string;
+          role?: UserRole;
+          programId?: string | null;
+          isActive?: boolean;
+        } = {};
+        if (parsed.data.name !== undefined) update.name = parsed.data.name;
+        if (parsed.data.role !== undefined) update.role = parsed.data.role;
+        if (parsed.data.programId !== undefined)
+          update.programId = parsed.data.programId;
+        if (parsed.data.isActive !== undefined)
+          update.isActive = parsed.data.isActive;
+
+        const updated = await tx
+          .update(users)
+          .set(update)
+          .where(eq(users.id, id))
+          .returning({
+            id: users.id,
+            email: users.email,
+            name: users.name,
+            role: users.role,
+            programId: users.programId,
+            isActive: users.isActive,
+            mustResetPassword: users.mustResetPassword,
+            lastLoginAt: users.lastLoginAt,
+            createdAt: users.createdAt
           });
-      }
+        const row = updated[0];
+        // The SELECT FOR UPDATE above already proved the row exists
+        // and is locked — UPDATE returning zero here would mean the
+        // row was deleted via ON DELETE CASCADE while we held the
+        // lock, which our schema doesn't allow (users has no parent
+        // FK that cascades into it). Treat defensively anyway.
+        if (!row) return { kind: "not-found" };
 
-      res.json({ item: toListItem(row) });
+        if (parsed.data.isActive === false) {
+          // Co-transactional session revoke. If this fails, the
+          // whole PATCH rolls back — deactivation never "succeeds"
+          // with sessions still alive. Stronger than the old fire-
+          // and-forget pattern, which could leave a deactivated
+          // user logged in until the 7-day session expiry.
+          await tx.delete(sessions).where(eq(sessions.userId, id));
+        }
+
+        return { kind: "ok", row };
+      });
     } catch (err) {
       const code =
         typeof err === "object" && err !== null && "code" in err
@@ -499,8 +555,22 @@ usersRouter.patch("/:id", async (req, res, next) => {
           .json({ error: "Role and program combination is not allowed" });
         return;
       }
+      if (code === "23503") {
+        res.status(400).json({ error: "Program not found" });
+        return;
+      }
       throw err;
     }
+
+    if (txResult.kind === "not-found") {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    if (txResult.kind === "forbidden") {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    res.json({ item: toListItem(txResult.row) });
   } catch (err) {
     next(err);
   }

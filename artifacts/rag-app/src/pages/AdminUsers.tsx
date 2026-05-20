@@ -175,7 +175,11 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
         onCreated={handleCreated}
       />
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading users…</p>
       ) : (
@@ -451,7 +455,11 @@ function CreateUserForm({
         A temporary password is generated and shown once on the next screen.
         The user will be required to change it at first login.
       </p>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
       <div className="flex justify-end">
         <button
           type="submit"
@@ -601,6 +609,7 @@ function UserRow({
             {editing ? (
               <input
                 type="text"
+                aria-label={`Edit name for ${item.email}`}
                 value={editedName}
                 onChange={(e: ChangeEvent<HTMLInputElement>) =>
                   setEditedName(e.target.value)
@@ -692,7 +701,9 @@ function UserRow({
         ) : null}
       </div>
       {error ? (
-        <p className="mt-2 text-xs text-destructive">{error}</p>
+        <p role="alert" className="mt-2 text-xs text-destructive">
+          {error}
+        </p>
       ) : null}
     </li>
   );

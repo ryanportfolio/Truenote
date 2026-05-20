@@ -128,6 +128,15 @@ export interface AppConfig {
    * the client mirrors it for UX consistency.
    */
   minPasswordLength: number;
+  /**
+   * True when the api-server has a real email transport configured
+   * (Resend API key + sender address both set). The Login page uses
+   * this to hide the "Forgot password?" link when the server would
+   * silently log the reset token to stdout instead of mailing it —
+   * surfacing the link in that state lets users think a reset is
+   * coming when it isn't.
+   */
+  emailResetAvailable: boolean;
 }
 
 /**

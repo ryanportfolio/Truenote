@@ -25,7 +25,10 @@ import { getEmailSender } from "../lib/email/sender.js";
 export const authRouter = Router();
 
 const LoginBody = z.object({
-  email: z.string().email().max(254),
+  // .trim() matches the CreateBody convention in routes/admin/users.ts
+  // — without it, a paste with trailing whitespace fails zod's
+  // .email() validation rather than normalizing transparently.
+  email: z.string().trim().email().max(254),
   password: z.string().min(1).max(1024)
 });
 
@@ -46,7 +49,7 @@ const ChangePasswordBody = z.object({
 });
 
 const ForgotPasswordBody = z.object({
-  email: z.string().email().max(254)
+  email: z.string().trim().email().max(254)
 });
 
 const ResetPasswordBody = z.object({
@@ -306,28 +309,66 @@ authRouter.post("/change-password", requireAuth, async (req, res, next) => {
 });
 
 /**
- * Resolve the public base URL we should embed in outgoing emails. The
- * env var is the source of truth (the operator sets this to the
- * deployment's canonical origin, e.g. https://kbase.replit.app). If
- * it's unset we fall back to the request's own X-Forwarded-Proto /
- * X-Forwarded-Host headers — Replit's reverse proxy populates them
- * correctly — and finally to req.protocol + req.get("host") for local
- * dev. Strip any trailing slash so concatenation stays clean.
+ * Resolve the public base URL we should embed in outgoing emails.
  *
- * Spoofing posture: an attacker who can set X-Forwarded-Host on a
- * forgot-password request COULD reroute the reset link to a domain
- * they control. The defense is APP_BASE_URL — if it's set, headers
- * are ignored. We warn loudly when the env var is missing so the
- * operator knows to set it before going live.
+ * Production posture (NODE_ENV=production): APP_BASE_URL is the ONLY
+ * source. We refuse to fall back to request headers because
+ * X-Forwarded-Host is attacker-controlled — a `POST /forgot-password`
+ * with a spoofed header would otherwise embed the attacker's domain
+ * into the victim's reset email, delivering the plaintext token to
+ * the attacker on click. Returning null causes the email send to
+ * abort (logged warning), which is strictly better than mailing a
+ * compromised link.
+ *
+ * Dev posture: APP_BASE_URL still wins if set; otherwise fall back to
+ * X-Forwarded-Proto / X-Forwarded-Host / req.get("host") so a
+ * developer running on localhost without env vars gets a clickable
+ * link in their terminal-logged email.
+ *
+ * The startup check in index.ts also refuses to boot in production
+ * without APP_BASE_URL, so this branch is defense-in-depth — the
+ * exploit window only opens if the startup check is bypassed.
  */
-function resolveAppBaseUrl(req: import("express").Request): string {
+function resolveAppBaseUrl(
+  req: import("express").Request
+): string | null {
   const fromEnv = process.env.APP_BASE_URL?.trim();
   if (fromEnv) return fromEnv.replace(/\/$/, "");
+  if (process.env.NODE_ENV === "production") {
+    return null;
+  }
   const forwardedProto =
     req.header("x-forwarded-proto")?.split(",")[0]?.trim() || req.protocol;
   const forwardedHost =
     req.header("x-forwarded-host")?.split(",")[0]?.trim() || req.get("host");
   return `${forwardedProto}://${forwardedHost}`.replace(/\/$/, "");
+}
+
+/**
+ * Minimal HTML escape for splicing untrusted values into the reset
+ * email template. The base URL comes from APP_BASE_URL (operator-set)
+ * but is still env-string so a misconfigured value could include
+ * angle brackets or quotes that escape the href attribute. The user
+ * name field is already control-char-stripped at the zod schema, but
+ * Unicode is still allowed — escape it the same way so a `<` or `&`
+ * in a future schema relaxation doesn't quietly become an XSS bug.
+ */
+function escapeHtml(input: string): string {
+  return input.replace(/[<>"'&]/g, (c) => {
+    switch (c) {
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#x27;";
+      case "&":
+        return "&amp;";
+    }
+    return c;
+  });
 }
 
 /**
@@ -342,8 +383,13 @@ function renderResetEmail(args: {
 }): { subject: string; html: string; text: string } {
   const subject = "Reset your password";
   const expiresIso = args.expiresAt.toISOString();
-  const safeName = args.name.replace(/[<>]/g, "");
-  const safeUrl = args.resetUrl;
+  // Every interpolation into the HTML template goes through escapeHtml
+  // so a stray quote or bracket in any input field can't escape an
+  // attribute or open a tag. The plaintext body uses raw values
+  // because text/plain has no markup to escape.
+  const safeName = escapeHtml(args.name);
+  const safeUrl = escapeHtml(args.resetUrl);
+  const safeExpires = escapeHtml(expiresIso);
   // Inline styles only — most email clients strip <style> tags.
   const html = `
 <!doctype html>
@@ -352,7 +398,7 @@ function renderResetEmail(args: {
     <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
       <h1 style="margin: 0 0 16px; font-size: 18px;">Reset your password</h1>
       <p>Hi ${safeName},</p>
-      <p>We received a request to reset your password. Click the button below to choose a new one. This link expires at ${expiresIso}.</p>
+      <p>We received a request to reset your password. Click the button below to choose a new one. This link expires at ${safeExpires}.</p>
       <p style="text-align: center; margin: 24px 0;">
         <a href="${safeUrl}" style="display: inline-block; background: #0f172a; color: #ffffff; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: 500;">Reset password</a>
       </p>
@@ -363,7 +409,7 @@ function renderResetEmail(args: {
   </body>
 </html>`.trim();
   const text = [
-    `Hi ${safeName},`,
+    `Hi ${args.name},`,
     "",
     "We received a request to reset your password. Use the link below to choose a new one:",
     "",
@@ -413,9 +459,23 @@ authRouter.post("/forgot-password", async (req, res, next) => {
 
     // From here on we're past the response — no res.* calls. Errors
     // are logged, not surfaced.
+    //
+    // Capture the base URL synchronously from the live request rather
+    // than inside the async IIFE — the Request object becomes
+    // unreliable to read from after the response cycle ends in some
+    // middleware stacks. If APP_BASE_URL is unset in production,
+    // resolveAppBaseUrl returns null (the index.ts startup check
+    // should have already refused to boot, but defense in depth).
     const baseUrl = resolveAppBaseUrl(req);
     void (async () => {
       try {
+        if (baseUrl === null) {
+          console.warn(
+            "[auth] forgot-password: APP_BASE_URL not set in production; " +
+              "refusing to send a reset email with a header-derived URL"
+          );
+          return;
+        }
         const rows = await db
           .select({
             id: users.id,

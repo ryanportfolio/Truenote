@@ -272,18 +272,42 @@ unblocked.
 ## A3. Replit Agent install prompt — Phase 1.5 (multer v2)
 
 The api-server's `package.json` was bumped to `multer: ^2.0.0` and
-`@types/multer: ^2.0.0`. Reinstall to pick up the new versions:
+`@types/multer: ^2.0.0`. The lockfile still pins the 1.x line, so a
+`--frozen-lockfile` install would silently keep 1.x — explicitly
+update both packages so the lockfile picks up 2.x:
 
 ```
-Please re-run install for the api-server workspace:
+At the workspace root, run:
 
-  pnpm install --filter @workspace/api-server
+  pnpm update -F @workspace/api-server multer @types/multer
+
+Then commit the refreshed pnpm-lock.yaml.
 ```
 
-Multer 2.x is mostly API-compatible for our use case (`upload.single`
+Multer 2.x is API-compatible for our use case (`upload.single`
 + `memoryStorage` + `limits.fileSize`). The Replit deploy log is the
 authoritative type-check — watch for any `tsc` errors after the
 install completes.
+
+---
+
+## B5. Replit Agent DDL prompt — Phase 1.5 (storage cleanup index)
+
+Ask the Replit agent to run this against the dev database. Idempotent;
+safe to re-run.
+
+```sql
+-- The eager blob cleanup in DELETE /api/documents/:id runs a
+-- "still-referenced?" lookup on document_versions.source_url for
+-- every blob it considers deleting. Without this index the lookup
+-- is a sequential scan once the table grows beyond a few hundred
+-- versions. Adding it now is cheap (the column is sparse-cardinality
+-- since most versions have distinct keys) and avoids surprise
+-- degradation in delete latency.
+
+CREATE INDEX IF NOT EXISTS document_versions_source_url_idx
+  ON document_versions (source_url);
+```
 
 ---
 

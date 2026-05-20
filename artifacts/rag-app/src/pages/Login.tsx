@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
-import { login } from "@/lib/api";
+import { fetchConfig, login } from "@/lib/api";
 import type { CurrentUser } from "@/types/api";
 
 interface LoginPageProps {
@@ -28,6 +28,28 @@ export function LoginPage({ onAuthenticated }: LoginPageProps): JSX.Element {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Hide the "Forgot password?" link when the api-server lacks an
+  // email transport — clicking it would otherwise look successful
+  // but the token would only land in api-server stdout. Default true
+  // so the link doesn't flicker in: most deploys have email
+  // configured and a brief absence on first paint is worse than a
+  // brief presence that survives.
+  const [emailResetAvailable, setEmailResetAvailable] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchConfig()
+      .then((cfg) => {
+        if (!cancelled) setEmailResetAvailable(cfg.emailResetAvailable);
+      })
+      .catch(() => {
+        // Non-fatal — leave the default true. The forgot-password
+        // submit path still works (it just may silently log).
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -106,14 +128,20 @@ export function LoginPage({ onAuthenticated }: LoginPageProps): JSX.Element {
           {submitting ? "Signing in…" : "Sign in"}
         </button>
 
-        <p className="text-center text-xs text-muted-foreground">
-          <Link
-            href="/forgot-password"
-            className="text-foreground hover:underline"
-          >
-            Forgot password?
-          </Link>
-        </p>
+        {emailResetAvailable ? (
+          <p className="text-center text-xs text-muted-foreground">
+            <Link
+              href="/forgot-password"
+              className="text-foreground hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </p>
+        ) : (
+          <p className="text-center text-xs text-muted-foreground">
+            Forgot your password? Contact an admin to reset it.
+          </p>
+        )}
       </form>
     </div>
   );

@@ -149,6 +149,11 @@ export async function logout(): Promise<void> {
  * emails have accounts. Network errors still throw so the form can
  * show "couldn't reach the server", which is distinct from "ok we'll
  * send a link if you have an account."
+ *
+ * Schema failures (400) surface the server's JSON `{ error: "..." }`
+ * body rather than the raw HTTP status text — matches the pattern
+ * every other client wrapper here uses, so the UI shows e.g.
+ * "Invalid request" instead of "HTTP 400: Bad Request".
  */
 export async function requestPasswordReset(email: string): Promise<void> {
   const response = await fetch(
@@ -160,7 +165,10 @@ export async function requestPasswordReset(email: string): Promise<void> {
     })
   );
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    throw new Error(body.error ?? `HTTP ${response.status}`);
   }
 }
 
