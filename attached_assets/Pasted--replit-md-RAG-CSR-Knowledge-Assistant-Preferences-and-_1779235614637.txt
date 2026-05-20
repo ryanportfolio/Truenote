@@ -104,11 +104,11 @@ Invariants worth knowing:
 ## Tooling quirks
 
 - **`checkDatabase()` can report "not provisioned" even when the DB is
-  fully reachable.** This project uses Replit's built-in Postgres —
-  `DATABASE_URL` is platform-injected, not set in Secrets. The tool
-  reported "no DB" while `executeSql()` and the api-server were both
-  connected fine. Trust the SQL result, not the tool. Don't conclude
-  the DB is missing and try to recreate it.
+  fully reachable.** This project uses Replit's built-in Postgres
+  (Neon-backed) — `DATABASE_URL` is platform-injected, not set in
+  Secrets. The tool reported "no DB" while `executeSql()` and the
+  api-server were both connected fine. Trust the SQL result, not the
+  tool. Don't conclude the DB is missing and try to recreate it.
 
 ## Common Replit Agent tasks — preferred patterns
 
@@ -140,11 +140,10 @@ Sometimes the user is in a hurry and asks you to edit code in
 flow. You can — but treat it as a higher-risk path:
 
 - **Keep scope minimal.** Edit only what the urgent fix requires. Don't
-  refactor, don't "improve" adjacent code. In particular, resist the
-  urge to clean up "obviously unused" imports or variables alongside the
-  real fix — what looks unused at a glance may be load-bearing in ways
-  that aren't immediately visible, and introducing a compile error while
-  fixing a deploy error makes things worse.
+  refactor, don't "improve" adjacent code, don't drop "unused" imports
+  without verifying they're actually unused (this bit us with
+  `customType` in `schema.ts` — removed in haste, the file stopped
+  compiling).
 - **If the change touches `schema.ts`, you MUST also run the matching
   `ALTER TABLE` on the dev DB in the same session.** See rule 1. Half
   a change is worse than no change.
