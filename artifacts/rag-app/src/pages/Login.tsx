@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { login } from "@/lib/api";
 import type { CurrentUser } from "@/types/api";
 
@@ -12,8 +12,13 @@ interface LoginPageProps {
  * to the App-level state and lets App route the user to /change-password
  * (forced first-login) or the default landing page.
  *
+ * Self-serve password reset via the "Forgot password?" link below the
+ * sign-in button (Phase 2.5). The server always 204s on
+ * /api/auth/forgot-password so a probing attacker can't enumerate
+ * accounts; the user just sees "if your email is on file, check your
+ * inbox" either way.
+ *
  * Phase 2A scope:
- *   - No "forgot password" link yet — that's Phase 2.5 (Resend integration)
  *   - No client-side rate limiting; server tolerates this
  *   - No "remember me" toggle — sessions are 7 days fixed
  */
@@ -100,6 +105,15 @@ export function LoginPage({ onAuthenticated }: LoginPageProps): JSX.Element {
         >
           {submitting ? "Signing in…" : "Sign in"}
         </button>
+
+        <p className="text-center text-xs text-muted-foreground">
+          <Link
+            href="/forgot-password"
+            className="text-foreground hover:underline"
+          >
+            Forgot password?
+          </Link>
+        </p>
       </form>
     </div>
   );

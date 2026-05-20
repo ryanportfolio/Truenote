@@ -10,6 +10,7 @@ import type {
   PreviewResponse,
   Program,
   ProgramListResponse,
+  ResetPasswordResponse,
   ResetUserPasswordResponse,
   UpdateUserRequest,
   UploadResponse,
@@ -140,6 +141,54 @@ export async function login(
 
 export async function logout(): Promise<void> {
   await fetch("/api/auth/logout", withDefaults({ method: "POST" }));
+}
+
+/**
+ * Request a password-reset email. Returns void regardless of whether
+ * the email is known — the server always 204s to avoid leaking which
+ * emails have accounts. Network errors still throw so the form can
+ * show "couldn't reach the server", which is distinct from "ok we'll
+ * send a link if you have an account."
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  const response = await fetch(
+    "/api/auth/forgot-password",
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email })
+    })
+  );
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+}
+
+/**
+ * Consume a reset link and set a new password. On success the server
+ * sets the session cookie and returns the user payload — the SPA can
+ * route straight into the app without a follow-up login.
+ */
+export async function consumeResetToken(
+  token: string,
+  newPassword: string
+): Promise<CurrentUser> {
+  const response = await fetch(
+    "/api/auth/reset-password",
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, newPassword })
+    })
+  );
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    throw new Error(body.error ?? `HTTP ${response.status}`);
+  }
+  const json = (await response.json()) as ResetPasswordResponse;
+  return json.user;
 }
 
 export async function changePassword(

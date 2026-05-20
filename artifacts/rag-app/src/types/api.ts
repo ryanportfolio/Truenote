@@ -46,6 +46,10 @@ export interface ChangePasswordResponse {
   user: CurrentUser;
 }
 
+export interface ResetPasswordResponse {
+  user: CurrentUser;
+}
+
 export interface Source {
   chunk_id: string;
   doc_title: string;
