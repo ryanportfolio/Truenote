@@ -61,6 +61,14 @@ export interface MistralOcrClientOptions {
   apiKey?: string;
   fetchImpl?: typeof fetch;
   signal?: AbortSignal;
+  /**
+   * Ask Mistral to return base64-encoded extracts for each detected
+   * image. Defaults to false to keep response payloads small for
+   * callers that only need the parsed markdown. The ingestion
+   * pipeline (run.ts) sets this true so the image-describer can
+   * generate per-image chunks downstream.
+   */
+  includeImageBase64?: boolean;
 }
 
 const IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
@@ -193,7 +201,7 @@ export async function callMistralOcr(
   const body = {
     model: OCR_MODEL,
     document: pickDocumentField(mimeType, dataUri),
-    include_image_base64: false
+    include_image_base64: options.includeImageBase64 ?? false
   };
 
   const response = await fetchImpl(OCR_URL, {

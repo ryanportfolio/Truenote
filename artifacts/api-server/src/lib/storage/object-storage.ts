@@ -19,6 +19,12 @@ export interface ObjectStorage {
   put(key: string, data: Buffer, options?: PutOptions): Promise<void>;
   get(key: string): Promise<Buffer>;
   exists(key: string): Promise<boolean>;
+  /**
+   * Remove an object from the bucket. Idempotent — deleting a key
+   * that doesn't exist resolves without error so the document-delete
+   * route can call this without first checking exists().
+   */
+  delete(key: string): Promise<void>;
 }
 
 export class InMemoryObjectStorage implements ObjectStorage {
@@ -38,6 +44,10 @@ export class InMemoryObjectStorage implements ObjectStorage {
     return this.bucket.has(key);
   }
 
+  async delete(key: string): Promise<void> {
+    this.bucket.delete(key);
+  }
+
   /** Test-only helper for inspection. */
   size(): number {
     return this.bucket.size;
@@ -48,6 +58,11 @@ interface ReplitObjectStorageClient {
   uploadFromBytes(name: string, bytes: Buffer): Promise<{ ok: boolean; error?: unknown }>;
   downloadAsBytes(name: string): Promise<{ ok: boolean; value?: Buffer[]; error?: unknown }>;
   exists(name: string): Promise<{ ok: boolean; value?: boolean; error?: unknown }>;
+  // The Replit SDK exposes delete() and surfaces a "not found" via
+  // result.error rather than throwing — same shape as the other
+  // operations. We map that to a no-op so the interface contract
+  // ("idempotent") stays true regardless of bucket state.
+  delete(name: string): Promise<{ ok: boolean; error?: unknown }>;
 }
 
 interface ReplitObjectStorageModule {
@@ -105,6 +120,27 @@ export class ReplitObjectStorage implements ObjectStorage {
     const c = await this.client();
     const result = await c.exists(key);
     return Boolean(result.ok && result.value);
+  }
+
+  async delete(key: string): Promise<void> {
+    const c = await this.client();
+    const result = await c.delete(key);
+    if (!result.ok) {
+      // The SDK's delete() returns ok:false for both "not found" and
+      // "real failure". Inspect the error to distinguish: a 404-style
+      // "ObjectNotFound" / "NoSuchKey" is the idempotent path we want
+      // to swallow. Anything else bubbles up so a real bucket outage
+      // doesn't silently leave orphaned blobs in storage.
+      const errStr = String(result.error ?? "").toLowerCase();
+      if (
+        errStr.includes("not found") ||
+        errStr.includes("nosuchkey") ||
+        errStr.includes("objectnotfound")
+      ) {
+        return;
+      }
+      throw new Error(`Replit Object Storage delete failed: ${String(result.error)}`);
+    }
   }
 }
 

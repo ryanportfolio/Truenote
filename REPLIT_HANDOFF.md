@@ -269,6 +269,24 @@ unblocked.
 
 ---
 
+## A3. Replit Agent install prompt — Phase 1.5 (multer v2)
+
+The api-server's `package.json` was bumped to `multer: ^2.0.0` and
+`@types/multer: ^2.0.0`. Reinstall to pick up the new versions:
+
+```
+Please re-run install for the api-server workspace:
+
+  pnpm install --filter @workspace/api-server
+```
+
+Multer 2.x is mostly API-compatible for our use case (`upload.single`
++ `memoryStorage` + `limits.fileSize`). The Replit deploy log is the
+authoritative type-check — watch for any `tsc` errors after the
+install completes.
+
+---
+
 ## C. Replit Secrets checklist
 
 Set these in Replit Secrets (Tools → Secrets). The app reads them via

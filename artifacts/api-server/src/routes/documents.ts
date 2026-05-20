@@ -330,21 +330,18 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * 403) on cross-program ids to avoid leaking existence — same convention
  * the preview route uses for the same reason.
  *
- * Phase 1 limitation — Object Storage blob not deleted. Two reasons:
- *   1. The ObjectStorage interface doesn't expose delete() yet.
- *   2. Two document_versions can legitimately share a blob when the same
- *      file is re-uploaded with the same filename (same SHA → same key).
- *      Unconditional blob delete would risk orphaning a still-referenced
- *      object. Safe path is to leave blobs in place and add a sweep later
- *      that walks document_versions and removes any source_url with zero
- *      references. Storage cost is negligible at Phase 1 doc counts.
+ * Blob cleanup (Phase 1.5): we collect every distinct source_url owned by
+ * this document's versions BEFORE the cascade fires, then after the row
+ * delete we walk each key and remove it from Object Storage — but only
+ * if no other document_versions row still references it. The
+ * shared-blob case is real: two uploads of the same file (same SHA) hit
+ * the same storage key, so an unconditional delete here would orphan a
+ * sibling document. Storage.delete() is idempotent so a key that's
+ * already gone is a no-op.
  *
- * Soft edge: deleting a document while its worker job is mid-flight makes
- * runIngestion throw "Document version not found" because the version row
- * is gone. pg-boss retries to exhaustion (per the retry policy in
- * queue.ts) and the job ends as failed. The user has already deleted the
- * doc so they don't care — but a Phase 1.5 polish would teach run.ts to
- * treat a missing version as a soft no-op instead of an error.
+ * Storage failures are logged, not surfaced. We've already returned
+ * 200 to the user (the DB row is gone, which is what they asked for);
+ * a periodic sweep can mop up stragglers.
  */
 documentsRouter.delete("/:id", async (req, res, next) => {
   try {
@@ -367,6 +364,21 @@ documentsRouter.delete("/:id", async (req, res, next) => {
       });
       return;
     }
+
+    // Collect candidate source_urls BEFORE the row goes away — the
+    // cascade will null these out of reach. distinct() drops the
+    // duplicates that arise when the same file was re-uploaded.
+    const candidateKeys = await db
+      .selectDistinct({ sourceUrl: documentVersions.sourceUrl })
+      .from(documentVersions)
+      .innerJoin(documents, eq(documents.id, documentVersions.documentId))
+      .where(
+        and(
+          eq(documents.id, id),
+          eq(documents.programId, programId)
+        )
+      );
+
     const deleted = await db
       .delete(documents)
       .where(and(eq(documents.id, id), eq(documents.programId, programId)))
@@ -375,7 +387,37 @@ documentsRouter.delete("/:id", async (req, res, next) => {
       res.status(404).json({ ok: false, error: "Not found" });
       return;
     }
+
+    // Respond first; blob cleanup is best-effort. The DB row is gone,
+    // which is the user-visible outcome they expect — taking ~100ms
+    // per blob in the worst case would block the response for no
+    // reason.
     res.json({ ok: true });
+
+    void (async () => {
+      const storage = getObjectStorage();
+      for (const { sourceUrl } of candidateKeys) {
+        if (!sourceUrl) continue;
+        try {
+          // Shared-blob guard: another active version (in this or
+          // another document) might still reference the same key.
+          // Skip the blob delete in that case — the sweeper can
+          // collect it later if/when the last reference goes away.
+          const stillReferenced = await db
+            .select({ id: documentVersions.id })
+            .from(documentVersions)
+            .where(eq(documentVersions.sourceUrl, sourceUrl))
+            .limit(1);
+          if (stillReferenced[0]) continue;
+          await storage.delete(sourceUrl);
+        } catch (err) {
+          console.warn(
+            `[documents] blob cleanup failed for ${sourceUrl}:`,
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+    })();
   } catch (err) {
     next(err);
   }

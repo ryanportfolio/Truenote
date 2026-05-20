@@ -6,6 +6,7 @@
   "scripts": {
     "worker": "tsx src/worker.ts",
     "seed": "tsx src/seed.ts",
+    "sweep-orphans": "tsx src/sweep-orphans.ts",
     "check": "tsc --noEmit"
   },
   "dependencies": {
