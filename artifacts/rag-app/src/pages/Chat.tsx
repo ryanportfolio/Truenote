@@ -88,7 +88,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             <button
               type="submit"
               disabled={busy || !hasProgram || question.trim().length === 0}
-              className="rounded bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+              className="btn-csr-ask px-4 py-1.5"
             >
               {busy ? "Asking…" : "Ask"}
             </button>

@@ -123,7 +123,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps): JSX.Element {
         <button
           type="submit"
           disabled={submitting || !email || !password}
-          className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          className="btn-whisper w-full px-3 py-2"
         >
           {submitting ? "Signing in…" : "Sign in"}
         </button>

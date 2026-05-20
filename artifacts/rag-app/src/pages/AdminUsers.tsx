@@ -468,7 +468,7 @@ function CreateUserForm({
             email.trim().length === 0 ||
             name.trim().length === 0
           }
-          className="rounded bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+          className="btn-whisper px-3 py-1.5"
         >
           {submitting ? "Creating…" : "Create user"}
         </button>
@@ -652,7 +652,7 @@ function UserRow({
                   type="button"
                   onClick={() => void handleSaveName()}
                   disabled={busy === "save"}
-                  className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                  className="btn-whisper px-3 py-1 text-xs"
                 >
                   {busy === "save" ? "Saving…" : "Save"}
                 </button>
@@ -717,7 +717,7 @@ function RoleBadge({ role }: { role: UserRole }): JSX.Element {
         ? "bg-blue-500/15 text-blue-700 dark:text-blue-300"
         : role === "manager"
           ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-          : "bg-slate-500/15 text-slate-700 dark:text-slate-300";
+          : "bg-muted text-muted-foreground";
   return (
     <span className={`rounded px-2 py-0.5 text-xs ${tone}`}>
       {ROLE_LABEL[role]}

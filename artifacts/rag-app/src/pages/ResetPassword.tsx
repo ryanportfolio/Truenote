@@ -171,7 +171,7 @@ export function ResetPasswordPage({
             !confirmPassword ||
             newPassword.length < minLength
           }
-          className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          className="btn-whisper w-full px-3 py-2"
         >
           {submitting ? "Updating…" : "Set password"}
         </button>
