@@ -34,8 +34,7 @@ export function TopBar({ user, onLogout }: TopBarProps): JSX.Element {
   return (
     <header className="flex h-14 items-center justify-between border-b border-border bg-card px-4">
       <div className="flex items-center gap-3">
-        <div className="text-sm font-semibold tracking-tight">RAG-CSR</div>
-        <span className="text-xs text-muted-foreground">Knowledge Assistant</span>
+        <div className="text-sm font-semibold tracking-tight">Truenote</div>
       </div>
       <div className="flex items-center gap-4">
         <ProgramSelector user={user} />

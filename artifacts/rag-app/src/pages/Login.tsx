@@ -75,7 +75,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps): JSX.Element {
         <header className="space-y-1">
           <h1 className="text-lg font-semibold tracking-tight">Sign in</h1>
           <p className="text-sm text-muted-foreground">
-            RAG-CSR knowledge assistant
+            Truenote
           </p>
         </header>
 
