@@ -7,6 +7,7 @@
     "worker": "tsx src/worker.ts",
     "seed": "tsx src/seed.ts",
     "sweep-orphans": "tsx src/sweep-orphans.ts",
+    "eval": "tsx src/eval.ts",
     "check": "tsc --noEmit"
   },
   "dependencies": {

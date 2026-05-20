@@ -75,24 +75,22 @@ export async function runIngestion(
 ): Promise<void> {
   const versionId = input.documentVersionId;
 
-  // Up-front existence check, BEFORE the parseStatus="parsing" write.
-  // If the document version is gone (admin deleted it after the job
-  // was enqueued, FK cascade from the parent doc cleaned it up), the
-  // job has nothing to do. Returning silently is correct — the user
-  // already deleted what they cared about, and a throw here would
-  // pg-boss-retry to exhaustion and surface as a failed job for a
-  // resource that no longer exists.
-  //
-  // This is a soft-success path: no error logged, no parseStatus
-  // touched (the row is gone anyway), no retry. The fix turns the
-  // Phase 1 limitation noted in routes/documents.ts (the "soft edge"
-  // comment) into the documented behavior.
-  const preflightRows = await db
-    .select({ id: documentVersions.id })
-    .from(documentVersions)
+  // Atomic test-and-set: UPDATE...WHERE...RETURNING is the only DB
+  // round-trip that can both (a) prove the row still exists and (b)
+  // flip its parseStatus, in one shot. A separate preflight SELECT
+  // + UPDATE has a TOCTOU window where the row could be deleted
+  // between them — the UPDATE would silently affect zero rows and
+  // we'd press on into a SELECT that throws "not found," driving
+  // pg-boss to retry the job to exhaustion against a resource the
+  // user already discarded. The empty `returning` is the soft-
+  // success signal: the user deleted the version, so there's
+  // nothing for us to do.
+  const claimed = await db
+    .update(documentVersions)
+    .set({ parseStatus: "parsing" })
     .where(eq(documentVersions.id, versionId))
-    .limit(1);
-  if (!preflightRows[0]) {
+    .returning({ id: documentVersions.id });
+  if (claimed.length === 0) {
     console.log(
       `[ingestion] version ${versionId} no longer exists; ` +
         "treating as soft-success (job was likely enqueued just before " +
@@ -100,11 +98,6 @@ export async function runIngestion(
     );
     return;
   }
-
-  await db
-    .update(documentVersions)
-    .set({ parseStatus: "parsing" })
-    .where(eq(documentVersions.id, versionId));
 
   try {
     const versionRows = await db

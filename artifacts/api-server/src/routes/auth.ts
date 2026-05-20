@@ -18,6 +18,11 @@ import {
   hashResetToken,
   lookupResetTokenUserId
 } from "../lib/auth/password-reset.js";
+import {
+  clientIpFrom,
+  forgotPasswordEmailLimiter,
+  forgotPasswordIpLimiter
+} from "../lib/auth/rate-limit.js";
 import { authedUser, requireAuth } from "../middleware/current-user.js";
 import { getMinPasswordLength } from "../lib/config.js";
 import { getEmailSender } from "../lib/email/sender.js";
@@ -451,11 +456,37 @@ authRouter.post("/forgot-password", async (req, res, next) => {
     }
     const email = parsed.data.email.trim().toLowerCase();
 
+    // Per-IP throttle. Returns 429 directly because the IP is the
+    // requester's own attribute — telling them their own request rate
+    // leaks nothing. The per-email throttle below is silent (drop the
+    // send, still 204) because the email is the victim's attribute,
+    // and a 429 on that channel would re-open the enumeration window
+    // forgot-password is designed to close.
+    const ip = clientIpFrom(req);
+    if (!forgotPasswordIpLimiter.hit(ip)) {
+      res
+        .status(429)
+        .json({ error: "Too many reset requests. Try again in a few minutes." });
+      return;
+    }
+    const emailAllowed = forgotPasswordEmailLimiter.hit(email);
+
     // Acknowledge first; do the lookup + email out-of-band. This way
     // the response time is constant whether the email is known or
     // unknown — closes the same timing channel the login endpoint
     // closes via the dummy argon2 verify.
     res.status(204).end();
+
+    // Per-email rate limit landed AFTER the response so timing is
+    // consistent. We still ran .hit() on the email above to record
+    // the request; if it returned false, skip the actual lookup +
+    // send in the async block.
+    if (!emailAllowed) {
+      console.log(
+        `[auth] forgot-password per-email rate-limit hit; suppressing send for ${email}`
+      );
+      return;
+    }
 
     // From here on we're past the response — no res.* calls. Errors
     // are logged, not surfaced.
