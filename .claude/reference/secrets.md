@@ -24,6 +24,9 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 | `BOOTSTRAP_SUPER_USER_NAME` | Display name for the bootstrap super_user | `Super User` |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for cross-origin credentialed requests. Leave unset for same-origin Replit deploys. | unset → no cross-origin |
 | `MIN_PASSWORD_LENGTH` | Floor enforced by the change-password form (server-side zod + client UI mirror via `/api/config`). Read once at api-server startup; restart to apply. Clamped to `[1, 1024]`; out-of-range falls back to default. | `3` (dev-friendly; tighten for prod) |
+| `RESEND_API_KEY` | Transactional email API key (resend.com). Used to send self-service password-reset links. **Both** this and `RESEND_FROM_EMAIL` must be set — otherwise the email layer falls back to a console logger that prints the link to stdout (useful for local dev, useless in production). | unset → console fallback |
+| `RESEND_FROM_EMAIL` | Sender address for outgoing emails. Must be a verified Resend domain or `onboarding@resend.dev` for testing. | unset → console fallback |
+| `APP_BASE_URL` | Public base URL used when constructing links in outgoing emails (e.g. `https://kbase.replit.app`). When unset we infer from `X-Forwarded-Proto` / `X-Forwarded-Host`, which works on Replit but is spoofable in unusual proxy setups. Set this explicitly for production. | unset → inferred from request headers |
 
 ## Pitfalls
 

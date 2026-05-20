@@ -8,7 +8,7 @@
 2. **Hash dedupe** — if `file_sha256` matches an existing version, reuse its `parsed_markdown` instead of calling OCR. Saves cost on accidental re-uploads.
 3. **Parse** — call Mistral OCR (`mistral-ocr-latest`). Store returned markdown in `document_versions.parsed_markdown`. Update `parse_status='ready'`.
 4. **Chunk** — semantic chunker over the markdown. Target ~500 tokens. Hard rules: never split inside a markdown table, never split mid-list, prefer header boundaries.
-5. **Image describe** — for embedded images in the parsed markdown, call `gpt-4o` (vision) to generate a textual description. Store the description as a chunk with `metadata.has_image=true` and `metadata.image_url`.
+5. **Image describe** — for each base64 image returned by Mistral OCR (`include_image_base64: true`), call `gpt-4o` vision (`detail: low`) to generate a 1–3 sentence description. Each description becomes its own `chunks` row with `metadata.has_image=true` and `metadata.image_url`. Per-image failures are non-fatal — the rest of the document still ingests. Implemented in `lib/ingestion/image-describer.ts`; the dedupe path skips this step (re-uploads keep the original ingestion's image enrichment by not re-running OCR).
 6. **Embed** — `text-embedding-3-small` for each chunk. Insert into `chunks` with `embedding`, `content_tsv` (auto-generated), and denormalized `program_id`.
 7. **Activate** — set `document_versions.is_active=true`. Previous active version for this `document_id` becomes inactive (NOT deleted).
 

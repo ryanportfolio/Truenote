@@ -2,13 +2,17 @@ import { and, eq, ne } from "drizzle-orm";
 import { db } from "../db-client.js";
 import { chunks, documents, documentVersions, type ChunkMetadata } from "@workspace/db/schema";
 import { sha256Hex } from "../parsing/hash.js";
-import { callMistralOcr } from "../parsing/mistral-ocr.js";
+import { callMistralOcr, type OcrResult } from "../parsing/mistral-ocr.js";
 import { docxToMarkdown } from "../parsing/docx.js";
 import { chunkMarkdown } from "../parsing/chunker.js";
 import { createTiktokenTokenizer } from "../parsing/tokenizer.js";
 import { getObjectStorage } from "../storage/object-storage.js";
 import { findCachedParsedMarkdown } from "./dedupe.js";
 import { OpenAIEmbedder, type Embedder } from "./embedder.js";
+import {
+  OpenAIImageDescriber,
+  type ImageDescriber
+} from "./image-describer.js";
 
 export interface RunIngestionInput {
   documentVersionId: string;
@@ -16,6 +20,13 @@ export interface RunIngestionInput {
 
 export interface RunIngestionDeps {
   embedder?: Embedder;
+  /**
+   * Optional override for tests / scripts. The default lazily creates
+   * an OpenAIImageDescriber inside the OCR branch — text-only paths
+   * (DOCX, markdown, dedupe-hit) never touch this dependency, so
+   * scripts that only ingest text files don't need to mock it out.
+   */
+  imageDescriber?: ImageDescriber;
 }
 
 const OCR_MIMES = new Set([
@@ -64,6 +75,32 @@ export async function runIngestion(
 ): Promise<void> {
   const versionId = input.documentVersionId;
 
+  // Up-front existence check, BEFORE the parseStatus="parsing" write.
+  // If the document version is gone (admin deleted it after the job
+  // was enqueued, FK cascade from the parent doc cleaned it up), the
+  // job has nothing to do. Returning silently is correct — the user
+  // already deleted what they cared about, and a throw here would
+  // pg-boss-retry to exhaustion and surface as a failed job for a
+  // resource that no longer exists.
+  //
+  // This is a soft-success path: no error logged, no parseStatus
+  // touched (the row is gone anyway), no retry. The fix turns the
+  // Phase 1 limitation noted in routes/documents.ts (the "soft edge"
+  // comment) into the documented behavior.
+  const preflightRows = await db
+    .select({ id: documentVersions.id })
+    .from(documentVersions)
+    .where(eq(documentVersions.id, versionId))
+    .limit(1);
+  if (!preflightRows[0]) {
+    console.log(
+      `[ingestion] version ${versionId} no longer exists; ` +
+        "treating as soft-success (job was likely enqueued just before " +
+        "the parent document was deleted)."
+    );
+    return;
+  }
+
   await db
     .update(documentVersions)
     .set({ parseStatus: "parsing" })
@@ -107,13 +144,25 @@ export async function runIngestion(
     // 4. Dedupe + 5. Parse.
     const mimeType = (version.mimeType ?? "application/pdf").toLowerCase();
     let parsedMarkdown: string | null = null;
+    // Holds the full OCR result (incl. per-page image extracts) for
+    // step 8 image-describe. Null when:
+    //   - the file took the dedupe path (no fresh OCR call)
+    //   - the file took the DOCX / text passthrough path (no images)
+    // Image enrichment is therefore only present on fresh OCR
+    // ingestions of PDFs / images — same scope as the original
+    // OCR call. Dedupe's main job is to skip the OCR cost on
+    // re-uploads; re-running image-describe on cached docs would
+    // defeat that purpose.
+    let ocrResult: OcrResult | null = null;
 
     const cached = await findCachedParsedMarkdown(fileSha256, versionId);
     if (cached) {
       parsedMarkdown = cached.parsedMarkdown;
     } else if (OCR_MIMES.has(mimeType)) {
-      const result = await callMistralOcr(fileBuffer, mimeType);
-      parsedMarkdown = result.markdown;
+      ocrResult = await callMistralOcr(fileBuffer, mimeType, {
+        includeImageBase64: true
+      });
+      parsedMarkdown = ocrResult.markdown;
     } else if (mimeType === DOCX_MIME) {
       parsedMarkdown = await docxToMarkdown(fileBuffer);
     } else if (PASSTHROUGH_TEXT_MIMES.has(mimeType)) {
@@ -135,33 +184,99 @@ export async function runIngestion(
       throw new Error("Chunker produced zero chunks");
     }
 
-    // 8. Image describe — TODO Phase 1.5.
-    //    Scan parsedMarkdown for ![](...) image refs and call gpt-4o vision
-    //    against the corresponding image_base64 from OCR. Insert each
-    //    description as a chunk with metadata.has_image = true. For Phase 1,
-    //    embedded images flow through as plain markdown references inside
-    //    their chunk and are not separately described.
-
-    // 9. Embed.
-    const embedder = deps.embedder ?? new OpenAIEmbedder();
-    const embeddings = await embedder.embed(semanticChunks.map((c) => c.content));
-
-    // 10. Insert chunks.
-    const chunkRows = semanticChunks.map((c, idx) => {
-      const embedding = embeddings[idx];
-      if (!embedding) {
-        throw new Error(`Missing embedding for chunk ${idx}`);
+    // 8. Image describe.
+    //
+    // For each base64 image returned by Mistral OCR, call gpt-4o
+    // vision and emit a separate chunk with metadata.has_image=true.
+    // Per-image failures are non-fatal — we lose enrichment for that
+    // one image but the rest of the document still ingests cleanly.
+    //
+    // Only OCR'd documents (PDF + image MIMEs) produce per-image
+    // data; the DOCX / text passthrough paths skip this step
+    // entirely. Dedupe also skips — see the ocrResult comment above.
+    interface ImageDescription {
+      content: string;
+      metadata: ChunkMetadata;
+    }
+    const imageDescriptions: ImageDescription[] = [];
+    if (ocrResult) {
+      const describer = deps.imageDescriber ?? new OpenAIImageDescriber();
+      for (const page of ocrResult.pages) {
+        for (const image of page.images) {
+          if (!image.image_base64) continue;
+          try {
+            // Mistral returns PNG-encoded extracts; pass the MIME
+            // explicitly so a future encoding change surfaces here.
+            const description = await describer.describe(
+              image.image_base64,
+              "image/png"
+            );
+            const trimmed = description.trim();
+            if (trimmed.length === 0) continue;
+            imageDescriptions.push({
+              content: `[Image on page ${page.index + 1}]: ${trimmed}`,
+              metadata: {
+                has_image: true,
+                ...(image.id ? { image_url: image.id } : {})
+              }
+            });
+          } catch (err) {
+            console.warn(
+              `[ingestion] vision describe failed for page ${page.index} image ${image.id ?? "?"}:`,
+              err instanceof Error ? err.message : err
+            );
+          }
+        }
       }
-      const metadata: ChunkMetadata = c.metadata;
-      return {
-        documentVersionId: versionId,
-        programId,
-        ordinal: c.ordinal,
-        content: c.content,
-        embedding,
-        metadata
-      };
-    });
+    }
+
+    // 9. Embed (text chunks + image-description chunks together so
+    //    we get one batched OpenAI call when feasible).
+    const embedder = deps.embedder ?? new OpenAIEmbedder();
+    const allInputs = [
+      ...semanticChunks.map((c) => c.content),
+      ...imageDescriptions.map((d) => d.content)
+    ];
+    const embeddings = await embedder.embed(allInputs);
+
+    // 10. Insert chunks. Image-description chunks land after text
+    //     chunks in ordinal order so the storage layout reflects the
+    //     "text first, image descriptions appended" mental model.
+    const chunkRows = [
+      ...semanticChunks.map((c, idx) => {
+        const embedding = embeddings[idx];
+        if (!embedding) {
+          throw new Error(`Missing embedding for chunk ${idx}`);
+        }
+        const metadata: ChunkMetadata = c.metadata;
+        return {
+          documentVersionId: versionId,
+          programId,
+          ordinal: c.ordinal,
+          content: c.content,
+          embedding,
+          metadata
+        };
+      }),
+      ...imageDescriptions.map((d, idx) => {
+        const slot = semanticChunks.length + idx;
+        const embedding = embeddings[slot];
+        if (!embedding) {
+          throw new Error(`Missing embedding for image chunk ${idx}`);
+        }
+        return {
+          documentVersionId: versionId,
+          programId,
+          // Continue numbering after the last text chunk so retrieval
+          // sort-by-ordinal returns image descriptions in a stable
+          // post-text position.
+          ordinal: semanticChunks.length + idx,
+          content: d.content,
+          embedding,
+          metadata: d.metadata
+        };
+      })
+    ];
     // 10–11. Delete-then-insert chunks AND activate, all atomically. The
     // single transaction prevents three known footguns:
     //   (a) a window where the prior active version has been deactivated

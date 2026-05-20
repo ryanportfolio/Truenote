@@ -6,6 +6,7 @@ import { configRouter } from "./config.js";
 import { documentsRouter } from "./documents.js";
 import { meRouter } from "./me.js";
 import { programsRouter } from "./admin/programs.js";
+import { usersRouter } from "./admin/users.js";
 
 export function registerRoutes(app: Express): void {
   app.use("/health", healthRouter);
@@ -19,6 +20,7 @@ export function registerRoutes(app: Express): void {
   app.use("/api/config", configRouter);
   app.use("/api/me", meRouter);
   app.use("/api/admin/programs", programsRouter);
+  app.use("/api/admin/users", usersRouter);
   app.use("/api/documents", documentsRouter);
   app.use("/api", askRouter);
 }

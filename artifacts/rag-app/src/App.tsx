@@ -4,8 +4,11 @@ import { AppShell } from "@/components/layout/AppShell";
 import { ChatPage } from "@/pages/Chat";
 import { AdminPage } from "@/pages/Admin";
 import { AdminProgramsPage } from "@/pages/AdminPrograms";
+import { AdminUsersPage } from "@/pages/AdminUsers";
 import { LoginPage } from "@/pages/Login";
 import { ChangePasswordPage } from "@/pages/ChangePassword";
+import { ForgotPasswordPage } from "@/pages/ForgotPassword";
+import { ResetPasswordPage } from "@/pages/ResetPassword";
 import { fetchMe, SESSION_EXPIRED_EVENT } from "@/lib/api";
 import type { CurrentUser } from "@/types/api";
 import {
@@ -120,7 +123,24 @@ export function App(): JSX.Element {
   }
 
   if (auth.status === "unauthenticated") {
-    return <LoginPage onAuthenticated={handleAuthenticated} />;
+    // Unauthenticated routing: /forgot-password and /reset-password
+    // are public surfaces (you can't be logged in if you forgot your
+    // password). Anything else falls through to /login. Wouter reads
+    // window.location, so deep-linking a reset email URL works
+    // without an explicit router setup.
+    return (
+      <Switch>
+        <Route path="/forgot-password">
+          <ForgotPasswordPage />
+        </Route>
+        <Route path="/reset-password">
+          <ResetPasswordPage onAuthenticated={handleAuthenticated} />
+        </Route>
+        <Route>
+          <LoginPage onAuthenticated={handleAuthenticated} />
+        </Route>
+      </Switch>
+    );
   }
 
   if (auth.status === "must-reset") {
@@ -144,6 +164,9 @@ export function App(): JSX.Element {
         </Route>
         <Route path="/admin/programs">
           <AdminProgramsPage user={auth.user} />
+        </Route>
+        <Route path="/admin/users">
+          <AdminUsersPage user={auth.user} />
         </Route>
         <Route path="/login" component={() => <Redirect to="/" />} />
         <Route path="/change-password">

@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../lib/db-client.js";
-import { sessions, users } from "@workspace/db/schema";
+import { passwordResetTokens, sessions, users } from "@workspace/db/schema";
 import { hashPassword, verifyPassword } from "../lib/auth/passwords.js";
 import {
   createSession,
@@ -13,13 +13,22 @@ import {
   SESSION_COOKIE_NAME,
   SESSION_DURATION_MS
 } from "../lib/auth/sessions.js";
+import {
+  createResetToken,
+  hashResetToken,
+  lookupResetTokenUserId
+} from "../lib/auth/password-reset.js";
 import { authedUser, requireAuth } from "../middleware/current-user.js";
 import { getMinPasswordLength } from "../lib/config.js";
+import { getEmailSender } from "../lib/email/sender.js";
 
 export const authRouter = Router();
 
 const LoginBody = z.object({
-  email: z.string().email().max(254),
+  // .trim() matches the CreateBody convention in routes/admin/users.ts
+  // — without it, a paste with trailing whitespace fails zod's
+  // .email() validation rather than normalizing transparently.
+  email: z.string().trim().email().max(254),
   password: z.string().min(1).max(1024)
 });
 
@@ -30,6 +39,30 @@ const MIN_PASSWORD_LENGTH = getMinPasswordLength();
 
 const ChangePasswordBody = z.object({
   currentPassword: z.string().min(1).max(1024),
+  newPassword: z
+    .string()
+    .min(
+      MIN_PASSWORD_LENGTH,
+      `New password must be at least ${MIN_PASSWORD_LENGTH} characters`
+    )
+    .max(1024)
+});
+
+const ForgotPasswordBody = z.object({
+  email: z.string().trim().email().max(254)
+});
+
+const ResetPasswordBody = z.object({
+  // The token shipped in the reset link. base64url is [A-Za-z0-9_-];
+  // bound the length to something reasonable rather than match exactly
+  // so we don't have to rev the validator if the token width ever
+  // changes. Empty / oversized requests fail fast on the schema rather
+  // than burning a hash lookup.
+  token: z
+    .string()
+    .min(16)
+    .max(1024)
+    .regex(/^[A-Za-z0-9_-]+$/, "Token has an unexpected format"),
   newPassword: z
     .string()
     .min(
@@ -270,6 +303,327 @@ authRouter.post("/change-password", requireAuth, async (req, res, next) => {
         mustResetPassword: false
       }
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Resolve the public base URL we should embed in outgoing emails.
+ *
+ * Production posture (NODE_ENV=production): APP_BASE_URL is the ONLY
+ * source. We refuse to fall back to request headers because
+ * X-Forwarded-Host is attacker-controlled — a `POST /forgot-password`
+ * with a spoofed header would otherwise embed the attacker's domain
+ * into the victim's reset email, delivering the plaintext token to
+ * the attacker on click. Returning null causes the email send to
+ * abort (logged warning), which is strictly better than mailing a
+ * compromised link.
+ *
+ * Dev posture: APP_BASE_URL still wins if set; otherwise fall back to
+ * X-Forwarded-Proto / X-Forwarded-Host / req.get("host") so a
+ * developer running on localhost without env vars gets a clickable
+ * link in their terminal-logged email.
+ *
+ * The startup check in index.ts also refuses to boot in production
+ * without APP_BASE_URL, so this branch is defense-in-depth — the
+ * exploit window only opens if the startup check is bypassed.
+ */
+function resolveAppBaseUrl(
+  req: import("express").Request
+): string | null {
+  const fromEnv = process.env.APP_BASE_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  if (process.env.NODE_ENV === "production") {
+    return null;
+  }
+  const forwardedProto =
+    req.header("x-forwarded-proto")?.split(",")[0]?.trim() || req.protocol;
+  const forwardedHost =
+    req.header("x-forwarded-host")?.split(",")[0]?.trim() || req.get("host");
+  return `${forwardedProto}://${forwardedHost}`.replace(/\/$/, "");
+}
+
+/**
+ * Minimal HTML escape for splicing untrusted values into the reset
+ * email template. The base URL comes from APP_BASE_URL (operator-set)
+ * but is still env-string so a misconfigured value could include
+ * angle brackets or quotes that escape the href attribute. The user
+ * name field is already control-char-stripped at the zod schema, but
+ * Unicode is still allowed — escape it the same way so a `<` or `&`
+ * in a future schema relaxation doesn't quietly become an XSS bug.
+ */
+function escapeHtml(input: string): string {
+  return input.replace(/[<>"'&]/g, (c) => {
+    switch (c) {
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#x27;";
+      case "&":
+        return "&amp;";
+    }
+    return c;
+  });
+}
+
+/**
+ * Render the password-reset email. Hand-written HTML — keeps audit
+ * logs readable, no template runtime dep. Plain text fallback exists
+ * for clients that block HTML or render preview snippets.
+ */
+function renderResetEmail(args: {
+  name: string;
+  resetUrl: string;
+  expiresAt: Date;
+}): { subject: string; html: string; text: string } {
+  const subject = "Reset your password";
+  const expiresIso = args.expiresAt.toISOString();
+  // Every interpolation into the HTML template goes through escapeHtml
+  // so a stray quote or bracket in any input field can't escape an
+  // attribute or open a tag. The plaintext body uses raw values
+  // because text/plain has no markup to escape.
+  const safeName = escapeHtml(args.name);
+  const safeUrl = escapeHtml(args.resetUrl);
+  const safeExpires = escapeHtml(expiresIso);
+  // Inline styles only — most email clients strip <style> tags.
+  const html = `
+<!doctype html>
+<html>
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #0f172a; background: #f8fafc; padding: 24px;">
+    <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
+      <h1 style="margin: 0 0 16px; font-size: 18px;">Reset your password</h1>
+      <p>Hi ${safeName},</p>
+      <p>We received a request to reset your password. Click the button below to choose a new one. This link expires at ${safeExpires}.</p>
+      <p style="text-align: center; margin: 24px 0;">
+        <a href="${safeUrl}" style="display: inline-block; background: #0f172a; color: #ffffff; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: 500;">Reset password</a>
+      </p>
+      <p style="font-size: 13px; color: #64748b;">If the button doesn't work, paste this URL into your browser:</p>
+      <p style="font-size: 13px; word-break: break-all;"><a href="${safeUrl}">${safeUrl}</a></p>
+      <p style="font-size: 13px; color: #64748b;">If you didn't request a reset, you can ignore this email — your password won't change.</p>
+    </div>
+  </body>
+</html>`.trim();
+  const text = [
+    `Hi ${args.name},`,
+    "",
+    "We received a request to reset your password. Use the link below to choose a new one:",
+    "",
+    args.resetUrl,
+    "",
+    `This link expires at ${expiresIso}.`,
+    "",
+    "If you didn't request a reset, you can ignore this email — your password won't change."
+  ].join("\n");
+  return { subject, html, text };
+}
+
+/**
+ * POST /api/auth/forgot-password — request a reset link.
+ *
+ * Always returns 204 regardless of whether the email is known. Two
+ * reasons:
+ *   1. Account enumeration — a "we sent it" / "no such user" split
+ *      lets an attacker probe the user table with a stopwatch.
+ *   2. Inactive users — silently skipped; reactivating them is an
+ *      admin path, not a self-service one. Surfacing "this account
+ *      is inactive" would leak the same data.
+ *
+ * The actual email send happens fire-and-forget after the 204 is
+ * returned, so a slow upstream (Resend, DNS) doesn't pin the request
+ * thread. Send failures are logged; the user sees the same outcome
+ * either way (no email arrives → they retry).
+ *
+ * Rate limiting is intentionally NOT included in Phase 2.5 — a real
+ * deployment should add per-email + per-IP limits to avoid being a
+ * spam relay. Tracked as a follow-up.
+ */
+authRouter.post("/forgot-password", async (req, res, next) => {
+  try {
+    const parsed = ForgotPasswordBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid request" });
+      return;
+    }
+    const email = parsed.data.email.trim().toLowerCase();
+
+    // Acknowledge first; do the lookup + email out-of-band. This way
+    // the response time is constant whether the email is known or
+    // unknown — closes the same timing channel the login endpoint
+    // closes via the dummy argon2 verify.
+    res.status(204).end();
+
+    // From here on we're past the response — no res.* calls. Errors
+    // are logged, not surfaced.
+    //
+    // Capture the base URL synchronously from the live request rather
+    // than inside the async IIFE — the Request object becomes
+    // unreliable to read from after the response cycle ends in some
+    // middleware stacks. If APP_BASE_URL is unset in production,
+    // resolveAppBaseUrl returns null (the index.ts startup check
+    // should have already refused to boot, but defense in depth).
+    const baseUrl = resolveAppBaseUrl(req);
+    void (async () => {
+      try {
+        if (baseUrl === null) {
+          console.warn(
+            "[auth] forgot-password: APP_BASE_URL not set in production; " +
+              "refusing to send a reset email with a header-derived URL"
+          );
+          return;
+        }
+        const rows = await db
+          .select({
+            id: users.id,
+            email: users.email,
+            name: users.name,
+            isActive: users.isActive
+          })
+          .from(users)
+          .where(eq(users.email, email))
+          .limit(1);
+        const row = rows[0];
+        if (!row || !row.isActive) return;
+
+        const { token, expiresAt } = await createResetToken(row.id);
+        const resetUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
+        const { subject, html, text } = renderResetEmail({
+          name: row.name,
+          resetUrl,
+          expiresAt
+        });
+        const sender = getEmailSender();
+        await sender.send({ to: row.email, subject, html, text });
+      } catch (err) {
+        console.warn(
+          "[auth] forgot-password background send failed:",
+          err instanceof Error ? err.message : err
+        );
+      }
+    })();
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/auth/reset-password — consume a reset link, set new
+ * password, log the user in.
+ *
+ * Atomic transaction:
+ *   (1) re-verify the token is unused + unexpired (under the row
+ *       lock — the lookup above the transaction is racy)
+ *   (2) mark token used
+ *   (3) update password_hash + clear must_reset_password
+ *   (4) delete every session for this user
+ *   (5) issue a fresh session
+ *
+ * Same all-or-nothing rationale as change-password: if we updated the
+ * password but failed to revoke sessions, stolen cookies on the old
+ * password would still work — the whole point of password reset is
+ * that they don't.
+ */
+authRouter.post("/reset-password", async (req, res, next) => {
+  try {
+    const parsed = ResetPasswordBody.safeParse(req.body);
+    if (!parsed.success) {
+      const message = parsed.error.issues[0]?.message ?? "Invalid request";
+      res.status(400).json({ error: message });
+      return;
+    }
+    const { token, newPassword } = parsed.data;
+
+    // Up-front check so an obviously-bad token returns immediately
+    // (saves an argon2 hash compute for the common "expired link"
+    // case). The real validation happens again under the transaction
+    // because the token could be consumed between this lookup and
+    // the write — see the in-tx re-check below.
+    const userIdPreflight = await lookupResetTokenUserId(token);
+    if (!userIdPreflight) {
+      res
+        .status(400)
+        .json({ error: "This reset link is invalid or has expired" });
+      return;
+    }
+
+    const tokenHash = hashResetToken(token);
+    const passwordHash = await hashPassword(newPassword);
+
+    const result = await db.transaction(async (tx) => {
+      // Re-check under the transaction. The atomic UPDATE...RETURNING
+      // is the canonical "consume" — if zero rows come back, somebody
+      // else used the token between the preflight and now.
+      const consumed = await tx
+        .update(passwordResetTokens)
+        .set({ usedAt: new Date() })
+        .where(
+          and(
+            eq(passwordResetTokens.tokenHash, tokenHash),
+            gt(passwordResetTokens.expiresAt, new Date()),
+            isNull(passwordResetTokens.usedAt)
+          )
+        )
+        .returning({ userId: passwordResetTokens.userId });
+      const consumedRow = consumed[0];
+      if (!consumedRow) return null;
+
+      const userId = consumedRow.userId;
+
+      // Refuse to log inactive users back in even if the token was
+      // valid. (Should only happen if an admin deactivated the user
+      // between issue and consume.)
+      const userRows = await tx
+        .select({
+          id: users.id,
+          email: users.email,
+          role: users.role,
+          programId: users.programId,
+          name: users.name,
+          isActive: users.isActive
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      const user = userRows[0];
+      if (!user || !user.isActive) return null;
+
+      await tx
+        .update(users)
+        .set({ passwordHash, mustResetPassword: false })
+        .where(eq(users.id, userId));
+      await tx.delete(sessions).where(eq(sessions.userId, userId));
+      const newToken = generateToken();
+      const newTokenHash = hashToken(newToken);
+      const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+      await tx
+        .insert(sessions)
+        .values({ userId, tokenHash: newTokenHash, expiresAt });
+      return {
+        sessionToken: newToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          programId: user.programId ?? null,
+          name: user.name,
+          mustResetPassword: false
+        }
+      };
+    });
+
+    if (!result) {
+      res
+        .status(400)
+        .json({ error: "This reset link is invalid or has expired" });
+      return;
+    }
+
+    setSessionCookie(res, result.sessionToken);
+    res.json({ user: result.user });
   } catch (err) {
     next(err);
   }

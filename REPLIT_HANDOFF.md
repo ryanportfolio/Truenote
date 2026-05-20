@@ -226,6 +226,91 @@ TOCTOU window) — index landing is what closes the race.
 
 ---
 
+## B4. Replit Agent DDL prompt — Phase 2.5 (password reset)
+
+Ask the Replit agent to run this against the dev database. Idempotent;
+safe to re-run.
+
+```sql
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash  TEXT NOT NULL UNIQUE,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  used_at     TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS password_reset_tokens_user_id_idx
+  ON password_reset_tokens(user_id);
+CREATE INDEX IF NOT EXISTS password_reset_tokens_expires_at_idx
+  ON password_reset_tokens(expires_at);
+```
+
+After applying, install the `resend` npm package (see A2 below) and
+restart `api-server`. Without the package OR without the
+`RESEND_API_KEY` / `RESEND_FROM_EMAIL` env vars, the email layer
+falls back to a console logger — fine for dev, useless in prod.
+
+---
+
+## A2. Replit Agent install prompt — Phase 2.5
+
+```
+Please install the following package in the api-server workspace:
+
+  pnpm add -F @workspace/api-server resend@^4.0.0
+```
+
+The Resend SDK is dynamic-imported, so the api-server still boots
+without the package — the failure only surfaces the first time an
+email is dispatched. This keeps tests and the Claude Code sandbox
+unblocked.
+
+---
+
+## A3. Replit Agent install prompt — Phase 1.5 (multer v2)
+
+The api-server's `package.json` was bumped to `multer: ^2.0.0` and
+`@types/multer: ^2.0.0`. The lockfile still pins the 1.x line, so a
+`--frozen-lockfile` install would silently keep 1.x — explicitly
+update both packages so the lockfile picks up 2.x:
+
+```
+At the workspace root, run:
+
+  pnpm update -F @workspace/api-server multer @types/multer
+
+Then commit the refreshed pnpm-lock.yaml.
+```
+
+Multer 2.x is API-compatible for our use case (`upload.single`
++ `memoryStorage` + `limits.fileSize`). The Replit deploy log is the
+authoritative type-check — watch for any `tsc` errors after the
+install completes.
+
+---
+
+## B5. Replit Agent DDL prompt — Phase 1.5 (storage cleanup index)
+
+Ask the Replit agent to run this against the dev database. Idempotent;
+safe to re-run.
+
+```sql
+-- The eager blob cleanup in DELETE /api/documents/:id runs a
+-- "still-referenced?" lookup on document_versions.source_url for
+-- every blob it considers deleting. Without this index the lookup
+-- is a sequential scan once the table grows beyond a few hundred
+-- versions. Adding it now is cheap (the column is sparse-cardinality
+-- since most versions have distinct keys) and avoids surprise
+-- degradation in delete latency.
+
+CREATE INDEX IF NOT EXISTS document_versions_source_url_idx
+  ON document_versions (source_url);
+```
+
+---
+
 ## C. Replit Secrets checklist
 
 Set these in Replit Secrets (Tools → Secrets). The app reads them via
@@ -252,6 +337,9 @@ Optional tunables (defaults shown):
 | `API_PORT` | `5000` | Express server port (also set in `.replit`). |
 | `PORT` | `5173` | Vite dev server port. |
 | `CORS_ALLOWED_ORIGINS` | unset | Comma-separated origin allowlist for cross-origin requests with credentials. Leave unset in the standard Replit topology (same-origin) — only set if running the SPA on a separate origin (e.g., dev tooling). |
+| `RESEND_API_KEY` | unset | Transactional email key for password resets. Both this and `RESEND_FROM_EMAIL` must be set; otherwise the email layer logs to stdout instead of sending. |
+| `RESEND_FROM_EMAIL` | unset | Sender address (must be a verified Resend domain, or `onboarding@resend.dev` for testing). |
+| `APP_BASE_URL` | unset → infer | Public origin embedded in outgoing email links. Set explicitly for production; falls back to `X-Forwarded-Proto` / `X-Forwarded-Host` when unset. |
 
 ---
 

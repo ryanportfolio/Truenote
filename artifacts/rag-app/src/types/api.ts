@@ -46,6 +46,10 @@ export interface ChangePasswordResponse {
   user: CurrentUser;
 }
 
+export interface ResetPasswordResponse {
+  user: CurrentUser;
+}
+
 export interface Source {
   chunk_id: string;
   doc_title: string;
@@ -124,4 +128,80 @@ export interface AppConfig {
    * the client mirrors it for UX consistency.
    */
   minPasswordLength: number;
+  /**
+   * True when the api-server has a real email transport configured
+   * (Resend API key + sender address both set). The Login page uses
+   * this to hide the "Forgot password?" link when the server would
+   * silently log the reset token to stdout instead of mailing it —
+   * surfacing the link in that state lets users think a reset is
+   * coming when it isn't.
+   */
+  emailResetAvailable: boolean;
+}
+
+/**
+ * User-admin shapes. Mirror of the api-server's UserListItem in
+ * routes/admin/users.ts. Same duplication rationale as everything else
+ * in this file — coupling via a TS import would chain every API tweak
+ * across package boundaries.
+ *
+ * `programId` is null only for super_user (DB CHECK on the server).
+ * Timestamps are ISO strings; the server formats once so the SPA
+ * doesn't have to think about JSON's date hole.
+ */
+export interface UserListItem {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  programId: string | null;
+  isActive: boolean;
+  mustResetPassword: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+}
+
+export interface UserListResponse {
+  items: UserListItem[];
+}
+
+export interface CreateUserRequest {
+  email: string;
+  name: string;
+  role: UserRole;
+  /**
+   * - non-super_user roles: required (must be a UUID). The server
+   *   defaults to the actor's own program for manager/senior_manager
+   *   when omitted, but explicit is clearer at the call site.
+   * - super_user role: must be null (DB CHECK).
+   */
+  programId: string | null;
+  /**
+   * Optional. If omitted the server generates a temp password and
+   * returns it once on the response. If provided, the server hashes
+   * it as-is; either way the new user is forced to change it on
+   * first login.
+   */
+  password?: string;
+}
+
+export interface CreateUserResponse {
+  item: UserListItem;
+  /**
+   * Present only when the server generated the password (i.e. the
+   * caller omitted `password` from the request). Surfaced to the
+   * admin once; treat as sensitive and communicate out-of-band.
+   */
+  tempPassword?: string;
+}
+
+export interface UpdateUserRequest {
+  name?: string;
+  role?: UserRole;
+  programId?: string | null;
+  isActive?: boolean;
+}
+
+export interface ResetUserPasswordResponse {
+  tempPassword: string;
 }

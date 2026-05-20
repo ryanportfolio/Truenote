@@ -229,3 +229,32 @@ export const sessions = pgTable("sessions", {
 
 export type Session = typeof sessions.$inferSelect;
 export type NewSession = typeof sessions.$inferInsert;
+
+// --- password_reset_tokens
+//
+// One-shot tokens for self-service password reset. The cookie/email
+// carries an opaque high-entropy token; we store its SHA-256 hash, so
+// a DB leak does not yield usable reset links on its own. Same hashing
+// posture as sessions.
+//
+// Lifecycle: insert with future expires_at and used_at=null. On
+// consume, set used_at=now() in the same transaction that updates
+// password_hash + deletes the user's sessions. Once used_at is set,
+// the row is dead — replays bounce on the "already used" branch.
+// Expired/used rows can be cleaned up by a periodic sweep
+// (purgeExpiredResetTokens) without affecting correctness.
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+});
+
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type NewPasswordResetToken = typeof passwordResetTokens.$inferInsert;
