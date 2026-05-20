@@ -5,6 +5,18 @@ import type { CurrentUser } from "@/types/api";
 
 interface LoginPageProps {
   onAuthenticated: (user: CurrentUser) => void;
+  /**
+   * Optional deep-link target captured by App.tsx when the user was
+   * dropped into the unauthenticated state from a non-auth page
+   * (mid-session 401, or a first-load probe on a deep URL). After
+   * a successful login we navigate here instead of the default
+   * landing — preserves the page the user was on.
+   *
+   * Null means "no specific target" → default landing applies. The
+   * value is a same-origin relative path (App.tsx never captures
+   * absolute URLs), so passing it to setLocation is safe.
+   */
+  redirectTo?: string | null;
 }
 
 /**
@@ -22,7 +34,10 @@ interface LoginPageProps {
  *   - No client-side rate limiting; server tolerates this
  *   - No "remember me" toggle — sessions are 7 days fixed
  */
-export function LoginPage({ onAuthenticated }: LoginPageProps): JSX.Element {
+export function LoginPage({
+  onAuthenticated,
+  redirectTo = null
+}: LoginPageProps): JSX.Element {
   const [, setLocation] = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -58,7 +73,14 @@ export function LoginPage({ onAuthenticated }: LoginPageProps): JSX.Element {
     try {
       const user = await login(email.trim(), password);
       onAuthenticated(user);
-      setLocation(user.mustResetPassword ? "/change-password" : "/");
+      // mustResetPassword always wins — even a captured redirectTo
+      // can't bypass the forced-reset gate. Otherwise honor the deep
+      // link if one was captured by App.tsx, else default landing.
+      if (user.mustResetPassword) {
+        setLocation("/change-password");
+      } else {
+        setLocation(redirectTo ?? "/");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
