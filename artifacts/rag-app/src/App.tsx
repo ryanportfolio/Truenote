@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { ChatPage } from "@/pages/Chat";
 import { AdminPage } from "@/pages/Admin";
 import { AdminProgramsPage } from "@/pages/AdminPrograms";
+import { AdminUsersPage } from "@/pages/AdminUsers";
 import { LoginPage } from "@/pages/Login";
 import { ChangePasswordPage } from "@/pages/ChangePassword";
 import { fetchMe, SESSION_EXPIRED_EVENT } from "@/lib/api";
@@ -144,6 +145,9 @@ export function App(): JSX.Element {
         </Route>
         <Route path="/admin/programs">
           <AdminProgramsPage user={auth.user} />
+        </Route>
+        <Route path="/admin/users">
+          <AdminUsersPage user={auth.user} />
         </Route>
         <Route path="/login" component={() => <Redirect to="/" />} />
         <Route path="/change-password">

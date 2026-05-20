@@ -2,13 +2,19 @@ import type {
   AppConfig,
   AskResponse,
   ChangePasswordResponse,
+  CreateUserRequest,
+  CreateUserResponse,
   CurrentUser,
   DocumentListResponse,
   LoginResponse,
   PreviewResponse,
   Program,
   ProgramListResponse,
-  UploadResponse
+  ResetUserPasswordResponse,
+  UpdateUserRequest,
+  UploadResponse,
+  UserListItem,
+  UserListResponse
 } from "@/types/api";
 import { getSelectedProgramIdRaw } from "@/lib/selectedProgram";
 
@@ -251,4 +257,73 @@ export async function createProgram(name: string): Promise<Program> {
   }
   const json = (await response.json()) as { item: Program };
   return json.item;
+}
+
+/**
+ * The user-admin endpoints. All authenticated, all behind the same
+ * server-side capability gates (canManageUser / canAssignRole). The
+ * fetch wrappers stay deliberately thin — server-side authorization is
+ * the truth source; the UI mirrors visibility but doesn't pre-check.
+ *
+ * X-Program-Id propagation is handled by withDefaults(). For
+ * super_user the list endpoint uses that header as a filter (no header
+ * = all programs); other roles ignore it server-side.
+ */
+export async function listUsers(): Promise<UserListResponse> {
+  const response = await fetch("/api/admin/users", withDefaults());
+  return asJson<UserListResponse>(response);
+}
+
+async function readJsonOrThrow<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    if (response.status === 401) {
+      notifySessionExpired();
+      throw new UnauthorizedError();
+    }
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    throw new Error(body.error ?? `HTTP ${response.status}`);
+  }
+  return (await response.json()) as T;
+}
+
+export async function createUser(
+  payload: CreateUserRequest
+): Promise<CreateUserResponse> {
+  const response = await fetch(
+    "/api/admin/users",
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+  );
+  return readJsonOrThrow<CreateUserResponse>(response);
+}
+
+export async function updateUser(
+  id: string,
+  payload: UpdateUserRequest
+): Promise<UserListItem> {
+  const response = await fetch(
+    `/api/admin/users/${encodeURIComponent(id)}`,
+    withDefaults({
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+  );
+  const json = await readJsonOrThrow<{ item: UserListItem }>(response);
+  return json.item;
+}
+
+export async function resetUserPassword(
+  id: string
+): Promise<ResetUserPasswordResponse> {
+  const response = await fetch(
+    `/api/admin/users/${encodeURIComponent(id)}/reset-password`,
+    withDefaults({ method: "POST" })
+  );
+  return readJsonOrThrow<ResetUserPasswordResponse>(response);
 }
