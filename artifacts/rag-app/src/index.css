@@ -7,17 +7,21 @@
    * OKLCH migration is a follow-up. See DESIGN.md. */
   :root {
     --background: 43 16% 89%;
-    --foreground: 53 5% 34%;
+    /* WCAG AAA body-text target on the cream bg. Computed contrast ~7.9:1.
+     * Do not soften without re-running the contrast math against --background. */
+    --foreground: 53 7% 22%;
     --card: 0 0% 100%;
-    --card-foreground: 53 5% 34%;
+    --card-foreground: 53 7% 22%;
     --popover: 0 0% 100%;
-    --popover-foreground: 53 5% 34%;
+    --popover-foreground: 53 7% 22%;
     --primary: 156 27% 24%;
     --primary-foreground: 0 0% 100%;
     --secondary: 0 0% 98%;
-    --secondary-foreground: 53 5% 34%;
+    --secondary-foreground: 53 7% 22%;
     --muted: 43 12% 92%;
-    --muted-foreground: 53 5% 50%;
+    /* Used for placeholders, captions, role chips. ~5.5:1 on bg (AA solid).
+     * Anything CSR-readable should prefer --foreground; this is for chrome. */
+    --muted-foreground: 53 7% 34%;
     --accent: 159 22% 29%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 72% 45%;
@@ -63,5 +67,49 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  /* Browsers default ::placeholder to ~50% opacity on top of an already-muted color,
+   * which crushes contrast below WCAG AA on warm backgrounds. Force opacity:1 and
+   * use the muted-foreground token directly so contrast is predictable. */
+  input::placeholder,
+  textarea::placeholder {
+    color: hsl(var(--muted-foreground));
+    opacity: 1;
+  }
+}
+
+@layer components {
+  /* Truenote button variants. Two, only two. See DESIGN.md §Buttons.
+   *   .btn-whisper — app-wide default: #FAFAFA, warm-gray text, 1px inset hairline
+   *   .btn-csr-ask — the deliberate exception: forest-green filled, white text.
+   *                  Used ONLY on /chat so CSRs find Ask under call pressure.
+   * Both share a shape + focus-ring spec so focus is never color-only (WCAG AA).
+   */
+  .btn-base {
+    @apply inline-flex items-center justify-center rounded-md text-sm font-medium
+           transition-colors duration-100 ease-out
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-whisper {
+    @apply btn-base bg-secondary text-secondary-foreground;
+    box-shadow: inset 0 0 0 1px hsl(var(--border));
+  }
+  .btn-whisper:hover:not(:disabled) {
+    box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.18);
+  }
+  .btn-whisper:active:not(:disabled) {
+    @apply bg-muted;
+  }
+
+  .btn-csr-ask {
+    @apply btn-base bg-primary text-primary-foreground;
+  }
+  .btn-csr-ask:hover:not(:disabled) {
+    @apply bg-accent;
+  }
+  .btn-csr-ask:active:not(:disabled) {
+    background-color: hsl(var(--primary) / 0.92);
   }
 }

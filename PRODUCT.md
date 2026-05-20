@@ -39,7 +39,7 @@ These are strategic, not visual. Visual rules live in DESIGN.md.
 
 ## Accessibility
 
-Target **WCAG 2.1 AA** across all surfaces. Color is never the sole channel; focus rings are visible; tab order is sane; CSR chat is operable from keyboard for the entire ask → read → cite-click → return flow.
+Target **WCAG 2.1 AAA for body text** (≥7:1 contrast) and **AA minimum for everything else** (chrome, captions, placeholders, role chips). Color is never the sole channel; focus rings are visible at 2px with offset; tab order is sane; CSR chat is operable from keyboard for the entire ask → read → cite-click → return flow. Anything a CSR has to *read mid-call* hits AAA — eyestrain compounds across an 8-hour shift.
 
 ---
 

@@ -11,7 +11,7 @@ Cohere-derived. Warm cream + deep forest, with a single sparingly-used secondary
 | Token            | Hex       | HSL                 | Role                                            |
 |------------------|-----------|---------------------|-------------------------------------------------|
 | `--background`   | `#E8E6DE` | `43 16% 89%`        | App canvas (warm cream)                         |
-| `--foreground`   | `#5B5A52` | `53 5% 34%`         | Body text (warm gray — never `#000`)            |
+| `--foreground`   | `~#363430`| `53 7% 22%`         | Body text (warm near-black — never `#000`). AAA on bg (~7.9:1) |
 | `--primary`      | `#2C4D40` | `156 27% 24%`       | Deep forest green — CSR Ask button, brand mark  |
 | `--accent`       | `#39594D` | `159 22% 29%`       | Lighter forest — links, accent surfaces         |
 | `--secondary`    | `#FAFAFA` | `0 0% 98%`          | Whisper-button surface                          |
@@ -35,6 +35,23 @@ Single sans for everything. **Verdana** as the primary face — system font, no 
 
 Line-height: **1.5** on CSR chat (dense, scannable). **1.6** on admin surfaces (airier read).
 Weights: 400 (body), 500 (UI labels), 600 (headings). No 700+ in Phase 1.
+
+## Contrast (WCAG)
+
+| Pairing                                  | Target | Computed | Status |
+|------------------------------------------|--------|----------|--------|
+| `--foreground` on `--background`         | AAA    | ~7.9:1   | ✓      |
+| `--foreground` on `--card` (white)       | AAA    | ~12:1    | ✓      |
+| `--muted-foreground` on `--background`   | AA     | ~5.5:1   | ✓      |
+| `--primary-foreground` on `--primary`    | AAA    | ~10:1    | ✓      |
+| `--accent-foreground` on `--accent`      | AAA    | ~8:1     | ✓      |
+
+Rules:
+- Body text and anything a CSR reads mid-call hit **AAA** (≥7:1).
+- Chrome (captions, placeholder hints, role chips, table headers) hits **AA** (≥4.5:1).
+- **Force `::placeholder { opacity: 1 }`** globally — browsers default to ~0.5, which silently halves contrast and pushes placeholders below AA on any non-white surface.
+- Never use `#000` or `#fff` directly. Warm near-black for text; cream/white for surfaces. Pure black on cream reads as a UI bug, not as polish.
+- When darkening a token to meet AAA, re-run the math; do not eyeball.
 
 ## Spacing
 
@@ -74,6 +91,20 @@ The primary "Ask" button on `/chat`. **Forest-green filled** (`#2C4D40` backgrou
 
 Citation cards on CSR chat get extra room — they're the receipt, not the chrome.
 
+## Interaction states
+
+Every interactive element defines five states. Color alone is never the focus signal.
+
+| State    | Visual change                                                                |
+|----------|------------------------------------------------------------------------------|
+| Default  | Base token values                                                            |
+| Hover    | Whisper: hairline strengthens. CSR-Ask: bg shifts to `--accent`              |
+| Focus    | 2px `--ring` outline, 2px offset (`focus-visible:ring-2 ring-offset-2`)      |
+| Active   | Whisper: bg → `--muted`. CSR-Ask: bg darkens to `--primary/92`               |
+| Disabled | `opacity: 0.5`, `cursor: not-allowed`, hover changes suppressed              |
+
+**Selected state** (sidebar item, active tab): `bg-secondary text-secondary-foreground` (existing pattern — keep).
+
 ## Motion
 
 Easing: **`cubic-bezier(0.25, 1, 0.5, 1)`** (ease-out-quart). No bounce, no overshoot.
@@ -83,6 +114,24 @@ Reduced motion: honor `prefers-reduced-motion` everywhere; fall back to opacity-
 ## Token consumer contract
 
 Shadcn components consume `hsl(var(--token))` via `tailwind.config.ts`. Variable names are stable across Phase 1 — only values change. Adding a token is a Phase-2-or-later conversation.
+
+## Dark mode
+
+Ships as a sensible inversion so shadcn consumers don't break. No theme toggle in Phase 1. When it does land:
+
+- **No pure black backgrounds.** Use a near-black with the forest hue baked in (current: `156 12% 10%`).
+- **No pure white text.** Cream foreground (`43 16% 89%`) reads warmer and reduces halation on dark surfaces.
+- Re-run contrast math against dark tokens — current `muted-foreground` is ~6.9:1 on the dark bg, close to AAA but not over.
+
+## What makes Truenote feel like Truenote
+
+If we only get five things right, get these. These are the brand-character version of Cohere's essence points, translated to our tokens.
+
+1. **The forest-green accent is rare.** `--primary` shows up once or twice per screen — the CSR Ask button, the active citation chip. Everywhere else is cream/white/warm-near-black. The restraint is the brand.
+2. **Hairlines over shadows.** Cards, tables, callouts, sidebars — every division is a 1px inset hairline (`--border`), not a drop shadow. Reserve drop shadow for floating elements only (popovers, modals).
+3. **Warm neutrals.** The gray is tinted toward stone, not slate. If a contributor reaches for `slate-*` / `zinc-*` / `gray-*`, that is a bug — use the semantic tokens.
+4. **Generous whitespace on admin, tight density on CSR chat.** Admin surfaces breathe like Cohere docs. CSR chat is denser by intent — CSRs scan under call pressure, not browse.
+5. **Tight headings, relaxed body.** Headings 600 weight, slight negative tracking. Body 400 weight, line-height 1.5 (chat) / 1.6 (admin). The contrast between tight headings and loose body is the typographic signature.
 
 ## Follow-ups
 
