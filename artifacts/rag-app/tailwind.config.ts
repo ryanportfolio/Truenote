@@ -11,7 +11,7 @@ const config: Config = {
     },
     extend: {
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"]
+        sans: ["Verdana", "Geneva", "ui-sans-serif", "system-ui", "sans-serif"]
       },
       colors: {
         border: "hsl(var(--border))",

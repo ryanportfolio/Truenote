@@ -23,7 +23,7 @@ Light mode is the ship target. `.dark` ships as a sensible inversion so consumer
 
 ## Typography
 
-Single sans for everything. **Inter** as the primary face (proxy for Cohere's proprietary Unica77). Loaded via Google Fonts `<link>`. No serif, no display face, no hero typography.
+Single sans for everything. **Verdana** as the primary face — system font, no network load, ships everywhere. No serif, no display face, no hero typography. (Cohere parity on rhythm and scale, not on specific letterforms; revisit faces in a later phase.)
 
 | Token | Size  | Use                                   |
 |-------|-------|---------------------------------------|
