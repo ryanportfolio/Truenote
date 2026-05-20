@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 @layer base {
-  /* Truenote — Cohere-derived tokens (Phase 1). HSL kept for shadcn compat;
-   * OKLCH migration is a follow-up. See DESIGN.md. */
+  /* Truenote — Cohere-derived rhythm, parent-company brand-blue accent.
+   * HSL kept for shadcn compat; OKLCH migration is a follow-up. See DESIGN.md. */
   :root {
     --background: 43 16% 89%;
     /* WCAG AAA body-text target on the cream bg. Computed contrast ~7.9:1.
@@ -14,7 +14,12 @@
     --card-foreground: 53 7% 22%;
     --popover: 0 0% 100%;
     --popover-foreground: 53 7% 22%;
-    --primary: 156 27% 24%;
+    /* Brand-blue, deepened just enough to clear AAA both ways:
+     *   ~7:1 contrast on cream (--foreground-equivalent role)
+     *   ~9:1 white-on-blue for the CSR Ask button.
+     * Sourced from the parent-company logo's deep gradient stop, darkened
+     * for accessibility. Do not relax saturation below this lightness. */
+    --primary: 217 100% 33%;
     --primary-foreground: 0 0% 100%;
     --secondary: 0 0% 98%;
     --secondary-foreground: 53 7% 22%;
@@ -22,7 +27,9 @@
     /* Used for placeholders, captions, role chips. ~5.5:1 on bg (AA solid).
      * Anything CSR-readable should prefer --foreground; this is for chrome. */
     --muted-foreground: 53 7% 34%;
-    --accent: 159 22% 29%;
+    /* Vivid brand blue from the logo's mid-gradient. AA on cream (~4.5:1) —
+     * fine for hover states and 10%-opacity citation tints, NOT for body text. */
+    --accent: 213 100% 45%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 72% 45%;
     --destructive-foreground: 0 0% 100%;
@@ -30,33 +37,34 @@
     --warning-foreground: 48 96% 10%;
     --border: 40 8% 88%;
     --input: 40 8% 88%;
-    --ring: 156 27% 24%;
+    --ring: 217 100% 33%;
     --radius: 0.5rem;
   }
 
-  /* Dark mode ships as sensible inversion; product currently surfaces light only. */
+  /* Dark mode ships as sensible inversion; product currently surfaces light only.
+   * All near-black surfaces share the brand-blue hue family (217) for hue parity. */
   .dark {
-    --background: 156 12% 10%;
+    --background: 217 12% 10%;
     --foreground: 43 16% 89%;
-    --card: 156 12% 13%;
+    --card: 217 12% 13%;
     --card-foreground: 43 16% 89%;
-    --popover: 156 12% 13%;
+    --popover: 217 12% 13%;
     --popover-foreground: 43 16% 89%;
-    --primary: 159 22% 60%;
-    --primary-foreground: 156 27% 14%;
-    --secondary: 156 10% 18%;
+    --primary: 213 100% 68%;
+    --primary-foreground: 217 100% 14%;
+    --secondary: 217 10% 18%;
     --secondary-foreground: 43 16% 89%;
-    --muted: 156 10% 18%;
+    --muted: 217 10% 18%;
     --muted-foreground: 53 5% 64%;
-    --accent: 159 22% 55%;
-    --accent-foreground: 156 27% 14%;
+    --accent: 211 100% 79%;
+    --accent-foreground: 217 100% 14%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 43 16% 89%;
     --warning: 38 92% 50%;
     --warning-foreground: 48 96% 10%;
-    --border: 156 10% 20%;
-    --input: 156 10% 20%;
-    --ring: 159 22% 60%;
+    --border: 217 10% 20%;
+    --input: 217 10% 20%;
+    --ring: 213 100% 68%;
   }
 }
 
@@ -81,7 +89,7 @@
 @layer components {
   /* Truenote button variants. Two, only two. See DESIGN.md §Buttons.
    *   .btn-whisper — app-wide default: #FAFAFA, warm-gray text, 1px inset hairline
-   *   .btn-csr-ask — the deliberate exception: forest-green filled, white text.
+   *   .btn-csr-ask — the deliberate exception: brand-blue filled, white text.
    *                  Used ONLY on /chat so CSRs find Ask under call pressure.
    * Both share a shape + focus-ring spec so focus is never color-only (WCAG AA).
    */
