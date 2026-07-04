@@ -37,6 +37,14 @@ const STAGE_LABEL: Record<AskStage, string> = {
   generating: "Writing the answer…"
 };
 
+// First-run teaching examples. Clicking prefills the textarea (never
+// auto-submits) so the CSR sees the register questions are asked in.
+const EXAMPLE_QUESTIONS = [
+  "What's the cancellation fee on the Basic plan?",
+  "How do I process a refund for a returned device?",
+  "What ID does a caller need to verify their account?"
+] as const;
+
 export function ChatPage({ user }: ChatPageProps): JSX.Element {
   // Super_users need a program selection to ask anything. Non-super_user
   // roles always have a fixed program_id, so the picker doesn't apply.
@@ -152,7 +160,21 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             icon={MessageSquare}
             title="Ask your first question"
             hint="Answers come from your program's documents and always cite their source."
-          />
+          >
+            {EXAMPLE_QUESTIONS.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => {
+                  setQuestion(q);
+                  textareaRef.current?.focus();
+                }}
+                className="btn-whisper px-3 py-1 text-xs"
+              >
+                {q}
+              </button>
+            ))}
+          </EmptyState>
         ) : null}
 
         {exchanges.length > 0 ? (
