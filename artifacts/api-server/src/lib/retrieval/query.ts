@@ -32,6 +32,8 @@ export interface RetrievalResult {
 
 export interface RetrievalDeps {
   embedder?: Embedder;
+  /** Called just before the Cohere rerank pass. Lets callers surface an honest pipeline stage to a waiting user. */
+  onRerankStart?: () => void;
 }
 
 interface CandidateRow {
@@ -152,6 +154,7 @@ export async function retrieve(
     return { chunks: [], refused: true, topScore: null, threshold };
   }
 
+  deps.onRerankStart?.();
   const reranked = await rerankWithCohere({
     question: trimmed,
     documents: candidates.map((c) => c.content),
