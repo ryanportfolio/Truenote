@@ -33,14 +33,34 @@ export function TopBar({ user, onLogout }: TopBarProps): JSX.Element {
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-border bg-secondary px-4">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        {/* Brand mark: the favicon blob rendered in ink, not brand blue —
+         * persistent chrome must not spend the rare-blue budget
+         * (DESIGN.md: blue appears once or twice per screen, earned). */}
+        <svg viewBox="0 0 32 32" className="h-4 w-4 shrink-0" aria-hidden>
+          <path
+            d="M16 2c10 0 14 4 14 14s-4 14-14 14S2 26 2 16 6 2 16 2z"
+            className="fill-foreground"
+          />
+          <text
+            x="16"
+            y="22"
+            textAnchor="middle"
+            fontFamily="Georgia, serif"
+            fontSize="18"
+            fontWeight="600"
+            className="fill-secondary"
+          >
+            T
+          </text>
+        </svg>
         {/* Wordmark is a "distinctive element": Georgia, per DESIGN.md §Typography. */}
         <div className="font-display text-base font-semibold tracking-tight">Truenote</div>
       </div>
       <div className="flex items-center gap-4">
         <ProgramSelector user={user} />
         <div className="flex items-center gap-2 text-xs">
-          <span className="text-muted-foreground">{user.email}</span>
+          <span className="hidden text-muted-foreground sm:inline">{user.email}</span>
           <span className="rounded-full bg-muted px-2 py-0.5 font-medium uppercase tracking-wide text-muted-foreground">
             {ROLE_LABEL[user.role]}
           </span>

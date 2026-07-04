@@ -96,9 +96,32 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
       ) : (
         <UploadForm onUploaded={() => void refresh()} />
       )}
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      ) : null}
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading documents…</p>
+        <div
+          role="status"
+          className="overflow-hidden rounded-lg border border-border bg-card shadow-card"
+        >
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between gap-4 border-t border-border px-3 py-3 first:border-t-0"
+            >
+              <div className="skeleton h-4 w-48" />
+              <div className="skeleton h-4 w-32" />
+              <div className="skeleton h-4 w-16 rounded-full" />
+              <div className="skeleton h-4 w-24" />
+            </div>
+          ))}
+          <span className="sr-only">Loading documents…</span>
+        </div>
       ) : noProgramSelected ? null : (
         <DocumentList items={items} onDeleted={() => void refresh()} />
       )}

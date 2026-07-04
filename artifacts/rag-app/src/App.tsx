@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Route, Switch, Redirect } from "wouter";
+import { Link, Route, Switch, Redirect } from "wouter";
+import { SearchX } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
+import { EmptyState } from "@/components/EmptyState";
 import { ChatPage } from "@/pages/Chat";
 import { AdminPage } from "@/pages/Admin";
 import { AdminGapsPage } from "@/pages/AdminGaps";
@@ -165,9 +167,17 @@ export function App(): JSX.Element {
   }, []);
 
   if (auth.status === "loading") {
+    // Boot state: the wordmark breathing (same pulse as skeletons) instead
+    // of a bare "Loading…" string. role=status keeps it announced.
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <div className="text-sm text-muted-foreground">Loading…</div>
+        <div
+          role="status"
+          className="font-display text-2xl font-semibold tracking-tight motion-safe:animate-skeleton"
+        >
+          Truenote
+          <span className="sr-only">Loading…</span>
+        </div>
       </div>
     );
   }
@@ -233,11 +243,17 @@ export function App(): JSX.Element {
           />
         </Route>
         <Route>
-          <div className="mx-auto max-w-3xl px-6 py-8">
-            <h1 className="text-xl font-semibold tracking-tight">Not found</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              The page you're looking for doesn't exist.
-            </p>
+          <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
+            <h1 className="font-display text-2xl font-semibold tracking-tight">Not found</h1>
+            <EmptyState
+              icon={SearchX}
+              title="Page not found"
+              hint="The page you're looking for doesn't exist."
+            >
+              <Link href="/chat" className="btn-whisper px-3 py-1.5">
+                Go to Chat
+              </Link>
+            </EmptyState>
           </div>
         </Route>
       </Switch>

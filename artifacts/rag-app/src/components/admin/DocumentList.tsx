@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { deleteDocument } from "@/lib/api";
 import type { DocumentListItem } from "@/types/api";
+import { EmptyState } from "@/components/EmptyState";
 import { PreviewPanel } from "./PreviewPanel";
 
 interface DocumentListProps {
@@ -19,7 +21,15 @@ function StatusPill({ status }: { status: string | null }): JSX.Element {
     failed: "bg-destructive/15 text-destructive"
   };
   return (
-    <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", map[s] ?? map["pending"])}>
+    <span
+      className={cn(
+        "rounded-full px-2 py-0.5 text-xs font-medium",
+        map[s] ?? map["pending"],
+        // The only in-progress state in the app gets the only ambient
+        // motion — same precedent as the chat wait-stage pulse.
+        s === "parsing" && "motion-safe:animate-pulse"
+      )}
+    >
       {s}
     </span>
   );
@@ -53,20 +63,30 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
 
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-sm text-muted-foreground">
-        No documents yet. Upload one to get started.
-      </div>
+      <EmptyState
+        icon={FileText}
+        title="No documents yet"
+        hint="Upload an SOP, policy, or screenshot above — parsed versions appear here for preview."
+      />
     );
   }
 
   return (
     <>
       {deleteError ? (
-        <p className="text-sm text-destructive">{deleteError}</p>
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {deleteError}
+        </p>
       ) : null}
       {/* Cohere table language: header carried by type + rule, not fill;
-        * rows separated by horizontal hairlines only. */}
-      <table className="w-full overflow-hidden rounded-lg border border-border bg-card text-sm shadow-card">
+        * rows separated by horizontal hairlines only. The wrapper owns the
+        * card chrome so narrow viewports scroll the table instead of
+        * crushing it. */}
+      <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
+      <table className="w-full min-w-[36rem] text-sm">
         <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="px-3 py-2 font-medium">Title</th>
@@ -79,7 +99,10 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
           {items.map((item) => {
             const isDeleting = deletingId === item.documentId;
             return (
-              <tr key={item.documentId} className="border-t border-border">
+              <tr
+                key={item.documentId}
+                className="border-t border-border transition-colors duration-100 ease-out hover:bg-muted/40"
+              >
                 <td className="px-3 py-2 font-medium">{item.title}</td>
                 <td className="px-3 py-2 text-muted-foreground">
                   {item.uploadedAt ? new Date(item.uploadedAt).toLocaleString() : "—"}
@@ -112,6 +135,7 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
           })}
         </tbody>
       </table>
+      </div>
 
       {previewVersionId ? (
         <PreviewPanel versionId={previewVersionId} onClose={() => setPreviewVersionId(null)} />

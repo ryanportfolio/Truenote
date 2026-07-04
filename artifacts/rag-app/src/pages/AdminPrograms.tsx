@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Building2 } from "lucide-react";
 import { createProgram, listPrograms } from "@/lib/api";
+import { EmptyState } from "@/components/EmptyState";
 import { setSelectedProgramId } from "@/lib/selectedProgram";
 import type { CurrentUser, Program } from "@/types/api";
 
@@ -78,9 +80,25 @@ function AdminProgramsInner({ user }: AdminProgramsPageProps): JSX.Element {
       <ProgramCreateForm onCreated={handleCreated} />
 
       {loadError ? (
-        <p className="text-sm text-destructive">{loadError}</p>
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {loadError}
+        </p>
       ) : loading ? (
-        <p className="text-sm text-muted-foreground">Loading programs…</p>
+        <div role="status" className="flex flex-col gap-2">
+          {[0, 1].map((i) => (
+            <div
+              key={i}
+              className="rounded-lg border border-border bg-card px-4 py-3 shadow-card"
+            >
+              <div className="skeleton h-4 w-40" />
+              <div className="skeleton mt-2 h-3 w-56" />
+            </div>
+          ))}
+          <span className="sr-only">Loading programs…</span>
+        </div>
       ) : (
         <ProgramsList items={programs} />
       )}
@@ -142,12 +160,19 @@ function ProgramCreateForm({ onCreated }: ProgramCreateFormProps): JSX.Element {
           disabled={submitting}
         />
       </label>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      ) : null}
       <div className="flex justify-end">
         <button
           type="submit"
           disabled={submitting || name.trim().length === 0}
-          className="btn-whisper px-3 py-1.5"
+          className="btn-primary px-4 py-1.5"
         >
           {submitting ? "Creating…" : "Create program"}
         </button>
@@ -163,9 +188,11 @@ interface ProgramsListProps {
 function ProgramsList({ items }: ProgramsListProps): JSX.Element {
   if (items.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        No programs yet. Create one above to get started.
-      </p>
+      <EmptyState
+        icon={Building2}
+        title="No programs yet"
+        hint="Create one above — documents, users, and queries all scope to a program."
+      />
     );
   }
   return (

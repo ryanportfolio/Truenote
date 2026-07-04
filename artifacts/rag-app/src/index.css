@@ -97,6 +97,17 @@
     color: oklch(var(--muted-foreground));
     opacity: 1;
   }
+  /* Branded text selection. Ink on the 15% blue tint over card computes
+   * to ~12.2:1 — AAA holds even inside a selection. */
+  ::selection {
+    background-color: oklch(var(--primary) / 0.15);
+  }
+  /* Warm hairline scrollbars (transcript, slide-over panels) instead of
+   * default gray chrome. Firefox + Chromium ≥121 honor these. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(var(--border)) transparent;
+  }
 }
 
 @layer components {
@@ -104,15 +115,18 @@
    * which is the whisper family at icon size, not a third variant.
    * See DESIGN.md §Buttons.
    *   .btn-whisper — app-wide default: chrome surface, warm-gray text, 1px inset hairline
-   *   .btn-csr-ask — the deliberate exception: brand-blue filled, white text.
-   *                  Used ONLY on /chat so CSRs find Ask under call pressure.
+   *   .btn-primary — brand-blue filled, white text. At most ONE per surface,
+   *                  always the primary action the user came for: Ask (/chat),
+   *                  Upload, Create user, Create program.
+   *   .btn-csr-ask — alias of .btn-primary kept so the /chat Ask button
+   *                  stays greppable as the original deliberate exception.
    * Buttons are pills (rounded-full) — the Cohere shape signature. Chips and
    * badges share it; rectangular controls (inputs, cards) do not.
    * All share a focus-ring spec so focus is never color-only (WCAG AA).
    */
   .btn-base {
-    @apply inline-flex items-center justify-center rounded-full text-sm font-medium
-           transition-colors duration-100 ease-out
+    @apply inline-flex cursor-pointer items-center justify-center rounded-full text-sm font-medium
+           transition-[color,background-color,box-shadow] duration-100 ease-out
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background
            disabled:cursor-not-allowed disabled:opacity-50;
   }
@@ -128,20 +142,42 @@
     @apply bg-muted;
   }
 
+  .btn-primary,
   .btn-csr-ask {
     @apply btn-base bg-primary text-primary-foreground;
   }
+  .btn-primary:hover:not(:disabled),
   .btn-csr-ask:hover:not(:disabled) {
     @apply bg-accent;
   }
+  .btn-primary:active:not(:disabled),
   .btn-csr-ask:active:not(:disabled) {
     background-color: oklch(var(--primary) / 0.92);
+  }
+
+  /* Native <select> quiet restyle: drop the OS chevron for a consistent
+   * muted one. Chevron stroke is --muted-foreground's hex (#5C5A50) baked
+   * into the data URI — CSS url() can't read custom properties; revisit if
+   * dark mode ever ships a toggle. Call sites keep their own border/bg/size. */
+  .select-quiet {
+    @apply cursor-pointer appearance-none bg-no-repeat pr-8;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235C5A50' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.5rem center;
+    background-size: 1rem 1rem;
+  }
+
+  /* Loading placeholder bar: muted fill with a slow breathing pulse
+   * (keyframes in tailwind.config.ts). motion-safe only — reduced-motion
+   * users see static bars; every skeleton group carries role="status" with
+   * sr-only text so screen readers still hear "Loading". */
+  .skeleton {
+    @apply rounded-md bg-muted motion-safe:animate-skeleton;
   }
 
   /* Icon-only quiet button: copy, thumbs, close-X. Transparent at rest so the
    * icon reads as part of its row; hover fills with --muted. */
   .btn-icon {
-    @apply inline-flex items-center justify-center rounded-full p-1
+    @apply inline-flex cursor-pointer items-center justify-center rounded-full p-1
            text-muted-foreground transition-colors duration-100 ease-out
            hover:bg-muted hover:text-foreground
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background

@@ -5,7 +5,9 @@ import {
   type FormEvent,
   type KeyboardEvent
 } from "react";
+import { MessageSquare } from "lucide-react";
 import { askQuestionStream } from "@/lib/api";
+import { EmptyState } from "@/components/EmptyState";
 import {
   hasAtLeastRole,
   type AskResponse,
@@ -34,6 +36,14 @@ const STAGE_LABEL: Record<AskStage, string> = {
   reranking: "Ranking sources…",
   generating: "Writing the answer…"
 };
+
+// First-run teaching examples. Clicking prefills the textarea (never
+// auto-submits) so the CSR sees the register questions are asked in.
+const EXAMPLE_QUESTIONS = [
+  "What's the cancellation fee on the Basic plan?",
+  "How do I process a refund for a returned device?",
+  "What ID does a caller need to verify their account?"
+] as const;
 
 export function ChatPage({ user }: ChatPageProps): JSX.Element {
   // Super_users need a program selection to ask anything. Non-super_user
@@ -145,6 +155,28 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
           </div>
         ) : null}
 
+        {exchanges.length === 0 && hasProgram ? (
+          <EmptyState
+            icon={MessageSquare}
+            title="Ask your first question"
+            hint="Answers come from your program's documents and always cite their source."
+          >
+            {EXAMPLE_QUESTIONS.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => {
+                  setQuestion(q);
+                  textareaRef.current?.focus();
+                }}
+                className="btn-whisper px-3 py-1 text-xs"
+              >
+                {q}
+              </button>
+            ))}
+          </EmptyState>
+        ) : null}
+
         {exchanges.length > 0 ? (
           <ol className="flex flex-col gap-4" aria-label="Questions and answers">
             {exchanges.map((exchange) => (
@@ -165,13 +197,26 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
                     </button>
                   </div>
                 ) : (
-                  <p
-                    className="text-sm text-muted-foreground motion-safe:animate-pulse"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    {stage ? STAGE_LABEL[stage] : "Sending…"}
-                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    <p
+                      className="text-sm text-muted-foreground motion-safe:animate-pulse"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {stage ? STAGE_LABEL[stage] : "Sending…"}
+                    </p>
+                    {/* Answer-card silhouette: shows the CSR where the answer
+                      * will land. Decorative — the stage line above carries
+                      * the status for screen readers. */}
+                    <div
+                      aria-hidden
+                      className="rounded-lg border border-border bg-card p-4 shadow-card"
+                    >
+                      <div className="skeleton h-3.5 w-11/12" />
+                      <div className="skeleton mt-2 h-3.5 w-full" />
+                      <div className="skeleton mt-2 h-3.5 w-3/5" />
+                    </div>
+                  </div>
                 )}
               </li>
             ))}

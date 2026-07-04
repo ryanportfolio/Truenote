@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Flag, ThumbsDown, ThumbsUp } from "lucide-react";
 import { listQueryLog } from "@/lib/api";
+import { EmptyState } from "@/components/EmptyState";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 import type {
   CurrentUser,
@@ -46,13 +47,23 @@ const FILTERS: ReadonlyArray<{ value: QueryLogFilter; label: string }> = [
   { value: "all", label: "Everything" }
 ];
 
-const EMPTY_COPY: Record<QueryLogFilter, string> = {
-  flagged:
-    "No flagged gaps. When a CSR flags a refusal as missing content, it lands here.",
-  refused:
-    "No refusals in this scope. Refusals are logged automatically whenever the assistant can't ground an answer.",
-  negative: "No thumbs-down answers in this scope.",
-  all: "No questions have been asked in this scope yet."
+const EMPTY_COPY: Record<QueryLogFilter, { title: string; hint: string }> = {
+  flagged: {
+    title: "No flagged gaps",
+    hint: "When a CSR flags a refusal as missing content, it lands here."
+  },
+  refused: {
+    title: "No refusals in this scope",
+    hint: "Refusals are logged automatically whenever the assistant can't ground an answer."
+  },
+  negative: {
+    title: "No thumbs-down answers",
+    hint: "When a CSR thumbs-down an answer, it shows up here for review."
+  },
+  all: {
+    title: "No questions yet",
+    hint: "Once CSRs start asking, every query in this scope appears here."
+  }
 };
 
 function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
@@ -127,15 +138,36 @@ function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
       </div>
 
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           {error}
         </p>
       ) : loading ? (
-        <p className="text-sm text-muted-foreground">Loading queries…</p>
-      ) : items.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-sm text-muted-foreground">
-          {EMPTY_COPY[filter]}
+        <div
+          role="status"
+          className="overflow-hidden rounded-lg border border-border bg-card shadow-card"
+        >
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between gap-4 border-t border-border px-3 py-3 first:border-t-0"
+            >
+              <div className="skeleton h-4 w-64" />
+              <div className="skeleton h-4 w-32" />
+              <div className="skeleton h-4 w-20 rounded-full" />
+              <div className="skeleton h-4 w-12" />
+            </div>
+          ))}
+          <span className="sr-only">Loading queries…</span>
         </div>
+      ) : items.length === 0 ? (
+        <EmptyState
+          icon={Flag}
+          title={EMPTY_COPY[filter].title}
+          hint={EMPTY_COPY[filter].hint}
+        />
       ) : (
         <QueryTable items={items} />
       )}
@@ -147,7 +179,8 @@ function QueryTable({ items }: { items: QueryLogItem[] }): JSX.Element {
   // Latency is operator data, safe to show unconditionally here — the
   // whole page is manager+ (CSRs never reach this table).
   return (
-    <table className="w-full overflow-hidden rounded-lg border border-border bg-card text-sm shadow-card">
+    <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
+    <table className="w-full min-w-[40rem] text-sm">
       <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
         <tr>
           <th className="px-3 py-2 font-medium">Question</th>
@@ -158,7 +191,10 @@ function QueryTable({ items }: { items: QueryLogItem[] }): JSX.Element {
       </thead>
       <tbody>
         {items.map((item) => (
-          <tr key={item.id} className="border-t border-border align-top">
+          <tr
+            key={item.id}
+            className="border-t border-border align-top transition-colors duration-100 ease-out hover:bg-muted/40"
+          >
             <td className="max-w-md px-3 py-2">
               <span className="line-clamp-2">{item.question}</span>
             </td>
@@ -175,6 +211,7 @@ function QueryTable({ items }: { items: QueryLogItem[] }): JSX.Element {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
