@@ -1,6 +1,7 @@
 import type {
   AppConfig,
   AskResponse,
+  AskStage,
   ChangePasswordResponse,
   CreateUserRequest,
   CreateUserResponse,
@@ -231,6 +232,82 @@ export async function askQuestion(question: string): Promise<AskResponse> {
     })
   );
   return asJson<AskResponse>(response);
+}
+
+/**
+ * Streaming ask: consumes /api/ask/stream NDJSON. Stage events fire at
+ * real pipeline checkpoints while the CSR waits; the complete answer
+ * arrives atomically in the final "result" event (no token streaming —
+ * CSRs need the whole answer before they speak).
+ */
+export async function askQuestionStream(
+  question: string,
+  onStage: (stage: AskStage) => void,
+  signal?: AbortSignal
+): Promise<AskResponse> {
+  const response = await fetch(
+    "/api/ask/stream",
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+      signal
+    })
+  );
+  if (!response.ok || !response.body) {
+    if (response.status === 401) {
+      notifySessionExpired();
+      throw new UnauthorizedError();
+    }
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: AskResponse | null = null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf("\n");
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      newline = buffer.indexOf("\n");
+      if (!line) continue;
+      const event = JSON.parse(line) as
+        | { type: "stage"; stage: AskStage }
+        | { type: "result"; result: AskResponse }
+        | { type: "error"; message: string };
+      if (event.type === "stage") {
+        onStage(event.stage);
+      } else if (event.type === "result") {
+        result = event.result;
+      } else {
+        throw new Error(event.message);
+      }
+    }
+  }
+  if (!result) throw new Error("The answer stream ended early. Try again.");
+  return result;
+}
+
+/**
+ * CSR marks a refusal as "the knowledge base should have had this."
+ * Feeds the admin content-gaps queue (query_log.flagged_missing).
+ */
+export async function flagMissingContent(queryLogId: string): Promise<void> {
+  const response = await fetch(
+    "/api/flag-missing",
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ queryLogId })
+    })
+  );
+  await asJson<{ ok: boolean }>(response);
 }
 
 export async function submitFeedback(queryLogId: string, feedback: -1 | 0 | 1): Promise<void> {
