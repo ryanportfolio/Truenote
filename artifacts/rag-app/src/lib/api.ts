@@ -1,5 +1,6 @@
 import type {
   AppConfig,
+  AskHistoryTurn,
   AskResponse,
   AskStage,
   ChangePasswordResponse,
@@ -223,13 +224,16 @@ export async function changePassword(
   return json.user;
 }
 
-export async function askQuestion(question: string): Promise<AskResponse> {
+export async function askQuestion(
+  question: string,
+  history: AskHistoryTurn[] = []
+): Promise<AskResponse> {
   const response = await fetch(
     "/api/ask",
     withDefaults({
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question })
+      body: JSON.stringify({ question, history })
     })
   );
   return asJson<AskResponse>(response);
@@ -243,6 +247,7 @@ export async function askQuestion(question: string): Promise<AskResponse> {
  */
 export async function askQuestionStream(
   question: string,
+  history: AskHistoryTurn[],
   onStage: (stage: AskStage) => void,
   signal?: AbortSignal
 ): Promise<AskResponse> {
@@ -251,7 +256,7 @@ export async function askQuestionStream(
     withDefaults({
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, history }),
       signal
     })
   );

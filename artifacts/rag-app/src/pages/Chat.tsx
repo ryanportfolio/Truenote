@@ -8,6 +8,7 @@ import {
 import { askQuestionStream } from "@/lib/api";
 import {
   hasAtLeastRole,
+  type AskHistoryTurn,
   type AskResponse,
   type AskStage,
   type CurrentUser
@@ -30,10 +31,21 @@ interface Exchange {
 }
 
 const STAGE_LABEL: Record<AskStage, string> = {
+  rewriting: "Understanding the follow-up…",
   searching: "Searching the knowledge base…",
   reranking: "Ranking sources…",
   generating: "Writing the answer…"
 };
+
+/** Recent completed exchanges → rewrite context. The server re-caps everything. */
+const MAX_HISTORY_SENT = 3;
+
+function historyFrom(exchanges: Exchange[]): AskHistoryTurn[] {
+  return exchanges
+    .filter((e) => e.result !== null)
+    .slice(-MAX_HISTORY_SENT)
+    .map((e) => ({ question: e.question, answer: e.result?.answer ?? "" }));
+}
 
 export function ChatPage({ user }: ChatPageProps): JSX.Element {
   // Super_users need a program selection to ask anything. Non-super_user
@@ -80,6 +92,9 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
     nextId.current += 1;
     setBusy(true);
     setStage(null);
+    // Snapshot the history BEFORE appending the new pending exchange —
+    // follow-up rewriting needs prior completed turns, not the current one.
+    const history = historyFrom(exchanges);
     setExchanges((prev) => [...prev, { id, question: trimmed, result: null, error: null }]);
 
     const controller = new AbortController();
@@ -89,7 +104,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
       setExchanges((prev) => prev.map((e) => (e.id === id ? { ...e, ...fields } : e)));
 
     try {
-      const result = await askQuestionStream(trimmed, setStage, controller.signal);
+      const result = await askQuestionStream(trimmed, history, setStage, controller.signal);
       patch({ result });
     } catch (err) {
       if (controller.signal.aborted) {
@@ -126,12 +141,28 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
     // CSR surface: tight density by design (DESIGN.md §Density) — narrower
     // column (~Cohere's 640px measure), smaller gaps than admin pages.
     <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-6">
-      <header>
-        <h1 className="font-display text-2xl font-semibold tracking-tight">Chat</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Ask the knowledge base a question. Every answer ships with at least one citation, or the
-          system will explicitly say it could not find the answer.
-        </p>
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-semibold tracking-tight">Chat</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Ask the knowledge base a question. Every answer ships with at least one citation, or
+            the system will explicitly say it could not find the answer. Follow-ups work — "what
+            about the premium plan?" searches with the conversation in mind.
+          </p>
+        </div>
+        {exchanges.length > 0 ? (
+          // Follow-up rewriting reads recent turns, so a CSR starting the
+          // next CALL needs a clean slate — otherwise the previous
+          // customer's context bleeds into this customer's follow-ups.
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setExchanges([])}
+            className="btn-whisper shrink-0 px-3 py-1.5"
+          >
+            New conversation
+          </button>
+        ) : null}
       </header>
       <div className="flex flex-col gap-4">
         {!hasProgram ? (
