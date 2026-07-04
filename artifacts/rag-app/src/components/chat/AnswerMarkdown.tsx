@@ -55,7 +55,7 @@ export function AnswerMarkdown({
     }
     if (href === CITE_UNKNOWN_HREF) {
       return (
-        <span className="rounded bg-destructive/10 px-1 text-destructive">{children}</span>
+        <span className="rounded-sm bg-destructive/10 px-1 text-destructive">{children}</span>
       );
     }
     // Real hyperlinks are banned by prompt rule 6; if one slips through,
