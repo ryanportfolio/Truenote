@@ -5,6 +5,7 @@ import { db } from "../lib/db-client.js";
 import { programs, queryLog } from "@workspace/db/schema";
 import { retrieve } from "../lib/retrieval/query.js";
 import { generateAnswer, type Source } from "../lib/generation/answer.js";
+import { rewriteFollowUp, type HistoryTurn } from "../lib/generation/rewrite.js";
 import {
   authedUser,
   requireAuth,
@@ -42,16 +43,33 @@ function uniqueUuids(ids: string[]): string[] {
 }
 
 const AskBody = z.object({
-  question: z.string().min(1)
+  question: z.string().min(1),
+  /**
+   * Recent conversation turns, client-supplied, used ONLY for follow-up
+   * query rewriting before retrieval — never for answer generation (the
+   * citation contract grounds answers in excerpts alone). Caps bound the
+   * cost/injection surface; the rewriter further trims to the last 3 turns
+   * at 500 chars per field.
+   */
+  history: z
+    .array(
+      z.object({
+        question: z.string().max(2000),
+        answer: z.string().max(8000)
+      })
+    )
+    .max(8)
+    .optional()
 });
 
 /**
  * Pipeline stages surfaced to a waiting client. These are REAL checkpoints,
  * not timed guesses — the UI's wait-state honesty depends on that.
- * "searching" covers embed + hybrid search, "reranking" the Cohere pass,
- * "generating" the LLM call.
+ * "rewriting" fires only on follow-ups (history present), "searching"
+ * covers embed + hybrid search, "reranking" the Cohere pass, "generating"
+ * the LLM call.
  */
-export type AskStage = "searching" | "reranking" | "generating";
+export type AskStage = "rewriting" | "searching" | "reranking" | "generating";
 
 export interface AskResponse {
   queryLogId: string | null;
@@ -63,6 +81,8 @@ export interface AskResponse {
   retrievedChunks: { id: string; content: string; docTitle?: string }[];
   latencyMs: number;
   topScore: number | null;
+  /** The standalone question retrieval actually ran, when a follow-up was rewritten. Null otherwise. */
+  rewrittenQuestion: string | null;
 }
 
 /**
@@ -103,6 +123,7 @@ async function runAsk(
   question: string,
   user: CurrentUser,
   programId: string,
+  history: HistoryTurn[],
   onStage?: (stage: AskStage) => void
 ): Promise<AskResponse> {
   const t0 = Date.now();
@@ -132,7 +153,8 @@ async function runAsk(
       confidence: "low",
       retrievedChunks: [],
       latencyMs,
-      topScore: null
+      topScore: null,
+      rewrittenQuestion: null
     };
   }
 
@@ -143,16 +165,26 @@ async function runAsk(
     .limit(1);
   const programName = programRows[0]?.name ?? "the program";
 
+  // Follow-up rewriting: resolve conversational references into a
+  // standalone question BEFORE retrieval. Passthrough (no LLM call, no
+  // stage event) on the first turn. The ORIGINAL question is what gets
+  // logged — it's what the CSR typed; the rewrite is surfaced on the
+  // response for operator debugging.
+  if (history.length > 0) onStage?.("rewriting");
+  const rewrite = await rewriteFollowUp({ question, history });
+  const searchQuestion = rewrite.standaloneQuestion;
+  const rewrittenQuestion = searchQuestion !== question ? searchQuestion : null;
+
   onStage?.("searching");
   const retrieval = await retrieve(
-    { programId, question },
+    { programId, question: searchQuestion },
     { onRerankStart: () => onStage?.("reranking") }
   );
 
   if (!retrieval.refused) onStage?.("generating");
   const generation = await generateAnswer({
     programName,
-    question,
+    question: searchQuestion,
     chunks: retrieval.chunks,
     refusedByRetrieval: retrieval.refused
   });
@@ -185,7 +217,8 @@ async function runAsk(
       docTitle: c.docTitle
     })),
     latencyMs,
-    topScore: retrieval.topScore
+    topScore: retrieval.topScore,
+    rewrittenQuestion
   };
 }
 
@@ -201,7 +234,7 @@ askRouter.post("/ask", async (req, res, next) => {
     const programId = await resolveAskProgram(req, res);
     if (programId === null) return;
 
-    res.json(await runAsk(question, user, programId));
+    res.json(await runAsk(question, user, programId, parsed.data.history ?? []));
   } catch (err) {
     next(err);
   }
@@ -239,7 +272,7 @@ askRouter.post("/ask/stream", async (req, res, next) => {
     };
 
     try {
-      const result = await runAsk(question, user, programId, (stage) =>
+      const result = await runAsk(question, user, programId, parsed.data.history ?? [], (stage) =>
         send({ type: "stage", stage })
       );
       send({ type: "result", result });

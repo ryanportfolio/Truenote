@@ -68,7 +68,13 @@ export type Confidence = "high" | "medium" | "low";
  * Real pipeline checkpoints streamed by /api/ask/stream while the CSR
  * waits. Mirror of AskStage in api-server routes/ask.ts.
  */
-export type AskStage = "searching" | "reranking" | "generating";
+export type AskStage = "rewriting" | "searching" | "reranking" | "generating";
+
+/** One prior exchange sent for follow-up query rewriting (server uses it for retrieval only). */
+export interface AskHistoryTurn {
+  question: string;
+  answer: string;
+}
 
 export interface AskResponse {
   queryLogId: string | null;
@@ -79,6 +85,8 @@ export interface AskResponse {
   retrievedChunks: RetrievedChunk[];
   latencyMs: number;
   topScore: number | null;
+  /** The standalone question retrieval actually ran, when a follow-up was rewritten. */
+  rewrittenQuestion: string | null;
 }
 
 export type ParseStatus = "pending" | "parsing" | "ready" | "failed";
@@ -100,6 +108,30 @@ export interface DocumentListResponse {
    * an empty list, which would be ambiguous (could mean "no documents"
    * or "no scope"). Non-super_user responses never include this.
    */
+  noProgramSelected?: boolean;
+}
+
+/** One content gap: a question the KB failed, grouped over the window. */
+export interface KbGapItem {
+  question: string;
+  askCount: number;
+  refusedCount: number;
+  flaggedCount: number;
+  negativeCount: number;
+  /** ISO timestamp string. */
+  lastAskedAt: string;
+}
+
+export interface KbGapsResponse {
+  items: KbGapItem[];
+  windowDays: number;
+  totals: {
+    queries: number;
+    refused: number;
+    flaggedMissing: number;
+    negativeFeedback: number;
+  };
+  /** Same sentinel contract as DocumentListResponse. */
   noProgramSelected?: boolean;
 }
 

@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ChatPage } from "@/pages/Chat";
 import { AdminPage } from "@/pages/Admin";
 import { AdminGapsPage } from "@/pages/AdminGaps";
+import { AdminInsightsPage } from "@/pages/AdminInsights";
 import { AdminProgramsPage } from "@/pages/AdminPrograms";
 import { AdminUsersPage } from "@/pages/AdminUsers";
 import { LoginPage } from "@/pages/Login";
@@ -228,6 +229,9 @@ export function App(): JSX.Element {
         </Route>
         <Route path="/admin/gaps">
           <AdminGapsPage user={auth.user} />
+        </Route>
+        <Route path="/admin/insights">
+          <AdminInsightsPage user={auth.user} />
         </Route>
         <Route path="/admin/programs">
           <AdminProgramsPage user={auth.user} />

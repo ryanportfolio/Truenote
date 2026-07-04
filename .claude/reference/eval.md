@@ -28,6 +28,8 @@ Report these on the admin Evaluation page:
 - **Refusal rate on out-of-KB questions**: should be high (false positives = hallucination).
 - **p50 / p95 latency**: CSRs are mid-call. Slow = unusable.
 - **Stage-level recall (2026-07)**: for questions with `expected_doc_id` — `retrievalRecallPct` (doc entered the pre-rerank candidate pool) and `rerankRecallPct` (doc survived into the top-K). Plus `inKbFailuresByStage` attributing each in-KB failure to `retrieval` / `rerank` / `threshold` / `generation` (`unattributed` = no expected_doc_id or errored). This tells you WHICH stage to tune: retrieval misses → chunking/embedding/query work; rerank misses → candidate K or rerank model; threshold pile-up → retune `RERANK_CONFIDENCE_THRESHOLD` (especially after a `COHERE_RERANK_MODEL` change); generation misses → prompt/model work.
+- **Expected-doc rank (2026-07)**: `expectedDocRank` per question (1-based, in the post-rerank top-K) + `expectedDocRankMean`. A doc that passes at rank 7-of-8 is one rerank-model change away from a miss.
+- **Claim-level faithfulness (2026-07, `--judge`)**: gpt-4o judge decomposes each non-refused answer into atomic factual claims and labels each supported/unsupported against the excerpts the LLM saw (Cohere RAG-eval methodology). `meanFaithfulnessPct`, `unfaithfulQuestions`, per-question `unsupportedClaims`. Catches what phrase-matching can't: a *passing*, well-cited answer with one invented fee — the CLI lists "passing answer(s) with unsupported claims" separately. One extra gpt-4o call per judged question → opt-in flag. Out-of-KB questions that wrongly got answers ARE judged (prime hallucination candidates).
 
 ## Authoring eval questions
 
@@ -55,6 +57,14 @@ pnpm --filter @workspace/scripts run eval -- --limit 5
 
 # Machine-readable output (suppresses the human summary):
 pnpm --filter @workspace/scripts run eval -- --json > .tmp/eval-result.json
+
+# Claim-level faithfulness judge (extra gpt-4o call per non-refused answer):
+pnpm --filter @workspace/scripts run eval -- --judge
+
+# Parameter sweep without touching Replit Secrets (run-scoped env overrides):
+pnpm --filter @workspace/scripts run eval -- --threshold 0.25 --top-k 12
+pnpm --filter @workspace/scripts run eval -- --rerank-model rerank-v3.5 --threshold 0.2
+pnpm --filter @workspace/scripts run eval -- --neighbors 0   # A/B neighbor expansion
 ```
 
 Implementation: `artifacts/api-server/src/lib/eval/runner.ts` is the pure runner — loads questions, calls `retrieve()` + `generateAnswer()` directly (skips HTTP/auth so eval doesn't pollute `query_log`), scores each result. `scripts/src/eval.ts` is the CLI wrapper.

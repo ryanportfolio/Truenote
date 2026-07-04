@@ -8,6 +8,7 @@ import { meRouter } from "./me.js";
 import { programsRouter } from "./admin/programs.js";
 import { queriesRouter } from "./admin/queries.js";
 import { usersRouter } from "./admin/users.js";
+import { insightsRouter } from "./admin/insights.js";
 
 export function registerRoutes(app: Express): void {
   app.use("/health", healthRouter);
@@ -23,6 +24,7 @@ export function registerRoutes(app: Express): void {
   app.use("/api/admin/programs", programsRouter);
   app.use("/api/admin/queries", queriesRouter);
   app.use("/api/admin/users", usersRouter);
+  app.use("/api/admin/insights", insightsRouter);
   app.use("/api/documents", documentsRouter);
   app.use("/api", askRouter);
 }

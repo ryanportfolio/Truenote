@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Building2, FileText, Flag, MessageSquare, Users } from "lucide-react";
+import { Building2, FileText, Flag, Lightbulb, MessageSquare, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { hasAtLeastRole } from "@/types/api";
 import type { CurrentUser, UserRole } from "@/types/api";
@@ -22,6 +22,7 @@ const NAV: ReadonlyArray<{
   { href: "/chat", label: "Chat", icon: MessageSquare, minRole: "csr" },
   { href: "/admin/documents", label: "Documents", icon: FileText, minRole: "manager" },
   { href: "/admin/gaps", label: "Gaps", icon: Flag, minRole: "manager" },
+  { href: "/admin/insights", label: "Insights", icon: Lightbulb, minRole: "manager" },
   { href: "/admin/users", label: "Users", icon: Users, minRole: "manager" },
   { href: "/admin/programs", label: "Programs", icon: Building2, minRole: "super_user" }
 ];

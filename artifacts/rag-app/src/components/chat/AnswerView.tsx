@@ -34,10 +34,15 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
         />
         <footer className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
           {showDebug ? (
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <span>Confidence: {result.confidence}</span>
               {result.topScore !== null ? <span>Top score: {result.topScore.toFixed(2)}</span> : null}
               <span>{result.latencyMs} ms</span>
+              {result.rewrittenQuestion ? (
+                <span title="Follow-up rewritten for retrieval">
+                  Searched as: “{result.rewrittenQuestion}”
+                </span>
+              ) : null}
             </div>
           ) : (
             <span aria-hidden />
