@@ -103,6 +103,30 @@ export interface DocumentListResponse {
   noProgramSelected?: boolean;
 }
 
+/** One content gap: a question the KB failed, grouped over the window. */
+export interface KbGapItem {
+  question: string;
+  askCount: number;
+  refusedCount: number;
+  flaggedCount: number;
+  negativeCount: number;
+  /** ISO timestamp string. */
+  lastAskedAt: string;
+}
+
+export interface KbGapsResponse {
+  items: KbGapItem[];
+  windowDays: number;
+  totals: {
+    queries: number;
+    refused: number;
+    flaggedMissing: number;
+    negativeFeedback: number;
+  };
+  /** Same sentinel contract as DocumentListResponse. */
+  noProgramSelected?: boolean;
+}
+
 export interface UploadResponse {
   ok: boolean;
   error?: string;

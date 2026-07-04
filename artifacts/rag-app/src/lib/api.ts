@@ -7,6 +7,7 @@ import type {
   CreateUserResponse,
   CurrentUser,
   DocumentListResponse,
+  KbGapsResponse,
   LoginResponse,
   PreviewResponse,
   Program,
@@ -324,6 +325,14 @@ export async function submitFeedback(queryLogId: string, feedback: -1 | 0 | 1): 
 export async function listDocuments(): Promise<DocumentListResponse> {
   const response = await fetch("/api/documents", withDefaults());
   return asJson<DocumentListResponse>(response);
+}
+
+export async function fetchKbGaps(windowDays: number): Promise<KbGapsResponse> {
+  const response = await fetch(
+    `/api/admin/insights/kb-gaps?days=${encodeURIComponent(windowDays)}`,
+    withDefaults()
+  );
+  return asJson<KbGapsResponse>(response);
 }
 
 export async function uploadDocument(formData: FormData): Promise<UploadResponse> {
