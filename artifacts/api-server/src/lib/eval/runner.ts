@@ -34,7 +34,36 @@ import { generateAnswer } from "../generation/answer.js";
  * Citation matching uses the doc_id, not the chunk_id — chunk ids
  * change with every re-ingest, doc ids don't, so authoring eval
  * questions against chunk ids would be brittle.
+ *
+ * Stage attribution: retrieval runs with withTrace, so for questions
+ * with an expected_doc_id we know WHERE the pipeline lost the doc —
+ * never a candidate (retrieval), a candidate but cut by the reranker
+ * (rerank), reranked into top-K but below the confidence gate
+ * (threshold), or delivered to the LLM and still failed (generation).
+ * Industry consensus is that most RAG failures are retrieval failures;
+ * this is how we check that claim against OUR system instead of
+ * tuning the wrong stage.
  */
+
+export type FailureStage = "retrieval" | "rerank" | "threshold" | "generation";
+
+/**
+ * Attribute an in-KB failure to a pipeline stage. Null when the question
+ * has no expected_doc_id (hits are unknowable) — those failures land in
+ * the "unattributed" bucket.
+ */
+export function attributeFailure(input: {
+  retrievalHit: boolean | null;
+  rerankHit: boolean | null;
+  /** The retrieval-side confidence gate (topScore < threshold), NOT the LLM's refusal. */
+  gateRefused: boolean;
+}): FailureStage | null {
+  if (input.retrievalHit === null || input.rerankHit === null) return null;
+  if (!input.retrievalHit) return "retrieval";
+  if (!input.rerankHit) return "rerank";
+  if (input.gateRefused) return "threshold";
+  return "generation";
+}
 
 export interface EvalRunOptions {
   /** Restrict to one program. Required when running across multiple programs would be ambiguous. */
@@ -70,6 +99,13 @@ export interface EvalQuestionResult {
   phrasesPresent: { phrase: string; present: boolean }[];
   /** Null when expected_answer_contains is empty. */
   answerCorrect: boolean | null;
+  // Stage-level retrieval metrics (null when expected_doc_id is unset)
+  /** Expected doc appeared in the merged vector+BM25 candidates (pre-rerank). */
+  retrievalHit: boolean | null;
+  /** Expected doc survived the reranker into the top-K sent to the LLM. */
+  rerankHit: boolean | null;
+  /** Which pipeline stage lost an in-KB question. Null for passes and unattributable failures. */
+  failureStage: FailureStage | null;
   /** Set if the pipeline threw — pass is false, other fields default. */
   error: string | null;
 }
@@ -86,6 +122,20 @@ export interface EvalSummary {
   // Sub-metrics (in-kb only; out-of-kb has no answer/citation to score)
   citationAccuracyPct: number | null;
   answerAccuracyPct: number | null;
+  // Stage-level recall (in-kb questions WITH expected_doc_id)
+  /** % where the expected doc entered the candidate pool (pre-rerank). */
+  retrievalRecallPct: number | null;
+  /** % where the expected doc survived reranking into the top-K. */
+  rerankRecallPct: number | null;
+  /** In-KB failures attributed to the stage that lost the doc. */
+  inKbFailuresByStage: {
+    retrieval: number;
+    rerank: number;
+    threshold: number;
+    generation: number;
+    /** In-KB failures with no expected_doc_id (or that errored) — unattributable. */
+    unattributed: number;
+  };
   // Latency
   latencyP50Ms: number;
   latencyP95Ms: number;
@@ -227,6 +277,9 @@ async function evaluateOne(q: {
       citationCorrect: q.expectedDocId === null ? null : false,
       phrasesPresent: expectedPhrases.map((p) => ({ phrase: p, present: false })),
       answerCorrect: expectedPhrases.length === 0 ? null : false,
+      retrievalHit: null,
+      rerankHit: null,
+      failureStage: null,
       error: "eval_question has no program_id — cannot run retrieval"
     };
   }
@@ -234,7 +287,8 @@ async function evaluateOne(q: {
   try {
     const retrieval = await retrieve({
       programId: q.programId,
-      question: q.question
+      question: q.question,
+      withTrace: true
     });
     const generation = await generateAnswer({
       programName: q.programName ?? "the program",
@@ -263,6 +317,23 @@ async function evaluateOne(q: {
     const citationCorrect: boolean | null =
       q.expectedDocId === null ? null : citedDocIds.includes(q.expectedDocId);
 
+    // Stage hits from the retrieval trace. Doc-id based for the same
+    // reason citation matching is — chunk ids churn on re-ingest.
+    const candidateDocIds = new Set(
+      (retrieval.trace?.candidates ?? [])
+        .map((e) => e.documentId)
+        .filter((d): d is string => d !== null)
+    );
+    const rankedDocIds = new Set(
+      (retrieval.trace?.ranked ?? [])
+        .map((e) => e.documentId)
+        .filter((d): d is string => d !== null)
+    );
+    const retrievalHit: boolean | null =
+      q.expectedDocId === null ? null : candidateDocIds.has(q.expectedDocId);
+    const rerankHit: boolean | null =
+      q.expectedDocId === null ? null : rankedDocIds.has(q.expectedDocId);
+
     let pass: boolean;
     if (kind === "out-of-kb") {
       // Out-of-KB question passes iff the system correctly refused.
@@ -274,6 +345,11 @@ async function evaluateOne(q: {
         (citationCorrect === null || citationCorrect) &&
         (answerCorrect === null || answerCorrect);
     }
+
+    const failureStage =
+      kind === "in-kb" && !pass
+        ? attributeFailure({ retrievalHit, rerankHit, gateRefused: retrieval.refused })
+        : null;
 
     return {
       questionId: q.id,
@@ -294,6 +370,9 @@ async function evaluateOne(q: {
       citationCorrect,
       phrasesPresent,
       answerCorrect,
+      retrievalHit,
+      rerankHit,
+      failureStage,
       error: null
     };
   } catch (err) {
@@ -316,6 +395,9 @@ async function evaluateOne(q: {
       citationCorrect: q.expectedDocId === null ? null : false,
       phrasesPresent: expectedPhrases.map((p) => ({ phrase: p, present: false })),
       answerCorrect: expectedPhrases.length === 0 ? null : false,
+      retrievalHit: null,
+      rerankHit: null,
+      failureStage: null,
       error: err instanceof Error ? err.message : String(err)
     };
   }
@@ -340,6 +422,23 @@ function summarize(results: EvalQuestionResult[]): EvalSummary {
     (r) => r.answerCorrect === true
   ).length;
 
+  // Stage recall: same denominator as citation accuracy (in-KB questions
+  // that name an expected_doc_id) — hits are unknowable without one.
+  const stageApplicable = inKb.filter((r) => r.retrievalHit !== null);
+  const retrievalHits = stageApplicable.filter((r) => r.retrievalHit === true).length;
+  const rerankHits = stageApplicable.filter((r) => r.rerankHit === true).length;
+
+  const inKbFailures = inKb.filter((r) => !r.pass);
+  const stageCount = (stage: FailureStage): number =>
+    inKbFailures.filter((r) => r.failureStage === stage).length;
+  const inKbFailuresByStage = {
+    retrieval: stageCount("retrieval"),
+    rerank: stageCount("rerank"),
+    threshold: stageCount("threshold"),
+    generation: stageCount("generation"),
+    unattributed: inKbFailures.filter((r) => r.failureStage === null).length
+  };
+
   const sortedLatency = results
     .map((r) => r.latencyMs)
     .sort((a, b) => a - b);
@@ -360,6 +459,15 @@ function summarize(results: EvalQuestionResult[]): EvalSummary {
       answerApplicable.length === 0
         ? null
         : (answerCorrect / answerApplicable.length) * 100,
+    retrievalRecallPct:
+      stageApplicable.length === 0
+        ? null
+        : (retrievalHits / stageApplicable.length) * 100,
+    rerankRecallPct:
+      stageApplicable.length === 0
+        ? null
+        : (rerankHits / stageApplicable.length) * 100,
+    inKbFailuresByStage,
     latencyP50Ms: percentile(sortedLatency, 50),
     latencyP95Ms: percentile(sortedLatency, 95)
   };

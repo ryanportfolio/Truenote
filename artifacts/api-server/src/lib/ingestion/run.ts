@@ -7,6 +7,7 @@ import { docxToMarkdown } from "../parsing/docx.js";
 import { chunkMarkdown } from "../parsing/chunker.js";
 import { createTiktokenTokenizer } from "../parsing/tokenizer.js";
 import { getObjectStorage } from "../storage/object-storage.js";
+import { buildContextHeader, prependContextHeader } from "./contextual.js";
 import { findCachedParsedMarkdown } from "./dedupe.js";
 import { OpenAIEmbedder, type Embedder } from "./embedder.js";
 import {
@@ -174,12 +175,23 @@ export async function runIngestion(
       .set({ parsedMarkdown })
       .where(eq(documentVersions.id, versionId));
 
-    // 7. Chunk.
+    // 7. Chunk, then prepend a contextual header ([Doc Title > Heading >
+    //    Subheading]) to every chunk. The header lands in the stored content
+    //    — which content_tsv is generated from — AND in the embedding input,
+    //    so both retrieval legs see the chunk's provenance. See contextual.ts.
     const tokenize = createTiktokenTokenizer();
-    const semanticChunks = chunkMarkdown(parsedMarkdown, { tokenize });
-    if (semanticChunks.length === 0) {
+    const rawChunks = chunkMarkdown(parsedMarkdown, { tokenize });
+    if (rawChunks.length === 0) {
       throw new Error("Chunker produced zero chunks");
     }
+    const semanticChunks = rawChunks.map((c) => {
+      const header = buildContextHeader(doc.title, c.metadata.heading_path ?? []);
+      return {
+        ...c,
+        content: prependContextHeader(header, c.content),
+        metadata: header ? { ...c.metadata, context_header: header } : c.metadata
+      };
+    });
 
     // 8. Image describe.
     //
@@ -210,10 +222,17 @@ export async function runIngestion(
             );
             const trimmed = description.trim();
             if (trimmed.length === 0) continue;
+            // Doc-title header (no heading path — OCR image extracts don't
+            // carry section position) so images retrieve by document name.
+            const imageHeader = buildContextHeader(doc.title);
             imageDescriptions.push({
-              content: `[Image on page ${page.index + 1}]: ${trimmed}`,
+              content: prependContextHeader(
+                imageHeader,
+                `[Image on page ${page.index + 1}]: ${trimmed}`
+              ),
               metadata: {
                 has_image: true,
+                ...(imageHeader ? { context_header: imageHeader } : {}),
                 ...(image.id ? { image_url: image.id } : {})
               }
             });

@@ -8,6 +8,7 @@
     "seed": "tsx src/seed.ts",
     "sweep-orphans": "tsx src/sweep-orphans.ts",
     "eval": "tsx src/eval.ts",
+    "reingest": "tsx src/reingest.ts",
     "check": "tsc --noEmit"
   },
   "dependencies": {
