@@ -26,7 +26,7 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
 
   return (
     <>
-      <article className="rounded border border-border bg-card p-4">
+      <article className="rounded-lg border border-border bg-card p-4 shadow-card">
         <AnswerMarkdown
           answer={result.answer}
           sources={result.sources}
@@ -78,10 +78,10 @@ function CopyAnswerButton({ result }: { result: AskResponse }): JSX.Element {
       type="button"
       aria-label="Copy answer"
       onClick={() => void copy()}
-      className="rounded p-1 hover:bg-secondary"
+      className="btn-icon"
     >
       {copied ? (
-        <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-300" aria-hidden />
+        <Check className="h-4 w-4 text-success" aria-hidden />
       ) : (
         <Copy className="h-4 w-4" aria-hidden />
       )}
@@ -89,13 +89,7 @@ function CopyAnswerButton({ result }: { result: AskResponse }): JSX.Element {
   );
 }
 
-function FeedbackButtons({
-  result,
-  hoverClass = "hover:bg-secondary"
-}: {
-  result: AskResponse;
-  hoverClass?: string;
-}): JSX.Element {
+function FeedbackButtons({ result }: { result: AskResponse }): JSX.Element {
   const [feedback, setFeedback] = useState<-1 | 0 | 1>(0);
 
   async function vote(value: 1 | -1): Promise<void> {
@@ -116,11 +110,7 @@ function FeedbackButtons({
         aria-label="Thumbs up"
         aria-pressed={feedback === 1}
         onClick={() => void vote(1)}
-        className={cn(
-          "rounded p-1",
-          hoverClass,
-          feedback === 1 && "bg-emerald-500/20 text-emerald-700 dark:text-emerald-200"
-        )}
+        className={cn("btn-icon", feedback === 1 && "bg-success/15 text-success")}
       >
         <ThumbsUp className="h-4 w-4" aria-hidden />
       </button>
@@ -128,11 +118,7 @@ function FeedbackButtons({
         aria-label="Thumbs down"
         aria-pressed={feedback === -1}
         onClick={() => void vote(-1)}
-        className={cn(
-          "rounded p-1",
-          hoverClass,
-          feedback === -1 && "bg-destructive/20 text-destructive"
-        )}
+        className={cn("btn-icon", feedback === -1 && "bg-destructive/15 text-destructive")}
       >
         <ThumbsDown className="h-4 w-4" aria-hidden />
       </button>
@@ -163,25 +149,27 @@ function RefusalView({
     }
   }
 
+  // Refusal is a successful response (PRODUCT.md: "refusal is a feature") —
+  // it gets the same calm card as any answer. The amber lives only in the
+  // badge chip, so the state is legible without the card shouting.
   return (
-    <article className="rounded border border-warning/40 bg-warning/10 p-4 text-warning-foreground">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
-        <span className="rounded bg-warning/30 px-2 py-0.5">Not in knowledge base</span>
+    <article className="rounded-lg border border-border bg-card p-4 shadow-card">
+      <div className="flex items-center gap-2">
+        <span className="rounded-full bg-warning/20 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-warning-foreground">
+          Not in knowledge base
+        </span>
       </div>
       <p className="mt-2 text-sm leading-relaxed">{result.answer}</p>
-      <p className="mt-2 text-xs leading-relaxed opacity-80">
+      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
         Try rephrasing with the exact term the docs use (plan name, form number, fee name).
       </p>
-      <footer className="mt-4 flex items-center justify-between border-t border-warning/30 pt-3 text-xs">
+      <footer className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
         {result.queryLogId ? (
           <button
             type="button"
             onClick={() => void flag()}
             disabled={flagged || flagBusy}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded border border-warning/40 px-2 py-1 font-medium",
-              flagged ? "opacity-70" : "hover:bg-warning/20"
-            )}
+            className="btn-whisper gap-1.5 px-2.5 py-1 text-xs"
           >
             <Flag className="h-3.5 w-3.5" aria-hidden />
             {flagged ? "Flagged — admins will review this gap" : "Flag as missing content"}
@@ -190,8 +178,8 @@ function RefusalView({
           <span aria-hidden />
         )}
         <div className="flex items-center gap-1">
-          {showDebug ? <span className="mr-2 text-warning-foreground/70">{result.latencyMs} ms</span> : null}
-          <FeedbackButtons result={result} hoverClass="hover:bg-warning/20" />
+          {showDebug ? <span className="mr-2">{result.latencyMs} ms</span> : null}
+          <FeedbackButtons result={result} />
         </div>
       </footer>
     </article>

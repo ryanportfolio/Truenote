@@ -46,7 +46,7 @@ export function AnswerMarkdown({
         <button
           type="button"
           onClick={() => onChipClick(chunkId)}
-          className="mx-0.5 inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0 align-baseline text-xs font-medium text-primary hover:bg-primary/20"
+          className="mx-0.5 inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0 align-baseline text-xs font-medium text-primary transition-colors duration-100 ease-out hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
           aria-label={`Citation ${childrenToText(children)} — ${title}`}
         >
           [{children}]
@@ -81,13 +81,15 @@ export function AnswerMarkdown({
               <table className="w-full border-collapse text-sm">{children}</table>
             </div>
           ),
+          // Cohere table language: horizontal rules only, header carried by
+          // weight + rule instead of fill or cell grids.
           th: ({ children }) => (
-            <th className="border border-border bg-secondary/40 px-2 py-1 text-left font-medium">
+            <th className="border-b border-border px-2 py-1.5 text-left font-medium">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="border border-border px-2 py-1 align-top">{children}</td>
+            <td className="border-t border-border px-2 py-1.5 align-top">{children}</td>
           ),
           // Rule 6 bans headings/code; if the model emits them anyway they
           // degrade to ordinary emphasis rather than shouting at the CSR.
