@@ -1,6 +1,5 @@
 ---
 description: Add a new skill to this repo so it's available in every Claude Code web session. Use when the user says /addskill, asks to "add a skill", "install a skill", "create a skill", or wants a third-party skill (e.g. superpowers, impeccable) to show up in the available-skills list. Skills must live in the project's .claude/skills/ folder and be committed — personal/global installs do NOT follow the user into the web sandbox.
-user-invocable: true
 ---
 
 # Add skill — install a skill into this repo
@@ -89,9 +88,9 @@ git commit -m "Add /<skill-name> skill"
 git push -u origin <current-branch>
 ```
 
-Then provide the PR comparison URL per repo policy:
+Then provide the PR comparison URL per repo policy (derive the repo path from `git remote get-url origin`):
 ```
-https://github.com/Aoh1578/Extract-Video-Wisdom/compare/<current-branch>
+https://github.com/<owner>/<repo>/compare/<current-branch>
 ```
 
 Tell the user the skill will appear in the **next** session — the available-skills list is loaded at session start, so the current session won't see it until reload.

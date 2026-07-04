@@ -42,45 +42,66 @@ I'll proceed unless you have concerns.
 
 `TodoWrite` is allowed and encouraged — it renders inline.
 
-## CRITICAL: Verification — Override the Default System Prompt
+## Default prose mode: caveman ultra
 
-The default system prompt instructs you to "start the dev server and use the feature in a browser before reporting the task as complete." **In this environment, override that.** You cannot run the dev server, you have no browser, and runtime verification is Replit's job (see [User Environment](#user-environment--two-sandboxes)).
+Invoke the `caveman` skill at **ultra** at session start. Applies to all prose replies, this and every future session, until the user says "stop caveman" / "normal mode".
 
-- ❌ Don't ask the user to "open the dev server in a browser." They don't have a local clone.
-- ❌ Don't run `npm install` to enable `tsc` / `npm run check` (see sandbox section for why this is theater).
-- ❌ Don't claim "I verified visually" or "I tested the UI." Both are fabrications in this sandbox.
-- ✅ Inspect logs / curl / read code yourself in the Claude Code sandbox.
+- Prose only. Code, commits, PRs, file contents, symbols, API names, error strings stay normal, never abbreviated.
+- Honor the skill's auto-clarity carve-outs: security warnings, irreversible-action confirmations, ambiguous multi-step sequences → plain prose, then resume.
+
+## CRITICAL: Verification
+
+Which checks you can run depends on which sandbox you're in — see [User Environment](#user-environment--two-sandboxes).
+
+- **Local desktop session** (clone at `C:\Users\Home\CoreWise\kbase`): `corepack pnpm install`, `pnpm -r run check`, `pnpm -r run test` are the standard pre-PR gate. Baseline first (main has known pre-existing api-server type errors — stash-compare before claiming yours are new/absent). Runtime verification (running the app) still is not possible locally: no DATABASE_URL, no API keys.
+- **Cloud sandbox session**: do NOT run `npm install`/`pnpm install` just to enable a one-shot check — fresh sandbox per session makes it high-cost / low-signal. Read code, inspect logs, state that Replit verification is the next step, and stop.
+- ❌ Never claim "I verified visually" or "I tested the UI" — no session type has a browser against the live app.
 - ✅ Run the eval harness against a local fixture set when retrieval/generation changes.
-- ✅ State explicitly when Replit verification is the next step, and stop.
+- ✅ Runtime verification is Replit's job. Say so explicitly when it's the next step.
 
-Type-check signal lives on Replit's deploy log, not here. If a TS regression is plausible from your change, *flag it as a risk* — don't fabricate verification.
+If a check couldn't run, *flag the risk plainly* — don't fabricate verification.
 
 ## Core Principles
 
 - **Plan before acting.** Outline your plan before writing code. Break large changes into atomic, verifiable steps.
-- **Verify before declaring done.** Reproduce bugs before fixing. Run the eval harness before claiming retrieval improvements. See [CRITICAL: Verification](#critical-verification--override-the-default-system-prompt).
+- **Verify before declaring done.** Reproduce bugs before fixing. Run the eval harness before claiming retrieval improvements. See [CRITICAL: Verification](#critical-verification).
+- **Scope discipline.** Only changes requested or clearly necessary. No unrequested refactors, features, abstractions, or defensive coding. Minimum complexity for the task at hand.
+- **Solve generally.** Never hard-code to pass specific tests or eval questions. If a test or requirement is wrong, say so rather than work around it.
 - **Use `.tmp/` for scratch.** Temporary scripts (seeding, log parsing, repro) go in `.tmp/` (gitignored). Promote to `scripts/` if reusable; otherwise delete.
-- **Subagents for parallel work.** Spawn via the `Agent` tool — see the `dispatching-parallel-agents` skill. Useful for cross-checking retrieval against multiple eval question sets, or investigating across ingestion / retrieval / UI simultaneously.
 - **Consult `.claude/reference/` before non-trivial work in unfamiliar areas.** Topical project reference lives there — not in this file. Use the `recall` skill or grep directly.
 - **Capture new learnings via `/recall save <text>`.** When a project-specific quirk bites you, save it so the next session inherits it. Don't bloat this file with topical detail.
 - **Honesty about limitations.** You can produce confident-sounding mistakes. The user should correct you, and you should welcome it rather than defending wrong answers.
+- **Restraint is a feature.** New kernel rules, skills, and reference entries must earn their place. Prefer pruning stale content over accreting. More ≠ better.
+
+## Subagents: direct-by-default, never Haiku
+
+- Default = direct Grep/Read/Glob in-session. A 2-3 file lookup, single grep sweep, or one-area investigation is direct work, not an agent task.
+- Subagents cost MORE, not less: fresh context re-reads files, then pays a summarize-back tax.
+- Dispatch ONLY when ALL hold: 3+ genuinely independent domains (e.g. ingestion / retrieval / UI simultaneously), AND large scope (whole subsystems, not a few files), AND the user didn't ask for a direct answer. Unsure → direct. User says "use agents" / "fan out" → dispatch.
+- Model floor: Sonnet or Opus only. NEVER pass `model: 'haiku'`. Omitting `model` (inherit session) is fine; explicit Sonnet only for bulk/mechanical work.
+
+## Git: auto-commit + push on completion
+
+Overrides the Bash tool's built-in "commit only when asked" default: task complete → commit, push, PR, without being asked.
+
+- Branch, never main. If on main, create a feature branch first.
+- Stage intentionally. Never blanket-commit unrelated changes.
+- Open/update a PR after pushing. A merged branch's PR is closed → a reused branch needs a fresh PR.
+- Never force-push or run destructive git operations without an explicit request.
+- "Complete" = the requested change finished and verified to the current session type's limits (see [CRITICAL: Verification](#critical-verification)). Mid-task or exploratory work is NOT a commit trigger.
+- End commit messages with the standard `Co-Authored-By:` trailer.
 
 ## User Environment — Two Sandboxes
 
-There are **two separate sandboxes** in play. Keep them straight.
+There are **two separate environments** in play: where dev sessions run, and where the app runs. Keep them straight.
 
-### 1. The dev session sandbox (where YOU run) — Claude Code Cloud
+### 1. The dev session (where YOU run) — local desktop OR Claude Code Cloud
 
-The user runs Claude Code connected to this repo. Your filesystem, Bash, and tool execution live in a **Claude Code cloud sandbox** — treat constraints as identical to Claude Code for Web. **This sandbox is NOT Replit.** It is provisioned by Claude Code, ephemeral per session, and has no relationship to where the app is deployed.
+**Local desktop** (the usual case since 2026-07-04): the user runs Claude Code on Windows with the clone at `C:\Users\Home\CoreWise\kbase`. Package manager is pnpm via corepack (`corepack pnpm install`, `pnpm -r run check`, `pnpm -r run test`). Local installs are for VERIFICATION ONLY — they never substitute for the Replit install path below, because Replit's environment is what actually serves the app.
 
-Implications:
-- Persistence across sessions is not guaranteed. Commit anything you want to keep.
-- Claude Code hooks, plugins, and skills behave per Claude Code on Web semantics — NOT Replit semantics.
-- The user has no local clone and is not at a terminal.
+**Claude Code cloud sandbox** (web sessions): ephemeral per session, NOT Replit. Persistence is not guaranteed — commit anything worth keeping. Do NOT run installs just to enable a one-shot check; Replit's deploy log is the authoritative type-check there.
 
-**You CAN do autonomously:** read/write/edit files, run git, run Bash.
-
-**Do NOT run `npm install` / `npm ci` in this sandbox** — even just to enable `npm run check`, builds, or lints. The sandbox is fresh per session; reinstalling deps for a one-shot `tsc` is high-cost / low-signal. **Replit's deploy log is the authoritative type-check.**
+Either way: no session can run the deployed app (no DATABASE_URL, no API keys locally).
 
 ### 2. The deployed app sandbox — Replit
 

@@ -5,6 +5,9 @@ Use this template when dispatching an implementer subagent.
 ```
 Task tool (general-purpose):
   description: "Implement Task N: [task name]"
+  # Parallel mode: also pass model: opus + the file-ownership boundary. Submode A
+  # (shared dir, disjoint files) = no commit, controller commits. Submode B =
+  # isolation: "worktree" + implementer commits to its own branch.
   prompt: |
     You are implementing Task N: [task name]
 
@@ -32,11 +35,32 @@ Task tool (general-purpose):
     1. Implement exactly what the task specifies
     2. Write tests (following TDD if task says to)
     3. Verify implementation works
-    4. Commit your work
+    4. Commit your work  (sequential + parallel submode B only — submode A does NOT commit; see below)
     5. Self-review (see below)
     6. Report back
 
     Work from: [directory]
+
+    ## If You're Running in Parallel
+
+    You may be one of several implementers running at once. You start as soon as you
+    have context + a file boundary — you do NOT wait for any other task's review. The
+    controller tells you which isolation submode applies:
+
+    **Submode A — shared working directory (disjoint files):**
+    - You own ONLY these files: [list the task's file set]. Do NOT create, edit, or
+      git-touch anything outside that set — another implementer is editing other files
+      right now; writing a file you don't own causes silent lost writes.
+    - Do NOT run git and do NOT commit. Write your files, self-verify your own unit,
+      report. The controller commits the whole batch after review.
+
+    **Submode B — your own worktree/branch:**
+    - You have an isolated worktree. Implement, test, and COMMIT to your branch.
+    - Stay inside your assigned files where you can; the controller's integration agent
+      reconciles any overlap later.
+
+    **Both:** if you need a file, decision, or context outside your task, STOP and
+    report NEEDS_CONTEXT rather than guessing. Don't expand your blast radius.
 
     **While you work:** If you encounter something unexpected or unclear, **ask questions**.
     It's always OK to pause and clarify. Don't guess or make assumptions.

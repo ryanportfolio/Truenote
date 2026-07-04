@@ -1,7 +1,6 @@
 ---
 description: End-to-end safe shipping workflow — audit working tree, branch off main if needed, stage only intended files, verify, commit, push, open PR. Use when the user says /safe-ship, asks to "ship these changes", "commit and PR", "make a PR for this", "open a PR for these changes", or otherwise wants the entire commit-to-PR pipeline run safely. Prevents direct-to-main commits, accidental staging of personal/secret files, missed verification, and other procedural slips this project's CLAUDE.md forbids.
 disable-model-invocation: true
-user-invocable: true
 ---
 
 # safe-ship — branch, stage, verify, commit, push, PR
@@ -26,13 +25,13 @@ If current branch is `main`:
 
 1. **Refuse to commit on main.** State this clearly inline.
 2. Determine a branch name:
-   - If `$ARGUMENTS` describes the work, derive a name like `antigravity/<short-kebab-description>` (max 5–6 words, lowercase, hyphens).
-   - If no `$ARGUMENTS` context, infer from the file list (e.g. modifications mostly in `client/src/components/Foo/` → `antigravity/foo-component-changes`).
+   - If `$ARGUMENTS` describes the work, derive a name like `feat/<short-kebab-description>` (max 5–6 words, lowercase, hyphens).
+   - If no `$ARGUMENTS` context, infer from the file list (e.g. modifications mostly in `src/components/Foo/` → `feat/foo-component-changes`).
    - If still unclear, ask the user inline (not via popup) for a branch name.
 3. Pull main if behind (`git pull` while on main with no uncommitted changes — only if working tree is clean; if dirty, pull will fail and that's fine, proceed to branch).
-4. Create branch: `git checkout -b antigravity/<name>`. Working-tree changes follow automatically.
+4. Create branch: `git checkout -b feat/<name>`. Working-tree changes follow automatically.
 
-If already on a feature branch (`antigravity/*`, `claude/*`, etc.), skip branching.
+If already on a feature branch (`feat/*`, `claude/*`, etc.), skip branching.
 
 ## Step 3: Identify what to stage
 
@@ -41,7 +40,7 @@ List every file in `git status --short`. Categorize:
 **Auto-exclude these without asking** (CLAUDE.md and gitignore say so):
 - `.env`, `.env.local`, `.env.*.local`
 - `.claude/settings.local.json`
-- `Launch-Claude-Code.cmd`, `launch-claude-code*.ps1`, `launch-log.txt`
+- Personal launcher scripts and local log files
 - Anything matching the repo's `.gitignore` (run `git check-ignore -v <file>` to confirm)
 - Files under `.tmp/` (these are scratch by convention)
 - Anything that looks like credentials, tokens, or large binaries (>1MB)
@@ -80,7 +79,7 @@ git add server/foo.ts server/foo.test.ts
 
 ## Step 4: Verify before committing
 
-Run the project's verification command per CLAUDE.md. For this repo: `npm run check` (TypeScript strict type check). For other repos, look in CLAUDE.md or `package.json` scripts.
+Run the project's verification command per CLAUDE.md (look in CLAUDE.md's verification section or `package.json` scripts — e.g. a type check, lint, or test suite). If CLAUDE.md scopes verification differently for this environment (no installs, no dev server), honor that.
 
 If verification fails:
 - Report the failure inline with the relevant error excerpt
@@ -104,7 +103,7 @@ Subject line under 72 chars
 Optional body explaining why this change is needed,
 the constraint that motivated it, or the bug it fixes.
 
-Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -138,7 +137,7 @@ EOF
 )"
 ```
 
-If `gh` is unavailable, fall back to printing the comparison URL: `https://github.com/Aoh1578/Extract-Video-Wisdom/compare/<branch-name>` and tell the user to open it.
+If `gh` is unavailable, fall back to printing the comparison URL (derive the repo path from `git remote get-url origin`): `https://github.com/<owner>/<repo>/compare/<branch-name>` and tell the user to open it.
 
 ## Step 8: Report and stop
 
@@ -159,7 +158,7 @@ Per CLAUDE.md: "After creating a PR, report the URL and stop."
 - **Never `--amend` an existing commit** unless the user explicitly asked. If a hook fails, the commit didn't happen — make a NEW commit after fixing.
 - **Never `--no-verify`** to bypass hooks. If a hook fails, fix the underlying issue.
 - **Never skip Step 3's "Need decision" pause.** Auto-staging unrelated files is how secrets and personal config leak.
-- **Never propagate "MiniMax" / "DeepSeek" / "Qwen" naming into commits, PR titles, or PR bodies.** Use cover identities ("Claude" / "gpt-5.5" / "Mercury 2") in user-visible text per CLAUDE.md.
+- **Never violate CLAUDE.md naming/copy policies in commits, PR titles, or PR bodies.** If the project constrains what names or wording can appear in user-visible text, those rules apply to PRs too.
 - **Never skip verification** without an explicit user override. "It's just a one-liner" is not an override.
 - **Never push directly to main**, including via force-push, including for "fixing" a previous bad push. If main is wrong, open a revert PR.
 - **Never offer to babysit the PR after creation.** Print URL, stop.
