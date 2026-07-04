@@ -26,7 +26,7 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
 
   return (
     <>
-      <article className="rounded-lg border border-border bg-card p-4 shadow-card">
+      <article className="rounded-lg border border-border bg-card p-4 shadow-card motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-240 motion-safe:ease-out-quart">
         <AnswerMarkdown
           answer={result.answer}
           sources={result.sources}
@@ -153,7 +153,7 @@ function RefusalView({
   // it gets the same calm card as any answer. The amber lives only in the
   // badge chip, so the state is legible without the card shouting.
   return (
-    <article className="rounded-lg border border-border bg-card p-4 shadow-card">
+    <article className="rounded-lg border border-border bg-card p-4 shadow-card motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-240 motion-safe:ease-out-quart">
       <div className="flex items-center gap-2">
         <span className="rounded-full bg-warning/20 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-warning-foreground">
           Not in knowledge base

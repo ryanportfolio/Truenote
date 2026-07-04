@@ -32,7 +32,7 @@ export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Ele
     <aside
       role="dialog"
       aria-label="Parsed markdown preview"
-      className="fixed right-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-[min(640px,90vw)] flex-col border-l border-border bg-card shadow-panel"
+      className="fixed right-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-[min(640px,90vw)] flex-col border-l border-border bg-card shadow-panel motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-right-4 motion-safe:duration-240 motion-safe:ease-out-quart"
     >
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
         <div className="flex flex-col">

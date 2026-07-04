@@ -240,7 +240,7 @@ function CredentialBanner({
   }
 
   return (
-    <div className="rounded-lg border border-warning/50 bg-warning/10 p-4 text-sm">
+    <div className="rounded-lg border border-warning/50 bg-warning/10 p-4 text-sm motion-safe:animate-in motion-safe:fade-in motion-safe:duration-240">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 space-y-2">
           <p className="font-medium">
