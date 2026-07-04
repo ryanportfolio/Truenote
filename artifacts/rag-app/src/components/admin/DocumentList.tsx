@@ -21,7 +21,15 @@ function StatusPill({ status }: { status: string | null }): JSX.Element {
     failed: "bg-destructive/15 text-destructive"
   };
   return (
-    <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", map[s] ?? map["pending"])}>
+    <span
+      className={cn(
+        "rounded-full px-2 py-0.5 text-xs font-medium",
+        map[s] ?? map["pending"],
+        // The only in-progress state in the app gets the only ambient
+        // motion — same precedent as the chat wait-stage pulse.
+        s === "parsing" && "motion-safe:animate-pulse"
+      )}
+    >
       {s}
     </span>
   );
@@ -66,7 +74,12 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
   return (
     <>
       {deleteError ? (
-        <p className="text-sm text-destructive">{deleteError}</p>
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {deleteError}
+        </p>
       ) : null}
       {/* Cohere table language: header carried by type + rule, not fill;
         * rows separated by horizontal hairlines only. The wrapper owns the
@@ -86,7 +99,10 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
           {items.map((item) => {
             const isDeleting = deletingId === item.documentId;
             return (
-              <tr key={item.documentId} className="border-t border-border">
+              <tr
+                key={item.documentId}
+                className="border-t border-border transition-colors duration-100 ease-out hover:bg-muted/40"
+              >
                 <td className="px-3 py-2 font-medium">{item.title}</td>
                 <td className="px-3 py-2 text-muted-foreground">
                   {item.uploadedAt ? new Date(item.uploadedAt).toLocaleString() : "—"}

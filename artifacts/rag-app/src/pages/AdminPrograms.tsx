@@ -80,7 +80,12 @@ function AdminProgramsInner({ user }: AdminProgramsPageProps): JSX.Element {
       <ProgramCreateForm onCreated={handleCreated} />
 
       {loadError ? (
-        <p className="text-sm text-destructive">{loadError}</p>
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {loadError}
+        </p>
       ) : loading ? (
         <div role="status" className="flex flex-col gap-2">
           {[0, 1].map((i) => (
@@ -155,7 +160,14 @@ function ProgramCreateForm({ onCreated }: ProgramCreateFormProps): JSX.Element {
           disabled={submitting}
         />
       </label>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      ) : null}
       <div className="flex justify-end">
         <button
           type="submit"

@@ -67,7 +67,14 @@ export function UploadForm({ onUploaded }: UploadFormProps): JSX.Element {
           PDF / DOCX / PNG / JPG / WebP / Markdown / TXT. Max 20MB.
         </span>
       </label>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      ) : null}
       <div>
         <button
           type="submit"

@@ -126,7 +126,7 @@
    */
   .btn-base {
     @apply inline-flex cursor-pointer items-center justify-center rounded-full text-sm font-medium
-           transition-colors duration-100 ease-out
+           transition-[color,background-color,box-shadow] duration-100 ease-out
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background
            disabled:cursor-not-allowed disabled:opacity-50;
   }

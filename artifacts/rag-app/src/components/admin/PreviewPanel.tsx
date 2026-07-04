@@ -66,7 +66,12 @@ export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Ele
       </header>
       <div className="flex-1 overflow-auto p-4">
         {error ? (
-          <p className="text-sm text-destructive">{error}</p>
+          <p
+            role="alert"
+            className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {error}
+          </p>
         ) : !data ? (
           <div role="status">
             <div className="skeleton h-3.5 w-full" />

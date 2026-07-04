@@ -46,7 +46,7 @@ export function AnswerMarkdown({
         <button
           type="button"
           onClick={() => onChipClick(chunkId)}
-          className="mx-0.5 inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0 align-baseline text-xs font-medium text-primary transition-colors duration-100 ease-out hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+          className="mx-0.5 inline-flex cursor-pointer items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0 align-baseline text-xs font-medium text-primary transition-colors duration-100 ease-out hover:bg-primary/20 active:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
           aria-label={`Citation ${childrenToText(children)} — ${title}`}
         >
           [{children}]

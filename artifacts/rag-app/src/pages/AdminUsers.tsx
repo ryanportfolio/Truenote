@@ -178,7 +178,10 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
       />
 
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           {error}
         </p>
       ) : null}
@@ -469,7 +472,10 @@ function CreateUserForm({
         The user will be required to change it at first login.
       </p>
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           {error}
         </p>
       ) : null}
@@ -718,7 +724,10 @@ function UserRow({
         ) : null}
       </div>
       {error ? (
-        <p role="alert" className="mt-2 text-xs text-destructive">
+        <p
+          role="alert"
+          className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+        >
           {error}
         </p>
       ) : null}

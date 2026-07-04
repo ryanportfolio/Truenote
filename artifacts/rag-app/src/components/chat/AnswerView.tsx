@@ -81,7 +81,10 @@ function CopyAnswerButton({ result }: { result: AskResponse }): JSX.Element {
       className="btn-icon"
     >
       {copied ? (
-        <Check className="h-4 w-4 text-success" aria-hidden />
+        <Check
+          className="h-4 w-4 text-success motion-safe:animate-in motion-safe:zoom-in-75 motion-safe:duration-100"
+          aria-hidden
+        />
       ) : (
         <Copy className="h-4 w-4" aria-hidden />
       )}

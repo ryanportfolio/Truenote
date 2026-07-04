@@ -138,7 +138,10 @@ function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
       </div>
 
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           {error}
         </p>
       ) : loading ? (
@@ -188,7 +191,10 @@ function QueryTable({ items }: { items: QueryLogItem[] }): JSX.Element {
       </thead>
       <tbody>
         {items.map((item) => (
-          <tr key={item.id} className="border-t border-border align-top">
+          <tr
+            key={item.id}
+            className="border-t border-border align-top transition-colors duration-100 ease-out hover:bg-muted/40"
+          >
             <td className="max-w-md px-3 py-2">
               <span className="line-clamp-2">{item.question}</span>
             </td>
