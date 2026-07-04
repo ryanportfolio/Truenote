@@ -143,6 +143,9 @@ export const queryLog = pgTable("query_log", {
   refused: boolean("refused").default(false),
   latencyMs: integer("latency_ms"),
   feedback: integer("feedback"),
+  // CSR flagged a refusal as content the knowledge base should have had.
+  // Column already exists in the dev DB (raw DDL, 2026-07-04) — never drizzle-kit.
+  flaggedMissing: boolean("flagged_missing").default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow()
 });
 

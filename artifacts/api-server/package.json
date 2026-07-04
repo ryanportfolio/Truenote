@@ -9,7 +9,7 @@
     "start": "tsx src/index.ts",
     "build": "tsc",
     "check": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",

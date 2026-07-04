@@ -64,6 +64,12 @@ export interface RetrievedChunk {
 
 export type Confidence = "high" | "medium" | "low";
 
+/**
+ * Real pipeline checkpoints streamed by /api/ask/stream while the CSR
+ * waits. Mirror of AskStage in api-server routes/ask.ts.
+ */
+export type AskStage = "searching" | "reranking" | "generating";
+
 export interface AskResponse {
   queryLogId: string | null;
   answer: string;

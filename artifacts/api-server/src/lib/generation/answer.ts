@@ -26,7 +26,7 @@ export const REFUSAL_TEXT =
   "I couldn't find this in the knowledge base. Please escalate or check the source documents directly.";
 
 /**
- * Rules 1–5 of the system prompt from .claude/reference/retrieval.md →
+ * Rules 1–6 of the system prompt from .claude/reference/retrieval.md →
  * Generation contract. Do not paraphrase the rule text — the wording is part
  * of the product contract and is tested against eval questions in Phase 2.
  *
@@ -47,7 +47,11 @@ export function buildSystemPrompt(programName: string): string {
     `   and answer: "${REFUSAL_TEXT}"`,
     "3. Never invent fees, dates, names, policy numbers, or procedures.",
     "4. Cite every factual claim inline using [chunk_id].",
-    "5. Prefer the most recent document version when excerpts conflict."
+    "5. Prefer the most recent document version when excerpts conflict.",
+    "6. Format the answer as GitHub-flavored Markdown. Use numbered steps for",
+    "   procedures, bullet lists for options, and **bold** for key values",
+    "   (fees, dates, deadlines). Use a table only to compare options. Never",
+    "   use headings, code blocks, images, links, or task lists."
   ].join("\n");
 }
 

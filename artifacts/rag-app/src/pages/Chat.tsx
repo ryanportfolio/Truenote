@@ -1,6 +1,17 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { askQuestion } from "@/lib/api";
-import type { AskResponse, CurrentUser } from "@/types/api";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent
+} from "react";
+import { askQuestionStream } from "@/lib/api";
+import {
+  hasAtLeastRole,
+  type AskResponse,
+  type AskStage,
+  type CurrentUser
+} from "@/types/api";
 import { AnswerView } from "@/components/chat/AnswerView";
 import {
   getSelectedProgramId,
@@ -10,6 +21,19 @@ import {
 interface ChatPageProps {
   user: CurrentUser;
 }
+
+interface Exchange {
+  id: number;
+  question: string;
+  result: AskResponse | null;
+  error: string | null;
+}
+
+const STAGE_LABEL: Record<AskStage, string> = {
+  searching: "Searching the knowledge base…",
+  reranking: "Ranking sources…",
+  generating: "Writing the answer…"
+};
 
 export function ChatPage({ user }: ChatPageProps): JSX.Element {
   // Super_users need a program selection to ask anything. Non-super_user
@@ -30,25 +54,71 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
     };
   }, [user.id, user.role]);
 
+  // Pipeline telemetry (scores, latency, chunk ids) is operator data —
+  // manager and above. CSRs see citations, not rerank scores.
+  const showDebug = hasAtLeastRole(user, "manager");
+
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<AskResponse | null>(null);
+  const [stage, setStage] = useState<AskStage | null>(null);
+  const [exchanges, setExchanges] = useState<Exchange[]>([]);
+  const nextId = useRef(1);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+  // Keep the newest exchange in view as the transcript grows.
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "nearest" });
+  }, [exchanges, stage]);
+
+  // Abort any in-flight request when the page unmounts.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  async function ask(trimmed: string): Promise<void> {
+    const id = nextId.current;
+    nextId.current += 1;
+    setBusy(true);
+    setStage(null);
+    setExchanges((prev) => [...prev, { id, question: trimmed, result: null, error: null }]);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const patch = (fields: Partial<Exchange>): void =>
+      setExchanges((prev) => prev.map((e) => (e.id === id ? { ...e, ...fields } : e)));
+
+    try {
+      const result = await askQuestionStream(trimmed, setStage, controller.signal);
+      patch({ result });
+    } catch (err) {
+      if (controller.signal.aborted) {
+        patch({ error: "Cancelled." });
+      } else {
+        patch({ error: err instanceof Error ? err.message : "Failed to fetch answer" });
+      }
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setBusy(false);
+      setStage(null);
+      textareaRef.current?.focus();
+    }
+  }
+
+  function onSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     const trimmed = question.trim();
-    if (trimmed.length === 0 || busy) return;
-    setBusy(true);
-    setError(null);
-    setResult(null);
-    try {
-      const out = await askQuestion(trimmed);
-      setResult(out);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch answer");
-    } finally {
-      setBusy(false);
+    if (trimmed.length === 0 || busy || !hasProgram) return;
+    setQuestion("");
+    void ask(trimmed);
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    // Enter asks, Shift+Enter makes a newline — CSRs are mid-call; the
+    // keyboard path must never require the mouse.
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
     }
   }
 
@@ -72,10 +142,44 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             comes from one program's documents at a time.
           </div>
         ) : null}
+
+        {exchanges.length > 0 ? (
+          <ol className="flex flex-col gap-5" aria-label="Questions and answers">
+            {exchanges.map((exchange) => (
+              <li key={exchange.id} className="flex flex-col gap-2">
+                <p className="text-sm font-medium">{exchange.question}</p>
+                {exchange.result ? (
+                  <AnswerView result={exchange.result} showDebug={showDebug} />
+                ) : exchange.error ? (
+                  <div className="flex items-center gap-3 rounded border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                    <span>{exchange.error}</span>
+                    <button
+                      type="button"
+                      disabled={busy || !hasProgram}
+                      onClick={() => void ask(exchange.question)}
+                      className="rounded border border-destructive/40 px-2 py-0.5 text-xs font-medium hover:bg-destructive/20 disabled:opacity-50"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+                    {stage ? STAGE_LABEL[stage] : "Sending…"}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ol>
+        ) : null}
+        <div ref={bottomRef} />
+
         <form onSubmit={onSubmit} className="flex flex-col gap-2">
           <textarea
+            ref={textareaRef}
+            autoFocus
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={onKeyDown}
             placeholder="Ask the knowledge base… e.g. 'What's the cancellation fee on the Basic plan?'"
             rows={3}
             disabled={!hasProgram}
@@ -83,24 +187,28 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
           />
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
-              Answers cite source chunks. No citation → not in knowledge base.
+              Enter to ask, Shift+Enter for a new line. Answers cite source chunks.
             </span>
-            <button
-              type="submit"
-              disabled={busy || !hasProgram || question.trim().length === 0}
-              className="btn-csr-ask px-4 py-1.5"
-            >
-              {busy ? "Asking…" : "Ask"}
-            </button>
+            <div className="flex items-center gap-2">
+              {busy ? (
+                <button
+                  type="button"
+                  onClick={() => abortRef.current?.abort()}
+                  className="rounded border border-input px-3 py-1.5 text-sm hover:bg-secondary"
+                >
+                  Cancel
+                </button>
+              ) : null}
+              <button
+                type="submit"
+                disabled={busy || !hasProgram || question.trim().length === 0}
+                className="btn-csr-ask px-4 py-1.5"
+              >
+                {busy ? "Asking…" : "Ask"}
+              </button>
+            </div>
           </div>
         </form>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        {result ? (
-          <section className="flex flex-col gap-3">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Answer</p>
-            <AnswerView result={result} />
-          </section>
-        ) : null}
       </div>
     </div>
   );
