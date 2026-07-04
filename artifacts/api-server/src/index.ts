@@ -1,6 +1,7 @@
 import { createApp } from "./app.js";
 import { closePool } from "./lib/db-client.js";
 import { bootstrapSuperUser } from "./lib/auth/bootstrap.js";
+import { bootstrapDemoAccounts } from "./lib/auth/bootstrap-demo.js";
 import { purgeExpiredSessions } from "./lib/auth/sessions.js";
 import { purgeExpiredResetTokens } from "./lib/auth/password-reset.js";
 
@@ -32,6 +33,14 @@ async function main(): Promise<void> {
     await bootstrapSuperUser();
   } catch (err) {
     console.error("[api-server] bootstrap failed:", err);
+  }
+
+  // Demo accounts for the pre-filled login (DEMO_LOGIN_ACCOUNTS). Same
+  // failure posture as the super_user bootstrap: log and keep booting.
+  try {
+    await bootstrapDemoAccounts();
+  } catch (err) {
+    console.error("[api-server] demo-account bootstrap failed:", err);
   }
 
   const app = createApp();
