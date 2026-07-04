@@ -32,7 +32,7 @@ export function AdminGapsPage({ user }: AdminGapsPageProps): JSX.Element {
 function Forbidden(): JSX.Element {
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
-      <h1 className="font-display text-2xl font-semibold tracking-tight">Forbidden</h1>
+      <h1 className="font-display text-3xl font-semibold tracking-tight">Forbidden</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Gap review is restricted to managers and above.
       </p>
@@ -108,7 +108,7 @@ function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
       <header>
-        <h1 className="font-display text-2xl font-semibold tracking-tight">Gaps</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Gaps</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Questions the knowledge base couldn't answer well. Flags come from CSRs; refusals
           are logged automatically. Fill a gap by uploading the missing document.

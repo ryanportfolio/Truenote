@@ -244,7 +244,7 @@ export function App(): JSX.Element {
         </Route>
         <Route>
           <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
-            <h1 className="font-display text-2xl font-semibold tracking-tight">Not found</h1>
+            <h1 className="font-display text-3xl font-semibold tracking-tight">Not found</h1>
             <EmptyState
               icon={SearchX}
               title="Page not found"

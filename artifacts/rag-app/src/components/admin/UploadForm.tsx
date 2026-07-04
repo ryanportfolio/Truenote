@@ -79,7 +79,7 @@ export function UploadForm({ onUploaded }: UploadFormProps): JSX.Element {
         <button
           type="submit"
           disabled={busy}
-          className="btn-primary px-4 py-1.5"
+          className="btn-primary px-5 py-2 text-base"
         >
           {busy ? "Uploading…" : "Upload"}
         </button>
