@@ -38,14 +38,18 @@ Light mode is the ship target. `.dark` ships as a mechanical inversion (converte
 
 | Slot | Face | Size / weight | Tracking |
 |---|---|---|---|
-| Page `h1` | Georgia (`font-display`) | 24px / 600 | `-0.02em` (`tracking-tight`) |
-| Auth-card title / wordmark | Georgia (`font-display`) | 20px / 600 | `-0.02em` |
+| Page `h1` | Georgia (`font-display`) | 30px / 600 (`text-3xl`) | `-0.02em` (`tracking-tight`) |
+| Auth-card title | Georgia (`font-display`) | 20px / 600 | `-0.02em` |
+| TopBar wordmark | Georgia (`font-display`) | 18px / 600 | `-0.02em` |
 | Section `h2` | Verdana | 20px / 600 | `-0.02em` |
 | Body | Verdana | 16px / 400 | normal |
-| Chat answers, controls, tables | Verdana | 14px / 400 | normal |
+| Sidebar nav, Ask textarea, page-CTA buttons | Verdana | 16px / 400 (nav active + buttons 500) | normal |
+| Chat answers, tables, most controls | Verdana | 14px / 400 | normal |
 | Captions, metadata | Verdana | 14px / 400 | normal |
 | Chips, badges, eyebrows | Verdana | 12px / 500 | eyebrows `tracking-wide` uppercase |
 | Excerpts / codes | mono stack | 13px / 400 | normal |
+
+> Changed 2026-07-04 (size pass, user-requested): page `h1` 24→30px, wordmark 16→18px, sidebar nav 14→16px, primary CTAs to `text-base` — chrome and headline type grew to use the space; body copy, tables, and chips deliberately stayed at 14/12px so density didn't turn into clutter.
 
 Line-height: **1.5** on CSR chat (dense, scannable), **1.6** on admin prose. Weights **400/500/600 only** — no 700+; Cohere's extrabold prose headings belong to its docs register, not this product. The tight-tracked headings over relaxed body is the typographic signature.
 
@@ -99,7 +103,7 @@ Two variants plus an icon recipe. All pills, all share the focus-ring spec, all 
 
 ### Primary — at most one per surface
 
-`.btn-primary`: brand-blue filled, white text (9.05:1, AAA). Hover shifts to `--accent`; active darkens to `primary/0.92`. Allowed for **exactly one** action per surface — the thing the user came there to do: **Ask** (`/chat`), **Upload** (`/admin/documents`), **Create user** (`/admin/users`), **Create program** (`/admin/programs`). Sign-in stays whisper (nothing competes with it). `.btn-csr-ask` is a kept alias so the `/chat` Ask button stays greppable as the original exception. Adding a second filled button to a screen is a bug, not an emphasis choice.
+`.btn-primary`: brand-blue filled, white text (9.05:1, AAA). Hover shifts to `--accent`; active darkens to `primary/0.92`. Allowed for **exactly one** action per surface — the thing the user came there to do: **Ask** (`/chat`), **Upload** (`/admin/documents`), **Create user** (`/admin/users`), **Create program** (`/admin/programs`). Sign-in stays whisper (nothing competes with it). `.btn-csr-ask` is a kept alias so the `/chat` Ask button stays greppable as the original exception. Adding a second filled button to a screen is a bug, not an emphasis choice. The four page CTAs render a size up from whisper defaults: `px-5 py-2 text-base`.
 
 > Changed 2026-07-04 (polish pass 2, user-approved): generalized from "csr-ask only on /chat" because whisper-everything left form primary actions with zero hierarchy — Upload was invisible next to Browse.
 
@@ -176,7 +180,7 @@ The blob language (PRODUCT.md's Cohere-illustration direction) appears at exactl
 
 1. **Login** — full-bleed washes (`blur-3xl`) behind an opaque card; contrast guarantees untouched.
 2. **Empty states** — quarter scale (`blur-2xl`) behind a muted icon via `EmptyState`. Empty surfaces are pressure-free; decoration is allowed to be calm there.
-3. **The mark** — favicon: blue superellipse + white Georgia "T" (`#0040AB`/`#FDFDFC`, inline data URI, plus `theme-color: #E8E6DE`); TopBar: same blob rendered in **ink** next to the wordmark — persistent chrome doesn't spend the rare-blue budget.
+3. **The mark** — favicon: blue superellipse + white Georgia "T" (`#0040AB`/`#FDFDFC`, inline data URI, plus `theme-color: #E8E6DE`); TopBar: same blob rendered in **ink** next to the wordmark — persistent chrome doesn't spend the rare-blue budget. Mark + wordmark are a single home link, role-aware: manager and above → `/admin/documents`, CSR → `/chat` (quiet `hover:bg-muted` fill + the standard focus ring).
 
 Everywhere else stays calm.
 
@@ -200,8 +204,8 @@ Mechanical inversion of the pre-pass HSL values, converted to OKLCH. No toggle. 
 
 Pure-CSS breakpoints, no JS breakpoint state:
 
-- **Sidebar** collapses to a 56px icon rail below `md` — labels `sr-only md:not-sr-only`, `title` tooltips, `aria-current` unchanged.
-- **TopBar** hides the email below `sm`; the program select clamps to `max-w-[9rem] truncate` below `sm`.
+- **Sidebar** is `w-60` at `md`+ and collapses to a 64px icon rail below — labels `sr-only md:not-sr-only`, `title` tooltips, `aria-current` unchanged.
+- **TopBar** hides the email below `sm`; the program select clamps to `max-w-[10rem] truncate` below `sm`.
 - **Admin tables** scroll horizontally inside their wrapper (see §Tables); auth cards are `max-w-sm` and center at every width.
 - **Panels** are `w-[min(560–640px, 90vw)]`.
 

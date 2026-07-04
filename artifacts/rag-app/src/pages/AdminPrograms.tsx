@@ -69,7 +69,7 @@ function AdminProgramsInner({ user }: AdminProgramsPageProps): JSX.Element {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
       <header>
-        <h1 className="font-display text-2xl font-semibold tracking-tight">Programs</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Programs</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           A program is a unit of knowledge scope. Documents, queries, and users
           belong to a program. Creating a program here lets you upload SOPs and
@@ -109,7 +109,7 @@ function AdminProgramsInner({ user }: AdminProgramsPageProps): JSX.Element {
 function Forbidden(): JSX.Element {
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
-      <h1 className="font-display text-2xl font-semibold tracking-tight">Forbidden</h1>
+      <h1 className="font-display text-3xl font-semibold tracking-tight">Forbidden</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Programs admin is restricted to super users.
       </p>
@@ -172,7 +172,7 @@ function ProgramCreateForm({ onCreated }: ProgramCreateFormProps): JSX.Element {
         <button
           type="submit"
           disabled={submitting || name.trim().length === 0}
-          className="btn-primary px-4 py-1.5"
+          className="btn-primary px-5 py-2 text-base"
         >
           {submitting ? "Creating…" : "Create program"}
         </button>

@@ -84,13 +84,13 @@ function SuperUserProgramSelector({ user }: ProgramSelectorProps): JSX.Element {
   const hasPrograms = programs.length > 0;
 
   return (
-    <label className="flex items-center gap-2 text-xs">
+    <label className="flex items-center gap-2 text-sm">
       <span className="text-muted-foreground">Program</span>
       <select
         value={selected}
         onChange={handleChange}
         disabled={status === "loading" || !hasPrograms}
-        className="select-quiet max-w-[9rem] truncate rounded-md border border-input bg-card py-1 pl-2 pr-7 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-secondary disabled:opacity-60 sm:max-w-none"
+        className="select-quiet max-w-[10rem] truncate rounded-md border border-input bg-card py-1.5 pl-2.5 pr-7 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-secondary disabled:opacity-60 sm:max-w-none"
         data-testid="program-selector"
       >
         <option value="" disabled>
