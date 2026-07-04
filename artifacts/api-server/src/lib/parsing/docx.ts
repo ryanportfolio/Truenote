@@ -16,7 +16,10 @@ interface MammothModule {
 }
 
 export async function docxToMarkdown(buffer: Buffer): Promise<string> {
-  const mod = (await import("mammoth")) as MammothModule;
+  // mammoth's bundled types only declare convertToHtml/extractRawText;
+  // convertToMarkdown exists at runtime but is undocumented, hence the
+  // through-unknown cast to our own minimal interface.
+  const mod = (await import("mammoth")) as unknown as MammothModule;
   const result = await mod.convertToMarkdown({ buffer });
   return result.value;
 }

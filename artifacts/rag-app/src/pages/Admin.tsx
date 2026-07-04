@@ -72,7 +72,7 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
       <header>
-        <h1 className="font-display text-2xl font-semibold tracking-tight">Documents</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Documents</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Upload SOPs, policies, screenshots, and tables. After parsing, click Preview to verify the
           parse before the version becomes active.
@@ -96,9 +96,32 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
       ) : (
         <UploadForm onUploaded={() => void refresh()} />
       )}
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      ) : null}
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading documents…</p>
+        <div
+          role="status"
+          className="overflow-hidden rounded-lg border border-border bg-card shadow-card"
+        >
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between gap-4 border-t border-border px-3 py-3 first:border-t-0"
+            >
+              <div className="skeleton h-4 w-48" />
+              <div className="skeleton h-4 w-32" />
+              <div className="skeleton h-4 w-16 rounded-full" />
+              <div className="skeleton h-4 w-24" />
+            </div>
+          ))}
+          <span className="sr-only">Loading documents…</span>
+        </div>
       ) : noProgramSelected ? null : (
         <DocumentList items={items} onDeleted={() => void refresh()} />
       )}

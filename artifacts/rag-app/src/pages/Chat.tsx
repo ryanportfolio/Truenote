@@ -5,7 +5,9 @@ import {
   type FormEvent,
   type KeyboardEvent
 } from "react";
+import { MessageSquare } from "lucide-react";
 import { askQuestionStream } from "@/lib/api";
+import { EmptyState } from "@/components/EmptyState";
 import {
   hasAtLeastRole,
   type AskHistoryTurn,
@@ -46,6 +48,14 @@ function historyFrom(exchanges: Exchange[]): AskHistoryTurn[] {
     .slice(-MAX_HISTORY_SENT)
     .map((e) => ({ question: e.question, answer: e.result?.answer ?? "" }));
 }
+
+// First-run teaching examples. Clicking prefills the textarea (never
+// auto-submits) so the CSR sees the register questions are asked in.
+const EXAMPLE_QUESTIONS = [
+  "What's the cancellation fee on the Basic plan?",
+  "How do I process a refund for a returned device?",
+  "What ID does a caller need to verify their account?"
+] as const;
 
 export function ChatPage({ user }: ChatPageProps): JSX.Element {
   // Super_users need a program selection to ask anything. Non-super_user
@@ -143,7 +153,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
     <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-6">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight">Chat</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight">Chat</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Ask the knowledge base a question. Every answer ships with at least one citation, or
             the system will explicitly say it could not find the answer. Follow-ups work — "what
@@ -176,6 +186,28 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
           </div>
         ) : null}
 
+        {exchanges.length === 0 && hasProgram ? (
+          <EmptyState
+            icon={MessageSquare}
+            title="Ask your first question"
+            hint="Answers come from your program's documents and always cite their source."
+          >
+            {EXAMPLE_QUESTIONS.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => {
+                  setQuestion(q);
+                  textareaRef.current?.focus();
+                }}
+                className="btn-whisper px-3 py-1 text-xs"
+              >
+                {q}
+              </button>
+            ))}
+          </EmptyState>
+        ) : null}
+
         {exchanges.length > 0 ? (
           <ol className="flex flex-col gap-4" aria-label="Questions and answers">
             {exchanges.map((exchange) => (
@@ -196,13 +228,26 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
                     </button>
                   </div>
                 ) : (
-                  <p
-                    className="text-sm text-muted-foreground motion-safe:animate-pulse"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    {stage ? STAGE_LABEL[stage] : "Sending…"}
-                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    <p
+                      className="text-sm text-muted-foreground motion-safe:animate-pulse"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {stage ? STAGE_LABEL[stage] : "Sending…"}
+                    </p>
+                    {/* Answer-card silhouette: shows the CSR where the answer
+                      * will land. Decorative — the stage line above carries
+                      * the status for screen readers. */}
+                    <div
+                      aria-hidden
+                      className="rounded-lg border border-border bg-card p-4 shadow-card"
+                    >
+                      <div className="skeleton h-3.5 w-11/12" />
+                      <div className="skeleton mt-2 h-3.5 w-full" />
+                      <div className="skeleton mt-2 h-3.5 w-3/5" />
+                    </div>
+                  </div>
                 )}
               </li>
             ))}
@@ -220,7 +265,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             placeholder="Ask the knowledge base… e.g. 'What's the cancellation fee on the Basic plan?'"
             rows={3}
             disabled={!hasProgram}
-            className="rounded-md border border-input bg-card px-3 py-2 text-sm shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-60"
+            className="rounded-md border border-input bg-card px-3 py-2 text-base shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-60"
           />
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
@@ -231,7 +276,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
                 <button
                   type="button"
                   onClick={() => abortRef.current?.abort()}
-                  className="btn-whisper px-3 py-1.5"
+                  className="btn-whisper px-4 py-2"
                 >
                   Cancel
                 </button>
@@ -239,7 +284,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
               <button
                 type="submit"
                 disabled={busy || !hasProgram || question.trim().length === 0}
-                className="btn-csr-ask px-4 py-1.5"
+                className="btn-csr-ask px-5 py-2 text-base"
               >
                 {busy ? "Asking…" : "Ask"}
               </button>

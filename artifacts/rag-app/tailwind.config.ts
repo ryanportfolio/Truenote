@@ -68,6 +68,25 @@ const config: Config = {
         card: "var(--shadow-card)",
         panel: "var(--shadow-panel)"
       },
+      // Skeleton loading pulse: slow opacity breathing, no shimmer sweep —
+      // calm register. Consumed via .skeleton in index.css, motion-safe only.
+      keyframes: {
+        "skeleton-pulse": {
+          "50%": { opacity: "0.55" }
+        }
+      },
+      animation: {
+        skeleton: "skeleton-pulse 1.8s ease-in-out infinite"
+      },
+      // DESIGN.md §Motion tokens — tailwindcss-animate maps these scales onto
+      // animation-timing-function / animation-duration too, so ease-out-quart
+      // and duration-240 work for both transitions and animate-in entrances.
+      transitionTimingFunction: {
+        "out-quart": "cubic-bezier(0.25, 1, 0.5, 1)"
+      },
+      transitionDuration: {
+        "240": "240ms"
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

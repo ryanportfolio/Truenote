@@ -108,17 +108,21 @@ export async function runIngestion(
       .limit(1);
     const version = versionRows[0];
     if (!version) throw new Error(`Document version not found: ${versionId}`);
-    if (!version.documentId) throw new Error(`Version ${versionId} has no document_id`);
+    // Hoisted into a const so the non-null narrowing survives into the
+    // transaction closure below — TS drops property narrowing inside
+    // nested functions.
+    const documentId = version.documentId;
+    if (!documentId) throw new Error(`Version ${versionId} has no document_id`);
     if (!version.sourceUrl) throw new Error(`Version ${versionId} has no source_url`);
 
     const documentRows = await db
       .select()
       .from(documents)
-      .where(eq(documents.id, version.documentId))
+      .where(eq(documents.id, documentId))
       .limit(1);
     const doc = documentRows[0];
     if (!doc?.programId) {
-      throw new Error(`Document ${version.documentId} has no program_id`);
+      throw new Error(`Document ${documentId} has no program_id`);
     }
     const programId: string = doc.programId;
 
@@ -316,7 +320,7 @@ export async function runIngestion(
         .set({ isActive: false })
         .where(
           and(
-            eq(documentVersions.documentId, version.documentId),
+            eq(documentVersions.documentId, documentId),
             ne(documentVersions.id, versionId),
             eq(documentVersions.isActive, true)
           )
@@ -328,7 +332,7 @@ export async function runIngestion(
       await tx
         .update(documents)
         .set({ currentVersionId: versionId })
-        .where(eq(documents.id, version.documentId));
+        .where(eq(documents.id, documentId));
     });
   } catch (err) {
     await db

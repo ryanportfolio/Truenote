@@ -38,14 +38,18 @@ Light mode is the ship target. `.dark` ships as a mechanical inversion (converte
 
 | Slot | Face | Size / weight | Tracking |
 |---|---|---|---|
-| Page `h1` | Georgia (`font-display`) | 24px / 600 | `-0.02em` (`tracking-tight`) |
-| Auth-card title / wordmark | Georgia (`font-display`) | 20px / 600 | `-0.02em` |
+| Page `h1` | Georgia (`font-display`) | 30px / 600 (`text-3xl`) | `-0.02em` (`tracking-tight`) |
+| Auth-card title | Georgia (`font-display`) | 20px / 600 | `-0.02em` |
+| TopBar wordmark | Georgia (`font-display`) | 18px / 600 | `-0.02em` |
 | Section `h2` | Verdana | 20px / 600 | `-0.02em` |
 | Body | Verdana | 16px / 400 | normal |
-| Chat answers, controls, tables | Verdana | 14px / 400 | normal |
+| Sidebar nav, Ask textarea, page-CTA buttons | Verdana | 16px / 400 (nav active + buttons 500) | normal |
+| Chat answers, tables, most controls | Verdana | 14px / 400 | normal |
 | Captions, metadata | Verdana | 14px / 400 | normal |
 | Chips, badges, eyebrows | Verdana | 12px / 500 | eyebrows `tracking-wide` uppercase |
 | Excerpts / codes | mono stack | 13px / 400 | normal |
+
+> Changed 2026-07-04 (size pass, user-requested): page `h1` 24→30px, wordmark 16→18px, sidebar nav 14→16px, primary CTAs to `text-base` — chrome and headline type grew to use the space; body copy, tables, and chips deliberately stayed at 14/12px so density didn't turn into clutter.
 
 Line-height: **1.5** on CSR chat (dense, scannable), **1.6** on admin prose. Weights **400/500/600 only** — no 700+; Cohere's extrabold prose headings belong to its docs register, not this product. The tight-tracked headings over relaxed body is the typographic signature.
 
@@ -65,6 +69,7 @@ Line-height: **1.5** on CSR chat (dense, scannable), **1.6** on admin prose. Wei
 Rules:
 - Body text and anything a CSR reads mid-call hit **AAA** (≥7:1). Chrome hits **AA** (≥4.5:1).
 - **Force `::placeholder { opacity: 1 }`** globally (done in index.css) — browsers default to ~0.5, which silently halves contrast. Cohere's own docs fail AA here; we don't.
+- `::selection` is `primary/0.15` — ink on the blend ≈ 12.2:1, AAA survives selection. Scrollbars: `scrollbar-width: thin` + `--border` thumb.
 - Never `#000` or `#fff` directly. Warm near-black ink; warm near-white surfaces.
 - When changing a token, recompute (the sRGB→OKLCH + contrast script lives in the design-pass session; any WCAG calculator works). Do not eyeball.
 - Color is never the sole channel: active nav = tint **+ weight**; focus = 2px ring **+ offset**; selected chips = tint **+ border**.
@@ -90,34 +95,58 @@ Citation excerpts get their own inset mono block — they're the receipt, not th
 
 ## Buttons
 
-Two variants plus an icon recipe. All pills, all share the focus-ring spec.
+Two variants plus an icon recipe. All pills, all share the focus-ring spec, all `cursor-pointer` (Tailwind v3 preflight leaves buttons `cursor: default` — pointer is half of "looks clickable").
 
 ### Whisper (default — everywhere)
 
-`.btn-whisper`: `--secondary` surface, ink text, 1px inset hairline (`--border`). Hover: hairline strengthens to `foreground/0.18`. Active: `--muted` fill. Sizes via padding utilities (`px-3 py-1.5` regular, `px-3 py-1 text-xs` small).
+`.btn-whisper`: `--secondary` surface, ink text, 1px inset hairline (`--border`). Hover: hairline strengthens to `foreground/0.18` (box-shadow transitions — no snap). Active: `--muted` fill. Sizes via padding utilities (`px-3 py-1.5` regular, `px-3 py-1 text-xs` small).
 
-### CSR Ask — the one deliberate exception
+### Primary — at most one per surface
 
-`.btn-csr-ask`: brand-blue filled, white text, **only** on `/chat`. Hover shifts to `--accent`; active darkens to `primary/0.92`. Do not propagate — the contrast is the point.
+`.btn-primary`: brand-blue filled, white text (9.05:1, AAA). Hover shifts to `--accent`; active darkens to `primary/0.92`. Allowed for **exactly one** action per surface — the thing the user came there to do: **Ask** (`/chat`), **Upload** (`/admin/documents`), **Create user** (`/admin/users`), **Create program** (`/admin/programs`). Sign-in stays whisper (nothing competes with it). `.btn-csr-ask` is a kept alias so the `/chat` Ask button stays greppable as the original exception. Adding a second filled button to a screen is a bug, not an emphasis choice. The four page CTAs render a size up from whisper defaults: `px-5 py-2 text-base`.
+
+> Changed 2026-07-04 (polish pass 2, user-approved): generalized from "csr-ask only on /chat" because whisper-everything left form primary actions with zero hierarchy — Upload was invisible next to Browse.
 
 ### Icon buttons
 
 `.btn-icon`: transparent at rest, `--muted` fill + ink on hover, for icon-only actions (copy, thumbs, close-X). Part of the whisper family, not a third variant. Destructive contexts may use a destructive-quiet pill (`border-destructive/40 text-destructive hover:bg-destructive/10`) — Retry/Delete only.
+
+### File inputs
+
+`::file-selector-button` gets the whisper spec via `file:` utilities: pill, 1px `--border` border, `--secondary` fill, pointer cursor, hover border strengthens to `foreground/0.30`. A bare OS file button is a bug.
 
 ## Interaction states
 
 | State | Visual change |
 |---|---|
 | Default | Base tokens |
-| Hover | Whisper: hairline strengthens. Ask: bg → `--accent`. Icon: `--muted` fill |
+| Hover | Whisper: hairline strengthens. Primary: bg → `--accent`. Icon: `--muted` fill. Table rows: `bg-muted/40` wash |
 | Focus | 2px `--ring` outline, 2px offset (`focus-visible:` on buttons/links; `focus:` on text inputs) |
-| Active | Whisper: bg → `--muted`. Ask: `primary/0.92` |
+| Active | Whisper: bg → `--muted`. Primary: `primary/0.92`. Citation chips: `bg-primary/25` |
 | Disabled | `opacity-50`, `cursor-not-allowed`, hover suppressed |
 | Selected | Nav: `bg-primary/10 text-primary font-medium` + `aria-current`. Chips: tint + border + `aria-pressed` |
 
 ## Tables
 
 Cohere table language: **horizontal rules only**. Header = 12px uppercase muted + weight, **no fill**, no vertical cell borders. Markdown tables in answers: `th` = `border-b`, `td` = `border-t`, `border-collapse`.
+
+Admin tables: card chrome (`rounded-lg border bg-card shadow-card`) lives on an `overflow-x-auto` **wrapper div**, never on the `<table>` (`overflow-hidden` on a table clips instead of scrolling). Tables carry a `min-w` floor (36–40rem) so narrow viewports scroll. Rows take a `hover:bg-muted/40` wash — a scanning aid, invisible at rest.
+
+## Selects
+
+`.select-quiet`: `appearance-none`, pointer cursor, `pr-8`, and an inline SVG chevron in `--muted-foreground`'s hex (`#5C5A50` — CSS `url()` can't read custom properties; revisit if a dark toggle ever ships). Call sites keep their own border/bg/size. Applies to every native `<select>`.
+
+## Quiet alerts
+
+Inline errors share one recipe everywhere (auth pages, admin forms, panels): `rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive` + `role="alert"`. Destructive text on the 10% tint over card ≈ 8.3:1 — AAA. Bare red text is drift.
+
+## Loading states
+
+`.skeleton` (index.css): `--muted` bars, `rounded-md`, slow opacity breathing (`skeleton-pulse` 1.8s ease-in-out, 100→55%) — **no shimmer sweep**. `motion-safe:` only; every skeleton group carries `role="status"` + `sr-only` "Loading…" text. Shapes mimic the loaded layout (table rows, cards, mono bars). Chat's pending exchange keeps the stage label (it carries real pipeline information) above an `aria-hidden` answer-card silhouette. App boot = the Georgia wordmark breathing with the same keyframes. Text "Loading…" as UI is drift.
+
+## Empty states
+
+`EmptyState` component (`components/EmptyState.tsx`): dashed hairline card on `bg-muted/30`, the login blob language at quarter scale (aria-hidden `bg-primary/10` + `bg-success/15`, `blur-2xl`) behind a muted lucide icon, `font-medium` title, muted hint, optional action row (used for the chat example-question chips and the 404 "Go to Chat" link). Every list surface teaches on empty: Documents, Gaps (per-filter copy), Users, Programs, Chat first-run, 404.
 
 ## Status colors
 
@@ -132,11 +161,28 @@ Semantic tokens only — raw Tailwind palette classes (`emerald-*`, `amber-*`, `
 
 ## Motion
 
-Easing **`cubic-bezier(0.25, 1, 0.5, 1)`** (ease-out-quart). Micro-interactions `100–120ms`, layout `240ms`. Wait-stage pulse is `motion-safe:` only; honor `prefers-reduced-motion` everywhere. No bounce, no overshoot, no decorative motion.
+Easing **`cubic-bezier(0.25, 1, 0.5, 1)`** (ease-out-quart). Micro-interactions `100–120ms`, layout `240ms`. Named Tailwind tokens: `ease-out-quart`, `duration-240` (tailwindcss-animate maps both onto animation properties too). Honor `prefers-reduced-motion` everywhere — every animation below is `motion-safe:`. No bounce, no overshoot, no decorative motion.
+
+Shipped motion vocabulary (enter-only — panels are conditional-render; exit animation isn't worth keeping them mounted):
+
+| Moment | Animation |
+|---|---|
+| CitationPanel / PreviewPanel open | 16px slide-in from right + fade, 240ms ease-out-quart |
+| Answer / refusal card mount | 4px rise + fade, 240ms ease-out-quart |
+| Credential banner reveal | fade-in, 240ms |
+| Copy-confirm Check icon | zoom-in from 75%, 100ms |
+| Skeletons, boot wordmark | `skeleton-pulse` 1.8s opacity breathing |
+| Wait-stage label, `parsing` status pill | `animate-pulse` (the only in-progress states get the only ambient motion) |
 
 ## Brand moments
 
-Exactly one: the Login page's organic blob washes (`bg-primary/10` + `bg-success/15`, `blur-3xl`, pure CSS) — the PRODUCT.md Cohere-illustration direction. Decorative `aria-hidden` layers behind an opaque card; contrast guarantees untouched. Everywhere else stays calm.
+The blob language (PRODUCT.md's Cohere-illustration direction) appears at exactly three scales, always decorative `aria-hidden`, always the same two tints (`bg-primary/10` + `bg-success/15`):
+
+1. **Login** — full-bleed washes (`blur-3xl`) behind an opaque card; contrast guarantees untouched.
+2. **Empty states** — quarter scale (`blur-2xl`) behind a muted icon via `EmptyState`. Empty surfaces are pressure-free; decoration is allowed to be calm there.
+3. **The mark** — favicon: blue superellipse + white Georgia "T" (`#0040AB`/`#FDFDFC`, inline data URI, plus `theme-color: #E8E6DE`); TopBar: same blob rendered in **ink** next to the wordmark — persistent chrome doesn't spend the rare-blue budget. Mark + wordmark are a single home link, role-aware: manager and above → `/admin/documents`, CSR → `/chat` (quiet `hover:bg-muted` fill + the standard focus ring).
+
+Everywhere else stays calm.
 
 ## Token consumer contract
 
@@ -154,7 +200,16 @@ Mechanical inversion of the pre-pass HSL values, converted to OKLCH. No toggle. 
 4. **Tight density on CSR chat, generous whitespace on admin.** Same tokens, different rhythm.
 5. **Georgia headers over Verdana body.** The Carter pairing: editorial-serif page titles, workhorse-sans everything else — tight headings, relaxed body.
 
+## Responsive
+
+Pure-CSS breakpoints, no JS breakpoint state:
+
+- **Sidebar** is `w-60` at `md`+ and collapses to a 64px icon rail below — labels `sr-only md:not-sr-only`, `title` tooltips, `aria-current` unchanged.
+- **TopBar** hides the email below `sm`; the program select clamps to `max-w-[10rem] truncate` below `sm`.
+- **Admin tables** scroll horizontally inside their wrapper (see §Tables); auth cards are `max-w-sm` and center at every width.
+- **Panels** are `w-[min(560–640px, 90vw)]`.
+
 ## Follow-ups
 
-- **Illustration system**: extend the blob language (login today) to empty states — asset work, not token work.
-- **Skeleton loading states**: replace "Loading…" text with skeletons on admin lists.
+- **Drag-and-drop upload zone**: deliberately deferred (polish pass 2) — needs drag state + validation feedback; a feature pass, not a restyle.
+- **Dark mode**: still a mechanical inversion; `.select-quiet`'s chevron hex and the favicon are light-mode-tuned — revisit both if a toggle ships.

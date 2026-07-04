@@ -6,6 +6,7 @@ import {
   type ChangeEvent,
   type FormEvent
 } from "react";
+import { Users } from "lucide-react";
 import {
   createUser,
   listPrograms,
@@ -13,6 +14,7 @@ import {
   resetUserPassword,
   updateUser
 } from "@/lib/api";
+import { EmptyState } from "@/components/EmptyState";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 import type {
   CreateUserRequest,
@@ -48,7 +50,7 @@ export function AdminUsersPage({ user }: AdminUsersPageProps): JSX.Element {
 function Forbidden(): JSX.Element {
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
-      <h1 className="font-display text-2xl font-semibold tracking-tight">Forbidden</h1>
+      <h1 className="font-display text-3xl font-semibold tracking-tight">Forbidden</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Users admin is restricted to managers and above.
       </p>
@@ -151,7 +153,7 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
       <header>
-        <h1 className="font-display text-2xl font-semibold tracking-tight">Users</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Users</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {user.role === "super_user"
             ? "Create and manage users across all programs. Use the program picker in the header to filter the list."
@@ -176,12 +178,26 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
       />
 
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           {error}
         </p>
       ) : null}
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading users…</p>
+        <div role="status" className="flex flex-col gap-2">
+          {[0, 1].map((i) => (
+            <div
+              key={i}
+              className="rounded-lg border border-border bg-card p-4 shadow-card"
+            >
+              <div className="skeleton h-4 w-40" />
+              <div className="skeleton mt-2 h-3 w-64" />
+            </div>
+          ))}
+          <span className="sr-only">Loading users…</span>
+        </div>
       ) : (
         <UsersTable
           actor={user}
@@ -227,7 +243,7 @@ function CredentialBanner({
   }
 
   return (
-    <div className="rounded-lg border border-warning/50 bg-warning/10 p-4 text-sm">
+    <div className="rounded-lg border border-warning/50 bg-warning/10 p-4 text-sm motion-safe:animate-in motion-safe:fade-in motion-safe:duration-240">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 space-y-2">
           <p className="font-medium">
@@ -411,7 +427,7 @@ function CreateUserForm({
               setRole(e.target.value as UserRole)
             }
             disabled={submitting || assignableRoles.length === 1}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className="select-quiet rounded-md border border-input bg-background py-2 pl-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
             {assignableRoles.map((r) => (
               <option key={r} value={r}>
@@ -429,7 +445,7 @@ function CreateUserForm({
                 setProgramId(e.target.value)
               }
               disabled={submitting}
-              className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="select-quiet rounded-md border border-input bg-background py-2 pl-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="">Select a program…</option>
               {programs.map((p) => (
@@ -456,7 +472,10 @@ function CreateUserForm({
         The user will be required to change it at first login.
       </p>
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           {error}
         </p>
       ) : null}
@@ -468,7 +487,7 @@ function CreateUserForm({
             email.trim().length === 0 ||
             name.trim().length === 0
           }
-          className="btn-whisper px-3 py-1.5"
+          className="btn-primary px-5 py-2 text-base"
         >
           {submitting ? "Creating…" : "Create user"}
         </button>
@@ -501,7 +520,11 @@ function UsersTable({
   }, [programs]);
   if (items.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">No users in this scope.</p>
+      <EmptyState
+        icon={Users}
+        title="No users in this scope"
+        hint="Create the first user with the form above — they get a one-time temporary password."
+      />
     );
   }
   return (
@@ -701,7 +724,10 @@ function UserRow({
         ) : null}
       </div>
       {error ? (
-        <p role="alert" className="mt-2 text-xs text-destructive">
+        <p
+          role="alert"
+          className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+        >
           {error}
         </p>
       ) : null}
