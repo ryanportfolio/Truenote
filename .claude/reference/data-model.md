@@ -62,6 +62,7 @@ CREATE TABLE query_log (
   refused BOOLEAN DEFAULT false,
   latency_ms INT,
   feedback INT,  -- -1, 0, +1
+  flagged_missing BOOLEAN DEFAULT false,  -- CSR flagged a refusal as missing content (added 2026-07-04)
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
