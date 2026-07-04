@@ -13,12 +13,15 @@ import { resolveEffectiveProgramId } from "../../lib/auth/effective-program.js";
 export const insightsRouter = Router();
 
 /**
- * KB-gap mining: the query_log feedback loop, finally consumed.
+ * KB-gap mining: the AGGREGATED read side of the query_log feedback loop.
  *
  * Every refusal, thumbs-down, and CSR "the KB should have had this" flag is
  * a data point telling admins which SOP to write next. This endpoint groups
  * those signals per normalized question over a trailing window so the
- * Insights page can rank content gaps by evidence, not anecdote.
+ * Content-gaps page's "Top gaps" section can rank gaps by evidence, not
+ * anecdote. Its row-level sibling is /api/admin/queries (routes/admin/
+ * queries.ts), which feeds the same page's "Review queue" section — two
+ * shapes, one surface.
  */
 insightsRouter.use(requireAuth, requireFreshPassword, requireManagerOrAbove);
 
