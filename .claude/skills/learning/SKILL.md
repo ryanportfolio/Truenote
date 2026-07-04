@@ -1,7 +1,6 @@
 ---
 name: learning
 description: Use at the end of a confirmed-successful problem-solving session where the path from problem to fix took more than one attempt and surfaced gotchas worth carrying forward. Trigger when the user invokes /learning, says "capture learnings", "what did we learn", "save learnings from this session", or after a debug arc finishes (passing tests, accepted fix, shipped feature) and the session contained failed attempts, contradicted assumptions, or revealed stale/missing entries in `.claude/reference/`.
-user-invocable: true
 ---
 
 # learning — retrospective synthesis of session lessons
@@ -55,14 +54,13 @@ Pick the right `.claude/reference/<topic>.md`:
 | Lesson is about… | File |
 |---|---|
 | Cross-cutting gotcha, recurring footgun | `pitfalls.md` |
-| Provider routing, model selection, stealth aliasing | `ai-providers.md` |
 | Env var wiring, secret keys | `secrets.md` |
-| Dark / night-light theme, CSS variables | `theme-system.md` |
-| PDF extraction quirks | `pdf-pipeline.md` |
-| Cross-cutting flow | `architecture.md` |
+| Cross-cutting flow, system structure | `architecture.md` |
 | Library-choice gotcha | `tech-stack.md` |
 | Build / dev / deploy commands | `commands.md` |
-| Replit, build artifacts | `deployment.md` |
+| Deploy target, build artifacts | `deployment.md` |
+
+(Check `ls .claude/reference/` — this project may have grown additional topic files beyond the starter set.)
 
 If no existing topic fits and the lesson is durable, propose a new topic file *and* an index-row update to CLAUDE.md's "Project Reference Library" section so future sessions can find it.
 
@@ -89,4 +87,4 @@ Apply the edits to the reference files.
 
 ## Hygiene
 
-If `pitfalls.md` exceeds ~200 lines after a commit, propose splitting it by area (`pitfalls-extraction.md`, `pitfalls-ui.md`, `pitfalls-content.md`) and update the CLAUDE.md index. Junk-drawer files defeat the point.
+If `pitfalls.md` exceeds ~200 lines after a commit, propose splitting it by area (`pitfalls-<area>.md`) and update the CLAUDE.md index. Junk-drawer files defeat the point.

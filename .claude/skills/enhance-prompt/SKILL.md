@@ -1,85 +1,108 @@
 ---
 description: Rewrite a rough or under-specified request into a polished, copy/paste-ready prompt that any agent or LLM can act on cold. Use when the user gives a quick description of something they want done and asks for it to be turned into a better prompt — e.g., "make this a good prompt", "rewrite this so I can paste it into a new session", "turn this into a copy/paste prompt", or invokes the skill with their rough request as the argument. Output is one fenced markdown block the user copies verbatim, plus a 1-2 sentence note on what changed. The output prompt is platform-neutral (no references to specific tools, agents, or platforms) but project-aware (encodes relevant constraints from CLAUDE.md when applicable to the task).
-user-invocable: true
 ---
 
 # Enhance prompt
 
-Turn the user's rough request (in `$ARGUMENTS`) into a single, polished prompt that an agent with no prior conversation memory can act on. The output must be platform-neutral — it should work whether the user pastes it into a fresh coding-agent session, an in-IDE assistant, or a generic chat LLM.
+Rough request in `$ARGUMENTS` → one polished prompt a cold agent can act on. Platform-neutral: works in fresh coding-agent session, IDE assistant, or generic chat LLM.
 
-## Step 1: Extract the real goal
+**Prime directive: every sentence must change receiver behavior. No behavior change → cut.** 200 words all signal > 800 words repeating.
 
-Look past surface wording. Common patterns to recognize:
+**This skill file is compressed; the output prompt is NOT.** Receiver is cold → output prompt = plain clear prose, full sentences, nothing abbreviated.
 
-- "Review X" usually means **audit + propose, not edit**. Phase the work.
-- "Add feature X" needs scope, edge cases, UI placement
-- "Fix bug X" needs reproduction steps, current vs expected behavior
-- "Refactor X" needs scope boundaries (which files, which patterns to keep)
-- "Make it better / cleaner / faster" needs concrete success criteria
+## 1: Extract real goal
 
-If the request is genuinely ambiguous on a point that materially changes the output, ask the user once before drafting. Otherwise proceed and surface assumptions inside the prompt as `<TODO: confirm>` placeholders.
+Look past surface wording:
 
-## Step 2: Gather receiver-cold context
+- "Review X" → usually audit + propose, not edit. Phase it.
+- "Add feature X" → needs scope, edge cases, UI placement
+- "Fix bug X" → needs repro steps, current vs expected behavior
+- "Refactor X" → needs scope boundaries (which files, which patterns to keep)
+- "Make it better / cleaner / faster" → needs concrete success criteria
 
-The receiver has no memory of this conversation and may have no view of the codebase. Add the context they need to act:
+Genuinely ambiguous on a point that materially changes output → ask user once before drafting. Else proceed; surface assumptions as `<TODO: confirm>` placeholders.
 
-- **File paths and line numbers** — if they exist and you can grep them, include them. `Edit client/src/pages/Foo.tsx:142` is 10× more actionable than "edit the foo page."
-- **Existing patterns to match** — point at one reference in the codebase ("follow the pattern in `bar.tsx:80-110`")
-- **Current state vs desired state** — for bug fixes and changes, spell both out concretely
-- **Don't invent facts.** If the user didn't tell you a tier name, file path, or behavior and you can't verify it, leave a `<TODO: user fills in>` placeholder rather than making something up.
-- **Don't quote large code blocks.** Reference the file path; if the receiver has repo access they'll read it. Quote the minimum necessary only when the receiver clearly won't have repo access.
+## 2: Gather receiver-cold context
 
-## Step 3: Phase risky work
+Receiver: no conversation memory, maybe no codebase view. Add:
 
-Anything that touches user-visible copy, database schemas, public APIs, model routing, payment logic, or is a large refactor → split into phases and tell the receiver to STOP between them:
+- **File paths + line numbers** — greppable → include. `Edit client/src/pages/Foo.tsx:142` 10× more actionable than "edit the foo page."
+- **Existing patterns to match** — one codebase reference ("follow the pattern in `bar.tsx:80-110`")
+- **Current vs desired state** — bug fixes/changes: spell both out concretely
+- **No invented facts.** User didn't say it + can't verify → `<TODO: user fills in>`, never fabricate.
+- **No big code dumps.** Reference file path; receiver with repo access reads it. Quote minimum only when receiver clearly lacks repo access.
 
-1. **Phase 1: Audit / propose only.** Write findings to `.tmp/<task>-plan.md` or list inline. No file edits.
-2. **Phase 2: User reviews.**
-3. **Phase 3 (separate prompt or continuation): Implement the approved subset.**
+## 3: Write like prompt engineer
 
-For safe, mechanical work (typo fixes, renaming a single internal variable, adding a console log), a single phase is fine.
+Craft rules for prompt body:
 
-When in doubt, phase it. Cheap to skip a phase, expensive to undo a bad edit.
+- **Clear + direct.** Write for brilliant new employee, zero context on your norms. Golden rule: colleague with minimal context confused → receiver confused.
+- **Explicit action verbs.** Models follow literally: "can you suggest changes" → suggestions, not edits. Want edits → "Change/Implement/Fix X". Want no edits → "Propose/List, do not edit". Act-vs-advise never implicit.
+- **Say do, not avoid.** "Write flowing prose paragraphs" > "don't use markdown". Convert negatives to positives; keep negatives only as scope guards ("don't refactor unrelated files").
+- **Why on non-obvious constraints.** "Never use ellipses — the output is read by a text-to-speech engine" → receiver generalizes correctly. Bare rule → literal-minded misfires. Obvious constraint needs no why — padding.
+- **Calm imperative tone.** No "CRITICAL:", "YOU MUST", ALL-CAPS — modern models overtrigger on aggressive language, reads as noise. Plain "Do X" followed just as reliably. Strong emphasis ≤ 1 genuinely blocking rule.
+- **Quality modifiers when quality is the point.** Above-and-beyond wanted → say concretely: "Include as many relevant features and interactions as possible; go beyond the basics." Vague → on-distribution median output.
+- **XML tags when content types mix.** Instructions + pasted data/logs + examples → wrap each (`<instructions>`, `<context>`, `<input>`, `<example>`) so data ≠ directive. Short single-purpose prompt → no tags, no ceremony.
+- **Long pasted content top, task bottom.** 1k+ tokens of logs/docs/data → material first, instructions/question after — measurably better responses. Very long docs → add "quote the relevant parts before answering."
+- **Role line only if it changes behavior.** "You are a senior security engineer reviewing for OWASP Top 10" focuses the review; "You are a helpful assistant" dead weight.
+- **Examples when format matters.** Specific deliverable shape (severity-tagged findings, table layout) → 1-2 short `<example>` tags beat prose description. Obvious format → skip.
+- **Self-check for verifiable work.** "Before you finish, verify the change against [the failing test / a type-check / the listed criteria]". Match check to task; no generic "double-check your work" bolted onto everything.
+- **General solutions, not test-passers.** Tests/specific examples present → add: "Implement the actual logic that solves the problem generally — do not hard-code values or special-case the given examples. If a test or requirement is itself wrong, say so rather than working around it."
+- **Grounding for codebase questions.** Task = answering questions about existing code → add "read the relevant files before making claims about them; don't speculate about code you haven't opened."
 
-## Step 4: Specify the deliverable
+## 4: Phase risky work
+
+Touches user-visible copy, DB schemas, public APIs, model routing, payment logic, or large refactor → split into phases, receiver STOPs between:
+
+1. **Phase 1: audit / propose only.** Findings → `.tmp/<task>-plan.md` or inline. No file edits.
+2. **Phase 2: user reviews.**
+3. **Phase 3 (separate prompt or continuation): implement approved subset.**
+
+Safe mechanical work (typo fix, rename one internal variable, add console log) → single phase.
+
+Doubt → phase. Skipped phase cheap; bad edit expensive to undo.
+
+## 5: Specify deliverable
 
 Always include:
 
-- **What artifacts to produce** (file edits, a markdown audit, a new component, a verification script, etc.)
-- **Format if structured output is expected** (table layout, severity-tagged list, JSON shape, fenced sections with specific headings)
-- **Verification step** — type-check, screenshot, dry-run script — appropriate to the task
-- **Scope guards** — common ones: "don't refactor unrelated files", "don't add tests unless asked", "don't install packages without confirmation", "don't change user-facing copy outside the listed strings"
+- **Artifacts to produce** (file edits, markdown audit, new component, verification script, etc.)
+- **Format if structured output expected** (table layout, severity-tagged list, JSON shape, fenced sections with specific headings)
+- **Verification step** — type-check, screenshot, dry-run script — matched to task
+- **Scope guards** — common: "don't refactor unrelated files", "don't add tests unless asked", "don't install packages without confirmation", "don't change user-facing copy outside the listed strings". Gold-plating-prone task → add: "keep the solution minimal — no extra abstractions, configurability, or defensive code beyond what the task needs."
+- **Escape hatch** — receiver hits genuine blocker (missing access, contradictory requirement, `<TODO>` unresolved) → should stop and ask, not guess. One line: "If anything here is ambiguous or blocked, ask before proceeding rather than guessing."
 
-## Step 5: Bake in relevant project constraints
+## 6: Bake in project constraints
 
-If a `CLAUDE.md` exists in the working directory, skim it for rules that touch the current task and include only those in the prompt. Don't dump the whole kernel — irrelevant rules dilute signal.
+`CLAUDE.md` in working dir → skim for rules touching this task, **inline only those, stated as plain constraints**. Receiver may lack CLAUDE.md — never write "read the CLAUDE.md", "follow the project guidelines", or "CLAUDE.md says X". Rule matters → verbatim constraint in prompt. Doesn't → stays out.
 
-High-frequency categories to consider including when applicable:
+Frequent categories when applicable:
 
-- **Internal aliasing or stealth naming rules** — if task touches extraction, error surfaces, banners, or user-facing copy that mentions providers/products by name
-- **Manual package install policy** — if task may add dependencies
-- **Manual DB migration policy** — if task involves schema changes
-- **Translation / i18n approval flow** — if task changes user-facing wording
-- **Settings duplicated across multiple files** — if task touches a config that's known to live in multiple places (e.g., default model lists, feature flags)
-- **Multi-theme / multi-mode UI requirements** — if task adds visual elements
-- **Product-specific naming or terminology rules** — if relevant
+- **Naming/terminology policies** — error surfaces, banners, provider/product names in user-facing copy
+- **Manual package install policy** — task may add dependencies
+- **Manual DB migration policy** — schema changes
+- **Translation / i18n approval flow** — user-facing wording changes
+- **Settings duplicated across files** — config living in multiple places (default model lists, feature flags)
+- **Multi-theme / multi-mode UI requirements** — new visual elements
 
-When you bake a constraint in, **quote the rule plainly as a constraint** — don't write "CLAUDE.md says X." The receiver may not have CLAUDE.md and shouldn't need it.
+## 7: Platform-neutral output
 
-## Step 6: Keep the output platform-neutral
+Prompt must work regardless of executor.
 
-The output prompt must work regardless of who/what executes it.
+- ❌ "use the Bash tool", "via the Task subagent", "as Claude Code", any named agent platform
+- ❌ Platform UI affordances ("click the X button in the sidebar")
+- ✅ "run the following command", "search the codebase for X", "edit the file at `path:line`", "produce a markdown file at `<path>`"
+- ✅ Outcomes + artifacts, not the path there
 
-- ❌ Don't say "use the Bash tool", "via the Task subagent", "as Replit Agent", "as Claude Code"
-- ❌ Don't reference specific UI affordances of one platform ("click the X button in the sidebar")
-- ✅ Do say "run the following command", "search the codebase for X", "edit the file at `path:line`", "produce a markdown file at `<path>`"
-- ✅ Do specify outcomes and artifacts, not the path to get there
+Receiver uses own tools. Give the *what*; prescribe the *how* only when the *how* is itself the point.
 
-The receiver will use whatever tools they have. Trust them with the *what*; don't prescribe the *how* unless the *how* is itself the point.
+## 8: Self-review pass
 
-## Step 7: Output format
+Draft done → reread once as the cold receiver. Colleague test: minimal-context colleague confused anywhere → rewrite that line. Then per sentence: changes receiver behavior? No → cut. Catch leftover conversation-context leaks ("as discussed", "the file we looked at") — receiver has none.
 
-Produce **one outer-fenced markdown block** the user can copy verbatim. Use four backticks for the outer fence so any triple-backtick code blocks inside render correctly:
+## 9: Output format
+
+One outer-fenced markdown block, copied verbatim. Four backticks outer so triple-backtick blocks inside render:
 
 ````
 ```markdown
@@ -87,16 +110,18 @@ Produce **one outer-fenced markdown block** the user can copy verbatim. Use four
 ```
 ````
 
-Above the block, add a 1-2 sentence note on what changed from the user's input — e.g., "I added a phase split, three file path references, and the aliasing constraint since this touches extraction copy."
+Above block: 1-2 sentence note on what changed from user's input — e.g., "I added a phase split, three file path references, and the copy-policy constraint since this touches user-facing wording."
 
-Do NOT execute the prompt yourself. Do NOT make any file edits as part of running this skill. The deliverable is the prompt — nothing more.
+Do NOT execute the prompt. Do NOT edit files while running this skill. Deliverable = the prompt, nothing more.
 
-## Anti-patterns to avoid
+## Anti-patterns
 
-- **Don't pad.** A 200-word prompt that's all signal beats an 800-word prompt that repeats itself. If a sentence doesn't change what the receiver does, cut it.
-- **Don't invent constraints the user didn't ask for.** A typo fix doesn't need a 5-phase audit. Match prompt complexity to actual job complexity.
-- **Don't dump CLAUDE.md verbatim.** Quote only the rules that apply to this task.
-- **Don't substitute your judgment for the user's clear choices.** If they've decided something, encode it as-is. If they've left something open, ask or flag as `<TODO>`.
-- **Don't generate placeholders for things you could verify yourself.** If you can grep the file path or read the relevant code, do it instead of writing `<file path>`.
-- **Don't reference platform-specific tools or UI.** The output must be tool-agnostic.
-- **Don't pre-write the receiver's reply.** Phrases like "the agent will respond with X" or "you should answer Y" leak frame; just specify what the receiver should produce.
+- **No instructions the environment already handles.** Never: "read the CLAUDE.md / project guidelines first", "use your available tools", "explore the codebase to understand it", "be thorough and careful", "think step by step". Agent harness injects these automatically; chat LLM has neither. Dead weight either way.
+- **No padding.** Sentence doesn't change receiver behavior → cut. Includes goal restated in new words, generic quality exhortations, prompt summarizing itself.
+- **No invented constraints.** Typo fix needs no 5-phase audit, XML tags, examples, or role line. Prompt complexity = job complexity — Step 3 techniques conditional, apply only when task calls for them.
+- **No shouting.** "CRITICAL", "IMPORTANT!!", MUST-in-caps → overtriggering on modern models + dilutes the one rule that might actually be blocking.
+- **No CLAUDE.md dumps.** Only task-relevant rules, as plain constraints.
+- **No overriding user's clear choices.** Decided → encode as-is. Left open → ask or flag `<TODO>`.
+- **No placeholders for verifiable facts.** Can grep the path / read the code → do it, don't write `<file path>`.
+- **No platform-specific tools or UI.** Output must be tool-agnostic.
+- **No pre-writing receiver's reply.** "the agent will respond with X" / "you should answer Y" leak frame; specify what receiver should produce, nothing more.

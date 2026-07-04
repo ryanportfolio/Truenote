@@ -1,6 +1,5 @@
 ---
 description: Push current branch changes to GitHub and provide a PR comparison link. Use when the user says /pr, asks to create a PR, or wants to push their changes.
-user-invocable: true
 ---
 
 # PR — Push & Create PR Link
@@ -32,14 +31,14 @@ If there are uncommitted changes (modified or untracked files relevant to the wo
 ```
 git commit -m "message here
 
-Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
+Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
 ## Step 3: Handle branch naming
 
 If currently on `main`, create a descriptive feature branch first:
 ```
-git checkout -b antigravity/descriptive-name
+git checkout -b feat/descriptive-name
 ```
 
 ## Step 4: Push
@@ -51,10 +50,10 @@ git push -u origin <branch-name>
 
 ## Step 5: Provide PR link
 
-Construct and display the PR comparison URL:
+Construct and display the PR comparison URL (derive the repo path from `git remote get-url origin`):
 
 ```
-https://github.com/Aoh1578/Extract-Video-Wisdom/compare/<branch-name>
+https://github.com/<owner>/<repo>/compare/<branch-name>
 ```
 
 Report this URL clearly to the user — that's the deliverable.
