@@ -32,7 +32,7 @@ export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Ele
     <aside
       role="dialog"
       aria-label="Parsed markdown preview"
-      className="fixed right-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-[min(640px,90vw)] flex-col border-l border-border bg-card shadow-2xl"
+      className="fixed right-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-[min(640px,90vw)] flex-col border-l border-border bg-card shadow-panel"
     >
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
         <div className="flex flex-col">
@@ -42,7 +42,7 @@ export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Ele
         <button
           onClick={onClose}
           aria-label="Close preview"
-          className="rounded p-1 hover:bg-secondary"
+          className="btn-icon"
         >
           <X className="h-4 w-4" aria-hidden />
         </button>
@@ -57,7 +57,7 @@ export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Ele
             No parsed markdown yet. Status: {data.parseStatus ?? "unknown"}.
           </p>
         ) : (
-          <pre className="whitespace-pre-wrap break-words text-xs leading-relaxed">
+          <pre className="whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 font-mono text-[13px] leading-relaxed">
             {data.markdown}
           </pre>
         )}

@@ -72,7 +72,7 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Documents</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight">Documents</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Upload SOPs, policies, screenshots, and tables. After parsing, click Preview to verify the
           parse before the version becomes active.
@@ -81,7 +81,7 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
       {noProgramSelected ? (
         <div
           role="status"
-          className="rounded border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+          className="rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
         >
           {user.role === "super_user"
             ? "Select a program from the picker in the header to view or upload documents."

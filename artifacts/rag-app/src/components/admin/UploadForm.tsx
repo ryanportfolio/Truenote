@@ -42,7 +42,7 @@ export function UploadForm({ onUploaded }: UploadFormProps): JSX.Element {
   return (
     <form
       onSubmit={onSubmit}
-      className="flex flex-col gap-3 rounded border border-border bg-card p-4"
+      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5 shadow-card"
     >
       <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium">Title</span>
@@ -51,7 +51,7 @@ export function UploadForm({ onUploaded }: UploadFormProps): JSX.Element {
           name="title"
           required
           placeholder="e.g. Cancellation Policy v3"
-          className="rounded border border-input bg-background px-2 py-1 text-sm"
+          className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </label>
       <label className="flex flex-col gap-1 text-sm">
@@ -61,7 +61,7 @@ export function UploadForm({ onUploaded }: UploadFormProps): JSX.Element {
           name="file"
           accept={ACCEPT}
           required
-          className="text-sm file:mr-3 file:rounded file:border-0 file:bg-secondary file:px-3 file:py-1 file:text-secondary-foreground"
+          className="text-sm file:mr-3 file:rounded-full file:border-0 file:bg-secondary file:px-3 file:py-1 file:font-medium file:text-secondary-foreground"
         />
         <span className="text-xs text-muted-foreground">
           PDF / DOCX / PNG / JPG / WebP / Markdown / TXT. Max 20MB.

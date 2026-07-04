@@ -48,7 +48,7 @@ export function AdminUsersPage({ user }: AdminUsersPageProps): JSX.Element {
 function Forbidden(): JSX.Element {
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
-      <h1 className="text-xl font-semibold tracking-tight">Forbidden</h1>
+      <h1 className="font-display text-2xl font-semibold tracking-tight">Forbidden</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Users admin is restricted to managers and above.
       </p>
@@ -151,7 +151,7 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Users</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight">Users</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {user.role === "super_user"
             ? "Create and manage users across all programs. Use the program picker in the header to filter the list."
@@ -227,7 +227,7 @@ function CredentialBanner({
   }
 
   return (
-    <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-4 text-sm">
+    <div className="rounded-lg border border-warning/50 bg-warning/10 p-4 text-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 space-y-2">
           <p className="font-medium">
@@ -238,7 +238,7 @@ function CredentialBanner({
             required to change it at first login. This is shown once — copy it
             now.
           </p>
-          <code className="block break-all rounded bg-background px-2 py-1 font-mono text-sm">
+          <code className="block break-all rounded-md bg-card px-2 py-1 font-mono text-sm">
             {password}
           </code>
         </div>
@@ -246,14 +246,14 @@ function CredentialBanner({
           <button
             type="button"
             onClick={() => void handleCopy()}
-            className="rounded border border-input bg-background px-3 py-1 text-xs hover:bg-secondary/60"
+            className="btn-whisper px-3 py-1 text-xs"
           >
             {copied ? "Copied" : "Copy"}
           </button>
           <button
             type="button"
             onClick={onDismiss}
-            className="rounded px-3 py-1 text-xs text-muted-foreground hover:bg-secondary/60"
+            className="rounded-full px-3 py-1 text-xs text-muted-foreground transition-colors duration-100 ease-out hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             Dismiss
           </button>
@@ -369,7 +369,7 @@ function CreateUserForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-col gap-3 rounded border border-border bg-card p-4"
+      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5 shadow-card"
     >
       <h2 className="text-sm font-semibold">Create user</h2>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -384,7 +384,7 @@ function CreateUserForm({
             required
             maxLength={254}
             placeholder="user@example.com"
-            className="rounded border border-input bg-background px-3 py-2 text-sm"
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             disabled={submitting}
           />
         </label>
@@ -399,7 +399,7 @@ function CreateUserForm({
             required
             maxLength={120}
             placeholder="Full name"
-            className="rounded border border-input bg-background px-3 py-2 text-sm"
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             disabled={submitting}
           />
         </label>
@@ -411,7 +411,7 @@ function CreateUserForm({
               setRole(e.target.value as UserRole)
             }
             disabled={submitting || assignableRoles.length === 1}
-            className="rounded border border-input bg-background px-3 py-2 text-sm"
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
             {assignableRoles.map((r) => (
               <option key={r} value={r}>
@@ -429,7 +429,7 @@ function CreateUserForm({
                 setProgramId(e.target.value)
               }
               disabled={submitting}
-              className="rounded border border-input bg-background px-3 py-2 text-sm"
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="">Select a program…</option>
               {programs.map((p) => (
@@ -446,7 +446,7 @@ function CreateUserForm({
               type="text"
               value="Your program (locked)"
               disabled
-              className="rounded border border-input bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+              className="rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
             />
           </label>
         ) : null}
@@ -602,7 +602,7 @@ function UserRow({
   }
 
   return (
-    <li className="rounded border border-border bg-card p-4">
+    <li className="rounded-lg border border-border bg-card p-4 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -615,7 +615,7 @@ function UserRow({
                   setEditedName(e.target.value)
                 }
                 maxLength={120}
-                className="rounded border border-input bg-background px-2 py-1 text-sm font-medium"
+                className="rounded-md border border-input bg-background px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring"
                 disabled={busy === "save"}
               />
             ) : (
@@ -624,12 +624,12 @@ function UserRow({
             <span className="text-xs text-muted-foreground">{item.email}</span>
             <RoleBadge role={item.role} />
             {!item.isActive ? (
-              <span className="rounded bg-destructive/15 px-2 py-0.5 text-xs text-destructive">
+              <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs text-destructive">
                 Inactive
               </span>
             ) : null}
             {item.mustResetPassword ? (
-              <span className="rounded bg-amber-500/15 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300">
+              <span className="rounded-full bg-warning/20 px-2 py-0.5 text-xs text-warning-foreground">
                 Reset pending
               </span>
             ) : null}
@@ -663,7 +663,7 @@ function UserRow({
                     setEditedName(item.name);
                   }}
                   disabled={busy === "save"}
-                  className="rounded border border-input px-3 py-1 text-xs hover:bg-secondary/60 disabled:opacity-60"
+                  className="btn-whisper px-3 py-1 text-xs"
                 >
                   Cancel
                 </button>
@@ -672,7 +672,7 @@ function UserRow({
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="rounded border border-input px-3 py-1 text-xs hover:bg-secondary/60"
+                className="btn-whisper px-3 py-1 text-xs"
               >
                 Edit name
               </button>
@@ -681,7 +681,7 @@ function UserRow({
               type="button"
               onClick={() => void handleToggleActive()}
               disabled={busy === "active"}
-              className="rounded border border-input px-3 py-1 text-xs hover:bg-secondary/60 disabled:opacity-60"
+              className="btn-whisper px-3 py-1 text-xs"
             >
               {busy === "active"
                 ? "Saving…"
@@ -693,7 +693,7 @@ function UserRow({
               type="button"
               onClick={() => void handleResetPassword()}
               disabled={busy === "reset"}
-              className="rounded border border-input px-3 py-1 text-xs hover:bg-secondary/60 disabled:opacity-60"
+              className="btn-whisper px-3 py-1 text-xs"
             >
               {busy === "reset" ? "Resetting…" : "Reset password"}
             </button>
@@ -710,16 +710,14 @@ function UserRow({
 }
 
 function RoleBadge({ role }: { role: UserRole }): JSX.Element {
+  // Product-register restraint: the label carries the information; color
+  // stops pretending to be a legend. Only super_user gets the accent tint.
   const tone =
     role === "super_user"
-      ? "bg-purple-500/15 text-purple-700 dark:text-purple-300"
-      : role === "senior_manager"
-        ? "bg-blue-500/15 text-blue-700 dark:text-blue-300"
-        : role === "manager"
-          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-          : "bg-muted text-muted-foreground";
+      ? "bg-primary/10 text-primary"
+      : "bg-muted text-muted-foreground";
   return (
-    <span className={`rounded px-2 py-0.5 text-xs ${tone}`}>
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>
       {ROLE_LABEL[role]}
     </span>
   );
