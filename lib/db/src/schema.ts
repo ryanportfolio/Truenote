@@ -109,6 +109,9 @@ export interface ChunkMetadata {
   image_url?: string;
   heading_path?: string[];
   token_count?: number;
+  segment_types?: string[];
+  /** The "[Doc Title > Heading]" line prepended to content at ingest — lets a UI strip or style it. */
+  context_header?: string;
 }
 
 export const chunks = pgTable("chunks", {

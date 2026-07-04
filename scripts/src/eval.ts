@@ -69,12 +69,19 @@ function printSummary(report: Awaited<ReturnType<typeof runEval>>): void {
   const s = report.summary;
   const pct = (x: number | null): string =>
     x === null ? "n/a" : `${x.toFixed(1)}%`;
+  const fs = s.inKbFailuresByStage;
+  const stageLine =
+    fs.retrieval + fs.rerank + fs.threshold + fs.generation + fs.unattributed === 0
+      ? "none"
+      : `retrieval ${fs.retrieval} · rerank ${fs.rerank} · threshold ${fs.threshold} · generation ${fs.generation} · unattributed ${fs.unattributed}`;
   console.log(`
 eval — ${report.startedAt} → ${report.finishedAt} (${report.durationMs}ms)
 
   questions: ${s.totalQuestions}    passed: ${s.passed}    failed: ${s.failed}
   in-KB:     ${s.inKbPassed}/${s.inKbTotal}    out-of-KB: ${s.outOfKbPassed}/${s.outOfKbTotal}
   citation:  ${pct(s.citationAccuracyPct)}    answer: ${pct(s.answerAccuracyPct)}
+  recall:    candidates ${pct(s.retrievalRecallPct)}    post-rerank ${pct(s.rerankRecallPct)}
+  in-KB failure stages: ${stageLine}
   latency:   p50 ${s.latencyP50Ms}ms  p95 ${s.latencyP95Ms}ms
 `);
 
@@ -98,6 +105,9 @@ eval — ${report.startedAt} → ${report.finishedAt} (${report.durationMs}ms)
 
 function collectFailureReasons(r: EvalQuestionResult): string[] {
   const reasons: string[] = [];
+  if (r.failureStage) {
+    reasons.push(`lost at stage: ${r.failureStage}`);
+  }
   if (r.kind === "out-of-kb" && !r.refused) {
     reasons.push("expected refusal but the system answered");
   }

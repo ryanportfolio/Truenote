@@ -6,6 +6,15 @@ import { rerankWithCohere } from "./rerank.js";
 const DEFAULT_RERANK_THRESHOLD = 0.3;
 const DEFAULT_TOP_K = 8;
 const DEFAULT_CANDIDATE_K = 40;
+const DEFAULT_NEIGHBOR_ANCHORS = 3;
+
+/**
+ * Floor for the trigram zero-hit fallback. word_similarity scores below this
+ * are noise (random letter overlap), not a typo'd token. Tune against the
+ * eval set if the fallback ever surfaces junk candidates — they still have
+ * to survive the reranker, so the blast radius of a loose floor is small.
+ */
+const TRIGRAM_SIMILARITY_FLOOR = 0.3;
 
 export interface RetrievalChunk {
   id: string;
@@ -14,6 +23,12 @@ export interface RetrievalChunk {
   programId: string;
   docTitle?: string;
   relevanceScore: number;
+  /**
+   * True for ordinal-adjacent context chunks pulled in by neighbor
+   * expansion. Neighbors were NOT scored by the reranker — their
+   * relevanceScore is 0 and they never participate in the confidence gate.
+   */
+  neighbor?: boolean;
 }
 
 export interface RetrievalInput {
@@ -21,6 +36,23 @@ export interface RetrievalInput {
   question: string;
   topK?: number;
   candidateK?: number;
+  /** Include the stage-level trace (pre/post-rerank candidates). Used by the eval harness. */
+  withTrace?: boolean;
+}
+
+export interface RetrievalTraceEntry {
+  chunkId: string;
+  documentId: string | null;
+}
+
+/** Stage-level retrieval trace, for eval failure attribution. */
+export interface RetrievalTrace {
+  /** Merged vector + BM25 candidates, pre-rerank. */
+  candidates: RetrievalTraceEntry[];
+  /** Post-rerank top-K, before neighbor expansion. */
+  ranked: RetrievalTraceEntry[];
+  /** True when BM25 returned zero rows and the trigram fallback supplied candidates instead. */
+  trigramFallback: boolean;
 }
 
 export interface RetrievalResult {
@@ -28,6 +60,7 @@ export interface RetrievalResult {
   refused: boolean;
   topScore: number | null;
   threshold: number;
+  trace?: RetrievalTrace;
 }
 
 export interface RetrievalDeps {
@@ -42,6 +75,8 @@ interface CandidateRow {
   document_version_id: string;
   program_id: string;
   doc_title: string | null;
+  document_id: string | null;
+  ordinal: number | null;
 }
 
 function readNumberEnv(key: string, fallback: number, parser: (s: string) => number): number {
@@ -67,8 +102,8 @@ async function vectorSearch(
 ): Promise<CandidateRow[]> {
   const vec = `[${embedding.join(",")}]`;
   const result = await db.execute(sql`
-    SELECT c.id, c.content, c.document_version_id, c.program_id,
-           d.title AS doc_title
+    SELECT c.id, c.content, c.document_version_id, c.program_id, c.ordinal,
+           d.title AS doc_title, d.id AS document_id
     FROM chunks c
     JOIN document_versions dv ON dv.id = c.document_version_id
     LEFT JOIN documents d ON d.id = dv.document_id
@@ -92,8 +127,8 @@ async function bm25Search(
   k: number
 ): Promise<CandidateRow[]> {
   const result = await db.execute(sql`
-    SELECT c.id, c.content, c.document_version_id, c.program_id,
-           d.title AS doc_title
+    SELECT c.id, c.content, c.document_version_id, c.program_id, c.ordinal,
+           d.title AS doc_title, d.id AS document_id
     FROM chunks c
     JOIN document_versions dv ON dv.id = c.document_version_id
     LEFT JOIN documents d ON d.id = dv.document_id
@@ -101,6 +136,41 @@ async function bm25Search(
       AND dv.is_active = true
       AND c.content_tsv @@ websearch_to_tsquery('english', ${question})
     ORDER BY ts_rank(c.content_tsv, websearch_to_tsquery('english', ${question})) DESC
+    LIMIT ${k}
+  `);
+  return result.rows as unknown as CandidateRow[];
+}
+
+/**
+ * Trigram fallback for BM25 zero-hits, scoped to a program.
+ *
+ * to_tsvector stems dictionary words; it has nothing for typos ("cancelation
+ * fee") or exact codes ("PLN-X200") that CSRs type mid-call. pg_trgm's
+ * word_similarity(query, content) finds the best word-bounded match of the
+ * query inside the chunk, so a one-letter typo still scores high.
+ *
+ * This runs ONLY when tsquery matched zero rows, so the extra cost lands on
+ * queries that would otherwise contribute nothing to the candidate pool.
+ * Plain function call (no <% operator) skips the trgm index — a deliberate
+ * trade: no GIN trgm index exists yet, and a per-program seq scan is cheap at
+ * current KB scale. If the KB grows past ~100k chunks, add the index via DDL
+ * and switch to the operator form.
+ */
+async function trigramSearch(
+  programId: string,
+  question: string,
+  k: number
+): Promise<CandidateRow[]> {
+  const result = await db.execute(sql`
+    SELECT c.id, c.content, c.document_version_id, c.program_id, c.ordinal,
+           d.title AS doc_title, d.id AS document_id
+    FROM chunks c
+    JOIN document_versions dv ON dv.id = c.document_version_id
+    LEFT JOIN documents d ON d.id = dv.document_id
+    WHERE c.program_id = ${programId}::uuid
+      AND dv.is_active = true
+      AND word_similarity(${question}, c.content) > ${TRIGRAM_SIMILARITY_FLOOR}
+    ORDER BY word_similarity(${question}, c.content) DESC
     LIMIT ${k}
   `);
   return result.rows as unknown as CandidateRow[];
@@ -118,6 +188,86 @@ export function mergeCandidates(
   return Array.from(merged.values());
 }
 
+/**
+ * Fetch ordinal ±1 siblings (same active document version) for the anchor
+ * chunks. Procedures routinely span a chunk boundary — the reranked chunk has
+ * steps 1–4, the answer needs step 5 from the next chunk. Neighbors are
+ * context for the LLM, not evidence: they skip the reranker and the gate.
+ *
+ * The program_id filter is redundant (same version ⇒ same program) but kept
+ * anyway — program scoping is a security boundary and belongs in every chunk
+ * query, so a future edit can't accidentally widen this one.
+ */
+async function fetchNeighborRows(
+  programId: string,
+  anchors: Array<{ documentVersionId: string; ordinal: number }>
+): Promise<CandidateRow[]> {
+  if (anchors.length === 0) return [];
+  const pairConds = anchors.map(
+    (a) =>
+      sql`(c.document_version_id = ${a.documentVersionId}::uuid AND c.ordinal IN (${a.ordinal - 1}, ${a.ordinal + 1}))`
+  );
+  const result = await db.execute(sql`
+    SELECT c.id, c.content, c.document_version_id, c.program_id, c.ordinal,
+           d.title AS doc_title, d.id AS document_id
+    FROM chunks c
+    JOIN document_versions dv ON dv.id = c.document_version_id
+    LEFT JOIN documents d ON d.id = dv.document_id
+    WHERE c.program_id = ${programId}::uuid
+      AND dv.is_active = true
+      AND (${sql.join(pairConds, sql` OR `)})
+  `);
+  return result.rows as unknown as CandidateRow[];
+}
+
+/**
+ * Interleave neighbor chunks after their anchors, preserving rerank order.
+ * Only the top `anchorCount` ranked chunks get neighbors; duplicates (a
+ * neighbor that is itself a ranked hit, or shared by two anchors) are
+ * dropped. Exported for tests.
+ */
+export function expandWithNeighbors(
+  ranked: RetrievalChunk[],
+  anchorCount: number,
+  neighborRows: CandidateRow[]
+): RetrievalChunk[] {
+  const seen = new Set(ranked.map((r) => r.id));
+  const byAnchor = new Map<string, CandidateRow[]>();
+  for (const row of neighborRows) {
+    if (seen.has(row.id)) continue;
+    const key = row.document_version_id;
+    const list = byAnchor.get(key) ?? [];
+    list.push(row);
+    byAnchor.set(key, list);
+  }
+  for (const list of byAnchor.values()) {
+    list.sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0));
+  }
+
+  const out: RetrievalChunk[] = [];
+  for (let i = 0; i < ranked.length; i++) {
+    const anchor = ranked[i];
+    if (!anchor) continue;
+    out.push(anchor);
+    if (i >= anchorCount) continue;
+    const siblings = byAnchor.get(anchor.documentVersionId) ?? [];
+    for (const row of siblings) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      out.push({
+        id: row.id,
+        content: row.content,
+        documentVersionId: row.document_version_id,
+        programId: row.program_id,
+        docTitle: row.doc_title ?? undefined,
+        relevanceScore: 0,
+        neighbor: true
+      });
+    }
+  }
+  return out;
+}
+
 export async function retrieve(
   input: RetrievalInput,
   deps: RetrievalDeps = {}
@@ -131,27 +281,65 @@ export async function retrieve(
   const candidateK =
     input.candidateK ??
     readNumberEnv("RETRIEVAL_CANDIDATE_K", DEFAULT_CANDIDATE_K, (s) => parseInt(s, 10));
+  const neighborAnchors = readNumberEnv(
+    "RETRIEVAL_NEIGHBOR_ANCHORS",
+    DEFAULT_NEIGHBOR_ANCHORS,
+    (s) => parseInt(s, 10)
+  );
+
+  const emptyTrace = (trigramFallback = false): RetrievalTrace => ({
+    candidates: [],
+    ranked: [],
+    trigramFallback
+  });
 
   const trimmed = input.question.trim();
   if (trimmed.length === 0) {
-    return { chunks: [], refused: true, topScore: null, threshold };
+    return {
+      chunks: [],
+      refused: true,
+      topScore: null,
+      threshold,
+      ...(input.withTrace ? { trace: emptyTrace() } : {})
+    };
   }
 
   const embedder = deps.embedder ?? new OpenAIEmbedder();
   const embeddings = await embedder.embed([trimmed]);
   const embedding = embeddings[0];
   if (!embedding) {
-    return { chunks: [], refused: true, topScore: null, threshold };
+    return {
+      chunks: [],
+      refused: true,
+      topScore: null,
+      threshold,
+      ...(input.withTrace ? { trace: emptyTrace() } : {})
+    };
   }
 
-  const [vectorRows, bm25Rows] = await Promise.all([
+  const [vectorRows, bm25Initial] = await Promise.all([
     vectorSearch(input.programId, embedding, candidateK),
     bm25Search(input.programId, trimmed, candidateK)
   ]);
 
+  // Zero-hit fallback: tsquery found nothing keyword-shaped, so try trigram
+  // similarity (typos, SKU codes). Vector candidates are unaffected either way.
+  let bm25Rows = bm25Initial;
+  let trigramFallback = false;
+  if (bm25Rows.length === 0) {
+    bm25Rows = await trigramSearch(input.programId, trimmed, candidateK);
+    trigramFallback = bm25Rows.length > 0;
+  }
+
   const candidates = mergeCandidates(vectorRows, bm25Rows);
   if (candidates.length === 0) {
-    return { chunks: [], refused: true, topScore: null, threshold };
+    return {
+      chunks: [],
+      refused: true,
+      topScore: null,
+      threshold,
+      ...(input.withTrace ? { trace: emptyTrace(trigramFallback) } : {})
+    };
   }
 
   deps.onRerankStart?.();
@@ -161,6 +349,7 @@ export async function retrieve(
     topN: topK
   });
 
+  const byId = new Map(candidates.map((c) => [c.id, c]));
   const ranked: RetrievalChunk[] = [];
   for (const r of reranked.results) {
     const cand = candidates[r.index];
@@ -178,5 +367,39 @@ export async function retrieve(
   const topScore = ranked[0]?.relevanceScore ?? null;
   const refused = topScore === null || topScore < threshold;
 
-  return { chunks: ranked, refused, topScore, threshold };
+  // Trace reflects the pipeline BEFORE neighbor expansion — recall@topK must
+  // measure what the reranker chose, not what expansion appended.
+  const trace: RetrievalTrace | undefined = input.withTrace
+    ? {
+        candidates: candidates.map((c) => ({ chunkId: c.id, documentId: c.document_id })),
+        ranked: ranked.map((r) => ({
+          chunkId: r.id,
+          documentId: byId.get(r.id)?.document_id ?? null
+        })),
+        trigramFallback
+      }
+    : undefined;
+
+  let chunks = ranked;
+  if (!refused && neighborAnchors > 0) {
+    const anchors = ranked
+      .slice(0, neighborAnchors)
+      .map((r) => ({
+        documentVersionId: r.documentVersionId,
+        ordinal: byId.get(r.id)?.ordinal ?? null
+      }))
+      .filter((a): a is { documentVersionId: string; ordinal: number } => a.ordinal !== null);
+    if (anchors.length > 0) {
+      const neighborRows = await fetchNeighborRows(input.programId, anchors);
+      chunks = expandWithNeighbors(ranked, neighborAnchors, neighborRows);
+    }
+  }
+
+  return {
+    chunks,
+    refused,
+    topScore,
+    threshold,
+    ...(trace ? { trace } : {})
+  };
 }

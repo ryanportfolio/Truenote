@@ -27,6 +27,7 @@ Report these on the admin Evaluation page:
 - **Refusal rate on in-KB questions**: should be low (false negatives are bad).
 - **Refusal rate on out-of-KB questions**: should be high (false positives = hallucination).
 - **p50 / p95 latency**: CSRs are mid-call. Slow = unusable.
+- **Stage-level recall (2026-07)**: for questions with `expected_doc_id` — `retrievalRecallPct` (doc entered the pre-rerank candidate pool) and `rerankRecallPct` (doc survived into the top-K). Plus `inKbFailuresByStage` attributing each in-KB failure to `retrieval` / `rerank` / `threshold` / `generation` (`unattributed` = no expected_doc_id or errored). This tells you WHICH stage to tune: retrieval misses → chunking/embedding/query work; rerank misses → candidate K or rerank model; threshold pile-up → retune `RERANK_CONFIDENCE_THRESHOLD` (especially after a `COHERE_RERANK_MODEL` change); generation misses → prompt/model work.
 
 ## Authoring eval questions
 
