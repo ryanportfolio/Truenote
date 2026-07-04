@@ -6,6 +6,7 @@ import {
   type ChangeEvent,
   type FormEvent
 } from "react";
+import { Users } from "lucide-react";
 import {
   createUser,
   listPrograms,
@@ -13,6 +14,7 @@ import {
   resetUserPassword,
   updateUser
 } from "@/lib/api";
+import { EmptyState } from "@/components/EmptyState";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 import type {
   CreateUserRequest,
@@ -512,7 +514,11 @@ function UsersTable({
   }, [programs]);
   if (items.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">No users in this scope.</p>
+      <EmptyState
+        icon={Users}
+        title="No users in this scope"
+        hint="Create the first user with the form above — they get a one-time temporary password."
+      />
     );
   }
   return (

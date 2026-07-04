@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Flag, ThumbsDown, ThumbsUp } from "lucide-react";
 import { listQueryLog } from "@/lib/api";
+import { EmptyState } from "@/components/EmptyState";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 import type {
   CurrentUser,
@@ -46,13 +47,23 @@ const FILTERS: ReadonlyArray<{ value: QueryLogFilter; label: string }> = [
   { value: "all", label: "Everything" }
 ];
 
-const EMPTY_COPY: Record<QueryLogFilter, string> = {
-  flagged:
-    "No flagged gaps. When a CSR flags a refusal as missing content, it lands here.",
-  refused:
-    "No refusals in this scope. Refusals are logged automatically whenever the assistant can't ground an answer.",
-  negative: "No thumbs-down answers in this scope.",
-  all: "No questions have been asked in this scope yet."
+const EMPTY_COPY: Record<QueryLogFilter, { title: string; hint: string }> = {
+  flagged: {
+    title: "No flagged gaps",
+    hint: "When a CSR flags a refusal as missing content, it lands here."
+  },
+  refused: {
+    title: "No refusals in this scope",
+    hint: "Refusals are logged automatically whenever the assistant can't ground an answer."
+  },
+  negative: {
+    title: "No thumbs-down answers",
+    hint: "When a CSR thumbs-down an answer, it shows up here for review."
+  },
+  all: {
+    title: "No questions yet",
+    hint: "Once CSRs start asking, every query in this scope appears here."
+  }
 };
 
 function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
@@ -149,9 +160,11 @@ function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
           <span className="sr-only">Loading queries…</span>
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-sm text-muted-foreground">
-          {EMPTY_COPY[filter]}
-        </div>
+        <EmptyState
+          icon={Flag}
+          title={EMPTY_COPY[filter].title}
+          hint={EMPTY_COPY[filter].hint}
+        />
       ) : (
         <QueryTable items={items} />
       )}

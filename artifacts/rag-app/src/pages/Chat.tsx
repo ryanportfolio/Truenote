@@ -5,7 +5,9 @@ import {
   type FormEvent,
   type KeyboardEvent
 } from "react";
+import { MessageSquare } from "lucide-react";
 import { askQuestionStream } from "@/lib/api";
+import { EmptyState } from "@/components/EmptyState";
 import {
   hasAtLeastRole,
   type AskResponse,
@@ -143,6 +145,14 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             questions. The knowledge base is program-scoped, so every answer
             comes from one program's documents at a time.
           </div>
+        ) : null}
+
+        {exchanges.length === 0 && hasProgram ? (
+          <EmptyState
+            icon={MessageSquare}
+            title="Ask your first question"
+            hint="Answers come from your program's documents and always cite their source."
+          />
         ) : null}
 
         {exchanges.length > 0 ? (

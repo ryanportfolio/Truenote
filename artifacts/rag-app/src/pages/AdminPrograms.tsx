@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Building2 } from "lucide-react";
 import { createProgram, listPrograms } from "@/lib/api";
+import { EmptyState } from "@/components/EmptyState";
 import { setSelectedProgramId } from "@/lib/selectedProgram";
 import type { CurrentUser, Program } from "@/types/api";
 
@@ -174,9 +176,11 @@ interface ProgramsListProps {
 function ProgramsList({ items }: ProgramsListProps): JSX.Element {
   if (items.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        No programs yet. Create one above to get started.
-      </p>
+      <EmptyState
+        icon={Building2}
+        title="No programs yet"
+        hint="Create one above — documents, users, and queries all scope to a program."
+      />
     );
   }
   return (

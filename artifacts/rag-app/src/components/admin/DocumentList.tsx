@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { deleteDocument } from "@/lib/api";
 import type { DocumentListItem } from "@/types/api";
+import { EmptyState } from "@/components/EmptyState";
 import { PreviewPanel } from "./PreviewPanel";
 
 interface DocumentListProps {
@@ -53,9 +55,11 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
 
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-sm text-muted-foreground">
-        No documents yet. Upload one to get started.
-      </div>
+      <EmptyState
+        icon={FileText}
+        title="No documents yet"
+        hint="Upload an SOP, policy, or screenshot above — parsed versions appear here for preview."
+      />
     );
   }
 
