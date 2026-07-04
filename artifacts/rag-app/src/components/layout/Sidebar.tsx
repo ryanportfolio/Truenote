@@ -29,7 +29,7 @@ export function Sidebar({ user }: SidebarProps): JSX.Element {
   const [pathname] = useLocation();
   const items = NAV.filter((item) => hasAtLeastRole(user, item.minRole));
   return (
-    <nav className="flex w-48 flex-col border-r border-border bg-card p-2">
+    <nav className="flex w-56 flex-col border-r border-border bg-secondary p-3">
       <ul className="flex flex-col gap-1">
         {items.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
@@ -37,11 +37,13 @@ export function Sidebar({ user }: SidebarProps): JSX.Element {
             <li key={href}>
               <Link
                 href={href}
+                aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-2 rounded px-3 py-2 text-sm",
+                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-100 ease-out",
+                  // Active = tint + weight: color is never the sole channel.
                   active
-                    ? "bg-secondary text-secondary-foreground"
-                    : "text-muted-foreground hover:bg-secondary/60"
+                    ? "bg-primary/10 font-medium text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
                 <Icon className="h-4 w-4" aria-hidden />

@@ -31,27 +31,29 @@ export function CitationPanel({ source, onClose, showDebug }: CitationPanelProps
       role="dialog"
       aria-label={`Citation: ${source.doc_title}`}
       onKeyDown={onKeyDown}
-      className="fixed right-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-[min(560px,90vw)] flex-col border-l border-border bg-card shadow-2xl"
+      className="fixed right-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-[min(560px,90vw)] flex-col border-l border-border bg-card shadow-panel"
     >
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
         <div className="flex flex-col">
           <span className="text-xs uppercase tracking-wide text-muted-foreground">Source</span>
           <span className="text-sm font-medium">{source.doc_title}</span>
           {showDebug ? (
-            <span className="text-[10px] text-muted-foreground">chunk_id: {source.chunk_id}</span>
+            <span className="text-xs text-muted-foreground">chunk_id: {source.chunk_id}</span>
           ) : null}
         </div>
         <button
           ref={closeRef}
           onClick={onClose}
           aria-label="Close citation"
-          className="rounded p-1 hover:bg-secondary"
+          className="btn-icon"
         >
           <X className="h-4 w-4" aria-hidden />
         </button>
       </header>
       <div className="flex-1 overflow-auto p-4">
-        <pre className="whitespace-pre-wrap break-words text-xs leading-relaxed">
+        {/* The excerpt is the receipt — it gets its own inset surface and a
+         * mono face so it reads as quoted source, not UI chrome. */}
+        <pre className="whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 font-mono text-[13px] leading-relaxed">
           {source.excerpt}
         </pre>
       </div>

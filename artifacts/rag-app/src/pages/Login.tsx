@@ -114,20 +114,31 @@ export function LoginPage({
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    // The one brand moment in the app: organic blob washes (PRODUCT.md's
+    // Cohere-illustration direction) behind an otherwise calm card. Pure
+    // CSS, decorative only, opaque card keeps every contrast guarantee.
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-24 -top-32 h-96 w-96 rounded-full bg-primary/10 blur-3xl"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -bottom-40 -left-32 h-[28rem] w-[28rem] rounded-full bg-success/15 blur-3xl"
+      />
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-6 shadow-sm"
+        className="relative w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-6 shadow-card"
       >
         <header className="space-y-1">
-          <h1 className="text-lg font-semibold tracking-tight">Sign in</h1>
+          <h1 className="font-display text-2xl font-semibold tracking-tight">Truenote</h1>
           <p className="text-sm text-muted-foreground">
-            Truenote
+            Sign in
           </p>
         </header>
 
         {demoAccounts.length > 0 ? (
-          <div className="space-y-2 rounded-md border border-dashed border-border bg-muted/40 p-3">
+          <div className="space-y-2 rounded-lg border border-dashed border-border bg-muted/40 p-3">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Demo environment — credentials pre-filled
             </p>
@@ -140,8 +151,8 @@ export function LoginPage({
                   aria-pressed={selectedDemo === account.email}
                   className={
                     selectedDemo === account.email
-                      ? "rounded border border-primary bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
-                      : "rounded border border-input px-3 py-1 text-xs text-muted-foreground hover:bg-secondary"
+                      ? "rounded-full border border-primary bg-primary/10 px-3 py-1 text-xs font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      : "rounded-full border border-input px-3 py-1 text-xs text-muted-foreground transition-colors duration-100 ease-out hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   }
                 >
                   {account.label}

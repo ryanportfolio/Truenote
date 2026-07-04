@@ -123,9 +123,11 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
+    // CSR surface: tight density by design (DESIGN.md §Density) — narrower
+    // column (~Cohere's 640px measure), smaller gaps than admin pages.
+    <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-6">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Chat</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight">Chat</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Ask the knowledge base a question. Every answer ships with at least one citation, or the
           system will explicitly say it could not find the answer.
@@ -135,7 +137,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
         {!hasProgram ? (
           <div
             role="status"
-            className="rounded border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+            className="rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
           >
             Select a program from the picker in the header to start asking
             questions. The knowledge base is program-scoped, so every answer
@@ -144,26 +146,30 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
         ) : null}
 
         {exchanges.length > 0 ? (
-          <ol className="flex flex-col gap-5" aria-label="Questions and answers">
+          <ol className="flex flex-col gap-4" aria-label="Questions and answers">
             {exchanges.map((exchange) => (
-              <li key={exchange.id} className="flex flex-col gap-2">
-                <p className="text-sm font-medium">{exchange.question}</p>
+              <li key={exchange.id} className="flex flex-col gap-1.5">
+                <p className="text-sm font-medium text-muted-foreground">{exchange.question}</p>
                 {exchange.result ? (
                   <AnswerView result={exchange.result} showDebug={showDebug} />
                 ) : exchange.error ? (
-                  <div className="flex items-center gap-3 rounded border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                  <div className="flex items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
                     <span>{exchange.error}</span>
                     <button
                       type="button"
                       disabled={busy || !hasProgram}
                       onClick={() => void ask(exchange.question)}
-                      className="rounded border border-destructive/40 px-2 py-0.5 text-xs font-medium hover:bg-destructive/20 disabled:opacity-50"
+                      className="rounded-full border border-destructive/40 px-2.5 py-0.5 text-xs font-medium hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Retry
                     </button>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+                  <p
+                    className="text-sm text-muted-foreground motion-safe:animate-pulse"
+                    role="status"
+                    aria-live="polite"
+                  >
                     {stage ? STAGE_LABEL[stage] : "Sending…"}
                   </p>
                 )}
@@ -183,7 +189,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             placeholder="Ask the knowledge base… e.g. 'What's the cancellation fee on the Basic plan?'"
             rows={3}
             disabled={!hasProgram}
-            className="rounded border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
+            className="rounded-md border border-input bg-card px-3 py-2 text-sm shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-60"
           />
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
@@ -194,7 +200,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
                 <button
                   type="button"
                   onClick={() => abortRef.current?.abort()}
-                  className="rounded border border-input px-3 py-1.5 text-sm hover:bg-secondary"
+                  className="btn-whisper px-3 py-1.5"
                 >
                   Cancel
                 </button>

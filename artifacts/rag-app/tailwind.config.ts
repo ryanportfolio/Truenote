@@ -11,42 +11,62 @@ const config: Config = {
     },
     extend: {
       fontFamily: {
-        sans: ["Verdana", "Geneva", "ui-sans-serif", "system-ui", "sans-serif"]
+        // Verdana carries the UI (deliberate: system face, zero network load).
+        // Georgia — Verdana's Matthew Carter companion — is reserved for big
+        // headers and distinctive elements (page h1s, wordmark, login title).
+        sans: ["Verdana", "Geneva", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ["Georgia", "Cambria", "'Times New Roman'", "serif"],
+        mono: [
+          "ui-monospace",
+          "SFMono-Regular",
+          "Menlo",
+          "Consolas",
+          "'Liberation Mono'",
+          "monospace"
+        ]
       },
       colors: {
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        border: "oklch(var(--border) / <alpha-value>)",
+        input: "oklch(var(--input) / <alpha-value>)",
+        ring: "oklch(var(--ring) / <alpha-value>)",
+        background: "oklch(var(--background) / <alpha-value>)",
+        foreground: "oklch(var(--foreground) / <alpha-value>)",
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))"
+          DEFAULT: "oklch(var(--primary) / <alpha-value>)",
+          foreground: "oklch(var(--primary-foreground) / <alpha-value>)"
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))"
+          DEFAULT: "oklch(var(--secondary) / <alpha-value>)",
+          foreground: "oklch(var(--secondary-foreground) / <alpha-value>)"
         },
         muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))"
+          DEFAULT: "oklch(var(--muted) / <alpha-value>)",
+          foreground: "oklch(var(--muted-foreground) / <alpha-value>)"
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))"
+          DEFAULT: "oklch(var(--accent) / <alpha-value>)",
+          foreground: "oklch(var(--accent-foreground) / <alpha-value>)"
         },
         destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))"
+          DEFAULT: "oklch(var(--destructive) / <alpha-value>)",
+          foreground: "oklch(var(--destructive-foreground) / <alpha-value>)"
         },
         card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))"
+          DEFAULT: "oklch(var(--card) / <alpha-value>)",
+          foreground: "oklch(var(--card-foreground) / <alpha-value>)"
         },
         warning: {
-          DEFAULT: "hsl(var(--warning))",
-          foreground: "hsl(var(--warning-foreground))"
+          DEFAULT: "oklch(var(--warning) / <alpha-value>)",
+          foreground: "oklch(var(--warning-foreground) / <alpha-value>)"
+        },
+        success: {
+          DEFAULT: "oklch(var(--success) / <alpha-value>)",
+          foreground: "oklch(var(--success-foreground) / <alpha-value>)"
         }
+      },
+      boxShadow: {
+        card: "var(--shadow-card)",
+        panel: "var(--shadow-panel)"
       },
       borderRadius: {
         lg: "var(--radius)",

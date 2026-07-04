@@ -67,7 +67,7 @@ function AdminProgramsInner({ user }: AdminProgramsPageProps): JSX.Element {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Programs</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight">Programs</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           A program is a unit of knowledge scope. Documents, queries, and users
           belong to a program. Creating a program here lets you upload SOPs and
@@ -91,7 +91,7 @@ function AdminProgramsInner({ user }: AdminProgramsPageProps): JSX.Element {
 function Forbidden(): JSX.Element {
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
-      <h1 className="text-xl font-semibold tracking-tight">Forbidden</h1>
+      <h1 className="font-display text-2xl font-semibold tracking-tight">Forbidden</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Programs admin is restricted to super users.
       </p>
@@ -128,7 +128,7 @@ function ProgramCreateForm({ onCreated }: ProgramCreateFormProps): JSX.Element {
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-col gap-3 rounded border border-border bg-card p-4"
+      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5 shadow-card"
     >
       <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium">Program name</span>
@@ -138,7 +138,7 @@ function ProgramCreateForm({ onCreated }: ProgramCreateFormProps): JSX.Element {
           onChange={(e) => setName(e.target.value)}
           maxLength={120}
           placeholder="e.g. Acme Wireless — Tier 1"
-          className="rounded border border-input bg-background px-3 py-2 text-sm"
+          className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           disabled={submitting}
         />
       </label>
@@ -173,7 +173,7 @@ function ProgramsList({ items }: ProgramsListProps): JSX.Element {
       {items.map((p) => (
         <li
           key={p.id}
-          className="flex items-center justify-between rounded border border-border bg-card px-4 py-3"
+          className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3 shadow-card"
         >
           <div>
             <div className="text-sm font-medium">{p.name}</div>

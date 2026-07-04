@@ -32,21 +32,22 @@ export function TopBar({ user, onLogout }: TopBarProps): JSX.Element {
   }
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-border bg-card px-4">
+    <header className="flex h-14 items-center justify-between border-b border-border bg-secondary px-4">
       <div className="flex items-center gap-3">
-        <div className="text-sm font-semibold tracking-tight">Truenote</div>
+        {/* Wordmark is a "distinctive element": Georgia, per DESIGN.md §Typography. */}
+        <div className="font-display text-base font-semibold tracking-tight">Truenote</div>
       </div>
       <div className="flex items-center gap-4">
         <ProgramSelector user={user} />
         <div className="flex items-center gap-2 text-xs">
           <span className="text-muted-foreground">{user.email}</span>
-          <span className="rounded bg-secondary px-2 py-0.5 font-medium uppercase tracking-wide text-secondary-foreground">
+          <span className="rounded-full bg-muted px-2 py-0.5 font-medium uppercase tracking-wide text-muted-foreground">
             {ROLE_LABEL[user.role]}
           </span>
           <button
             type="button"
             onClick={handleLogout}
-            className="rounded border border-border px-2 py-0.5 font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
+            className="btn-whisper px-2.5 py-0.5 text-xs"
           >
             Sign out
           </button>

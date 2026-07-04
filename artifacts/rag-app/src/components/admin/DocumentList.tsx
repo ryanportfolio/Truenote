@@ -13,13 +13,13 @@ interface DocumentListProps {
 function StatusPill({ status }: { status: string | null }): JSX.Element {
   const s = status ?? "pending";
   const map: Record<string, string> = {
-    pending: "bg-secondary text-secondary-foreground",
+    pending: "bg-muted text-muted-foreground",
     parsing: "bg-warning/20 text-warning-foreground",
-    ready: "bg-emerald-500/20 text-emerald-900 dark:text-emerald-200",
-    failed: "bg-destructive/20 text-destructive"
+    ready: "bg-success/15 text-success",
+    failed: "bg-destructive/15 text-destructive"
   };
   return (
-    <span className={cn("rounded px-2 py-0.5 text-xs font-medium", map[s] ?? map["pending"])}>
+    <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", map[s] ?? map["pending"])}>
       {s}
     </span>
   );
@@ -53,7 +53,7 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
 
   if (items.length === 0) {
     return (
-      <div className="rounded border border-dashed border-border bg-muted/30 p-6 text-sm text-muted-foreground">
+      <div className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-sm text-muted-foreground">
         No documents yet. Upload one to get started.
       </div>
     );
@@ -64,13 +64,15 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
       {deleteError ? (
         <p className="text-sm text-destructive">{deleteError}</p>
       ) : null}
-      <table className="w-full overflow-hidden rounded border border-border text-sm">
-        <thead className="bg-secondary/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+      {/* Cohere table language: header carried by type + rule, not fill;
+        * rows separated by horizontal hairlines only. */}
+      <table className="w-full overflow-hidden rounded-lg border border-border bg-card text-sm shadow-card">
+        <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th className="px-3 py-2">Title</th>
-            <th className="px-3 py-2">Uploaded</th>
-            <th className="px-3 py-2">Status</th>
-            <th className="px-3 py-2 text-right">Actions</th>
+            <th className="px-3 py-2 font-medium">Title</th>
+            <th className="px-3 py-2 font-medium">Uploaded</th>
+            <th className="px-3 py-2 font-medium">Status</th>
+            <th className="px-3 py-2 text-right font-medium">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -91,7 +93,7 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
                       <button
                         onClick={() => setPreviewVersionId(item.versionId)}
                         disabled={isDeleting}
-                        className="rounded border border-input px-2 py-1 text-xs hover:bg-secondary disabled:opacity-50"
+                        className="btn-whisper px-2.5 py-1 text-xs"
                       >
                         Preview
                       </button>
@@ -99,7 +101,7 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
                     <button
                       onClick={() => void handleDelete(item)}
                       disabled={isDeleting}
-                      className="rounded border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                      className="rounded-full border border-destructive/40 px-2.5 py-1 text-xs text-destructive transition-colors duration-100 ease-out hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {isDeleting ? "Deleting…" : "Delete"}
                     </button>
