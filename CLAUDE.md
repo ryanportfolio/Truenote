@@ -53,7 +53,7 @@ Invoke the `caveman` skill at **ultra** at session start. Applies to all prose r
 
 Which checks you can run depends on which sandbox you're in — see [User Environment](#user-environment--two-sandboxes).
 
-- **Local desktop session** (clone at `C:\Users\Home\CoreWise\kbase`): `corepack pnpm install`, `pnpm -r run check`, `pnpm -r run test` are the standard pre-PR gate. Baseline first (main has known pre-existing api-server type errors — stash-compare before claiming yours are new/absent). Runtime verification (running the app) still is not possible locally: no DATABASE_URL, no API keys.
+- **Local desktop session** (clone at `C:\Users\Home\CoreWise\kbase`): `corepack pnpm install`, `pnpm -r run check`, `pnpm -r run test` are the standard pre-PR gate. Baseline is **zero type errors** workspace-wide (the 8 legacy api-server errors were fixed 2026-07-04) — any error `check` reports is yours. Runtime verification (running the app) still is not possible locally: no DATABASE_URL, no API keys.
 - **Cloud sandbox session**: do NOT run `npm install`/`pnpm install` just to enable a one-shot check — fresh sandbox per session makes it high-cost / low-signal. Read code, inspect logs, state that Replit verification is the next step, and stop.
 - ❌ Never claim "I verified visually" or "I tested the UI" — no session type has a browser against the live app.
 - ✅ Run the eval harness against a local fixture set when retrieval/generation changes.

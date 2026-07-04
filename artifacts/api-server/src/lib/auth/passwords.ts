@@ -1,4 +1,4 @@
-import { hash, verify, Algorithm } from "@node-rs/argon2";
+import { hash, verify } from "@node-rs/argon2";
 
 /**
  * Password hashing parameters. argon2id with the @node-rs/argon2 library
@@ -11,7 +11,10 @@ import { hash, verify, Algorithm } from "@node-rs/argon2";
  * Login latency on Replit's shared CPU is ~50–100ms at these settings.
  */
 const ARGON2_OPTIONS = {
-  algorithm: Algorithm.Argon2id,
+  // Algorithm.Argon2id. The library's Algorithm is an ambient const enum,
+  // which verbatimModuleSyntax forbids importing as a value; 2 is its
+  // stable numeric value (Argon2d=0, Argon2i=1, Argon2id=2).
+  algorithm: 2,
   memoryCost: 19_456,
   timeCost: 2,
   parallelism: 1
