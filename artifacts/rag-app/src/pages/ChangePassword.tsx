@@ -76,10 +76,10 @@ export function ChangePasswordPage({
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-6 shadow-sm"
+        className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-6 shadow-card"
       >
         <header className="space-y-1">
-          <h1 className="text-lg font-semibold tracking-tight">
+          <h1 className="font-display text-xl font-semibold tracking-tight">
             {user.mustResetPassword ? "Set a new password" : "Change password"}
           </h1>
           <p className="text-sm text-muted-foreground">

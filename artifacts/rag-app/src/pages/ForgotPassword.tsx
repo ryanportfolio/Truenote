@@ -39,9 +39,9 @@ export function ForgotPasswordPage(): JSX.Element {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-6 shadow-sm">
+      <div className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-6 shadow-card">
         <header className="space-y-1">
-          <h1 className="text-lg font-semibold tracking-tight">
+          <h1 className="font-display text-xl font-semibold tracking-tight">
             Reset your password
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -54,7 +54,7 @@ export function ForgotPasswordPage(): JSX.Element {
           <div className="space-y-3">
             <p
               role="status"
-              className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm"
+              className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm"
             >
               If an account exists for that email, a reset link is on its way.
               The link expires in an hour.

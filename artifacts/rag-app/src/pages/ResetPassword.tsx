@@ -85,8 +85,8 @@ export function ResetPasswordPage({
   if (!token) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
-        <div className="w-full max-w-sm space-y-3 rounded-lg border border-border bg-card p-6 shadow-sm">
-          <h1 className="text-lg font-semibold tracking-tight">
+        <div className="w-full max-w-sm space-y-3 rounded-lg border border-border bg-card p-6 shadow-card">
+          <h1 className="font-display text-xl font-semibold tracking-tight">
             Reset link missing
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -108,10 +108,10 @@ export function ResetPasswordPage({
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-6 shadow-sm"
+        className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-6 shadow-card"
       >
         <header className="space-y-1">
-          <h1 className="text-lg font-semibold tracking-tight">
+          <h1 className="font-display text-xl font-semibold tracking-tight">
             Set a new password
           </h1>
           <p className="text-sm text-muted-foreground">
