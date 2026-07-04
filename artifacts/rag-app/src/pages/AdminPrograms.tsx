@@ -80,7 +80,18 @@ function AdminProgramsInner({ user }: AdminProgramsPageProps): JSX.Element {
       {loadError ? (
         <p className="text-sm text-destructive">{loadError}</p>
       ) : loading ? (
-        <p className="text-sm text-muted-foreground">Loading programs…</p>
+        <div role="status" className="flex flex-col gap-2">
+          {[0, 1].map((i) => (
+            <div
+              key={i}
+              className="rounded-lg border border-border bg-card px-4 py-3 shadow-card"
+            >
+              <div className="skeleton h-4 w-40" />
+              <div className="skeleton mt-2 h-3 w-56" />
+            </div>
+          ))}
+          <span className="sr-only">Loading programs…</span>
+        </div>
       ) : (
         <ProgramsList items={programs} />
       )}

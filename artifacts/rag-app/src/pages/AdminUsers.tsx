@@ -181,7 +181,18 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
         </p>
       ) : null}
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading users…</p>
+        <div role="status" className="flex flex-col gap-2">
+          {[0, 1].map((i) => (
+            <div
+              key={i}
+              className="rounded-lg border border-border bg-card p-4 shadow-card"
+            >
+              <div className="skeleton h-4 w-40" />
+              <div className="skeleton mt-2 h-3 w-64" />
+            </div>
+          ))}
+          <span className="sr-only">Loading users…</span>
+        </div>
       ) : (
         <UsersTable
           actor={user}

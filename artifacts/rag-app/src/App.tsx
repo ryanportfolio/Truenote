@@ -165,9 +165,17 @@ export function App(): JSX.Element {
   }, []);
 
   if (auth.status === "loading") {
+    // Boot state: the wordmark breathing (same pulse as skeletons) instead
+    // of a bare "Loading…" string. role=status keeps it announced.
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <div className="text-sm text-muted-foreground">Loading…</div>
+        <div
+          role="status"
+          className="font-display text-2xl font-semibold tracking-tight motion-safe:animate-skeleton"
+        >
+          Truenote
+          <span className="sr-only">Loading…</span>
+        </div>
       </div>
     );
   }

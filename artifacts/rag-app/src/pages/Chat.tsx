@@ -165,13 +165,26 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
                     </button>
                   </div>
                 ) : (
-                  <p
-                    className="text-sm text-muted-foreground motion-safe:animate-pulse"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    {stage ? STAGE_LABEL[stage] : "Sending…"}
-                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    <p
+                      className="text-sm text-muted-foreground motion-safe:animate-pulse"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {stage ? STAGE_LABEL[stage] : "Sending…"}
+                    </p>
+                    {/* Answer-card silhouette: shows the CSR where the answer
+                      * will land. Decorative — the stage line above carries
+                      * the status for screen readers. */}
+                    <div
+                      aria-hidden
+                      className="rounded-lg border border-border bg-card p-4 shadow-card"
+                    >
+                      <div className="skeleton h-3.5 w-11/12" />
+                      <div className="skeleton mt-2 h-3.5 w-full" />
+                      <div className="skeleton mt-2 h-3.5 w-3/5" />
+                    </div>
+                  </div>
                 )}
               </li>
             ))}

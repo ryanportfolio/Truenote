@@ -131,7 +131,23 @@ function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
           {error}
         </p>
       ) : loading ? (
-        <p className="text-sm text-muted-foreground">Loading queries…</p>
+        <div
+          role="status"
+          className="overflow-hidden rounded-lg border border-border bg-card shadow-card"
+        >
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between gap-4 border-t border-border px-3 py-3 first:border-t-0"
+            >
+              <div className="skeleton h-4 w-64" />
+              <div className="skeleton h-4 w-32" />
+              <div className="skeleton h-4 w-20 rounded-full" />
+              <div className="skeleton h-4 w-12" />
+            </div>
+          ))}
+          <span className="sr-only">Loading queries…</span>
+        </div>
       ) : items.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-sm text-muted-foreground">
           {EMPTY_COPY[filter]}

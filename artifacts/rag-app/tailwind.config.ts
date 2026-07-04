@@ -68,6 +68,16 @@ const config: Config = {
         card: "var(--shadow-card)",
         panel: "var(--shadow-panel)"
       },
+      // Skeleton loading pulse: slow opacity breathing, no shimmer sweep —
+      // calm register. Consumed via .skeleton in index.css, motion-safe only.
+      keyframes: {
+        "skeleton-pulse": {
+          "50%": { opacity: "0.55" }
+        }
+      },
+      animation: {
+        skeleton: "skeleton-pulse 1.8s ease-in-out infinite"
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

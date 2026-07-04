@@ -51,7 +51,13 @@ export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Ele
         {error ? (
           <p className="text-sm text-destructive">{error}</p>
         ) : !data ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <div role="status">
+            <div className="skeleton h-3.5 w-full" />
+            <div className="skeleton mt-2 h-3.5 w-5/6" />
+            <div className="skeleton mt-2 h-3.5 w-full" />
+            <div className="skeleton mt-2 h-3.5 w-2/3" />
+            <span className="sr-only">Loading preview…</span>
+          </div>
         ) : data.markdown === null ? (
           <p className="text-sm text-muted-foreground">
             No parsed markdown yet. Status: {data.parseStatus ?? "unknown"}.

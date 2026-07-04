@@ -149,6 +149,14 @@
     background-color: oklch(var(--primary) / 0.92);
   }
 
+  /* Loading placeholder bar: muted fill with a slow breathing pulse
+   * (keyframes in tailwind.config.ts). motion-safe only — reduced-motion
+   * users see static bars; every skeleton group carries role="status" with
+   * sr-only text so screen readers still hear "Loading". */
+  .skeleton {
+    @apply rounded-md bg-muted motion-safe:animate-skeleton;
+  }
+
   /* Icon-only quiet button: copy, thumbs, close-X. Transparent at rest so the
    * icon reads as part of its row; hover fills with --muted. */
   .btn-icon {
