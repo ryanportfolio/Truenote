@@ -427,7 +427,7 @@ function CreateUserForm({
               setRole(e.target.value as UserRole)
             }
             disabled={submitting || assignableRoles.length === 1}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className="select-quiet rounded-md border border-input bg-background py-2 pl-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
             {assignableRoles.map((r) => (
               <option key={r} value={r}>
@@ -445,7 +445,7 @@ function CreateUserForm({
                 setProgramId(e.target.value)
               }
               disabled={submitting}
-              className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="select-quiet rounded-md border border-input bg-background py-2 pl-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="">Select a program…</option>
               {programs.map((p) => (

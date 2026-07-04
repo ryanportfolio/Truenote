@@ -90,7 +90,7 @@ function SuperUserProgramSelector({ user }: ProgramSelectorProps): JSX.Element {
         value={selected}
         onChange={handleChange}
         disabled={status === "loading" || !hasPrograms}
-        className="max-w-[9rem] truncate rounded-md border border-input bg-card px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-secondary disabled:opacity-60 sm:max-w-none"
+        className="select-quiet max-w-[9rem] truncate rounded-md border border-input bg-card py-1 pl-2 pr-7 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-secondary disabled:opacity-60 sm:max-w-none"
         data-testid="program-selector"
       >
         <option value="" disabled>
