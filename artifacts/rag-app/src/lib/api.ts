@@ -11,6 +11,8 @@ import type {
   PreviewResponse,
   Program,
   ProgramListResponse,
+  QueryLogFilter,
+  QueryLogListResponse,
   ResetPasswordResponse,
   ResetUserPasswordResponse,
   UpdateUserRequest,
@@ -406,6 +408,21 @@ export async function createProgram(name: string): Promise<Program> {
 export async function listUsers(): Promise<UserListResponse> {
   const response = await fetch("/api/admin/users", withDefaults());
   return asJson<UserListResponse>(response);
+}
+
+/**
+ * Content-gaps review list (manager+). Program scope rides X-Program-Id
+ * via withDefaults(), same as every other admin list.
+ */
+export async function listQueryLog(
+  filter: QueryLogFilter
+): Promise<QueryLogListResponse> {
+  const params = new URLSearchParams({ filter });
+  const response = await fetch(
+    `/api/admin/queries?${params.toString()}`,
+    withDefaults()
+  );
+  return asJson<QueryLogListResponse>(response);
 }
 
 async function readJsonOrThrow<T>(response: Response): Promise<T> {

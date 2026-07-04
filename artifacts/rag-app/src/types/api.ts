@@ -223,3 +223,28 @@ export interface UpdateUserRequest {
 export interface ResetUserPasswordResponse {
   tempPassword: string;
 }
+
+/**
+ * Content-gaps review shapes. Mirror of the api-server's QueryLogItem in
+ * routes/admin/queries.ts (same duplication rationale as above).
+ *
+ * `feedback`: -1 / 0 / 1 (thumbs down / none / up); may be null on rows
+ * older than the feedback feature. `answer` is deliberately not exposed —
+ * the reviewer's unit of work is the question.
+ */
+export type QueryLogFilter = "flagged" | "refused" | "negative" | "all";
+
+export interface QueryLogItem {
+  id: string;
+  question: string;
+  refused: boolean;
+  flaggedMissing: boolean;
+  feedback: number | null;
+  latencyMs: number | null;
+  programId: string | null;
+  createdAt: string | null;
+}
+
+export interface QueryLogListResponse {
+  items: QueryLogItem[];
+}
