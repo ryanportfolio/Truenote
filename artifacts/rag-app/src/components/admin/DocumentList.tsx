@@ -69,8 +69,11 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
         <p className="text-sm text-destructive">{deleteError}</p>
       ) : null}
       {/* Cohere table language: header carried by type + rule, not fill;
-        * rows separated by horizontal hairlines only. */}
-      <table className="w-full overflow-hidden rounded-lg border border-border bg-card text-sm shadow-card">
+        * rows separated by horizontal hairlines only. The wrapper owns the
+        * card chrome so narrow viewports scroll the table instead of
+        * crushing it. */}
+      <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
+      <table className="w-full min-w-[36rem] text-sm">
         <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="px-3 py-2 font-medium">Title</th>
@@ -116,6 +119,7 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
           })}
         </tbody>
       </table>
+      </div>
 
       {previewVersionId ? (
         <PreviewPanel versionId={previewVersionId} onClose={() => setPreviewVersionId(null)} />

@@ -176,7 +176,8 @@ function QueryTable({ items }: { items: QueryLogItem[] }): JSX.Element {
   // Latency is operator data, safe to show unconditionally here — the
   // whole page is manager+ (CSRs never reach this table).
   return (
-    <table className="w-full overflow-hidden rounded-lg border border-border bg-card text-sm shadow-card">
+    <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
+    <table className="w-full min-w-[40rem] text-sm">
       <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
         <tr>
           <th className="px-3 py-2 font-medium">Question</th>
@@ -204,6 +205,7 @@ function QueryTable({ items }: { items: QueryLogItem[] }): JSX.Element {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 

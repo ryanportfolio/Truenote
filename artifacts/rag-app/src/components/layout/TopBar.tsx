@@ -40,7 +40,7 @@ export function TopBar({ user, onLogout }: TopBarProps): JSX.Element {
       <div className="flex items-center gap-4">
         <ProgramSelector user={user} />
         <div className="flex items-center gap-2 text-xs">
-          <span className="text-muted-foreground">{user.email}</span>
+          <span className="hidden text-muted-foreground sm:inline">{user.email}</span>
           <span className="rounded-full bg-muted px-2 py-0.5 font-medium uppercase tracking-wide text-muted-foreground">
             {ROLE_LABEL[user.role]}
           </span>
