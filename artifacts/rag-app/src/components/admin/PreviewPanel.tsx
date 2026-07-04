@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { getDocumentPreview } from "@/lib/api";
 import type { PreviewResponse } from "@/types/api";
@@ -11,6 +11,21 @@ interface PreviewPanelProps {
 export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Element {
   const [data, setData] = useState<PreviewResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
+
+  // Same keyboard contract as CitationPanel: focus lands on Close when the
+  // panel opens and returns to the opener (the Preview button) on close.
+  useEffect(() => {
+    restoreRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeRef.current?.focus();
+    return () => restoreRef.current?.focus();
+  }, []);
+
+  function onKeyDown(event: React.KeyboardEvent): void {
+    if (event.key === "Escape") onClose();
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -32,6 +47,7 @@ export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Ele
     <aside
       role="dialog"
       aria-label="Parsed markdown preview"
+      onKeyDown={onKeyDown}
       className="fixed right-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-[min(640px,90vw)] flex-col border-l border-border bg-card shadow-panel motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-right-4 motion-safe:duration-240 motion-safe:ease-out-quart"
     >
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
@@ -40,6 +56,7 @@ export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Ele
           <span className="text-sm font-medium">{data?.title ?? "Parsed markdown"}</span>
         </div>
         <button
+          ref={closeRef}
           onClick={onClose}
           aria-label="Close preview"
           className="btn-icon"
