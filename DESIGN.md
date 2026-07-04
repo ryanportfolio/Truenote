@@ -1,138 +1,160 @@
 # Truenote — Design System
 
-> Visual tokens for Phase 1. Strategic register and design principles live in [PRODUCT.md](./PRODUCT.md). This file is tokens, not philosophy.
+> Visual tokens as shipped by the Cohere-inspired design pass (2026-07). Strategic register and design principles live in [PRODUCT.md](./PRODUCT.md). This file is tokens, not philosophy.
 
-Phase 1 keeps HSL because shadcn's `hsl(var(--token))` wrappers already consume it across the app. OKLCH migration is a follow-up — same variable names, same consumers, just swap the color space and update the wrapper.
+Tokens are **OKLCH channel triplets** (`--primary: 41.41% 0.1807 261.2`) consumed as `oklch(var(--token) / <alpha-value>)` in `tailwind.config.ts`. The `<alpha-value>` placeholder is load-bearing: Tailwind v3's parser cannot alpha-inject a bare `oklch(var(--x))` the way it special-cases `hsl()`, and silently drops every `/alpha` utility without it. Do not "simplify" it away.
 
-## Palette
+The visual reference is docs.cohere.com's light theme (extracted from its deployed CSS, 2026-07-04): cream canvas, chrome layer, white cards, warm hairlines, one rare accent. Where we deviate (brand-blue accent, Verdana, 600-weight cap), the deviation was decided deliberately — see the conflict log in the design-pass PR.
 
-Cohere-derived rhythm (warm cream surface, warm-near-black text, hairline borders) with the **parent company's brand blue** as the accent. The deep blue is sourced from the corporate logo's gradient stop and darkened to clear WCAG AAA both ways. Forest-green was the Phase 1 placeholder; brand-blue is the production accent.
+## Palette (light — the ship target)
 
-| Token            | Hex       | HSL                 | Role                                            |
-|------------------|-----------|---------------------|-------------------------------------------------|
-| `--background`   | `#E8E6DE` | `43 16% 89%`        | App canvas (warm cream)                         |
-| `--foreground`   | `~#363430`| `53 7% 22%`         | Body text (warm near-black — never `#000`). AAA on bg (~7.9:1) |
-| `--primary`      | `~#0040AB`| `217 100% 33%`      | Deep brand blue — CSR Ask button, brand mark. AAA on cream (~7:1) and white-on-primary (~9:1) |
-| `--accent`       | `~#005DE5`| `213 100% 45%`      | Vivid brand blue — hover, citation tints (sparingly). AA on cream |
-| `--secondary`    | `#FAFAFA` | `0 0% 98%`          | Whisper-button surface                          |
-| `--border`       | `~#E0E0E0`| `40 8% 88%`         | Hairline (warm-tinted)                          |
-| `--ring`         | `~#0040AB`| `217 100% 33%`      | Focus ring (matches primary)                    |
+| Token | OKLCH | ≈ Hex | Role |
+|---|---|---|---|
+| `--background` | `92.43% 0.0109 95.2` | `#E8E6DE` | App canvas (warm cream, byte-identical to Cohere's) |
+| `--foreground` | `24.31% 0.0076 95.4` | `#21201C` | Body ink. **13.05:1** on bg, **16.02:1** on card |
+| `--card` | `99.38% 0.0013 106.4` | `#FDFDFC` | Content cards. Warm near-white — never pure `#fff` |
+| `--secondary` | `98.18% 0.0013 106.4` | `#F9F9F8` | Chrome layer: TopBar, Sidebar, whisper buttons |
+| `--muted` | `95.56% 0.0017 67.8` | `#F1F0EF` | Quiet fills, icon-button hover, neutral badges |
+| `--muted-foreground` | `46.63% 0.0159 97.7` | `#5C5A50` | Chrome text. **5.54:1** on bg, **6.80:1** on card (AA+) |
+| `--primary` | `41.41% 0.1807 261.2` | `#0040AB` | Parent-company brand blue. **7.24:1** on bg, **9.05:1** white-on (AAA both ways) |
+| `--accent` | `52.37% 0.2194 260.5` | `#005DE5` | Vivid brand blue — hover states only, never text |
+| `--success` | `43.52% 0.0428 168.8` | `#39594D` | Evergreen (Cohere's accent): ready pills, thumbs-up, copy-confirm. **7.61:1** on card |
+| `--warning` | `77.04% 0.1646 70.7` | `#F59F0A` | Amber — tint washes + badge chips only, never running text |
+| `--warning-foreground` | `28.01% 0.0563 94.1` | `#322801` | Text on warning tints |
+| `--destructive` | `42.61% 0.1584 27.3` | `#921616` | Errors. **7.16:1** on bg, **8.79:1** on card — AAA even on the canvas |
+| `--border` / `--input` | `88.52% 0.0042 91.5` | `#DAD9D6` | Warm hairline. Every division is 1px of this |
+| `--ring` | = `--primary` | | Focus rings |
+| `--radius` | `0.5rem` | | Base radius (see §Radius) |
+| `--shadow-card` | `0 1px 2px oklch(24.31% 0.0076 95.4 / 0.06)` | | Card lift: warm ink at 6% |
+| `--shadow-panel` | `0 8px 24px …/0.10, 0 1px 2px …/0.06` | | Floating panels only (slide-overs, popovers) |
 
-Light mode is the ship target. `.dark` ships as a sensible inversion so consumers don't break; the product does not surface a dark-mode toggle in Phase 1.
+Three-surface depth model: **cream canvas → `--secondary` chrome (TopBar/Sidebar) → `--card` content**. Cards separate with hairline + `shadow-card`; heavy shadows are reserved for `--shadow-panel` surfaces that actually float.
+
+Light mode is the ship target. `.dark` ships as a mechanical inversion (converted from the old HSL values) so consumers don't break; no dark toggle is surfaced.
 
 ## Typography
 
-Single sans for everything. **Verdana** as the primary face — system font, no network load, ships everywhere. No serif, no display face, no hero typography. (Cohere parity on rhythm and scale, not on specific letterforms; revisit faces in a later phase.)
+**Verdana carries the UI** — body, labels, controls, data. Deliberate: system face, zero network load, and the user likes it. **Georgia** (Verdana's Matthew Carter companion) is reserved for *big headers and distinctive elements* via `font-display`: page `h1`s, the TopBar wordmark, auth-card titles. Do not use Georgia for section headings, labels, buttons, or anything inside a card body. Code/excerpt slots (citation excerpts, temp passwords) use the `font-mono` system stack.
 
-| Token | Size  | Use                                   |
-|-------|-------|---------------------------------------|
-| `h1`  | 24px  | Page title, one per surface           |
-| `h2`  | 20px  | Section heading                       |
-| body  | 16px  | Default — paragraphs, controls, table |
-| small | 14px  | Captions, metadata                    |
-| micro | 12px  | Citation chips, role badges           |
+| Slot | Face | Size / weight | Tracking |
+|---|---|---|---|
+| Page `h1` | Georgia (`font-display`) | 24px / 600 | `-0.02em` (`tracking-tight`) |
+| Auth-card title / wordmark | Georgia (`font-display`) | 20px / 600 | `-0.02em` |
+| Section `h2` | Verdana | 20px / 600 | `-0.02em` |
+| Body | Verdana | 16px / 400 | normal |
+| Chat answers, controls, tables | Verdana | 14px / 400 | normal |
+| Captions, metadata | Verdana | 14px / 400 | normal |
+| Chips, badges, eyebrows | Verdana | 12px / 500 | eyebrows `tracking-wide` uppercase |
+| Excerpts / codes | mono stack | 13px / 400 | normal |
 
-Line-height: **1.5** on CSR chat (dense, scannable). **1.6** on admin surfaces (airier read).
-Weights: 400 (body), 500 (UI labels), 600 (headings). No 700+ in Phase 1.
+Line-height: **1.5** on CSR chat (dense, scannable), **1.6** on admin prose. Weights **400/500/600 only** — no 700+; Cohere's extrabold prose headings belong to its docs register, not this product. The tight-tracked headings over relaxed body is the typographic signature.
 
-## Contrast (WCAG)
+## Contrast (WCAG, computed — never eyeballed)
 
-| Pairing                                  | Target | Computed | Status |
-|------------------------------------------|--------|----------|--------|
-| `--foreground` on `--background`         | AAA    | ~7.9:1   | ✓      |
-| `--foreground` on `--card` (white)       | AAA    | ~12:1    | ✓      |
-| `--muted-foreground` on `--background`   | AA     | ~5.5:1   | ✓      |
-| `--primary-foreground` on `--primary`    | AAA    | ~10:1    | ✓      |
-| `--accent-foreground` on `--accent`      | AAA    | ~8:1     | ✓      |
+| Pairing | Target | Computed | Status |
+|---|---|---|---|
+| `--foreground` on `--background` | AAA | 13.05:1 | ✓ |
+| `--foreground` on `--card` | AAA | 16.02:1 | ✓ |
+| `--muted-foreground` on `--background` | AA | 5.54:1 | ✓ |
+| `--muted-foreground` on `--card` | AA | 6.80:1 | ✓ |
+| `--primary` on `--background` | AAA | 7.24:1 | ✓ |
+| white on `--primary` | AAA | 9.05:1 | ✓ |
+| `--destructive` on `--background` | AAA | 7.16:1 | ✓ |
+| `--success` on `--card` | AAA | 7.61:1 | ✓ |
 
 Rules:
-- Body text and anything a CSR reads mid-call hit **AAA** (≥7:1).
-- Chrome (captions, placeholder hints, role chips, table headers) hits **AA** (≥4.5:1).
-- **Force `::placeholder { opacity: 1 }`** globally — browsers default to ~0.5, which silently halves contrast and pushes placeholders below AA on any non-white surface.
-- Never use `#000` or `#fff` directly. Warm near-black for text; cream/white for surfaces. Pure black on cream reads as a UI bug, not as polish.
-- When darkening a token to meet AAA, re-run the math; do not eyeball.
+- Body text and anything a CSR reads mid-call hit **AAA** (≥7:1). Chrome hits **AA** (≥4.5:1).
+- **Force `::placeholder { opacity: 1 }`** globally (done in index.css) — browsers default to ~0.5, which silently halves contrast. Cohere's own docs fail AA here; we don't.
+- Never `#000` or `#fff` directly. Warm near-black ink; warm near-white surfaces.
+- When changing a token, recompute (the sRGB→OKLCH + contrast script lives in the design-pass session; any WCAG calculator works). Do not eyeball.
+- Color is never the sole channel: active nav = tint **+ weight**; focus = 2px ring **+ offset**; selected chips = tint **+ border**.
 
-## Spacing
+## Spacing & density
 
-Base unit **4px**. Use multiples: `4, 8, 12, 16, 24, 32, 48, 64`. No arbitrary values.
+Base unit **4px**. Multiples only: `4, 8, 12, 16, 20, 24, 32, 48, 64`.
+
+| Surface | Line-height | Rhythm | Column |
+|---|---|---|---|
+| CSR chat (`/chat`) | 1.5 | tight: `gap-4`, `px-4 py-6`, cards `p-4` | `max-w-2xl` (~Cohere's 640px measure) |
+| Admin (`/admin/*`) | 1.6 | airy: `gap-6`, `px-6 py-8`, cards `p-5` | `max-w-5xl` |
+
+Citation excerpts get their own inset mono block — they're the receipt, not the chrome.
 
 ## Radius
 
-`--radius: 0.5rem` (8px). Shadcn's `lg / md / sm` derive from this — leave them alone.
+`--radius: 0.5rem`. Usage rules (no bare `rounded` — it means "didn't decide"):
 
-## Borders & elevation
-
-Hairline 1px **inset shadows** in place of conventional borders where possible. Cohere's surfaces lift via shadow, not chrome.
-
-```css
-/* whisper button surface */
-box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
-```
+- **Cards, callouts, panels, tables**: `rounded-lg` (8px)
+- **Inputs, selects, inset code blocks**: `rounded-md` (6px)
+- **Buttons, chips, pills, badges**: `rounded-full` — the Cohere shape signature. Rectangular content, pill controls.
 
 ## Buttons
 
-Two variants. That's it.
+Two variants plus an icon recipe. All pills, all share the focus-ring spec.
 
 ### Whisper (default — everywhere)
 
-Background `#FAFAFA`, text `#5B5A52`, 1px inset hairline shadow. No fill color, no drop shadow. Hover: shadow strengthens to ~0.10 alpha. This is the app-wide default.
+`.btn-whisper`: `--secondary` surface, ink text, 1px inset hairline (`--border`). Hover: hairline strengthens to `foreground/0.18`. Active: `--muted` fill. Sizes via padding utilities (`px-3 py-1.5` regular, `px-3 py-1 text-xs` small).
 
 ### CSR Ask — the one deliberate exception
 
-The primary "Ask" button on `/chat`. **Brand-blue filled** (`--primary` background ~`#0040AB`, white text). CSRs find it instantly under call pressure. Hover shifts to the vivid `--accent` (~`#005DE5`) — vibrancy reserved for the moment of intent. Do not propagate this style anywhere else; the contrast is the point.
+`.btn-csr-ask`: brand-blue filled, white text, **only** on `/chat`. Hover shifts to `--accent`; active darkens to `primary/0.92`. Do not propagate — the contrast is the point.
 
-## Density
+### Icon buttons
 
-| Surface              | Line-height | Padding rhythm        | Sidebar    |
-|----------------------|-------------|-----------------------|------------|
-| CSR chat (`/chat`)   | 1.5         | tight (8/12px)        | compact    |
-| Admin (`/admin/*`)   | 1.6         | airy (16/24px)        | full       |
-
-Citation cards on CSR chat get extra room — they're the receipt, not the chrome.
+`.btn-icon`: transparent at rest, `--muted` fill + ink on hover, for icon-only actions (copy, thumbs, close-X). Part of the whisper family, not a third variant. Destructive contexts may use a destructive-quiet pill (`border-destructive/40 text-destructive hover:bg-destructive/10`) — Retry/Delete only.
 
 ## Interaction states
 
-Every interactive element defines five states. Color alone is never the focus signal.
+| State | Visual change |
+|---|---|
+| Default | Base tokens |
+| Hover | Whisper: hairline strengthens. Ask: bg → `--accent`. Icon: `--muted` fill |
+| Focus | 2px `--ring` outline, 2px offset (`focus-visible:` on buttons/links; `focus:` on text inputs) |
+| Active | Whisper: bg → `--muted`. Ask: `primary/0.92` |
+| Disabled | `opacity-50`, `cursor-not-allowed`, hover suppressed |
+| Selected | Nav: `bg-primary/10 text-primary font-medium` + `aria-current`. Chips: tint + border + `aria-pressed` |
 
-| State    | Visual change                                                                |
-|----------|------------------------------------------------------------------------------|
-| Default  | Base token values                                                            |
-| Hover    | Whisper: hairline strengthens. CSR-Ask: bg shifts to `--accent`              |
-| Focus    | 2px `--ring` outline, 2px offset (`focus-visible:ring-2 ring-offset-2`)      |
-| Active   | Whisper: bg → `--muted`. CSR-Ask: bg darkens to `--primary/92`               |
-| Disabled | `opacity: 0.5`, `cursor: not-allowed`, hover changes suppressed              |
+## Tables
 
-**Selected state** (sidebar item, active tab): `bg-secondary text-secondary-foreground` (existing pattern — keep).
+Cohere table language: **horizontal rules only**. Header = 12px uppercase muted + weight, **no fill**, no vertical cell borders. Markdown tables in answers: `th` = `border-b`, `td` = `border-t`, `border-collapse`.
+
+## Status colors
+
+Semantic tokens only — raw Tailwind palette classes (`emerald-*`, `amber-*`, `slate-*`, …) are a bug:
+
+- ready / positive / confirmed → `--success` tints (`bg-success/15 text-success`)
+- parsing / pending-attention / one-shot credentials → `--warning` tints
+- failed / errors / destructive actions → `--destructive` tints
+- pending / neutral / most role badges → `--muted` (labels carry information; color is not a legend — only super_user gets the `primary/10` tint)
+
+**Refusal is not a status-color moment**: the refusal card is a normal `--card` answer card; only its "Not in knowledge base" badge chip is amber. Refusal is a feature, not an alarm.
 
 ## Motion
 
-Easing: **`cubic-bezier(0.25, 1, 0.5, 1)`** (ease-out-quart). No bounce, no overshoot.
-Durations: micro-interaction `120ms`, layout shifts `240ms`. Never animate color on hover for more than `120ms`.
-Reduced motion: honor `prefers-reduced-motion` everywhere; fall back to opacity-only crossfades.
+Easing **`cubic-bezier(0.25, 1, 0.5, 1)`** (ease-out-quart). Micro-interactions `100–120ms`, layout `240ms`. Wait-stage pulse is `motion-safe:` only; honor `prefers-reduced-motion` everywhere. No bounce, no overshoot, no decorative motion.
+
+## Brand moments
+
+Exactly one: the Login page's organic blob washes (`bg-primary/10` + `bg-success/15`, `blur-3xl`, pure CSS) — the PRODUCT.md Cohere-illustration direction. Decorative `aria-hidden` layers behind an opaque card; contrast guarantees untouched. Everywhere else stays calm.
 
 ## Token consumer contract
 
-Shadcn components consume `hsl(var(--token))` via `tailwind.config.ts`. Variable names are stable across Phase 1 — only values change. Adding a token is a Phase-2-or-later conversation.
+Components consume `oklch(var(--token) / <alpha-value>)` via `tailwind.config.ts`. Variable names are stable; only values change. Adding a token is a deliberate conversation (`--success` was added by the design pass, C5). `shadow-card` / `shadow-panel` are the only shadow utilities — `shadow-sm`/`shadow-2xl` are drift.
 
 ## Dark mode
 
-Ships as a sensible inversion so shadcn consumers don't break. No theme toggle in Phase 1. When it does land:
-
-- **No pure black backgrounds.** Use a near-black with the brand-blue hue baked in (current: `217 12% 10%`).
-- **No pure white text.** Cream foreground (`43 16% 89%`) reads warmer and reduces halation on dark surfaces.
-- Re-run contrast math against dark tokens — current `muted-foreground` is ~6.9:1 on the dark bg, close to AAA but not over.
+Mechanical inversion of the pre-pass HSL values, converted to OKLCH. No toggle. Before shipping it for real: re-run all contrast math, keep near-black (not `#000`) surfaces with the brand-blue hue baked in, cream (not `#fff`) foreground.
 
 ## What makes Truenote feel like Truenote
 
-If we only get five things right, get these. These are the brand-character version of Cohere's essence points, translated to our tokens.
-
-1. **The brand-blue accent is rare.** `--primary` shows up once or twice per screen — the CSR Ask button, the active citation chip. Everywhere else is cream/white/warm-near-black. The restraint is what makes the blue feel branded; spray it everywhere and it's just another corporate-tool blue.
-2. **Hairlines over shadows.** Cards, tables, callouts, sidebars — every division is a 1px inset hairline (`--border`), not a drop shadow. Reserve drop shadow for floating elements only (popovers, modals).
-3. **Warm neutrals.** The gray is tinted toward stone, not slate. If a contributor reaches for `slate-*` / `zinc-*` / `gray-*`, that is a bug — use the semantic tokens.
-4. **Generous whitespace on admin, tight density on CSR chat.** Admin surfaces breathe like Cohere docs. CSR chat is denser by intent — CSRs scan under call pressure, not browse.
-5. **Tight headings, relaxed body.** Headings 600 weight, slight negative tracking. Body 400 weight, line-height 1.5 (chat) / 1.6 (admin). The contrast between tight headings and loose body is the typographic signature.
+1. **The brand-blue accent is rare.** Once or twice per screen: Ask button, active nav, citation chips. The restraint is what makes it branded.
+2. **Hairlines over shadows.** 1px warm `--border` divides; `shadow-card` whispers; only floating panels cast real shadow.
+3. **Warm neutrals.** Stone, not slate. Semantic tokens only.
+4. **Tight density on CSR chat, generous whitespace on admin.** Same tokens, different rhythm.
+5. **Georgia headers over Verdana body.** The Carter pairing: editorial-serif page titles, workhorse-sans everything else — tight headings, relaxed body.
 
 ## Follow-ups
 
-- **OKLCH migration.** Same names, broader gamut, more predictable lightness. Update `:root` and `.dark` values, swap the wrappers in `tailwind.config.ts` and `index.css` from `hsl()` to `oklch()`. No component changes.
-- **Phase 2 illustration system.** Organic blob shapes in the Cohere-illustration style. Asset work, not token work.
+- **Illustration system**: extend the blob language (login today) to empty states — asset work, not token work.
+- **Skeleton loading states**: replace "Loading…" text with skeletons on admin lists.
