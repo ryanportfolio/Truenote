@@ -143,6 +143,18 @@ export interface AppConfig {
    * coming when it isn't.
    */
   emailResetAvailable: boolean;
+  /**
+   * Present only on demo deployments (server env DEMO_LOGIN_ACCOUNTS).
+   * Working credentials, published on purpose so the login page can
+   * pre-fill them. Roles are capped at "manager" server-side.
+   */
+  demoAccounts?: DemoAccount[];
+}
+
+export interface DemoAccount {
+  label: string;
+  email: string;
+  password: string;
 }
 
 /**

@@ -1,5 +1,10 @@
 import { Router } from "express";
 import { getMinPasswordLength } from "../lib/config.js";
+import {
+  getDemoAccounts,
+  toPublicDemoAccounts,
+  type PublicDemoAccount
+} from "../lib/auth/demo-accounts.js";
 
 export const configRouter = Router();
 
@@ -24,6 +29,16 @@ export interface AppConfig {
    * Exposing the boolean just makes the UX honest.
    */
   emailResetAvailable: boolean;
+  /**
+   * Present ONLY when DEMO_LOGIN_ACCOUNTS is set (demo deployments).
+   * This is the one sanctioned exception to "strictly non-secret":
+   * it deliberately publishes working demo credentials so the login
+   * page can pre-fill them — that IS the feature. The parse schema
+   * caps demo roles at "manager", so these credentials can never
+   * grant user management or cross-program access. Never set the
+   * env var on a deployment holding real content.
+   */
+  demoAccounts?: PublicDemoAccount[];
 }
 
 function isEmailResetAvailable(): boolean {
@@ -44,5 +59,9 @@ configRouter.get("/", (_req, res) => {
     minPasswordLength: getMinPasswordLength(),
     emailResetAvailable: isEmailResetAvailable()
   };
+  const demoAccounts = getDemoAccounts();
+  if (demoAccounts) {
+    payload.demoAccounts = toPublicDemoAccounts(demoAccounts);
+  }
   res.json(payload);
 });

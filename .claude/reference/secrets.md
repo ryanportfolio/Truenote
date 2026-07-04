@@ -17,6 +17,7 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 
 | Var | Used for | Default |
 |---|---|---|
+| `DEMO_LOGIN_ACCOUNTS` | Demo deployments only: JSON account list the login page pre-fills. PUBLISHED via unauthenticated /api/config (deliberate); users bootstrapped at startup with must_reset_password=false; roles capped at manager. Never set where real content lives. | unset → no demo mode |
 | `RERANK_CONFIDENCE_THRESHOLD` | Refusal gate — if top reranker score is below this, refuse | `0.3` |
 | `RETRIEVAL_TOP_K` | Final chunks sent to LLM after reranking | `8` |
 | `RETRIEVAL_CANDIDATE_K` | Candidates pulled from vector + BM25 before reranking | `40` each |

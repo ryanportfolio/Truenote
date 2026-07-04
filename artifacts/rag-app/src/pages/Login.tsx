@@ -1,7 +1,7 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { fetchConfig, login } from "@/lib/api";
-import type { CurrentUser } from "@/types/api";
+import type { CurrentUser, DemoAccount } from "@/types/api";
 
 interface LoginPageProps {
   onAuthenticated: (user: CurrentUser) => void;
@@ -50,12 +50,30 @@ export function LoginPage({
   // configured and a brief absence on first paint is worse than a
   // brief presence that survives.
   const [emailResetAvailable, setEmailResetAvailable] = useState(true);
+  // Demo deployments (server env DEMO_LOGIN_ACCOUNTS) publish demo
+  // credentials via /api/config; we pre-fill the first account so anyone
+  // opening the deployment can try every feature immediately.
+  const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>([]);
+  const [selectedDemo, setSelectedDemo] = useState<string | null>(null);
+  const touchedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     fetchConfig()
       .then((cfg) => {
-        if (!cancelled) setEmailResetAvailable(cfg.emailResetAvailable);
+        if (cancelled) return;
+        setEmailResetAvailable(cfg.emailResetAvailable);
+        const accounts = cfg.demoAccounts ?? [];
+        setDemoAccounts(accounts);
+        // Pre-fill only while the form is still untouched — the config
+        // fetch races the user's first keystroke, and losing typed input
+        // to an async prefill would be worse than no prefill.
+        const first = accounts[0];
+        if (first && !touchedRef.current) {
+          setEmail(first.email);
+          setPassword(first.password);
+          setSelectedDemo(first.email);
+        }
       })
       .catch(() => {
         // Non-fatal — leave the default true. The forgot-password
@@ -65,6 +83,13 @@ export function LoginPage({
       cancelled = true;
     };
   }, []);
+
+  function applyDemoAccount(account: DemoAccount): void {
+    setEmail(account.email);
+    setPassword(account.password);
+    setSelectedDemo(account.email);
+    setError(null);
+  }
 
   async function handleSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -101,6 +126,31 @@ export function LoginPage({
           </p>
         </header>
 
+        {demoAccounts.length > 0 ? (
+          <div className="space-y-2 rounded-md border border-dashed border-border bg-muted/40 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Demo environment — credentials pre-filled
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {demoAccounts.map((account) => (
+                <button
+                  key={account.email}
+                  type="button"
+                  onClick={() => applyDemoAccount(account)}
+                  aria-pressed={selectedDemo === account.email}
+                  className={
+                    selectedDemo === account.email
+                      ? "rounded border border-primary bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
+                      : "rounded border border-input px-3 py-1 text-xs text-muted-foreground hover:bg-secondary"
+                  }
+                >
+                  {account.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="space-y-2">
           <label htmlFor="email" className="text-sm font-medium">
             Email
@@ -111,7 +161,11 @@ export function LoginPage({
             autoComplete="username"
             required
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              touchedRef.current = true;
+              setSelectedDemo(null);
+              setEmail(e.target.value);
+            }}
             disabled={submitting}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
@@ -127,7 +181,11 @@ export function LoginPage({
             autoComplete="current-password"
             required
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              touchedRef.current = true;
+              setSelectedDemo(null);
+              setPassword(e.target.value);
+            }}
             disabled={submitting}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
