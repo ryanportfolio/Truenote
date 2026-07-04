@@ -160,7 +160,7 @@ function ProgramCreateForm({ onCreated }: ProgramCreateFormProps): JSX.Element {
         <button
           type="submit"
           disabled={submitting || name.trim().length === 0}
-          className="btn-whisper px-3 py-1.5"
+          className="btn-primary px-4 py-1.5"
         >
           {submitting ? "Creating…" : "Create program"}
         </button>

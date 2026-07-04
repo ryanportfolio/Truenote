@@ -115,14 +115,17 @@
    * which is the whisper family at icon size, not a third variant.
    * See DESIGN.md §Buttons.
    *   .btn-whisper — app-wide default: chrome surface, warm-gray text, 1px inset hairline
-   *   .btn-csr-ask — the deliberate exception: brand-blue filled, white text.
-   *                  Used ONLY on /chat so CSRs find Ask under call pressure.
+   *   .btn-primary — brand-blue filled, white text. At most ONE per surface,
+   *                  always the primary action the user came for: Ask (/chat),
+   *                  Upload, Create user, Create program.
+   *   .btn-csr-ask — alias of .btn-primary kept so the /chat Ask button
+   *                  stays greppable as the original deliberate exception.
    * Buttons are pills (rounded-full) — the Cohere shape signature. Chips and
    * badges share it; rectangular controls (inputs, cards) do not.
    * All share a focus-ring spec so focus is never color-only (WCAG AA).
    */
   .btn-base {
-    @apply inline-flex items-center justify-center rounded-full text-sm font-medium
+    @apply inline-flex cursor-pointer items-center justify-center rounded-full text-sm font-medium
            transition-colors duration-100 ease-out
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background
            disabled:cursor-not-allowed disabled:opacity-50;
@@ -139,12 +142,15 @@
     @apply bg-muted;
   }
 
+  .btn-primary,
   .btn-csr-ask {
     @apply btn-base bg-primary text-primary-foreground;
   }
+  .btn-primary:hover:not(:disabled),
   .btn-csr-ask:hover:not(:disabled) {
     @apply bg-accent;
   }
+  .btn-primary:active:not(:disabled),
   .btn-csr-ask:active:not(:disabled) {
     background-color: oklch(var(--primary) / 0.92);
   }
@@ -160,7 +166,7 @@
   /* Icon-only quiet button: copy, thumbs, close-X. Transparent at rest so the
    * icon reads as part of its row; hover fills with --muted. */
   .btn-icon {
-    @apply inline-flex items-center justify-center rounded-full p-1
+    @apply inline-flex cursor-pointer items-center justify-center rounded-full p-1
            text-muted-foreground transition-colors duration-100 ease-out
            hover:bg-muted hover:text-foreground
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background

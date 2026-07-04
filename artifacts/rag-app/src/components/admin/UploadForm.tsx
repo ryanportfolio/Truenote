@@ -61,7 +61,7 @@ export function UploadForm({ onUploaded }: UploadFormProps): JSX.Element {
           name="file"
           accept={ACCEPT}
           required
-          className="text-sm file:mr-3 file:rounded-full file:border-0 file:bg-secondary file:px-3 file:py-1 file:font-medium file:text-secondary-foreground"
+          className="text-sm file:mr-3 file:cursor-pointer file:rounded-full file:border file:border-solid file:border-border file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-secondary-foreground hover:file:border-foreground/30"
         />
         <span className="text-xs text-muted-foreground">
           PDF / DOCX / PNG / JPG / WebP / Markdown / TXT. Max 20MB.
@@ -72,7 +72,7 @@ export function UploadForm({ onUploaded }: UploadFormProps): JSX.Element {
         <button
           type="submit"
           disabled={busy}
-          className="btn-whisper px-3 py-1.5"
+          className="btn-primary px-4 py-1.5"
         >
           {busy ? "Uploading…" : "Upload"}
         </button>
