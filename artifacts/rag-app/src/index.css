@@ -4,67 +4,80 @@
 
 @layer base {
   /* Truenote — Cohere-derived rhythm, parent-company brand-blue accent.
-   * HSL kept for shadcn compat; OKLCH migration is a follow-up. See DESIGN.md. */
+   * Tokens are OKLCH channel triplets consumed as oklch(var(--token)) via
+   * tailwind.config.ts — same shadcn pattern as the old HSL setup, so
+   * Tailwind /alpha modifiers (bg-primary/10 etc.) keep working.
+   * Values + contrast math live in DESIGN.md. Re-run the math before
+   * softening any value; do not eyeball. */
   :root {
-    --background: 43 16% 89%;
-    /* WCAG AAA body-text target on the cream bg. Computed contrast ~7.9:1.
-     * Do not soften without re-running the contrast math against --background. */
-    --foreground: 53 7% 22%;
-    --card: 0 0% 100%;
-    --card-foreground: 53 7% 22%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 53 7% 22%;
-    /* Brand-blue, deepened just enough to clear AAA both ways:
-     *   ~7:1 contrast on cream (--foreground-equivalent role)
-     *   ~9:1 white-on-blue for the CSR Ask button.
-     * Sourced from the parent-company logo's deep gradient stop, darkened
-     * for accessibility. Do not relax saturation below this lightness. */
-    --primary: 217 100% 33%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 98%;
-    --secondary-foreground: 53 7% 22%;
-    --muted: 43 12% 92%;
-    /* Used for placeholders, captions, role chips. ~5.5:1 on bg (AA solid).
-     * Anything CSR-readable should prefer --foreground; this is for chrome. */
-    --muted-foreground: 53 7% 34%;
-    /* Vivid brand blue from the logo's mid-gradient. AA on cream (~4.5:1) —
-     * fine for hover states and 10%-opacity citation tints, NOT for body text. */
-    --accent: 213 100% 45%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 72% 45%;
-    --destructive-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 48 96% 10%;
-    --border: 40 8% 88%;
-    --input: 40 8% 88%;
-    --ring: 217 100% 33%;
+    --background: 92.43% 0.0109 95.2; /* #E8E6DE warm cream — byte-identical to Cohere's canvas */
+    /* Body ink. 13.05:1 on --background, 16.02:1 on --card (AAA with margin). */
+    --foreground: 24.31% 0.0076 95.4; /* #21201C warm near-black — never #000 */
+    --card: 99.38% 0.0013 106.4; /* #FDFDFC warm near-white — never pure #fff */
+    --card-foreground: 24.31% 0.0076 95.4;
+    --popover: 99.38% 0.0013 106.4;
+    --popover-foreground: 24.31% 0.0076 95.4;
+    /* Parent-company brand blue: CSR Ask button, active nav, citation chips.
+     * 7.24:1 on cream, ~9:1 white-on-blue (AAA both ways). Deliberately kept
+     * over Cohere's evergreen — brand decisions change deliberately, not as
+     * a side effect of a restyle. Do not relax saturation below this lightness. */
+    --primary: 41.41% 0.1807 261.2; /* #0040AB */
+    --primary-foreground: 99.38% 0.0013 106.4;
+    --secondary: 98.18% 0.0013 106.4; /* #F9F9F8 chrome layer: topbar, sidebar, whisper buttons */
+    --secondary-foreground: 24.31% 0.0076 95.4;
+    --muted: 95.56% 0.0017 67.8; /* #F1F0EF quiet fills, icon-button hover */
+    /* Chrome text: captions, placeholders, metadata. 5.54:1 on bg, 6.8:1 on card
+     * (AA+ everywhere). Anything a CSR reads mid-call uses --foreground instead. */
+    --muted-foreground: 46.63% 0.0159 97.7; /* #5C5A50 */
+    /* Vivid brand blue — hover states and tints only, never body text. */
+    --accent: 52.37% 0.2194 260.5; /* #005DE5 */
+    --accent-foreground: 99.38% 0.0013 106.4;
+    /* 7.16:1 on cream, 8.79:1 on card — error text reads AAA everywhere. */
+    --destructive: 42.61% 0.1584 27.3; /* #921616 */
+    --destructive-foreground: 99.38% 0.0013 106.4;
+    --warning: 77.04% 0.1646 70.7; /* amber — tint washes + badge chips, never running text */
+    --warning-foreground: 28.01% 0.0563 94.1;
+    /* Evergreen success (Cohere's accent survives here): ready pills, thumbs-up,
+     * copy-confirm. 7.61:1 text on card (AAA); 7.75:1 white-on for filled uses. */
+    --success: 43.52% 0.0428 168.8; /* #39594D */
+    --success-foreground: 99.38% 0.0013 106.4;
+    --border: 88.52% 0.0042 91.5; /* #DAD9D6 warm hairline — the Cohere divider */
+    --input: 88.52% 0.0042 91.5;
+    --ring: 41.41% 0.1807 261.2;
     --radius: 0.5rem;
+    /* Cohere card lift: warm ink at 6% alpha. Panels layer a soft second stop.
+     * Reserve --shadow-panel for floating surfaces (slide-overs, popovers). */
+    --shadow-card: 0 1px 2px oklch(24.31% 0.0076 95.4 / 0.06);
+    --shadow-panel: 0 8px 24px oklch(24.31% 0.0076 95.4 / 0.1),
+      0 1px 2px oklch(24.31% 0.0076 95.4 / 0.06);
   }
 
   /* Dark mode ships as sensible inversion; product currently surfaces light only.
-   * All near-black surfaces share the brand-blue hue family (217) for hue parity. */
+   * Mechanical OKLCH conversion of the previous HSL values — no design pass. */
   .dark {
-    --background: 217 12% 10%;
-    --foreground: 43 16% 89%;
-    --card: 217 12% 13%;
-    --card-foreground: 43 16% 89%;
-    --popover: 217 12% 13%;
-    --popover-foreground: 43 16% 89%;
-    --primary: 213 100% 68%;
-    --primary-foreground: 217 100% 14%;
-    --secondary: 217 10% 18%;
-    --secondary-foreground: 43 16% 89%;
-    --muted: 217 10% 18%;
-    --muted-foreground: 53 5% 64%;
-    --accent: 211 100% 79%;
-    --accent-foreground: 217 100% 14%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 43 16% 89%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 48 96% 10%;
-    --border: 217 10% 20%;
-    --input: 217 10% 20%;
-    --ring: 213 100% 68%;
+    --background: 21.2% 0.0092 255.6;
+    --foreground: 92.15% 0.0096 93.6;
+    --card: 24.26% 0.0105 260.7;
+    --card-foreground: 92.15% 0.0096 93.6;
+    --popover: 24.26% 0.0105 260.7;
+    --popover-foreground: 92.15% 0.0096 93.6;
+    --primary: 71.47% 0.1512 254.8;
+    --primary-foreground: 23.48% 0.0895 258.6;
+    --secondary: 29.52% 0.0107 254;
+    --secondary-foreground: 92.15% 0.0096 93.6;
+    --muted: 29.52% 0.0107 254;
+    --muted-foreground: 72.69% 0.0114 100.9;
+    --accent: 81.68% 0.0953 250.4;
+    --accent-foreground: 23.48% 0.0895 258.6;
+    --destructive: 39.58% 0.1331 25.7;
+    --destructive-foreground: 92.15% 0.0096 93.6;
+    --warning: 77.04% 0.1646 70.7;
+    --warning-foreground: 28.01% 0.0563 94.1;
+    --success: 54.67% 0.054 167.1; /* #517B6A Cohere dark accent */
+    --success-foreground: 21.2% 0.0092 255.6;
+    --border: 31.56% 0.0121 258.4;
+    --input: 31.56% 0.0121 258.4;
+    --ring: 71.47% 0.1512 254.8;
   }
 }
 
@@ -81,20 +94,24 @@
    * use the muted-foreground token directly so contrast is predictable. */
   input::placeholder,
   textarea::placeholder {
-    color: hsl(var(--muted-foreground));
+    color: oklch(var(--muted-foreground));
     opacity: 1;
   }
 }
 
 @layer components {
-  /* Truenote button variants. Two, only two. See DESIGN.md §Buttons.
-   *   .btn-whisper — app-wide default: #FAFAFA, warm-gray text, 1px inset hairline
+  /* Truenote button variants. Two, only two — plus the icon-button recipe,
+   * which is the whisper family at icon size, not a third variant.
+   * See DESIGN.md §Buttons.
+   *   .btn-whisper — app-wide default: chrome surface, warm-gray text, 1px inset hairline
    *   .btn-csr-ask — the deliberate exception: brand-blue filled, white text.
    *                  Used ONLY on /chat so CSRs find Ask under call pressure.
-   * Both share a shape + focus-ring spec so focus is never color-only (WCAG AA).
+   * Buttons are pills (rounded-full) — the Cohere shape signature. Chips and
+   * badges share it; rectangular controls (inputs, cards) do not.
+   * All share a focus-ring spec so focus is never color-only (WCAG AA).
    */
   .btn-base {
-    @apply inline-flex items-center justify-center rounded-md text-sm font-medium
+    @apply inline-flex items-center justify-center rounded-full text-sm font-medium
            transition-colors duration-100 ease-out
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background
            disabled:cursor-not-allowed disabled:opacity-50;
@@ -102,10 +119,10 @@
 
   .btn-whisper {
     @apply btn-base bg-secondary text-secondary-foreground;
-    box-shadow: inset 0 0 0 1px hsl(var(--border));
+    box-shadow: inset 0 0 0 1px oklch(var(--border));
   }
   .btn-whisper:hover:not(:disabled) {
-    box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.18);
+    box-shadow: inset 0 0 0 1px oklch(var(--foreground) / 0.18);
   }
   .btn-whisper:active:not(:disabled) {
     @apply bg-muted;
@@ -118,6 +135,16 @@
     @apply bg-accent;
   }
   .btn-csr-ask:active:not(:disabled) {
-    background-color: hsl(var(--primary) / 0.92);
+    background-color: oklch(var(--primary) / 0.92);
+  }
+
+  /* Icon-only quiet button: copy, thumbs, close-X. Transparent at rest so the
+   * icon reads as part of its row; hover fills with --muted. */
+  .btn-icon {
+    @apply inline-flex items-center justify-center rounded-full p-1
+           text-muted-foreground transition-colors duration-100 ease-out
+           hover:bg-muted hover:text-foreground
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background
+           disabled:cursor-not-allowed disabled:opacity-50;
   }
 }
