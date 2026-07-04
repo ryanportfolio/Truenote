@@ -97,6 +97,17 @@
     color: oklch(var(--muted-foreground));
     opacity: 1;
   }
+  /* Branded text selection. Ink on the 15% blue tint over card computes
+   * to ~12.2:1 — AAA holds even inside a selection. */
+  ::selection {
+    background-color: oklch(var(--primary) / 0.15);
+  }
+  /* Warm hairline scrollbars (transcript, slide-over panels) instead of
+   * default gray chrome. Firefox + Chromium ≥121 honor these. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(var(--border)) transparent;
+  }
 }
 
 @layer components {
