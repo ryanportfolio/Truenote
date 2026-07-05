@@ -15,6 +15,7 @@ import {
   updateUser
 } from "@/lib/api";
 import { EmptyState } from "@/components/EmptyState";
+import { RelativeTime } from "@/components/RelativeTime";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 import type {
   CreateUserRequest,
@@ -662,9 +663,13 @@ function UserRow({
               ? `Program: ${programName ?? item.programId.slice(0, 8) + "…"}`
               : "No program (super user)"}
             {" · "}
-            {item.lastLoginAt
-              ? `Last login ${new Date(item.lastLoginAt).toLocaleString()}`
-              : "Never signed in"}
+            {item.lastLoginAt ? (
+              <>
+                Last login <RelativeTime iso={item.lastLoginAt} />
+              </>
+            ) : (
+              "Never signed in"
+            )}
           </div>
         </div>
         {manageable ? (

@@ -85,6 +85,29 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
   // Abort any in-flight request when the page unmounts.
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // "/" focuses the ask box from anywhere on the page (unless the user is
+  // already typing somewhere). CSRs are mid-call — reaching the composer
+  // must never require the mouse.
+  useEffect(() => {
+    function onSlash(event: globalThis.KeyboardEvent): void {
+      if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      textareaRef.current?.focus();
+    }
+    window.addEventListener("keydown", onSlash);
+    return () => window.removeEventListener("keydown", onSlash);
+  }, []);
+
   async function ask(trimmed: string): Promise<void> {
     const id = nextId.current;
     nextId.current += 1;
@@ -238,7 +261,9 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
           />
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
-              Enter to ask, Shift+Enter for a new line. Answers cite source chunks.
+              <kbd className="kbd">Enter</kbd> asks · <kbd className="kbd">Shift</kbd>+
+              <kbd className="kbd">Enter</kbd> new line · <kbd className="kbd">/</kbd> focuses.
+              Answers cite source chunks.
             </span>
             <div className="flex items-center gap-2">
               {busy ? (

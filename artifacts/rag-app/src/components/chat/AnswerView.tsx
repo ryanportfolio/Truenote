@@ -32,9 +32,17 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
           sources={result.sources}
           onChipClick={setOpenChunkId}
         />
+        {result.sources.length > 0 ? (
+          // The receipt strip: "show the receipt" (PRODUCT.md) made literal.
+          // Count + source documents in one quiet eyebrow line.
+          <p className="mt-3 text-xs uppercase tracking-wide text-muted-foreground">
+            Grounded in {result.sources.length} excerpt
+            {result.sources.length === 1 ? "" : "s"} · {receiptTitles(result.sources)}
+          </p>
+        ) : null}
         <footer className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
           {showDebug ? (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 tabular-nums">
               <span>Confidence: {result.confidence}</span>
               {result.topScore !== null ? <span>Top score: {result.topScore.toFixed(2)}</span> : null}
               <span>{result.latencyMs} ms</span>
@@ -58,6 +66,14 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
       ) : null}
     </>
   );
+}
+
+/** Unique source-document titles, capped at two plus a count. */
+function receiptTitles(sources: AskResponse["sources"]): string {
+  const unique = [...new Set(sources.map((s) => s.doc_title))];
+  const shown = unique.slice(0, 2).join(" · ");
+  const rest = unique.length - 2;
+  return rest > 0 ? `${shown} +${rest} more` : shown;
 }
 
 function CopyAnswerButton({ result }: { result: AskResponse }): JSX.Element {

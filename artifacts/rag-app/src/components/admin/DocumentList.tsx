@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { deleteDocument } from "@/lib/api";
 import type { DocumentListItem } from "@/types/api";
 import { EmptyState } from "@/components/EmptyState";
+import { RelativeTime } from "@/components/RelativeTime";
 import { PreviewPanel } from "./PreviewPanel";
 
 interface DocumentListProps {
@@ -86,7 +87,7 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
         * card chrome so narrow viewports scroll the table instead of
         * crushing it. */}
       <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
-      <table className="w-full min-w-[36rem] text-sm">
+      <table className="w-full min-w-[36rem] text-sm tabular-nums">
         <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="px-3 py-2 font-medium">Title</th>
@@ -105,7 +106,7 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
               >
                 <td className="px-3 py-2 font-medium">{item.title}</td>
                 <td className="px-3 py-2 text-muted-foreground">
-                  {item.uploadedAt ? new Date(item.uploadedAt).toLocaleString() : "—"}
+                  {item.uploadedAt ? <RelativeTime iso={item.uploadedAt} /> : "—"}
                 </td>
                 <td className="px-3 py-2">
                   <StatusPill status={item.parseStatus} />

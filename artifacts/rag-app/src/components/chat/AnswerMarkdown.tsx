@@ -78,7 +78,7 @@ export function AnswerMarkdown({
           ),
           table: ({ children }) => (
             <div className="my-2 overflow-x-auto first:mt-0 last:mb-0">
-              <table className="w-full border-collapse text-sm">{children}</table>
+              <table className="w-full border-collapse text-sm tabular-nums">{children}</table>
             </div>
           ),
           // Cohere table language: horizontal rules only, header carried by

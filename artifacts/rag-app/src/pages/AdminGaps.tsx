@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Flag, ThumbsDown, ThumbsUp } from "lucide-react";
 import { listQueryLog } from "@/lib/api";
 import { EmptyState } from "@/components/EmptyState";
+import { RelativeTime } from "@/components/RelativeTime";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 import type {
   CurrentUser,
@@ -180,7 +181,7 @@ function QueryTable({ items }: { items: QueryLogItem[] }): JSX.Element {
   // whole page is manager+ (CSRs never reach this table).
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
-    <table className="w-full min-w-[40rem] text-sm">
+    <table className="w-full min-w-[40rem] text-sm tabular-nums">
       <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
         <tr>
           <th className="px-3 py-2 font-medium">Question</th>
@@ -199,7 +200,7 @@ function QueryTable({ items }: { items: QueryLogItem[] }): JSX.Element {
               <span className="line-clamp-2">{item.question}</span>
             </td>
             <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
-              {item.createdAt ? new Date(item.createdAt).toLocaleString() : "—"}
+              {item.createdAt ? <RelativeTime iso={item.createdAt} /> : "—"}
             </td>
             <td className="px-3 py-2">
               <SignalBadges item={item} />
