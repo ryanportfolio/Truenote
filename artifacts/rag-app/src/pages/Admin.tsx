@@ -12,6 +12,11 @@ interface AdminPageProps {
 }
 
 export function AdminPage({ user }: AdminPageProps): JSX.Element {
+  // "Fill this gap" deep link from /admin/gaps: ?title=<question> prefills
+  // the upload form. Read once on mount — the param is a hand-off, not state.
+  const [initialTitle] = useState<string>(
+    () => new URLSearchParams(window.location.search).get("title") ?? ""
+  );
   const [items, setItems] = useState<DocumentListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +99,7 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
               "Your account isn't scoped to a program yet. Contact an admin."}
         </div>
       ) : (
-        <UploadForm onUploaded={() => void refresh()} />
+        <UploadForm onUploaded={() => void refresh()} initialTitle={initialTitle} />
       )}
       {error ? (
         <p
