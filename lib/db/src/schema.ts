@@ -134,6 +134,28 @@ export const chunks = pgTable("chunks", {
 export type Chunk = typeof chunks.$inferSelect;
 export type NewChunk = typeof chunks.$inferInsert;
 
+// --- chat_sessions
+//
+// Groups a CSR's query_log rows into a named conversation so they can
+// return to a past lookup. Auto-named (gpt-4o-mini) from the opening
+// question; `title` is null until the namer runs. user_id is text to
+// match query_log.user_id (both store the app user id as text). Program-
+// scoped like everything else.
+//
+// Table lives in the dev DB via raw DDL (see the schema-handoff SQL) —
+// never drizzle-kit. Binding declared here so app queries typecheck.
+export const chatSessions = pgTable("chat_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  programId: uuid("program_id").notNull(),
+  userId: text("user_id").notNull(),
+  title: text("title"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow()
+});
+
+export type ChatSession = typeof chatSessions.$inferSelect;
+export type NewChatSession = typeof chatSessions.$inferInsert;
+
 // --- query_log
 
 export const queryLog = pgTable("query_log", {
@@ -149,6 +171,11 @@ export const queryLog = pgTable("query_log", {
   // CSR flagged a refusal as content the knowledge base should have had.
   // Column already exists in the dev DB (raw DDL, 2026-07-04) — never drizzle-kit.
   flaggedMissing: boolean("flagged_missing").default(false),
+  // Groups this row into a chat_sessions conversation. Nullable: older rows
+  // and any ungrouped ask predate/skip a session. ON DELETE SET NULL in the
+  // DDL so deleting a session never drops ops/gap analytics rows.
+  // Column lives in the dev DB via raw DDL — never drizzle-kit.
+  sessionId: uuid("session_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow()
 });
 

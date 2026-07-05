@@ -52,6 +52,18 @@ CREATE INDEX chunks_embedding_idx ON chunks USING hnsw (embedding vector_cosine_
 CREATE INDEX chunks_tsv_idx ON chunks USING gin (content_tsv);
 CREATE INDEX chunks_program_idx ON chunks (program_id);
 
+-- Chat session grouping for CSR history (added 2026-07-05). Auto-named
+-- (gpt-4o-mini) server-side from the opening exchange; title NULL until named.
+CREATE TABLE chat_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  program_id UUID NOT NULL,
+  user_id TEXT NOT NULL,          -- matches query_log.user_id (app user id as text)
+  title TEXT,                     -- NULL until the auto-namer runs
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()  -- bumped per exchange; history sorts on this
+);
+CREATE INDEX chat_sessions_user_program_idx ON chat_sessions (user_id, program_id);
+
 CREATE TABLE query_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   program_id UUID,
@@ -63,8 +75,10 @@ CREATE TABLE query_log (
   latency_ms INT,
   feedback INT,  -- -1, 0, +1
   flagged_missing BOOLEAN DEFAULT false,  -- CSR flagged a refusal as missing content (added 2026-07-04)
+  session_id UUID REFERENCES chat_sessions(id) ON DELETE SET NULL,  -- groups a conversation (added 2026-07-05); SET NULL preserves ops rows
   created_at TIMESTAMPTZ DEFAULT now()
 );
+CREATE INDEX query_log_session_idx ON query_log (session_id);
 
 CREATE TABLE eval_questions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -133,6 +147,7 @@ CREATE INDEX password_reset_tokens_expires_at_idx ON password_reset_tokens(expir
 - **`embedding VECTOR(1536)` is locked to `text-embedding-3-small`.** Changing embedding model = re-ingest everything.
 - **`users.role` + `users.program_id` are jointly constrained.** The DB CHECK enforces: `super_user` MUST have `program_id IS NULL`; every other role MUST have a non-null `program_id`. The app's program-scoping helpers (`canAccessProgram`, `requireRole`) rely on this. Bypassing the constraint at the SQL level (e.g., manual inserts) breaks the assumption that a manager always has a program scope.
 - **`sessions.token_hash` stores SHA-256 of the cookie value, not the cookie itself.** A leak of the sessions table does not yield active sessions on its own. Plaintext tokens are only ever in transit (cookie header) and in the cookie store on the user's browser.
+- **`chat_sessions` groups a CSR's `query_log` rows into a named conversation.** `query_log.session_id` is nullable with `ON DELETE SET NULL` — deleting a session must never drop ops/gap analytics rows. Sessions are scoped by `(user_id, program_id)`; the ask pipeline honors a client-supplied session id only when both match, so a leaked id can't stitch one user's ask into another's conversation or cross program scope. `title` is auto-generated (gpt-4o-mini) from the opening exchange, detached from the response path, guarded by `title IS NULL` so it fires once.
 - **`users.email` is normalized to lowercase at the application layer**, stored as plain `TEXT`. Every write and lookup calls `.toLowerCase()` before touching the DB. The original Phase 2A design used `citext` for case-insensitive comparison, but the `citext` extension isn't available in all managed Postgres environments (specifically: Replit's production publish flow does not run `CREATE EXTENSION`, only DDL diff). The app-layer normalization preserves the case-insensitive contract without the extension dependency. **Detection rule:** any new code path that writes or compares `users.email` MUST lowercase first — otherwise duplicate accounts can be created (`Alice@foo.com` vs `alice@foo.com`) and logins will silently mismatch.
 
 ## Schema change protocol

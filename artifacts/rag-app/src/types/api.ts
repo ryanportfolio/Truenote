@@ -84,6 +84,8 @@ export interface AskHistoryTurn {
 
 export interface AskResponse {
   queryLogId: string | null;
+  /** The chat session this exchange was logged under. Send it back to continue the session. */
+  sessionId: string | null;
   answer: string;
   sources: Source[];
   refused: boolean;
@@ -93,6 +95,41 @@ export interface AskResponse {
   topScore: number | null;
   /** The standalone question retrieval actually ran, when a follow-up was rewritten. */
   rewrittenQuestion: string | null;
+}
+
+/**
+ * Chat session history shapes. Mirror of routes/sessions.ts. A session
+ * groups a CSR's exchanges into a named, resumable conversation.
+ */
+export interface SessionListItem {
+  id: string;
+  /** Auto-generated from the opening exchange; null until the namer runs. */
+  title: string | null;
+  /** ISO timestamp of the last exchange, or null. */
+  updatedAt: string | null;
+}
+
+export interface SessionListResponse {
+  items: SessionListItem[];
+  /** Same sentinel contract as DocumentListResponse. */
+  noProgramSelected?: boolean;
+}
+
+/** One reconstructed exchange from a past session. */
+export interface SessionExchange {
+  queryLogId: string;
+  question: string;
+  answer: string;
+  refused: boolean;
+  latencyMs: number | null;
+  feedback: number | null;
+  sources: Source[];
+}
+
+export interface SessionDetailResponse {
+  id: string;
+  title: string | null;
+  exchanges: SessionExchange[];
 }
 
 export type ParseStatus = "pending" | "parsing" | "ready" | "failed";

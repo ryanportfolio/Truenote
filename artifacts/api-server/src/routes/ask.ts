@@ -1,11 +1,18 @@
 import { Router, type Request, type Response } from "express";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../lib/db-client.js";
-import { chunks, documentVersions, programs, queryLog } from "@workspace/db/schema";
+import {
+  chatSessions,
+  chunks,
+  documentVersions,
+  programs,
+  queryLog
+} from "@workspace/db/schema";
 import { retrieve } from "../lib/retrieval/query.js";
 import { generateAnswer, type Source } from "../lib/generation/answer.js";
 import { rewriteFollowUp, type HistoryTurn } from "../lib/generation/rewrite.js";
+import { nameSession } from "../lib/generation/name-session.js";
 import {
   authedUser,
   requireAuth,
@@ -59,7 +66,14 @@ const AskBody = z.object({
       })
     )
     .max(8)
-    .optional()
+    .optional(),
+  /**
+   * The chat session this ask belongs to. Omitted → a new session is
+   * created and its id returned. A supplied id is honored only if it
+   * belongs to the same user AND program; anything else silently starts
+   * a fresh session (no cross-user/-program stitching).
+   */
+  sessionId: z.string().uuid().optional()
 });
 
 /**
@@ -79,6 +93,8 @@ export type LinkedSource = Source & {
 
 export interface AskResponse {
   queryLogId: string | null;
+  /** The session this exchange was logged under, for the client to continue it. */
+  sessionId: string | null;
   answer: string;
   sources: LinkedSource[];
   refused: boolean;
@@ -89,6 +105,70 @@ export interface AskResponse {
   topScore: number | null;
   /** The standalone question retrieval actually ran, when a follow-up was rewritten. Null otherwise. */
   rewrittenQuestion: string | null;
+}
+
+/**
+ * Resolve the chat session for an ask, creating one when needed. A
+ * client-supplied id is honored only if it belongs to this user AND
+ * program — a leaked/tampered id can't attach one user's ask to
+ * another's conversation, nor cross program scope. Anything unowned or
+ * malformed falls through to a fresh session.
+ */
+async function resolveOrCreateSession(
+  user: CurrentUser,
+  programId: string,
+  requested: string | undefined
+): Promise<string> {
+  if (requested) {
+    const rows = await db
+      .select({ id: chatSessions.id })
+      .from(chatSessions)
+      .where(
+        and(
+          eq(chatSessions.id, requested),
+          eq(chatSessions.userId, user.id),
+          eq(chatSessions.programId, programId)
+        )
+      )
+      .limit(1);
+    if (rows[0]) return rows[0].id;
+  }
+  const inserted = await db
+    .insert(chatSessions)
+    .values({ programId, userId: user.id })
+    .returning({ id: chatSessions.id });
+  const id = inserted[0]?.id;
+  if (!id) throw new Error("Failed to create chat session");
+  return id;
+}
+
+/**
+ * Auto-name a session from its opening exchange, detached from the
+ * response path (the CSR already has their answer; a title is not worth
+ * added latency mid-call). The `title IS NULL` guard makes it fire once —
+ * later exchanges skip it, and a concurrent namer can't clobber a title.
+ */
+function scheduleSessionNaming(sessionId: string, question: string, answer: string): void {
+  void (async () => {
+    try {
+      const rows = await db
+        .select({ title: chatSessions.title })
+        .from(chatSessions)
+        .where(eq(chatSessions.id, sessionId))
+        .limit(1);
+      if (rows[0]?.title != null) return;
+      const title = await nameSession({ question, answer });
+      await db
+        .update(chatSessions)
+        .set({ title })
+        .where(and(eq(chatSessions.id, sessionId), isNull(chatSessions.title)));
+    } catch (err) {
+      console.warn(
+        "[ask] session auto-name failed:",
+        err instanceof Error ? err.message : err
+      );
+    }
+  })();
 }
 
 /**
@@ -129,6 +209,7 @@ async function runAsk(
   question: string,
   user: CurrentUser,
   programId: string,
+  sessionId: string,
   history: HistoryTurn[],
   onStage?: (stage: AskStage) => void
 ): Promise<AskResponse> {
@@ -144,6 +225,7 @@ async function runAsk(
       .values({
         programId,
         userId: user.id,
+        sessionId,
         question: question.slice(0, MAX_QUESTION_CHARS),
         answer: TOO_LONG_TEXT,
         citedChunkIds: [],
@@ -151,8 +233,12 @@ async function runAsk(
         latencyMs
       })
       .returning({ id: queryLog.id });
+    // Keep the session at the top of history, but don't name it from an
+    // over-long (likely junk) question — a real exchange names it later.
+    await touchSession(sessionId);
     return {
       queryLogId: inserted[0]?.id ?? null,
+      sessionId,
       answer: TOO_LONG_TEXT,
       sources: [],
       refused: true,
@@ -223,6 +309,7 @@ async function runAsk(
     .values({
       programId,
       userId: user.id,
+      sessionId,
       question,
       answer: generation.payload.answer,
       citedChunkIds: cited,
@@ -231,8 +318,13 @@ async function runAsk(
     })
     .returning({ id: queryLog.id });
 
+  await touchSession(sessionId);
+  // Name the session from its first real exchange (no-op if already named).
+  scheduleSessionNaming(sessionId, question, generation.payload.answer);
+
   return {
     queryLogId: inserted[0]?.id ?? null,
+    sessionId,
     answer: generation.payload.answer,
     sources: linkedSources,
     refused: generation.payload.refused,
@@ -248,6 +340,14 @@ async function runAsk(
   };
 }
 
+/** Bump updated_at so the session sorts to the top of history. */
+async function touchSession(sessionId: string): Promise<void> {
+  await db
+    .update(chatSessions)
+    .set({ updatedAt: new Date() })
+    .where(eq(chatSessions.id, sessionId));
+}
+
 askRouter.post("/ask", async (req, res, next) => {
   try {
     const parsed = AskBody.safeParse(req.body);
@@ -259,8 +359,9 @@ askRouter.post("/ask", async (req, res, next) => {
     const user = authedUser(req);
     const programId = await resolveAskProgram(req, res);
     if (programId === null) return;
+    const sessionId = await resolveOrCreateSession(user, programId, parsed.data.sessionId);
 
-    res.json(await runAsk(question, user, programId, parsed.data.history ?? []));
+    res.json(await runAsk(question, user, programId, sessionId, parsed.data.history ?? []));
   } catch (err) {
     next(err);
   }
@@ -284,6 +385,9 @@ askRouter.post("/ask/stream", async (req, res, next) => {
     const user = authedUser(req);
     const programId = await resolveAskProgram(req, res);
     if (programId === null) return;
+    // Resolve the session BEFORE streaming starts so a failure here is a
+    // clean pre-stream error, not a mid-stream break.
+    const sessionId = await resolveOrCreateSession(user, programId, parsed.data.sessionId);
 
     res.status(200);
     res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
@@ -298,7 +402,7 @@ askRouter.post("/ask/stream", async (req, res, next) => {
     };
 
     try {
-      const result = await runAsk(question, user, programId, parsed.data.history ?? [], (stage) =>
+      const result = await runAsk(question, user, programId, sessionId, parsed.data.history ?? [], (stage) =>
         send({ type: "stage", stage })
       );
       send({ type: "result", result });

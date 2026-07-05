@@ -18,6 +18,8 @@ import type {
   QueryLogFilter,
   QueryLogListResponse,
   ResetPasswordResponse,
+  SessionDetailResponse,
+  SessionListResponse,
   ResetUserPasswordResponse,
   UpdateUserRequest,
   UploadResponse,
@@ -230,14 +232,15 @@ export async function changePassword(
 
 export async function askQuestion(
   question: string,
-  history: AskHistoryTurn[] = []
+  history: AskHistoryTurn[] = [],
+  sessionId: string | null = null
 ): Promise<AskResponse> {
   const response = await fetch(
     "/api/ask",
     withDefaults({
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, history })
+      body: JSON.stringify({ question, history, sessionId: sessionId ?? undefined })
     })
   );
   return asJson<AskResponse>(response);
@@ -253,14 +256,15 @@ export async function askQuestionStream(
   question: string,
   history: AskHistoryTurn[],
   onStage: (stage: AskStage) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  sessionId: string | null = null
 ): Promise<AskResponse> {
   const response = await fetch(
     "/api/ask/stream",
     withDefaults({
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, history }),
+      body: JSON.stringify({ question, history, sessionId: sessionId ?? undefined }),
       signal
     })
   );
@@ -334,6 +338,21 @@ export async function submitFeedback(queryLogId: string, feedback: -1 | 0 | 1): 
 export async function listDocuments(): Promise<DocumentListResponse> {
   const response = await fetch("/api/documents", withDefaults());
   return asJson<DocumentListResponse>(response);
+}
+
+/** The CSR's own chat sessions, newest first, scoped to the effective program. */
+export async function listSessions(): Promise<SessionListResponse> {
+  const response = await fetch("/api/sessions", withDefaults());
+  return asJson<SessionListResponse>(response);
+}
+
+/** One past session with its reconstructed exchanges. Throws on 404 (not owned / wrong program). */
+export async function getSession(sessionId: string): Promise<SessionDetailResponse> {
+  const response = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}`,
+    withDefaults()
+  );
+  return asJson<SessionDetailResponse>(response);
 }
 
 /** CSR-facing knowledge base: browsable list of live (active + parsed) docs. */
