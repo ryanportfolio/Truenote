@@ -6,8 +6,9 @@ import {
   evalQuestions,
   programs
 } from "@workspace/db/schema";
-import { retrieve } from "../retrieval/query.js";
+import { retrieve, type RetrievalTraceEntry } from "../retrieval/query.js";
 import { generateAnswer } from "../generation/answer.js";
+import { judgeFaithfulness } from "./faithfulness.js";
 
 /**
  * Eval harness.
@@ -65,6 +66,20 @@ export function attributeFailure(input: {
   return "generation";
 }
 
+/**
+ * 1-based rank of the expected doc's best chunk in the post-rerank top-K.
+ * Null when absent. Rank 7-of-8 on passes is an early warning the doc
+ * barely survives reranking; candidate-pool order is merge order (not a
+ * ranking), so no pre-rerank equivalent exists.
+ */
+export function expectedDocRank(
+  ranked: RetrievalTraceEntry[],
+  expectedDocId: string
+): number | null {
+  const idx = ranked.findIndex((e) => e.documentId === expectedDocId);
+  return idx === -1 ? null : idx + 1;
+}
+
 export interface EvalRunOptions {
   /** Restrict to one program. Required when running across multiple programs would be ambiguous. */
   programId?: string;
@@ -72,6 +87,12 @@ export interface EvalRunOptions {
   questionId?: string;
   /** Hard cap on questions to evaluate. Useful for fast smoke-tests. */
   limit?: number;
+  /**
+   * Run the claim-level faithfulness judge on every non-refused answer.
+   * One extra gpt-4o call per judged question — opt-in to keep the default
+   * run cheap.
+   */
+  judge?: boolean;
 }
 
 export interface EvalQuestionResult {
@@ -104,8 +125,14 @@ export interface EvalQuestionResult {
   retrievalHit: boolean | null;
   /** Expected doc survived the reranker into the top-K sent to the LLM. */
   rerankHit: boolean | null;
+  /** 1-based rank of the expected doc in the post-rerank top-K. Null when absent or no expected_doc_id. */
+  expectedDocRank: number | null;
   /** Which pipeline stage lost an in-KB question. Null for passes and unattributable failures. */
   failureStage: FailureStage | null;
+  /** % of the answer's factual claims supported by the excerpts. Null unless judged (--judge). */
+  faithfulnessPct: number | null;
+  /** Claims the judge could not ground in the excerpts. Empty unless judged. */
+  unsupportedClaims: string[];
   /** Set if the pipeline threw — pass is false, other fields default. */
   error: string | null;
 }
@@ -136,6 +163,15 @@ export interface EvalSummary {
     /** In-KB failures with no expected_doc_id (or that errored) — unattributable. */
     unattributed: number;
   };
+  /** Mean 1-based rank of the expected doc among questions where it reached top-K. */
+  expectedDocRankMean: number | null;
+  // Faithfulness (only when the run was judged)
+  /** Questions whose answers were judged (non-refused, judge enabled). */
+  judgedQuestions: number;
+  /** Mean per-question faithfulness. Null when nothing was judged. */
+  meanFaithfulnessPct: number | null;
+  /** Judged questions with at least one unsupported claim — the hallucination count. */
+  unfaithfulQuestions: number;
   // Latency
   latencyP50Ms: number;
   latencyP95Ms: number;
@@ -244,15 +280,18 @@ async function chunkIdsToDocIds(chunkIds: string[]): Promise<string[]> {
  * carries the error per row so operators can see which questions are
  * broken (e.g., expected_doc_id pointing at a deleted document).
  */
-async function evaluateOne(q: {
-  id: string;
-  question: string;
-  programId: string | null;
-  programName: string | null;
-  expectedDocId: string | null;
-  expectedAnswerContains: string[] | null;
-  notes: string | null;
-}): Promise<EvalQuestionResult> {
+async function evaluateOne(
+  q: {
+    id: string;
+    question: string;
+    programId: string | null;
+    programName: string | null;
+    expectedDocId: string | null;
+    expectedAnswerContains: string[] | null;
+    notes: string | null;
+  },
+  judge: boolean
+): Promise<EvalQuestionResult> {
   const expectedPhrases = q.expectedAnswerContains ?? [];
   const kind = classify(q);
   const startedAt = Date.now();
@@ -279,7 +318,10 @@ async function evaluateOne(q: {
       answerCorrect: expectedPhrases.length === 0 ? null : false,
       retrievalHit: null,
       rerankHit: null,
+      expectedDocRank: null,
       failureStage: null,
+      faithfulnessPct: null,
+      unsupportedClaims: [],
       error: "eval_question has no program_id — cannot run retrieval"
     };
   }
@@ -333,6 +375,10 @@ async function evaluateOne(q: {
       q.expectedDocId === null ? null : candidateDocIds.has(q.expectedDocId);
     const rerankHit: boolean | null =
       q.expectedDocId === null ? null : rankedDocIds.has(q.expectedDocId);
+    const docRank: number | null =
+      q.expectedDocId === null
+        ? null
+        : expectedDocRank(retrieval.trace?.ranked ?? [], q.expectedDocId);
 
     let pass: boolean;
     if (kind === "out-of-kb") {
@@ -350,6 +396,26 @@ async function evaluateOne(q: {
       kind === "in-kb" && !pass
         ? attributeFailure({ retrievalHit, rerankHit, gateRefused: retrieval.refused })
         : null;
+
+    // Faithfulness judge — every non-refused answer, in-KB or not (an
+    // out-of-KB question that wrongly got an answer is a prime hallucination
+    // candidate). Runs AFTER latencyMs is captured: judge time is eval
+    // overhead, not pipeline latency. A judge failure degrades to unjudged
+    // rather than failing the question — the judge is instrumentation.
+    let faithfulnessPct: number | null = null;
+    let unsupportedClaims: string[] = [];
+    if (judge && !refused && retrieval.chunks.length > 0) {
+      try {
+        const judgment = await judgeFaithfulness({ answer, chunks: retrieval.chunks });
+        faithfulnessPct = judgment.faithfulnessPct;
+        unsupportedClaims = judgment.unsupportedClaims;
+      } catch (err) {
+        console.warn(
+          `[eval] faithfulness judge failed for question ${q.id}:`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
 
     return {
       questionId: q.id,
@@ -372,7 +438,10 @@ async function evaluateOne(q: {
       answerCorrect,
       retrievalHit,
       rerankHit,
+      expectedDocRank: docRank,
       failureStage,
+      faithfulnessPct,
+      unsupportedClaims,
       error: null
     };
   } catch (err) {
@@ -397,7 +466,10 @@ async function evaluateOne(q: {
       answerCorrect: expectedPhrases.length === 0 ? null : false,
       retrievalHit: null,
       rerankHit: null,
+      expectedDocRank: null,
       failureStage: null,
+      faithfulnessPct: null,
+      unsupportedClaims: [],
       error: err instanceof Error ? err.message : String(err)
     };
   }
@@ -439,6 +511,20 @@ function summarize(results: EvalQuestionResult[]): EvalSummary {
     unattributed: inKbFailures.filter((r) => r.failureStage === null).length
   };
 
+  const rankedResults = results.filter((r) => r.expectedDocRank !== null);
+  const expectedDocRankMean =
+    rankedResults.length === 0
+      ? null
+      : rankedResults.reduce((sum, r) => sum + (r.expectedDocRank ?? 0), 0) /
+        rankedResults.length;
+
+  const judged = results.filter((r) => r.faithfulnessPct !== null);
+  const meanFaithfulnessPct =
+    judged.length === 0
+      ? null
+      : judged.reduce((sum, r) => sum + (r.faithfulnessPct ?? 0), 0) / judged.length;
+  const unfaithfulQuestions = judged.filter((r) => r.unsupportedClaims.length > 0).length;
+
   const sortedLatency = results
     .map((r) => r.latencyMs)
     .sort((a, b) => a - b);
@@ -468,6 +554,10 @@ function summarize(results: EvalQuestionResult[]): EvalSummary {
         ? null
         : (rerankHits / stageApplicable.length) * 100,
     inKbFailuresByStage,
+    expectedDocRankMean,
+    judgedQuestions: judged.length,
+    meanFaithfulnessPct,
+    unfaithfulQuestions,
     latencyP50Ms: percentile(sortedLatency, 50),
     latencyP95Ms: percentile(sortedLatency, 95)
   };
@@ -482,7 +572,7 @@ export async function runEval(opts: EvalRunOptions = {}): Promise<EvalReport> {
   // shared OpenAI/Cohere pools) and could trip rate limits. Eval
   // runs are infrequent — the simple loop is the right default.
   for (const q of questions) {
-    results.push(await evaluateOne(q));
+    results.push(await evaluateOne(q, opts.judge ?? false));
   }
   const finishedAt = new Date();
   return {

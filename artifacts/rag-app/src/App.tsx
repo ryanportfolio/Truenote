@@ -229,6 +229,9 @@ export function App(): JSX.Element {
         <Route path="/admin/gaps">
           <AdminGapsPage user={auth.user} />
         </Route>
+        {/* The short-lived parallel-built Insights page merged into Gaps
+          * (2026-07); keep the URL working for anyone who bookmarked it. */}
+        <Route path="/admin/insights" component={() => <Redirect to="/admin/gaps" />} />
         <Route path="/admin/programs">
           <AdminProgramsPage user={auth.user} />
         </Route>

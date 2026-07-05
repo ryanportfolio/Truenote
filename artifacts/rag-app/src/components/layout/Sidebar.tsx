@@ -21,7 +21,7 @@ const NAV: ReadonlyArray<{
 }> = [
   { href: "/chat", label: "Chat", icon: MessageSquare, minRole: "csr" },
   { href: "/admin/documents", label: "Documents", icon: FileText, minRole: "manager" },
-  { href: "/admin/gaps", label: "Gaps", icon: Flag, minRole: "manager" },
+  { href: "/admin/gaps", label: "Content gaps", icon: Flag, minRole: "manager" },
   { href: "/admin/users", label: "Users", icon: Users, minRole: "manager" },
   { href: "/admin/programs", label: "Programs", icon: Building2, minRole: "super_user" }
 ];

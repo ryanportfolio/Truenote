@@ -1,5 +1,6 @@
 import type {
   AppConfig,
+  AskHistoryTurn,
   AskResponse,
   AskStage,
   ChangePasswordResponse,
@@ -7,6 +8,7 @@ import type {
   CreateUserResponse,
   CurrentUser,
   DocumentListResponse,
+  KbGapsResponse,
   LoginResponse,
   PreviewResponse,
   Program,
@@ -224,13 +226,16 @@ export async function changePassword(
   return json.user;
 }
 
-export async function askQuestion(question: string): Promise<AskResponse> {
+export async function askQuestion(
+  question: string,
+  history: AskHistoryTurn[] = []
+): Promise<AskResponse> {
   const response = await fetch(
     "/api/ask",
     withDefaults({
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question })
+      body: JSON.stringify({ question, history })
     })
   );
   return asJson<AskResponse>(response);
@@ -244,6 +249,7 @@ export async function askQuestion(question: string): Promise<AskResponse> {
  */
 export async function askQuestionStream(
   question: string,
+  history: AskHistoryTurn[],
   onStage: (stage: AskStage) => void,
   signal?: AbortSignal
 ): Promise<AskResponse> {
@@ -252,7 +258,7 @@ export async function askQuestionStream(
     withDefaults({
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, history }),
       signal
     })
   );
@@ -326,6 +332,14 @@ export async function submitFeedback(queryLogId: string, feedback: -1 | 0 | 1): 
 export async function listDocuments(): Promise<DocumentListResponse> {
   const response = await fetch("/api/documents", withDefaults());
   return asJson<DocumentListResponse>(response);
+}
+
+export async function fetchKbGaps(windowDays: number): Promise<KbGapsResponse> {
+  const response = await fetch(
+    `/api/admin/insights/kb-gaps?days=${encodeURIComponent(windowDays)}`,
+    withDefaults()
+  );
+  return asJson<KbGapsResponse>(response);
 }
 
 export async function uploadDocument(formData: FormData): Promise<UploadResponse> {
