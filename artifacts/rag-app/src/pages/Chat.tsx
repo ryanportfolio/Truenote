@@ -158,7 +158,8 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
   return (
     // CSR surface: tight density by design (DESIGN.md §Density) — narrower
     // column (~Cohere's 640px measure), smaller gaps than admin pages.
-    <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-6">
+    // Bottom padding lives on the sticky composer wrapper, not here.
+    <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 pt-6">
       <header>
         <h1 className="font-display text-3xl font-semibold tracking-tight">Chat</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -247,6 +248,14 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
         ) : null}
         <div ref={bottomRef} />
 
+        {/* Sticky composer: mid-call, the ask box must stay one glance away
+          * no matter how long the transcript gets. Transcript scrolls
+          * behind; the gradient strip softens the cut edge. */}
+        <div className="sticky bottom-0 -mx-4 bg-background px-4 pb-6">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-gradient-to-t from-background to-transparent"
+          />
         <form onSubmit={onSubmit} className="flex flex-col gap-2">
           <textarea
             ref={textareaRef}
@@ -285,6 +294,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             </div>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );
