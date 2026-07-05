@@ -177,6 +177,10 @@ Semantic tokens only — raw Tailwind palette classes (`emerald-*`, `amber-*`, `
 
 CSR-facing read surface for the same corpus answers are grounded in (sidebar "Knowledge base," minRole csr). List: single card of divided rows (title + relative time), client-side title filter with an inset search icon. Reader: one article card, `max-w-3xl`, doc title in display face over a hairline rule, then the parsed markdown. Unlike AnswerMarkdown, real-document rendering allows headings (stepped display scale), links (underlined `--primary`, new tab), and code; images render as a dashed placeholder chip carrying the alt text — OCR-local image refs aren't served. Cross-program or removed docs land on a calm EmptyState, not an error.
 
+## Chat session history
+
+Every /chat conversation is a session, auto-named server-side (gpt-4o-mini) from its opening exchange; the title shows as a small `--primary` line under the chat intro. The header carries a **History** whisper button (with `New conversation` when a transcript exists) — it expands an inline card of recent sessions (title or "Untitled conversation" + relative time, newest first, active one tinted), not a floating dropdown: no z-index, no focus trap, dismisses by re-toggling. Opening a session reloads its exchanges into the transcript with citations intact and continues it. `New conversation` clears the transcript AND the session id so the next ask starts a fresh, separately-named conversation. History actions disable while an ask is in flight.
+
 ## Motion
 
 Easing **`cubic-bezier(0.25, 1, 0.5, 1)`** (ease-out-quart). Micro-interactions `100–120ms`, layout `240ms`. Named Tailwind tokens: `ease-out-quart`, `duration-240` (tailwindcss-animate maps both onto animation properties too). Honor `prefers-reduced-motion` everywhere — every animation below is `motion-safe:`. No bounce, no overshoot, no decorative motion.

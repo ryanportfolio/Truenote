@@ -5,15 +5,17 @@ import {
   type FormEvent,
   type KeyboardEvent
 } from "react";
-import { MessageSquare } from "lucide-react";
-import { askQuestionStream } from "@/lib/api";
+import { History, MessageSquare } from "lucide-react";
+import { askQuestionStream, getSession, listSessions } from "@/lib/api";
 import { EmptyState } from "@/components/EmptyState";
+import { RelativeTime } from "@/components/RelativeTime";
 import {
   hasAtLeastRole,
   type AskHistoryTurn,
   type AskResponse,
   type AskStage,
-  type CurrentUser
+  type CurrentUser,
+  type SessionListItem
 } from "@/types/api";
 import { AnswerView } from "@/components/chat/AnswerView";
 import {
@@ -84,6 +86,16 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState<AskStage | null>(null);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
+  // The active session. Null until the first ask creates one (the server
+  // returns its id); a resumed session sets it from history.
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionTitle, setSessionTitle] = useState<string | null>(null);
+  // History drawer.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [sessions, setSessions] = useState<SessionListItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const nextId = useRef(1);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -137,8 +149,17 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
       setExchanges((prev) => prev.map((e) => (e.id === id ? { ...e, ...fields } : e)));
 
     try {
-      const result = await askQuestionStream(trimmed, history, setStage, controller.signal);
+      const result = await askQuestionStream(
+        trimmed,
+        history,
+        setStage,
+        controller.signal,
+        sessionId
+      );
       patch({ result });
+      // First ask created the session server-side; adopt its id so the
+      // rest of this conversation logs under it. Later asks re-send it.
+      if (result.sessionId) setSessionId(result.sessionId);
     } catch (err) {
       if (controller.signal.aborted) {
         patch({ error: "Cancelled." });
@@ -170,32 +191,166 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
     }
   }
 
+  // Clear the transcript AND drop the session id, so the next ask starts a
+  // fresh, separately-named conversation — the previous customer's context
+  // must not bleed into the next call's follow-ups.
+  function startNewConversation(): void {
+    setExchanges([]);
+    setSessionId(null);
+    setSessionTitle(null);
+  }
+
+  async function toggleHistory(): Promise<void> {
+    const next = !historyOpen;
+    setHistoryOpen(next);
+    if (!next) return;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const res = await listSessions();
+      setSessions(res.items);
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : "Failed to load history");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  // Load a past session back into the transcript and make it active, so
+  // asking continues it. Reconstructs each stored exchange into the same
+  // shape a live answer has (confidence/topScore aren't stored — they only
+  // surface in the manager debug footer, which tolerates the defaults).
+  async function openSession(item: SessionListItem): Promise<void> {
+    if (busy) return;
+    setLoadingSessionId(item.id);
+    setHistoryError(null);
+    try {
+      const detail = await getSession(item.id);
+      const loaded: Exchange[] = detail.exchanges.map((e) => {
+        const id = nextId.current;
+        nextId.current += 1;
+        const result: AskResponse = {
+          queryLogId: e.queryLogId,
+          sessionId: detail.id,
+          answer: e.answer,
+          sources: e.sources,
+          refused: e.refused,
+          confidence: "low",
+          retrievedChunks: [],
+          latencyMs: e.latencyMs ?? 0,
+          topScore: null,
+          rewrittenQuestion: null
+        };
+        return { id, question: e.question, result, error: null };
+      });
+      setExchanges(loaded);
+      setSessionId(detail.id);
+      setSessionTitle(detail.title);
+      setHistoryOpen(false);
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : "Failed to open session");
+    } finally {
+      setLoadingSessionId(null);
+    }
+  }
+
   return (
     // CSR surface: tight density by design (DESIGN.md §Density) — narrower
     // column (~Cohere's 640px measure), smaller gaps than admin pages.
     // Bottom padding lives on the sticky composer wrapper, not here.
     <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 pt-6">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight">Chat</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Ask the knowledge base a question. Every answer ships with at least one citation, or
-            the system will explicitly say it could not find the answer. Follow-ups work — "what
-            about the premium plan?" searches with the conversation in mind.
-          </p>
+      <header className="flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="font-display text-3xl font-semibold tracking-tight">Chat</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Ask the knowledge base a question. Every answer ships with at least one citation, or
+              the system will explicitly say it could not find the answer. Follow-ups work — "what
+              about the premium plan?" searches with the conversation in mind.
+            </p>
+            {sessionTitle ? (
+              <p className="mt-1 text-xs font-medium text-primary">{sessionTitle}</p>
+            ) : null}
+          </div>
+          {hasProgram ? (
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                aria-expanded={historyOpen}
+                onClick={() => void toggleHistory()}
+                className="btn-whisper gap-1.5 px-3 py-1.5"
+              >
+                <History className="h-4 w-4" aria-hidden />
+                History
+              </button>
+              {exchanges.length > 0 ? (
+                // Follow-up rewriting reads recent turns, so a CSR starting
+                // the next CALL needs a clean slate — otherwise the previous
+                // customer's context bleeds into the next one's follow-ups.
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={startNewConversation}
+                  className="btn-whisper px-3 py-1.5"
+                >
+                  New conversation
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
-        {exchanges.length > 0 ? (
-          // Follow-up rewriting reads recent turns, so a CSR starting the
-          // next CALL needs a clean slate — otherwise the previous
-          // customer's context bleeds into this customer's follow-ups.
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setExchanges([])}
-            className="btn-whisper shrink-0 px-3 py-1.5"
+
+        {historyOpen ? (
+          <section
+            aria-label="Recent conversations"
+            className="rounded-lg border border-border bg-card p-2 shadow-card motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-100"
           >
-            New conversation
-          </button>
+            {historyLoading ? (
+              <div className="flex flex-col gap-1.5 p-1" aria-hidden>
+                <div className="skeleton h-8 w-full rounded-md" />
+                <div className="skeleton h-8 w-5/6 rounded-md" />
+              </div>
+            ) : historyError ? (
+              <p role="alert" className="px-2 py-1.5 text-sm text-destructive">
+                {historyError}
+              </p>
+            ) : sessions.length === 0 ? (
+              <p className="px-2 py-1.5 text-sm text-muted-foreground">
+                No past conversations yet. Ask a question to start one.
+              </p>
+            ) : (
+              <ul className="flex flex-col">
+                {sessions.map((s) => {
+                  const active = s.id === sessionId;
+                  return (
+                    <li key={s.id}>
+                      <button
+                        type="button"
+                        disabled={busy || loadingSessionId !== null}
+                        aria-current={active ? "true" : undefined}
+                        onClick={() => void openSession(s)}
+                        className={`flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left transition-colors duration-100 ease-out hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:opacity-60 ${
+                          active ? "bg-primary/10" : ""
+                        }`}
+                      >
+                        <span className="truncate text-sm font-medium">
+                          {s.title ?? "Untitled conversation"}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {loadingSessionId === s.id ? (
+                            "Opening…"
+                          ) : s.updatedAt ? (
+                            <RelativeTime iso={s.updatedAt} />
+                          ) : null}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
         ) : null}
       </header>
       <div className="flex flex-col gap-4">
