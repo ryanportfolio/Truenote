@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "wouter";
 import { Flag, ThumbsDown, ThumbsUp } from "lucide-react";
 import { fetchKbGaps, listQueryLog } from "@/lib/api";
 import { EmptyState } from "@/components/EmptyState";
+import { RelativeTime } from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 import type {
@@ -356,13 +358,16 @@ function QueryTable({ items }: { items: QueryLogItem[] }): JSX.Element {
   // whole page is manager+ (CSRs never reach this table).
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
-    <table className="w-full min-w-[40rem] text-sm">
+    <table className="w-full min-w-[44rem] text-sm tabular-nums">
       <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
         <tr>
           <th className="px-3 py-2 font-medium">Question</th>
           <th className="px-3 py-2 font-medium">Asked</th>
           <th className="px-3 py-2 font-medium">Signals</th>
           <th className="px-3 py-2 text-right font-medium">Latency</th>
+          <th className="px-3 py-2">
+            <span className="sr-only">Actions</span>
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -375,13 +380,23 @@ function QueryTable({ items }: { items: QueryLogItem[] }): JSX.Element {
               <span className="line-clamp-2">{item.question}</span>
             </td>
             <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
-              {item.createdAt ? new Date(item.createdAt).toLocaleString() : "—"}
+              {item.createdAt ? <RelativeTime iso={item.createdAt} /> : "—"}
             </td>
             <td className="px-3 py-2">
               <SignalBadges item={item} />
             </td>
             <td className="whitespace-nowrap px-3 py-2 text-right text-muted-foreground">
               {item.latencyMs !== null ? `${item.latencyMs} ms` : "—"}
+            </td>
+            <td className="whitespace-nowrap px-3 py-2 text-right">
+              {/* Close the loop: gap → upload form with the question as the
+                * suggested document title. */}
+              <Link
+                href={`/admin/documents?title=${encodeURIComponent(item.question.slice(0, 120))}`}
+                className="btn-whisper px-2.5 py-1 text-xs"
+              >
+                Fill this gap
+              </Link>
             </td>
           </tr>
         ))}

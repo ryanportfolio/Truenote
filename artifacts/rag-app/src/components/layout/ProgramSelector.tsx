@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import { listPrograms } from "@/lib/api";
+import { programSwatchColor } from "@/lib/programColor";
 import {
   getSelectedProgramId,
   setSelectedProgramId,
@@ -86,6 +87,15 @@ function SuperUserProgramSelector({ user }: ProgramSelectorProps): JSX.Element {
   return (
     <label className="flex items-center gap-2 text-sm">
       <span className="text-muted-foreground">Program</span>
+      {/* Identity swatch: scope-at-a-glance for super_users. Decorative —
+        * the selected NAME in the select carries the information. */}
+      {selected ? (
+        <span
+          aria-hidden
+          className="h-2 w-2 shrink-0 rounded-full"
+          style={{ backgroundColor: programSwatchColor(selected) }}
+        />
+      ) : null}
       <select
         value={selected}
         onChange={handleChange}

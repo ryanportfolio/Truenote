@@ -27,8 +27,8 @@ export function AnswerMarkdown({
   onChipClick
 }: AnswerMarkdownProps): JSX.Element {
   const { markdown } = useMemo(() => annotateCitations(answer, sources), [answer, sources]);
-  const titleByChunkId = useMemo(
-    () => new Map(sources.map((s) => [s.chunk_id, s.doc_title])),
+  const sourceByChunkId = useMemo(
+    () => new Map(sources.map((s) => [s.chunk_id, s])),
     [sources]
   );
 
@@ -41,16 +41,34 @@ export function AnswerMarkdown({
   }): JSX.Element {
     if (href?.startsWith(CITE_HREF_PREFIX)) {
       const chunkId = href.slice(CITE_HREF_PREFIX.length);
-      const title = titleByChunkId.get(chunkId) ?? "Unknown document";
+      const source = sourceByChunkId.get(chunkId);
+      const title = source?.doc_title ?? "Unknown document";
       return (
-        <button
-          type="button"
-          onClick={() => onChipClick(chunkId)}
-          className="mx-0.5 inline-flex cursor-pointer items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0 align-baseline text-xs font-medium text-primary transition-colors duration-100 ease-out hover:bg-primary/20 active:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-          aria-label={`Citation ${childrenToText(children)} — ${title}`}
-        >
-          [{children}]
-        </button>
+        <span className="group/cite relative inline-block">
+          <button
+            type="button"
+            onClick={() => onChipClick(chunkId)}
+            className="mx-0.5 inline-flex cursor-pointer items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0 align-baseline text-xs font-medium text-primary transition-colors duration-100 ease-out hover:bg-primary/20 active:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+            aria-label={`Citation ${childrenToText(children)} — ${title}`}
+          >
+            [{children}]
+          </button>
+          {source ? (
+            // Hover/focus peek: first lines of the excerpt so a CSR can
+            // verify without opening the full panel. Decorative speed aid
+            // (aria-hidden) — the click-through panel remains the canonical,
+            // screen-reader-reachable receipt.
+            <span
+              aria-hidden
+              className="pointer-events-none absolute bottom-full left-0 z-10 mb-1.5 hidden w-72 max-w-[70vw] rounded-md border border-border bg-popover p-3 text-left shadow-panel group-focus-within/cite:block group-hover/cite:block motion-safe:animate-in motion-safe:fade-in motion-safe:duration-100"
+            >
+              <span className="block text-xs font-medium text-popover-foreground">{title}</span>
+              <span className="mt-1 block whitespace-normal font-mono text-xs leading-relaxed text-muted-foreground">
+                {peekExcerpt(source.excerpt)}
+              </span>
+            </span>
+          ) : null}
+        </span>
       );
     }
     if (href === CITE_UNKNOWN_HREF) {
@@ -78,7 +96,7 @@ export function AnswerMarkdown({
           ),
           table: ({ children }) => (
             <div className="my-2 overflow-x-auto first:mt-0 last:mb-0">
-              <table className="w-full border-collapse text-sm">{children}</table>
+              <table className="w-full border-collapse text-sm tabular-nums">{children}</table>
             </div>
           ),
           // Cohere table language: horizontal rules only, header carried by
@@ -104,6 +122,11 @@ export function AnswerMarkdown({
       </ReactMarkdown>
     </div>
   );
+}
+
+/** Peek shows the start of the excerpt; the panel shows all of it. */
+function peekExcerpt(excerpt: string): string {
+  return excerpt.length > 160 ? `${excerpt.slice(0, 160).trimEnd()}…` : excerpt;
 }
 
 function childrenToText(children: ReactNode): string {

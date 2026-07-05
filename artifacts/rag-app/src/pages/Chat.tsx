@@ -97,6 +97,29 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
   // Abort any in-flight request when the page unmounts.
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // "/" focuses the ask box from anywhere on the page (unless the user is
+  // already typing somewhere). CSRs are mid-call — reaching the composer
+  // must never require the mouse.
+  useEffect(() => {
+    function onSlash(event: globalThis.KeyboardEvent): void {
+      if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      textareaRef.current?.focus();
+    }
+    window.addEventListener("keydown", onSlash);
+    return () => window.removeEventListener("keydown", onSlash);
+  }, []);
+
   async function ask(trimmed: string): Promise<void> {
     const id = nextId.current;
     nextId.current += 1;
@@ -150,7 +173,8 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
   return (
     // CSR surface: tight density by design (DESIGN.md §Density) — narrower
     // column (~Cohere's 640px measure), smaller gaps than admin pages.
-    <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-6">
+    // Bottom padding lives on the sticky composer wrapper, not here.
+    <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 pt-6">
       <header className="flex items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-semibold tracking-tight">Chat</h1>
@@ -255,6 +279,14 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
         ) : null}
         <div ref={bottomRef} />
 
+        {/* Sticky composer: mid-call, the ask box must stay one glance away
+          * no matter how long the transcript gets. Transcript scrolls
+          * behind; the gradient strip softens the cut edge. */}
+        <div className="sticky bottom-0 -mx-4 bg-background px-4 pb-6">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-gradient-to-t from-background to-transparent"
+          />
         <form onSubmit={onSubmit} className="flex flex-col gap-2">
           <textarea
             ref={textareaRef}
@@ -269,7 +301,9 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
           />
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
-              Enter to ask, Shift+Enter for a new line. Answers cite source chunks.
+              <kbd className="kbd">Enter</kbd> asks · <kbd className="kbd">Shift</kbd>+
+              <kbd className="kbd">Enter</kbd> new line · <kbd className="kbd">/</kbd> focuses.
+              Answers cite source chunks.
             </span>
             <div className="flex items-center gap-2">
               {busy ? (
@@ -291,6 +325,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             </div>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );

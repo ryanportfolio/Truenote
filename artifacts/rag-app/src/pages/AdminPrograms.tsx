@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Building2 } from "lucide-react";
 import { createProgram, listPrograms } from "@/lib/api";
 import { EmptyState } from "@/components/EmptyState";
+import { RelativeTime } from "@/components/RelativeTime";
+import { programSwatchColor } from "@/lib/programColor";
 import { setSelectedProgramId } from "@/lib/selectedProgram";
 import type { CurrentUser, Program } from "@/types/api";
 
@@ -203,9 +205,16 @@ function ProgramsList({ items }: ProgramsListProps): JSX.Element {
           className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3 shadow-card"
         >
           <div>
-            <div className="text-sm font-medium">{p.name}</div>
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <span
+                aria-hidden
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: programSwatchColor(p.id) }}
+              />
+              {p.name}
+            </div>
             <div className="text-xs text-muted-foreground">
-              Created {p.createdAt ? new Date(p.createdAt).toLocaleString() : "—"}
+              Created {p.createdAt ? <RelativeTime iso={p.createdAt} /> : "—"}
             </div>
           </div>
           <code className="text-xs text-muted-foreground">{p.id.slice(0, 8)}…</code>
