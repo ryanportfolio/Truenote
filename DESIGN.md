@@ -169,9 +169,13 @@ Semantic tokens only — raw Tailwind palette classes (`emerald-*`, `amber-*`, `
 
 ## Citations & receipts
 
-- **Receipt strip**: every grounded answer carries a 12px uppercase eyebrow under the body — `Grounded in N excerpts · <doc titles>` (unique titles, first two + count). PRODUCT.md's "show the receipt," literal.
-- **Citation peek**: chips show a hover/focus popover (`--shadow-panel`, `w-72`, doc title + first 160 excerpt chars in mono) via pure CSS `group-hover`/`group-focus-within`. Decorative `aria-hidden` speed aid; the click-through CitationPanel remains the canonical, screen-reader-reachable receipt.
+- **Receipt strip**: every grounded answer carries a 12px uppercase eyebrow under the body — `Grounded in N excerpts · <doc titles>` (unique titles, first two + count). PRODUCT.md's "show the receipt," literal. Titles link into the knowledge base reader (`/kb/:doc_id`) when the server resolved the doc id — the receipt is openable, not just named.
+- **Citation peek**: chips show a hover/focus popover (`--shadow-panel`, `w-72`, doc title + first 160 excerpt chars in mono) via pure CSS `group-hover`/`group-focus-within`. Decorative `aria-hidden` speed aid; the click-through CitationPanel remains the canonical, screen-reader-reachable receipt. The panel ends with a "Read the full document" whisper link into `/kb/:doc_id`.
 - **Sticky composer**: the /chat form pins to the scrollport bottom (`sticky bottom-0`, solid canvas fill, 24px gradient fade above) so the ask box is always one glance away.
+
+## Knowledge base reader (/kb)
+
+CSR-facing read surface for the same corpus answers are grounded in (sidebar "Knowledge base," minRole csr). List: single card of divided rows (title + relative time), client-side title filter with an inset search icon. Reader: one article card, `max-w-3xl`, doc title in display face over a hairline rule, then the parsed markdown. Unlike AnswerMarkdown, real-document rendering allows headings (stepped display scale), links (underlined `--primary`, new tab), and code; images render as a dashed placeholder chip carrying the alt text — OCR-local image refs aren't served. Cross-program or removed docs land on a calm EmptyState, not an error.
 
 ## Motion
 

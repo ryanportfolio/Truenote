@@ -4,6 +4,7 @@ import { askRouter } from "./ask.js";
 import { authRouter } from "./auth.js";
 import { configRouter } from "./config.js";
 import { documentsRouter } from "./documents.js";
+import { kbRouter } from "./kb.js";
 import { meRouter } from "./me.js";
 import { programsRouter } from "./admin/programs.js";
 import { queriesRouter } from "./admin/queries.js";
@@ -26,5 +27,6 @@ export function registerRoutes(app: Express): void {
   app.use("/api/admin/users", usersRouter);
   app.use("/api/admin/insights", insightsRouter);
   app.use("/api/documents", documentsRouter);
+  app.use("/api/kb", kbRouter);
   app.use("/api", askRouter);
 }

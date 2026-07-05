@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { X } from "lucide-react";
+import { Link } from "wouter";
+import { BookOpen, X } from "lucide-react";
 import type { Source } from "@/types/api";
 
 interface CitationPanelProps {
@@ -56,6 +57,17 @@ export function CitationPanel({ source, onClose, showDebug }: CitationPanelProps
         <pre className="whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 font-mono text-[13px] leading-relaxed">
           {source.excerpt}
         </pre>
+        {source.doc_id ? (
+          // The excerpt is the receipt; this is the full ledger. Navigating
+          // unmounts the panel with the page, which is the right cleanup.
+          <Link
+            href={`/kb/${source.doc_id}`}
+            className="btn-whisper mt-3 inline-flex gap-1.5 px-3 py-1.5 text-sm"
+          >
+            <BookOpen className="h-4 w-4" aria-hidden />
+            Read the full document
+          </Link>
+        ) : null}
       </div>
     </aside>
   );

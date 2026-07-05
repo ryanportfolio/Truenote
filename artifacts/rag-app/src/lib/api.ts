@@ -8,6 +8,8 @@ import type {
   CreateUserResponse,
   CurrentUser,
   DocumentListResponse,
+  KbDocumentListResponse,
+  KbDocumentResponse,
   KbGapsResponse,
   LoginResponse,
   PreviewResponse,
@@ -332,6 +334,21 @@ export async function submitFeedback(queryLogId: string, feedback: -1 | 0 | 1): 
 export async function listDocuments(): Promise<DocumentListResponse> {
   const response = await fetch("/api/documents", withDefaults());
   return asJson<DocumentListResponse>(response);
+}
+
+/** CSR-facing knowledge base: browsable list of live (active + parsed) docs. */
+export async function listKbDocuments(): Promise<KbDocumentListResponse> {
+  const response = await fetch("/api/kb/documents", withDefaults());
+  return asJson<KbDocumentListResponse>(response);
+}
+
+/** Full parsed markdown of one live document. Throws on 404 (wrong program / not live). */
+export async function getKbDocument(documentId: string): Promise<KbDocumentResponse> {
+  const response = await fetch(
+    `/api/kb/documents/${encodeURIComponent(documentId)}`,
+    withDefaults()
+  );
+  return asJson<KbDocumentResponse>(response);
 }
 
 export async function fetchKbGaps(windowDays: number): Promise<KbGapsResponse> {

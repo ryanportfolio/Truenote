@@ -4,6 +4,7 @@ import { SearchX } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/EmptyState";
 import { ChatPage } from "@/pages/Chat";
+import { KnowledgeBasePage, KbDocumentPage } from "@/pages/KnowledgeBase";
 import { AdminPage } from "@/pages/Admin";
 import { AdminGapsPage } from "@/pages/AdminGaps";
 import { AdminProgramsPage } from "@/pages/AdminPrograms";
@@ -222,6 +223,12 @@ export function App(): JSX.Element {
         <Route path="/" component={() => <Redirect to="/chat" />} />
         <Route path="/chat">
           <ChatPage user={auth.user} />
+        </Route>
+        <Route path="/kb">
+          <KnowledgeBasePage />
+        </Route>
+        <Route path="/kb/:documentId">
+          {(params) => <KbDocumentPage documentId={params.documentId} />}
         </Route>
         <Route path="/admin/documents">
           <AdminPage user={auth.user} />

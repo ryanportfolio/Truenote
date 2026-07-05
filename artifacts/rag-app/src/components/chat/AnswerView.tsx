@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { Check, Copy, Flag, ThumbsDown, ThumbsUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { answerForClipboard } from "@/lib/citation-rendering";
@@ -37,7 +38,7 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
           // Count + source documents in one quiet eyebrow line.
           <p className="mt-3 text-xs uppercase tracking-wide text-muted-foreground">
             Grounded in {result.sources.length} excerpt
-            {result.sources.length === 1 ? "" : "s"} · {receiptTitles(result.sources)}
+            {result.sources.length === 1 ? "" : "s"} · <ReceiptTitles sources={result.sources} />
           </p>
         ) : null}
         <footer className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
@@ -73,12 +74,40 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
   );
 }
 
-/** Unique source-document titles, capped at two plus a count. */
-function receiptTitles(sources: AskResponse["sources"]): string {
-  const unique = [...new Set(sources.map((s) => s.doc_title))];
-  const shown = unique.slice(0, 2).join(" · ");
-  const rest = unique.length - 2;
-  return rest > 0 ? `${shown} +${rest} more` : shown;
+/**
+ * Unique source documents, capped at two plus a count. Each title links
+ * into the knowledge base reader when the server resolved its doc id —
+ * the receipt isn't just named, it's openable.
+ */
+function ReceiptTitles({ sources }: { sources: AskResponse["sources"] }): JSX.Element {
+  const unique = new Map<string, { title: string; docId: string | null }>();
+  for (const s of sources) {
+    const key = s.doc_id ?? s.doc_title;
+    if (!unique.has(key)) unique.set(key, { title: s.doc_title, docId: s.doc_id ?? null });
+  }
+  const docs = Array.from(unique.values());
+  const shown = docs.slice(0, 2);
+  const rest = docs.length - shown.length;
+  return (
+    <>
+      {shown.map((doc, i) => (
+        <span key={doc.docId ?? doc.title}>
+          {i > 0 ? " · " : ""}
+          {doc.docId ? (
+            <Link
+              href={`/kb/${doc.docId}`}
+              className="underline underline-offset-2 transition-colors duration-100 ease-out hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {doc.title}
+            </Link>
+          ) : (
+            doc.title
+          )}
+        </span>
+      ))}
+      {rest > 0 ? ` +${rest} more` : ""}
+    </>
+  );
 }
 
 function CopyAnswerButton({ result }: { result: AskResponse }): JSX.Element {

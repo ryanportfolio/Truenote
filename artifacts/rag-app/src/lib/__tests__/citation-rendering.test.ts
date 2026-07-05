@@ -5,7 +5,8 @@ import type { Source } from "@/types/api";
 const src = (id: string, title = "Doc"): Source => ({
   chunk_id: id,
   doc_title: title,
-  excerpt: `excerpt of ${id}`
+  excerpt: `excerpt of ${id}`,
+  doc_id: null
 });
 
 describe("annotateCitations", () => {

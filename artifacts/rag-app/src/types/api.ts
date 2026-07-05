@@ -54,6 +54,12 @@ export interface Source {
   chunk_id: string;
   doc_title: string;
   excerpt: string;
+  /**
+   * Owning document id, for "read the full document" links into the
+   * knowledge base (/kb/:doc_id). Null when the server couldn't resolve
+   * the chunk (deleted between retrieval and lookup).
+   */
+  doc_id: string | null;
 }
 
 export interface RetrievedChunk {
@@ -133,6 +139,32 @@ export interface KbGapsResponse {
   };
   /** Same sentinel contract as DocumentListResponse. */
   noProgramSelected?: boolean;
+}
+
+/**
+ * CSR-facing knowledge base shapes. Mirror of routes/kb.ts on the server
+ * (same duplication rationale as the rest of this file). Only documents
+ * with an active, parse-ready version appear — this is the read surface,
+ * not document admin.
+ */
+export interface KbDocumentListItem {
+  documentId: string;
+  title: string;
+  /** Active version's upload time (ISO), or null. */
+  updatedAt: string | null;
+}
+
+export interface KbDocumentListResponse {
+  items: KbDocumentListItem[];
+  /** Same sentinel contract as DocumentListResponse. */
+  noProgramSelected?: boolean;
+}
+
+export interface KbDocumentResponse {
+  documentId: string;
+  title: string;
+  markdown: string | null;
+  updatedAt: string | null;
 }
 
 export interface UploadResponse {
