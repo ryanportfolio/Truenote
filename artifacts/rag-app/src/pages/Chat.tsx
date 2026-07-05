@@ -457,8 +457,8 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
               <kbd className="kbd">Enter</kbd> asks · <kbd className="kbd">Shift</kbd>+
-              <kbd className="kbd">Enter</kbd> new line · <kbd className="kbd">/</kbd> focuses.
-              Answers cite source chunks.
+              <kbd className="kbd">Enter</kbd> new line · <kbd className="kbd">/</kbd> jumps to the
+              ask box. Answers cite source chunks.
             </span>
             <div className="flex items-center gap-2">
               {busy ? (
