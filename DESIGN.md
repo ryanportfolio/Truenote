@@ -130,11 +130,17 @@ Two variants plus an icon recipe. All pills, all share the focus-ring spec, all 
 
 Cohere table language: **horizontal rules only**. Header = 12px uppercase muted + weight, **no fill**, no vertical cell borders. Markdown tables in answers: `th` = `border-b`, `td` = `border-t`, `border-collapse`.
 
-Admin tables: card chrome (`rounded-lg border bg-card shadow-card`) lives on an `overflow-x-auto` **wrapper div**, never on the `<table>` (`overflow-hidden` on a table clips instead of scrolling). Tables carry a `min-w` floor (36–40rem) so narrow viewports scroll. Rows take a `hover:bg-muted/40` wash — a scanning aid, invisible at rest.
+Admin tables: card chrome (`rounded-lg border bg-card shadow-card`) lives on an `overflow-x-auto` **wrapper div**, never on the `<table>` (`overflow-hidden` on a table clips instead of scrolling). Tables carry a `min-w` floor (36–44rem) so narrow viewports scroll. Rows take a `hover:bg-muted/40` wash — a scanning aid, invisible at rest.
+
+Numbers in tables (and the debug telemetry row) set `tabular-nums` so columns don't wobble. Timestamps render relative ("2 hours ago") via the `RelativeTime` component — a `<time>` with the absolute string in `title`/`dateTime`; raw `toLocaleString()` in a list is drift.
 
 ## Selects
 
 `.select-quiet`: `appearance-none`, pointer cursor, `pr-8`, and an inline SVG chevron in `--muted-foreground`'s hex (`#5C5A50` — CSS `url()` can't read custom properties; revisit if a dark toggle ever ships). Call sites keep their own border/bg/size. Applies to every native `<select>`.
+
+## Keyboard hints
+
+`.kbd` (index.css): mono 11px, `--muted` fill, hairline border, `rounded`. Used for the chat shortcut line (Enter / Shift+Enter / "/"). The "/" key focuses the ask box anywhere on /chat unless focus is already in a field.
 
 ## Quiet alerts
 
@@ -158,6 +164,14 @@ Semantic tokens only — raw Tailwind palette classes (`emerald-*`, `amber-*`, `
 - pending / neutral / most role badges → `--muted` (labels carry information; color is not a legend — only super_user gets the `primary/10` tint)
 
 **Refusal is not a status-color moment**: the refusal card is a normal `--card` answer card; only its "Not in knowledge base" badge chip is amber. Refusal is a feature, not an alarm.
+
+**Program identity dots** are the one sanctioned computed color: `programSwatchColor(id)` hashes the program id to a hue at fixed `oklch(75% 0.06 h)` — every swatch equally quiet, decorative `aria-hidden`, the program name always carries the information. Data-driven identity, not a semantic token; do not reuse the pattern for states.
+
+## Citations & receipts
+
+- **Receipt strip**: every grounded answer carries a 12px uppercase eyebrow under the body — `Grounded in N excerpts · <doc titles>` (unique titles, first two + count). PRODUCT.md's "show the receipt," literal.
+- **Citation peek**: chips show a hover/focus popover (`--shadow-panel`, `w-72`, doc title + first 160 excerpt chars in mono) via pure CSS `group-hover`/`group-focus-within`. Decorative `aria-hidden` speed aid; the click-through CitationPanel remains the canonical, screen-reader-reachable receipt.
+- **Sticky composer**: the /chat form pins to the scrollport bottom (`sticky bottom-0`, solid canvas fill, 24px gradient fade above) so the ask box is always one glance away.
 
 ## Motion
 
@@ -211,5 +225,5 @@ Pure-CSS breakpoints, no JS breakpoint state:
 
 ## Follow-ups
 
-- **Drag-and-drop upload zone**: deliberately deferred (polish pass 2) — needs drag state + validation feedback; a feature pass, not a restyle.
+- ~~Drag-and-drop upload zone~~ shipped (pass 3): the upload card is the drop target — drag-over = `border-primary/40 bg-primary/5`, client-side type/size validation through the quiet-alert recipe, dropped file handed to the native input via `DataTransfer`.
 - **Dark mode**: still a mechanical inversion; `.select-quiet`'s chevron hex and the favicon are light-mode-tuned — revisit both if a toggle ships.
