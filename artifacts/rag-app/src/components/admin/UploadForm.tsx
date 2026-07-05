@@ -36,10 +36,20 @@ export function UploadForm({ onUploaded, initialTitle }: UploadFormProps): JSX.E
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (initialTitle) fileRef.current?.focus();
   }, [initialTitle]);
+
+  // Empty title + file chosen → title becomes the filename (extension
+  // stripped). Prefill, not a submit-time fallback: the admin sees the
+  // title before uploading and can still edit it.
+  function maybePrefillTitle(file: File): void {
+    const title = titleRef.current;
+    if (!title || title.value.trim() !== "") return;
+    title.value = file.name.replace(/\.[^.]+$/, "").slice(0, 120);
+  }
 
   function validateFile(file: File): string | null {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
@@ -75,6 +85,7 @@ export function UploadForm({ onUploaded, initialTitle }: UploadFormProps): JSX.E
       transfer.items.add(file);
       fileRef.current.files = transfer.files;
     }
+    maybePrefillTitle(file);
   }
 
   function handleDragOver(event: DragEvent<HTMLFormElement>): void {
@@ -134,6 +145,7 @@ export function UploadForm({ onUploaded, initialTitle }: UploadFormProps): JSX.E
       <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium">Title</span>
         <input
+          ref={titleRef}
           type="text"
           name="title"
           required
@@ -151,6 +163,10 @@ export function UploadForm({ onUploaded, initialTitle }: UploadFormProps): JSX.E
           name="file"
           accept={ACCEPT}
           required
+          onChange={(e) => {
+            const file = e.currentTarget.files?.[0];
+            if (file) maybePrefillTitle(file);
+          }}
           className="text-sm file:mr-3 file:cursor-pointer file:rounded-full file:border file:border-solid file:border-border file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-secondary-foreground hover:file:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         />
         <span className="text-xs text-muted-foreground">
