@@ -1,8 +1,8 @@
 import { Router, type Request, type Response } from "express";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../lib/db-client.js";
-import { programs, queryLog } from "@workspace/db/schema";
+import { chunks, documentVersions, programs, queryLog } from "@workspace/db/schema";
 import { retrieve } from "../lib/retrieval/query.js";
 import { generateAnswer, type Source } from "../lib/generation/answer.js";
 import { rewriteFollowUp, type HistoryTurn } from "../lib/generation/rewrite.js";
@@ -71,10 +71,16 @@ const AskBody = z.object({
  */
 export type AskStage = "rewriting" | "searching" | "reranking" | "generating";
 
+/** A generation Source plus the owning document id, for KB deep links. */
+export type LinkedSource = Source & {
+  /** Resolved via chunks → document_versions; null if the chunk vanished. */
+  doc_id: string | null;
+};
+
 export interface AskResponse {
   queryLogId: string | null;
   answer: string;
-  sources: Source[];
+  sources: LinkedSource[];
   refused: boolean;
   confidence: "high" | "medium" | "low";
   /** Full retrieved chunks for the citation side panel. */
@@ -192,6 +198,26 @@ async function runAsk(
   const latencyMs = Date.now() - t0;
   const cited = uniqueUuids(generation.payload.sources.map((s) => s.chunk_id));
 
+  // Resolve each cited chunk to its owning document so the client can link
+  // "read the full document" from receipts and citation panels. Program
+  // scope is already guaranteed: every cited chunk came out of retrieval,
+  // which filters on program_id.
+  const docByChunkId = new Map<string, string>();
+  if (cited.length > 0) {
+    const chunkDocs = await db
+      .select({ chunkId: chunks.id, documentId: documentVersions.documentId })
+      .from(chunks)
+      .innerJoin(documentVersions, eq(documentVersions.id, chunks.documentVersionId))
+      .where(inArray(chunks.id, cited));
+    for (const r of chunkDocs) {
+      if (r.documentId) docByChunkId.set(r.chunkId, r.documentId);
+    }
+  }
+  const linkedSources: LinkedSource[] = generation.payload.sources.map((s) => ({
+    ...s,
+    doc_id: docByChunkId.get(s.chunk_id) ?? null
+  }));
+
   const inserted = await db
     .insert(queryLog)
     .values({
@@ -208,7 +234,7 @@ async function runAsk(
   return {
     queryLogId: inserted[0]?.id ?? null,
     answer: generation.payload.answer,
-    sources: generation.payload.sources,
+    sources: linkedSources,
     refused: generation.payload.refused,
     confidence: generation.payload.confidence,
     retrievedChunks: retrieval.chunks.map((c) => ({
