@@ -14,6 +14,12 @@ hooks, and `.claude/skills/` exactly as before.
 - Read the relevant `.claude/reference/` file before non-trivial work in an
   unfamiliar area.
 
+## Codex Runtime Defaults
+
+- Use RTK explicitly for supported noisy reads when installed; use native commands for mutations, exact parsing, interactivity, and full verification output.
+- Inspect actual tool availability before capability-gated skills. Independent-review skills do not have a valid main-thread fallback.
+- Read `.agents/CODEX-SKILL-COMPATIBILITY.md` before adapted, gated, or dangerous skills.
+
 ## Runtime Boundary
 
 - Do not execute `.claude/hooks/session-start.sh` in Codex.
@@ -38,8 +44,8 @@ hooks, and `.claude/skills/` exactly as before.
 
 ## Safety And Verification
 
-- Do not activate persistent modes such as `caveman` or auto-merge unless the
-  user explicitly asks in the current Codex session.
+- Caveman Ultra is the standing prose default from the first reply; do not ask or require an explicit invocation. Use plain prose for safety warnings and irreversible or ambiguous decisions.
+- Auto-merge and other persistent side-effect modes still require explicit current-session user intent.
 - Do not inherit Claude's automatic commit, push, PR, or merge behavior. Perform
   git publishing only when the current user request includes it.
 - Never push to `main`, force-push, merge, delete branches/worktrees, run

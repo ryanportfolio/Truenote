@@ -1,0 +1,1 @@
+{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"pwsh -NoProfile -File .codex/hooks/session-start.ps1","commandWindows":"pwsh -NoProfile -File .codex/hooks/session-start.ps1"}]}]}}
