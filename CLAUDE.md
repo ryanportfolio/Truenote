@@ -116,3 +116,11 @@ Claude Code cannot run migrations. Any schema change → **raw DDL only** for th
 **Capture new learnings:** `/recall save <text>` — picks the right topic file, appends a dated entry, commits.
 
 Stays in this file: cross-cutting safety/process rules (popup ban, verification, two-sandbox model, install paths, schema protocol, non-negotiables). Moves out: anything area-specific.
+
+## Codex compatibility
+
+Claude Code remains the primary runtime and `.claude/skills/` remains canonical.
+After adding, removing, or editing a skill or `skillOverrides`, run
+`node .claude/scripts/sync-codex-skills.mjs --write` and include the generated
+`.agents/skills/` changes. Do not hand-edit generated adapters; `AGENTS.md` owns
+Codex-specific runtime safety and tool translation.
