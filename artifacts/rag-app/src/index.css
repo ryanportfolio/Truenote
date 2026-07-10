@@ -180,6 +180,43 @@
     @apply rounded border border-border bg-muted px-1 font-mono text-[11px] font-medium text-muted-foreground;
   }
 
+  /* Specular border glint for the login "glass" card: a 1px conic
+   * highlight ring whose angle (--glint-angle, set by useGlassTilt)
+   * tracks the pointer like light catching a pane's edge. The mask
+   * carves the gradient down to the border ring only, so nothing ever
+   * sits over card content — contrast guarantees untouched. Hidden for
+   * reduced-motion users (its angle IS motion; frozen it's just a
+   * lopsided border). */
+  .glass-glint {
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    pointer-events: none;
+    background: conic-gradient(
+      from var(--glint-angle, 210deg),
+      oklch(var(--card) / 0.9) 0deg,
+      oklch(var(--primary) / 0.35) 18deg,
+      transparent 55deg,
+      transparent 305deg,
+      oklch(var(--primary) / 0.35) 342deg,
+      oklch(var(--card) / 0.9) 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .glass-glint {
+      display: none;
+    }
+  }
+
   /* Icon-only quiet button: copy, thumbs, close-X. Transparent at rest so the
    * icon reads as part of its row; hover fills with --muted. */
   .btn-icon {

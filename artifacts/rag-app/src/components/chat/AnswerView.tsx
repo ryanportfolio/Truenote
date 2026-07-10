@@ -35,8 +35,10 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
         />
         {result.sources.length > 0 ? (
           // The receipt strip: "show the receipt" (PRODUCT.md) made literal.
-          // Count + source documents in one quiet eyebrow line.
-          <p className="mt-3 text-xs uppercase tracking-wide text-muted-foreground">
+          // Count + source documents in one quiet eyebrow line. It fades in
+          // a beat after the card (receipt printing under the total) —
+          // state-conveying, since the grounding IS the news.
+          <p className="mt-3 text-xs uppercase tracking-wide text-muted-foreground motion-safe:animate-receipt-in">
             Grounded in {result.sources.length} excerpt
             {result.sources.length === 1 ? "" : "s"} · <ReceiptTitles sources={result.sources} />
           </p>
