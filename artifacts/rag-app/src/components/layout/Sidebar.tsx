@@ -34,7 +34,7 @@ export function Sidebar({ user }: SidebarProps): JSX.Element {
     // Below md the sidebar collapses to an icon rail (pure CSS — no state):
     // labels stay in the accessibility tree via sr-only, and title provides
     // the hover tooltip icon-only links need.
-    <nav className="flex w-16 flex-col border-r border-border bg-secondary p-2 md:w-60 md:p-3">
+    <nav className="sidebar-shell flex w-16 flex-col p-2 md:w-60 md:p-3">
       <ul className="flex flex-col gap-1">
         {items.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
@@ -45,14 +45,16 @@ export function Sidebar({ user }: SidebarProps): JSX.Element {
                 title={label}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex items-center justify-center gap-2.5 rounded-lg px-2 py-2.5 text-base transition-colors duration-100 ease-out md:justify-start md:px-3",
+                  "sidebar-link flex items-center justify-center gap-2.5 px-2 py-2.5 text-base md:justify-start md:px-3",
                   // Active = tint + weight: color is never the sole channel.
                   active
-                    ? "bg-primary/10 font-medium text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "sidebar-link-active font-medium text-primary"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <Icon className="h-5 w-5 shrink-0" aria-hidden />
+                <span className="sidebar-icon-well">
+                  <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
+                </span>
                 <span className="sr-only md:not-sr-only">{label}</span>
               </Link>
             </li>

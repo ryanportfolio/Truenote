@@ -10,11 +10,10 @@ interface EmptyStateProps {
 }
 
 /**
- * Teaching empty state in the login-blob illustration language at small
- * scale (DESIGN.md §Brand moments): two aria-hidden tint washes behind a
- * muted icon. Empty surfaces are the one place decoration stays calm —
- * nothing else on screen competes for attention. Pure presentation;
- * callers own all copy and actions.
+ * Small-scale Luminous Archive: layered evidence sheets orbit a muted icon.
+ * The sheets inherit the merged watercolor pass's ultra-slow, reduced-motion-
+ * safe drift. Empty surfaces are pressure-free enough to carry this ambient
+ * brand moment; callers still own all copy and actions.
  */
 export function EmptyState({
   icon: Icon,
@@ -23,20 +22,17 @@ export function EmptyState({
   children
 }: EmptyStateProps): JSX.Element {
   return (
-    <div className="rounded-lg border border-dashed border-border bg-muted/30 p-8 text-center">
-      <div className="relative mx-auto h-16 w-16">
-        {/* The washes drift a few px on ultra-slow loops (26s/34s) — the
-          * empty state is the one pressure-free surface where ambient
-          * material motion is allowed to breathe. motion-safe only. */}
-        <div
+    <div className="empty-state">
+      <div className="empty-state-object">
+        <span
+          className="empty-state-sheet empty-state-sheet-back motion-safe:animate-blob-drift-a"
           aria-hidden
-          className="pointer-events-none absolute -left-3 -top-2 h-20 w-20 rounded-full bg-primary/10 blur-2xl motion-safe:animate-blob-drift-a"
         />
-        <div
+        <span
+          className="empty-state-sheet empty-state-sheet-mid motion-safe:animate-blob-drift-b"
           aria-hidden
-          className="pointer-events-none absolute -bottom-1 -right-4 h-16 w-16 rounded-full bg-success/15 blur-2xl motion-safe:animate-blob-drift-b"
         />
-        <div className="relative flex h-16 w-16 items-center justify-center">
+        <div className="empty-state-core">
           <Icon className="h-6 w-6 text-muted-foreground" aria-hidden />
         </div>
       </div>
@@ -45,7 +41,7 @@ export function EmptyState({
         <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">{hint}</p>
       ) : null}
       {children ? (
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
           {children}
         </div>
       ) : null}

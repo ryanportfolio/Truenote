@@ -258,18 +258,19 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
     // CSR surface: tight density by design (DESIGN.md §Density) — narrower
     // column (~Cohere's 640px measure), smaller gaps than admin pages.
     // Bottom padding lives on the sticky composer wrapper, not here.
-    <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 pt-6">
-      <header className="flex flex-col gap-3">
+    <div className="chat-workspace mx-auto flex max-w-3xl flex-col gap-5 px-4 pt-7 sm:px-6">
+      <header className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="font-display text-3xl font-semibold tracking-tight">Chat</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Ask the knowledge base a question. Every answer ships with at least one citation, or
-              the system will explicitly say it could not find the answer. Follow-ups work — "what
-              about the premium plan?" searches with the conversation in mind.
+          <div className="max-w-xl">
+            <p className="page-eyebrow">Grounded lookup</p>
+            <h1 className="page-title">Ask with certainty.</h1>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Search your program's knowledge, follow the evidence, and keep the call moving.
             </p>
             {sessionTitle ? (
-              <p className="mt-1 text-xs font-medium text-primary">{sessionTitle}</p>
+              <p className="mt-2 inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                {sessionTitle}
+              </p>
             ) : null}
           </div>
           {hasProgram ? (
@@ -304,7 +305,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
         {historyOpen ? (
           <section
             aria-label="Recent conversations"
-            className="rounded-lg border border-border bg-card p-2 shadow-card motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-100"
+          className="history-surface motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-100"
           >
             {historyLoading ? (
               <div className="flex flex-col gap-1.5 p-1" aria-hidden>
@@ -368,8 +369,8 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
         {exchanges.length === 0 && hasProgram ? (
           <EmptyState
             icon={MessageSquare}
-            title="Ask your first question"
-            hint="Answers come from your program's documents and always cite their source."
+            title="One question. A traceable answer."
+            hint="Begin with a policy, fee, process, or exact term from the call."
           >
             {EXAMPLE_QUESTIONS.map((q) => (
               <button
@@ -379,7 +380,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
                   setQuestion(q);
                   textareaRef.current?.focus();
                 }}
-                className="btn-whisper px-3 py-1 text-xs"
+                className="example-question"
               >
                 {q}
               </button>
@@ -390,8 +391,11 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
         {exchanges.length > 0 ? (
           <ol className="flex flex-col gap-4" aria-label="Questions and answers">
             {exchanges.map((exchange) => (
-              <li key={exchange.id} className="flex flex-col gap-1.5">
-                <p className="text-sm font-medium text-muted-foreground">{exchange.question}</p>
+              <li key={exchange.id} className="exchange-group">
+                <div className="question-row">
+                  <span aria-hidden>Q</span>
+                  <p>{exchange.question}</p>
+                </div>
                 {exchange.result ? (
                   <AnswerView result={exchange.result} showDebug={showDebug} />
                 ) : exchange.error ? (
@@ -407,24 +411,23 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
                     </button>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-1.5">
+                  <div className="retrieval-state">
                     <p
-                      className="text-sm text-muted-foreground motion-safe:animate-pulse"
+                      className="retrieval-label"
                       role="status"
                       aria-live="polite"
                     >
                       {stage ? STAGE_LABEL[stage] : "Sending…"}
                     </p>
-                    {/* Answer-card silhouette: shows the CSR where the answer
-                      * will land. Decorative — the stage line above carries
-                      * the status for screen readers. */}
-                    <div
-                      aria-hidden
-                      className="rounded-lg border border-border bg-card p-4 shadow-card"
-                    >
-                      <div className="skeleton h-3.5 w-11/12" />
-                      <div className="skeleton mt-2 h-3.5 w-full" />
-                      <div className="skeleton mt-2 h-3.5 w-3/5" />
+                    <div aria-hidden className="retrieval-instrument">
+                      <span className="retrieval-ring retrieval-ring-one" />
+                      <span className="retrieval-ring retrieval-ring-two" />
+                      <span className="retrieval-core" />
+                      <div className="retrieval-lines">
+                        <i />
+                        <i />
+                        <i />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -437,13 +440,17 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
         {/* Sticky composer: mid-call, the ask box must stay one glance away
           * no matter how long the transcript gets. Transcript scrolls
           * behind; the gradient strip softens the cut edge. */}
-        <div className="sticky bottom-0 -mx-4 bg-background px-4 pb-6">
+        <div className="composer-dock sticky bottom-0 -mx-4 px-4 pb-6 sm:-mx-6 sm:px-6">
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-gradient-to-t from-background to-transparent"
+            className="composer-fade pointer-events-none absolute inset-x-0 -top-8 h-8"
           />
-        <form onSubmit={onSubmit} className="flex flex-col gap-2">
+        <form onSubmit={onSubmit} className="composer-frame">
+          <label htmlFor="truenote-question" className="composer-label">
+            Ask Truenote
+          </label>
           <textarea
+            id="truenote-question"
             ref={textareaRef}
             autoFocus
             value={question}
@@ -452,13 +459,12 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             placeholder="Ask the knowledge base… e.g. 'What's the cancellation fee on the Basic plan?'"
             rows={3}
             disabled={!hasProgram}
-            className="rounded-md border border-input bg-card px-3 py-2 text-base shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-60"
+            className="composer-input"
           />
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span className="hidden text-xs text-muted-foreground sm:inline">
               <kbd className="kbd">Enter</kbd> asks · <kbd className="kbd">Shift</kbd>+
-              <kbd className="kbd">Enter</kbd> new line · <kbd className="kbd">/</kbd> jumps to the
-              ask box. Answers cite source chunks.
+              <kbd className="kbd">Enter</kbd> new line · <kbd className="kbd">/</kbd> focuses
             </span>
             <div className="flex items-center gap-2">
               {busy ? (
@@ -473,7 +479,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
               <button
                 type="submit"
                 disabled={busy || !hasProgram || question.trim().length === 0}
-                className="btn-csr-ask px-5 py-2 text-base"
+                className="btn-csr-ask min-w-24 px-5 py-2 text-base"
               >
                 {busy ? "Asking…" : "Ask"}
               </button>

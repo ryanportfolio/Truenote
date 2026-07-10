@@ -11,11 +11,11 @@ interface AppShellProps {
 
 export function AppShell({ user, onLogout, children }: AppShellProps): JSX.Element {
   return (
-    <div className="flex h-screen flex-col">
+    <div className="app-shell flex h-screen flex-col">
       <TopBar user={user} onLogout={onLogout} />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="relative flex flex-1 overflow-hidden">
         <Sidebar user={user} />
-        <main className="flex-1 overflow-auto">{children}</main>
+        <main className="app-main flex-1 overflow-auto">{children}</main>
       </div>
     </div>
   );
