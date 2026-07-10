@@ -25,13 +25,16 @@ export function EmptyState({
   return (
     <div className="rounded-lg border border-dashed border-border bg-muted/30 p-8 text-center">
       <div className="relative mx-auto h-16 w-16">
+        {/* The washes drift a few px on ultra-slow loops (26s/34s) — the
+          * empty state is the one pressure-free surface where ambient
+          * material motion is allowed to breathe. motion-safe only. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute -left-3 -top-2 h-20 w-20 rounded-full bg-primary/10 blur-2xl"
+          className="pointer-events-none absolute -left-3 -top-2 h-20 w-20 rounded-full bg-primary/10 blur-2xl motion-safe:animate-blob-drift-a"
         />
         <div
           aria-hidden
-          className="pointer-events-none absolute -bottom-1 -right-4 h-16 w-16 rounded-full bg-success/15 blur-2xl"
+          className="pointer-events-none absolute -bottom-1 -right-4 h-16 w-16 rounded-full bg-success/15 blur-2xl motion-safe:animate-blob-drift-b"
         />
         <div className="relative flex h-16 w-16 items-center justify-center">
           <Icon className="h-6 w-6 text-muted-foreground" aria-hidden />

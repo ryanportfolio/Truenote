@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "wouter";
+import { BrandField } from "@/components/BrandField";
 import { requestPasswordReset } from "@/lib/api";
 
 /**
@@ -38,8 +39,11 @@ export function ForgotPasswordPage(): JSX.Element {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-6 shadow-card">
+    // Auth surfaces share the BrandField watercolor (login carries the
+    // full moment with the glass card; here the field alone is enough).
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4">
+      <BrandField />
+      <div className="relative w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-6 shadow-card">
         <header className="space-y-1">
           <h1 className="font-display text-xl font-semibold tracking-tight">
             Reset your password

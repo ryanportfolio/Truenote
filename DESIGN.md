@@ -191,18 +191,23 @@ Shipped motion vocabulary (enter-only — panels are conditional-render; exit an
 |---|---|
 | CitationPanel / PreviewPanel open | 16px slide-in from right + fade, 240ms ease-out-quart |
 | Answer / refusal card mount | 4px rise + fade, 240ms ease-out-quart |
+| Receipt strip on grounded answers | `receipt-in`: 3px rise + fade, 240ms, 180ms delay — the receipt prints a beat after the answer lands (state-conveying: the grounding IS the news) |
 | Credential banner reveal | fade-in, 240ms |
 | Copy-confirm Check icon | zoom-in from 75%, 100ms |
-| Skeletons, boot wordmark | `skeleton-pulse` 1.8s opacity breathing |
-| Wait-stage label, `parsing` status pill | `animate-pulse` (the only in-progress states get the only ambient motion) |
+| Skeletons | `skeleton-pulse` 1.8s opacity breathing |
+| App boot | mark draw-in: superellipse strokes on (`mark-draw` 0.9s, `pathLength=1` dash), ink fill + wordmark fade up (`mark-ink` 0.5s @ 0.55s delay), then `skeleton-pulse` breathing from 1.05s so the two never fight over opacity. Reduced motion: static lockup |
+| Wait-stage label, `parsing` status pill | `animate-pulse` (the only in-progress states on task surfaces get the only ambient motion) |
+| Empty-state tint washes | `blob-drift-a/b`: few-px translate+scale wanders on 26s/34s loops — ambient material motion, allowed only on the pressure-free empty surface |
+| Auth BrandField + login glass tilt | see §Brand moments — ambient by design, auth surfaces only, never on task surfaces |
 
 ## Brand moments
 
-The blob language (PRODUCT.md's Cohere-illustration direction) appears at exactly three scales, always decorative `aria-hidden`, always the same two tints (`bg-primary/10` + `bg-success/15`):
+The blob language (PRODUCT.md's Cohere-illustration direction) appears at exactly three scales, always decorative `aria-hidden`:
 
-1. **Login** — full-bleed washes (`blur-3xl`) behind an opaque card; contrast guarantees untouched.
-2. **Empty states** — quarter scale (`blur-2xl`) behind a muted icon via `EmptyState`. Empty surfaces are pressure-free; decoration is allowed to be calm there.
-3. **The mark** — favicon: blue superellipse + white Georgia "T" (`#0040AB`/`#FDFDFC`, inline data URI, plus `theme-color: #E8E6DE`); TopBar: same blob rendered in **ink** next to the wordmark — persistent chrome doesn't spend the rare-blue budget. Mark + wordmark are a single home link, role-aware: manager and above → `/admin/documents`, CSR → `/chat` (quiet `hover:bg-muted` fill + the standard focus ring).
+1. **Auth surfaces (login / forgot / reset)** — **BrandField** (`components/BrandField.tsx`): a hand-rolled WebGL1 fragment shader rendering the brand inks as living watercolor — domain-warped fbm, whisper-slow (`u_time × 0.022`), grain-dithered, with a gentle pointer lens. Ink constants are the sRGB equivalents of `--primary`/`--accent`/`--success`/`--warning` on the `--background` cream (GLSL can't read custom properties — same tradeoff as `.select-quiet`'s chevron; revisit with any palette change). Composition contract: blue pools top-right, evergreen bottom-left, one amber filament at homeopathic dose, and a **calm-zone mask holds the center to quiet paper** so the card always sits on stillness; fbm thresholds are tuned to the measured field distribution (median ~0.45, p90 ~0.58), not eyeballed. Guards: `prefers-reduced-motion` → one static frame (fixed t=46, the reviewed composition); no WebGL / lost context → the original pure-CSS blur blobs; hidden tab pauses the rAF loop; renders at ≤1.25 DPR × 0.6 scale (soft field, invisible upscale, ~4× less fill). Each visit starts at a random time phase.
+   **Login only**: the card is glass — `useGlassTilt` leans it ≤2° toward the pointer (rAF-lerped, flattens on focus-within, off under reduced motion) and drives `--glint-angle` for `.glass-glint`, a 1px conic specular ring masked to the border (never over content). The tilting login card carries `shadow-panel` (it floats — the sanctioned exception); forgot/reset keep `shadow-card` and the field alone.
+2. **Empty states** — quarter scale (`blur-2xl` tint washes, `bg-primary/10` + `bg-success/15`) behind a muted icon via `EmptyState`, drifting on the `blob-drift` loops. Empty surfaces are pressure-free; decoration is allowed to be calm there.
+3. **The mark** — favicon: blue superellipse + white Georgia "T" (`#0040AB`/`#FDFDFC`, inline data URI, plus `theme-color: #E8E6DE`); TopBar: same blob rendered in **ink** next to the wordmark — persistent chrome doesn't spend the rare-blue budget. Mark + wordmark are a single home link, role-aware: manager and above → `/admin/documents`, CSR → `/chat` (quiet `hover:bg-muted` fill + the standard focus ring). At boot the mark draws itself in (see §Motion).
 
 Everywhere else stays calm.
 
@@ -234,4 +239,4 @@ Pure-CSS breakpoints, no JS breakpoint state:
 ## Follow-ups
 
 - ~~Drag-and-drop upload zone~~ shipped (pass 3): the upload card is the drop target — drag-over = `border-primary/40 bg-primary/5`, client-side type/size validation through the quiet-alert recipe, dropped file handed to the native input via `DataTransfer`.
-- **Dark mode**: still a mechanical inversion; `.select-quiet`'s chevron hex and the favicon are light-mode-tuned — revisit both if a toggle ships.
+- **Dark mode**: still a mechanical inversion; `.select-quiet`'s chevron hex, the favicon, AND BrandField's shader ink constants are light-mode-tuned — revisit all three if a toggle ships.
