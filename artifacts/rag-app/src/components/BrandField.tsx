@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  createGovernor,
+  DEFAULT_TIER,
+  TARGET_INTERVAL_MS
+} from "@/lib/fieldQuality";
 
 /**
  * BrandField — the living version of the login blob washes (DESIGN.md
@@ -21,6 +26,11 @@ import { useEffect, useRef, useState } from "react";
  *   - renders at a capped, sub-native resolution (the field is soft by
  *     design, so upscaling is invisible and the fill-rate cost drops
  *     ~4x on hiDPI screens)
+ *   - draws at ~30fps, not 60 — the field moves too slowly for the
+ *     difference to be perceptible — and a quality governor
+ *     (lib/fieldQuality.ts) steps render scale, then octaves, then
+ *     freezes the loop on hardware that still can't hold budget, so a
+ *     weak iGPU gets the same composition without the fan noise
  *
  * No dependencies: raw WebGL1, one fullscreen triangle, one fragment
  * shader. Ink colors are the sRGB hex equivalents of the OKLCH tokens
@@ -28,9 +38,8 @@ import { useEffect, useRef, useState } from "react";
  * .select-quiet's chevron — revisit if the palette ever changes).
  */
 
-/** Render-scale cap: field is soft, so half-ish resolution is invisible. */
+/** DPR cap: field is soft, so sub-native resolution is invisible. */
 const MAX_DPR = 1.25;
-const RENDER_SCALE = 0.6;
 
 const VERT = `
 attribute vec2 a_pos;
@@ -55,6 +64,7 @@ uniform vec2 u_res;
 uniform float u_time;
 uniform vec2 u_pointer;
 uniform float u_lens;
+uniform float u_octaves;
 
 const vec3 CREAM = vec3(0.9098, 0.9020, 0.8706);
 const vec3 PAPER = vec3(0.9922, 0.9922, 0.9882);
@@ -80,11 +90,14 @@ float vnoise(vec2 p) {
   return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
+// GLSL ES 1.0 needs constant loop bounds, so the governor's octave
+// count arrives as a uniform-gated break inside a constant-bound loop.
 float fbm(vec2 p) {
   float v = 0.0;
   float amp = 0.5;
   mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
   for (int i = 0; i < 5; i++) {
+    if (float(i) >= u_octaves) break;
     v += amp * vnoise(p);
     p = rot * p * 2.03;
     amp *= 0.5;
@@ -235,6 +248,14 @@ export function BrandField(): JSX.Element {
     const uTime = gl.getUniformLocation(program, "u_time");
     const uPointer = gl.getUniformLocation(program, "u_pointer");
     const uLens = gl.getUniformLocation(program, "u_lens");
+    const uOctaves = gl.getUniformLocation(program, "u_octaves");
+
+    // Adaptive quality: starts at full (tier 0) and only ever steps
+    // down; capable hardware keeps the shipped visual untouched.
+    const governor = createGovernor();
+    let tier = DEFAULT_TIER;
+    let frozen = false;
+    gl.uniform1f(uOctaves, tier.octaves);
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     const start = performance.now();
@@ -257,8 +278,8 @@ export function BrandField(): JSX.Element {
     function resize(): void {
       if (!canvas || !gl) return;
       const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-      const w = Math.max(1, Math.round(canvas.clientWidth * dpr * RENDER_SCALE));
-      const h = Math.max(1, Math.round(canvas.clientHeight * dpr * RENDER_SCALE));
+      const w = Math.max(1, Math.round(canvas.clientWidth * dpr * tier.scale));
+      const h = Math.max(1, Math.round(canvas.clientHeight * dpr * tier.scale));
       if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w;
         canvas.height = h;
@@ -276,16 +297,37 @@ export function BrandField(): JSX.Element {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
 
+    let lastDrawn = 0;
+
     function frame(now: number): void {
-      pointerX += (targetX - pointerX) * 0.06;
-      pointerY += (targetY - pointerY) * 0.06;
-      lens += (targetLens - lens) * 0.05;
-      draw(phase + (now - start) / 1000);
       raf = requestAnimationFrame(frame);
+      // ~30fps cap: the field is too slow for 60fps to be visible, and
+      // skipping every other vsync halves the GPU cost outright.
+      if (now - lastDrawn < TARGET_INTERVAL_MS) return;
+      const delta = lastDrawn === 0 ? 0 : now - lastDrawn;
+      lastDrawn = now;
+      // Smoothing factors are per DRAWN frame (~33ms tick), tuned to
+      // the same time constant the old per-vsync 0.06/0.05 gave.
+      pointerX += (targetX - pointerX) * 0.12;
+      pointerY += (targetY - pointerY) * 0.12;
+      lens += (targetLens - lens) * 0.1;
+      draw(phase + (now - start) / 1000);
+      if (delta === 0) return;
+      const verdict = governor.sample(delta);
+      if (verdict === "stepped") {
+        tier = governor.tier;
+        gl?.uniform1f(uOctaves, tier.octaves);
+        // resize() picks up the new scale on the next draw.
+      } else if (verdict === "freeze") {
+        // Floor tier: hold the last-drawn frame. Same composition,
+        // no motion — smooth page beats moving ink on this hardware.
+        frozen = true;
+        stopLoop();
+      }
     }
 
     function startLoop(): void {
-      if (running || reduced.matches) return;
+      if (running || frozen || reduced.matches) return;
       running = true;
       raf = requestAnimationFrame(frame);
     }
