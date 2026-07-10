@@ -168,15 +168,47 @@ export function App(): JSX.Element {
   }, []);
 
   if (auth.status === "loading") {
-    // Boot state: the wordmark breathing (same pulse as skeletons) instead
-    // of a bare "Loading…" string. role=status keeps it announced.
+    // Boot state: the brand mark draws itself in — superellipse strokes
+    // on (pathLength dash), ink fill and wordmark fade up under it —
+    // then the whole lockup breathes with the skeleton pulse until the
+    // session probe lands. Reduced motion: static lockup, no draw, no
+    // pulse. role=status keeps it announced either way.
     return (
       <div className="flex min-h-screen items-center justify-center">
+        {/* Breathing starts only after the draw-in completes (1.05s) so
+          * the two animations never fight over opacity. */}
         <div
           role="status"
-          className="font-display text-2xl font-semibold tracking-tight motion-safe:animate-skeleton"
+          className="flex items-center gap-3 motion-safe:animate-skeleton motion-safe:[animation-delay:1.05s]"
         >
-          Truenote
+          <svg viewBox="0 0 32 32" className="h-8 w-8 shrink-0" aria-hidden>
+            <path
+              d="M16 2c10 0 14 4 14 14s-4 14-14 14S2 26 2 16 6 2 16 2z"
+              pathLength={1}
+              strokeDasharray={1}
+              className="fill-none stroke-foreground [stroke-width:1.5] motion-safe:animate-mark-draw"
+            />
+            <g className="motion-safe:animate-mark-ink">
+              <path
+                d="M16 2c10 0 14 4 14 14s-4 14-14 14S2 26 2 16 6 2 16 2z"
+                className="fill-foreground"
+              />
+              <text
+                x="16"
+                y="22"
+                textAnchor="middle"
+                fontFamily="Georgia, serif"
+                fontSize="18"
+                fontWeight="600"
+                className="fill-background"
+              >
+                T
+              </text>
+            </g>
+          </svg>
+          <span className="font-display text-2xl font-semibold tracking-tight motion-safe:animate-mark-ink">
+            Truenote
+          </span>
           <span className="sr-only">Loading…</span>
         </div>
       </div>

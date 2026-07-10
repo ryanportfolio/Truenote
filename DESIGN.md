@@ -191,20 +191,26 @@ Shipped motion vocabulary (enter-only — panels are conditional-render; exit an
 |---|---|
 | CitationPanel / PreviewPanel open | 16px slide-in from right + fade, 240ms ease-out-quart |
 | Answer / refusal card mount | 4px rise + fade, 240ms ease-out-quart |
+| Receipt strip on grounded answers | `receipt-in`: 3px rise + fade, 240ms, 180ms delay — the receipt prints a beat after the answer lands (state-conveying: the grounding IS the news) |
 | Credential banner reveal | fade-in, 240ms |
 | Copy-confirm Check icon | zoom-in from 75%, 100ms |
-| Skeletons, boot wordmark | `skeleton-pulse` 1.8s opacity breathing |
+| Skeletons | `skeleton-pulse` 1.8s opacity breathing |
+| App boot | mark draw-in: superellipse strokes on (`mark-draw` 0.9s, `pathLength=1` dash), ink fill + wordmark fade up (`mark-ink` 0.5s @ 0.55s delay), then `skeleton-pulse` breathing from 1.05s so the two never fight over opacity. Reduced motion: static lockup |
+| Wait-stage label, `parsing` status pill | `animate-pulse` (the only in-progress states on task surfaces get the only ambient motion) |
 | Retrieval instrument | Two orbital rings rotate around an evidence core while the stage label changes; 2.8–3.4s linear |
 | Login archive plate | 16s camera drift + 13–18s orbital traces, all disabled by `prefers-reduced-motion` |
+| Empty-state evidence sheets | `blob-drift-a/b`: few-px translate+scale wanders on 26s/34s loops, allowed only on the pressure-free empty surface |
+| Auth BrandField | Adaptive 30fps watercolor on forgot/reset and at low opacity behind the login panel; reduced motion freezes one reviewed frame |
 
 ## Brand moments: The Luminous Archive
 
-The visual metaphor is evidence gathering into a trustworthy core. It uses three controlled art colors on the existing warm-neutral system: cobalt (`--primary`), mineral green (`--archive-green`), and persimmon (`--archive-coral`). These art colors never replace semantic status tokens.
+The visual metaphor is evidence gathering into a trustworthy core. Physical paper, translucent mineral, and living watercolor use cobalt (`--primary`), mineral green (`--archive-green`), persimmon (`--archive-coral`), and a homeopathic amber filament on the warm-neutral system. Art colors never replace semantic status tokens.
 
-1. **Login hero** — `public/visuals/luminous-archive.png`, an original 3D editorial sculpture generated for Truenote. Paper strata and translucent mineral rings orbit an ink-blue evidence core. The image is decorative, copy-safe, and slowly camera-drifts only when reduced motion is not requested.
-2. **Retrieval state** — code-native orbital rings turn the same metaphor into purposeful progress. The text stage remains canonical.
-3. **Empty states** — a tiny CSS 3D paper stack gives pressure-free surfaces a collectible object without using another bitmap.
-4. **The mark** — layered green and persimmon sheets sit behind a cobalt Georgia `T`. In persistent chrome it remains small and functional; on login it has enough depth to bridge into the sculpture.
+1. **Login hero** — `public/visuals/luminous-archive.png`, an original 3D editorial sculpture generated for Truenote. Paper strata and translucent mineral rings orbit an ink-blue evidence core. The image is decorative, copy-safe, and slowly camera-drifts only when reduced motion is not requested. The sign-in panel carries a low-opacity **BrandField** layer so the merged watercolor system remains alive without competing with the sculpture.
+2. **Supporting auth surfaces** — **BrandField** (`components/BrandField.tsx`) is a hand-rolled WebGL1 fragment shader rendering domain-warped, grain-dithered watercolor with a gentle pointer lens. Forgot/reset use it full-field; login uses it at low opacity behind the panel. Guards: `prefers-reduced-motion` freezes one reviewed frame; no WebGL/context loss falls back to CSS washes; hidden tabs pause; rendering is capped at 30fps and ≤1.25 DPR × 0.6 scale. The adaptive governor (`lib/fieldQuality.ts`) steps scale 0.6 → 0.45 → 0.35, then octaves 5 → 4, then freezes on weak hardware. Tiers never step back up.
+3. **Retrieval state** — code-native orbital rings turn the same metaphor into purposeful progress. The text stage remains canonical.
+4. **Empty states** — a tiny CSS 3D paper stack gives pressure-free surfaces a collectible object without another bitmap, inheriting the merged 26s/34s reduced-motion-safe drift loops.
+5. **The mark** — layered green and persimmon sheets sit behind a cobalt Georgia `T`. In persistent chrome it remains small and functional; on login it bridges into the sculpture. The app boot mark keeps the merged draw-in sequence.
 
 Authenticated task surfaces remain calm. Depth concentrates around the answer, receipt, composer, active navigation, and state transitions.
 
@@ -237,4 +243,4 @@ Pure-CSS breakpoints, no JS breakpoint state:
 ## Follow-ups
 
 - ~~Drag-and-drop upload zone~~ shipped (pass 3): the upload card is the drop target — drag-over = `border-primary/40 bg-primary/5`, client-side type/size validation through the quiet-alert recipe, dropped file handed to the native input via `DataTransfer`.
-- **Dark mode**: still a mechanical inversion; `.select-quiet`'s chevron hex and the favicon are light-mode-tuned — revisit both if a toggle ships.
+- **Dark mode**: still a mechanical inversion; `.select-quiet`'s chevron hex, the favicon, AND BrandField's shader ink constants are light-mode-tuned — revisit all three if a toggle ships.

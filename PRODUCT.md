@@ -43,4 +43,4 @@ Target **WCAG 2.1 AAA for body text** (≥7:1 contrast) and **AA minimum for eve
 
 ---
 
-*Illustration direction: The Luminous Archive, layered paper and translucent mineral forms gathering around a dense evidence core. Use it for rare brand moments and purposeful retrieval states, never as decorative noise across task surfaces.*
+*Illustration direction: The Luminous Archive, layered paper and translucent mineral forms gathering around a dense evidence core, supported by the living BrandField watercolor on auth surfaces. Use both for rare brand moments and purposeful retrieval states, never as decorative noise across task surfaces.*

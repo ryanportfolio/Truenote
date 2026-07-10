@@ -39,8 +39,9 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
         />
         {result.sources.length > 0 ? (
           // The receipt strip: "show the receipt" (PRODUCT.md) made literal.
-          // Count + source documents in one quiet eyebrow line.
-          <div className="receipt-strip">
+          // The merged receipt timing makes the grounding print a beat after
+          // the answer card lands. Reduced-motion users see it immediately.
+          <div className="receipt-strip motion-safe:animate-receipt-in">
             <span className="receipt-count">{result.sources.length}</span>
             <p>
               Grounded excerpt{result.sources.length === 1 ? "" : "s"} ·{" "}

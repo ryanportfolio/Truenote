@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
+import { BrandField } from "@/components/BrandField";
 import { fetchConfig, login } from "@/lib/api";
 import type { CurrentUser, DemoAccount } from "@/types/api";
 
@@ -116,6 +117,9 @@ export function LoginPage({
   return (
     <main className="auth-shell">
       <section className="auth-panel" aria-labelledby="login-title">
+        <div className="auth-field-layer" aria-hidden>
+          <BrandField />
+        </div>
         <div className="auth-panel-inner">
           <Link href="/" className="auth-wordmark" aria-label="Truenote home">
             <span className="auth-wordmark-orbit" aria-hidden>

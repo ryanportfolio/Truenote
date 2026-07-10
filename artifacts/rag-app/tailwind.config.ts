@@ -73,10 +73,43 @@ const config: Config = {
       keyframes: {
         "skeleton-pulse": {
           "50%": { opacity: "0.55" }
+        },
+        // Boot mark draw-in: the superellipse strokes itself (pathLength=1
+        // normalizes the dash math), then the ink fill fades up under it.
+        "mark-draw": {
+          from: { strokeDashoffset: "1" },
+          to: { strokeDashoffset: "0" }
+        },
+        "mark-ink": {
+          from: { opacity: "0" },
+          to: { opacity: "1" }
+        },
+        // Empty-state blob drift: two ultra-slow amoebic wanders. Transform
+        // only, amplitudes of a few px — ambient material, not motion.
+        "blob-drift-a": {
+          "0%, 100%": { transform: "translate3d(0, 0, 0) scale(1)" },
+          "33%": { transform: "translate3d(7px, -5px, 0) scale(1.08)" },
+          "66%": { transform: "translate3d(-5px, 4px, 0) scale(0.95)" }
+        },
+        "blob-drift-b": {
+          "0%, 100%": { transform: "translate3d(0, 0, 0) scale(1)" },
+          "40%": { transform: "translate3d(-6px, -4px, 0) scale(0.94)" },
+          "70%": { transform: "translate3d(5px, 5px, 0) scale(1.07)" }
+        },
+        // Receipt reveal: the grounding eyebrow arrives a beat after the
+        // answer card — the receipt printing under the total.
+        "receipt-in": {
+          from: { opacity: "0", transform: "translateY(3px)" },
+          to: { opacity: "1", transform: "translateY(0)" }
         }
       },
       animation: {
-        skeleton: "skeleton-pulse 1.8s ease-in-out infinite"
+        skeleton: "skeleton-pulse 1.8s ease-in-out infinite",
+        "mark-draw": "mark-draw 0.9s cubic-bezier(0.25, 1, 0.5, 1) both",
+        "mark-ink": "mark-ink 0.5s cubic-bezier(0.25, 1, 0.5, 1) 0.55s both",
+        "blob-drift-a": "blob-drift-a 26s ease-in-out infinite",
+        "blob-drift-b": "blob-drift-b 34s ease-in-out infinite",
+        "receipt-in": "receipt-in 0.24s cubic-bezier(0.25, 1, 0.5, 1) 0.18s both"
       },
       // DESIGN.md §Motion tokens — tailwindcss-animate maps these scales onto
       // animation-timing-function / animation-duration too, so ease-out-quart

@@ -10,11 +10,10 @@ interface EmptyStateProps {
 }
 
 /**
- * Teaching empty state in the login-blob illustration language at small
- * scale (DESIGN.md §Brand moments): two aria-hidden tint washes behind a
- * muted icon. Empty surfaces are the one place decoration stays calm —
- * nothing else on screen competes for attention. Pure presentation;
- * callers own all copy and actions.
+ * Small-scale Luminous Archive: layered evidence sheets orbit a muted icon.
+ * The sheets inherit the merged watercolor pass's ultra-slow, reduced-motion-
+ * safe drift. Empty surfaces are pressure-free enough to carry this ambient
+ * brand moment; callers still own all copy and actions.
  */
 export function EmptyState({
   icon: Icon,
@@ -25,8 +24,14 @@ export function EmptyState({
   return (
     <div className="empty-state">
       <div className="empty-state-object">
-        <span className="empty-state-sheet empty-state-sheet-back" aria-hidden />
-        <span className="empty-state-sheet empty-state-sheet-mid" aria-hidden />
+        <span
+          className="empty-state-sheet empty-state-sheet-back motion-safe:animate-blob-drift-a"
+          aria-hidden
+        />
+        <span
+          className="empty-state-sheet empty-state-sheet-mid motion-safe:animate-blob-drift-b"
+          aria-hidden
+        />
         <div className="empty-state-core">
           <Icon className="h-6 w-6 text-muted-foreground" aria-hidden />
         </div>
