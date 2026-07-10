@@ -3,6 +3,7 @@ import { logout } from "@/lib/api";
 import { hasAtLeastRole } from "@/types/api";
 import type { CurrentUser, UserRole } from "@/types/api";
 import { ProgramSelector } from "./ProgramSelector";
+import { BrandMark } from "@/components/BrandMark";
 
 interface TopBarProps {
   user: CurrentUser;
@@ -38,39 +39,26 @@ export function TopBar({ user, onLogout }: TopBarProps): JSX.Element {
   const homeHref = hasAtLeastRole(user, "manager") ? "/admin/documents" : "/chat";
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-border bg-secondary px-4">
-      {/* Brand mark: the favicon blob rendered in ink, not brand blue —
-       * persistent chrome must not spend the rare-blue budget
-       * (DESIGN.md: blue appears once or twice per screen, earned). */}
+    <header className="topbar-shell">
       <Link
         href={homeHref}
-        className="-ml-1.5 flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors duration-100 ease-out hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-secondary"
+        className="brand-home-link"
       >
-        <svg viewBox="0 0 32 32" className="h-5 w-5 shrink-0" aria-hidden>
-          <path
-            d="M16 2c10 0 14 4 14 14s-4 14-14 14S2 26 2 16 6 2 16 2z"
-            className="fill-foreground"
-          />
-          <text
-            x="16"
-            y="22"
-            textAnchor="middle"
-            fontFamily="Georgia, serif"
-            fontSize="18"
-            fontWeight="600"
-            className="fill-secondary"
-          >
-            T
-          </text>
-        </svg>
-        {/* Wordmark is a "distinctive element": Georgia, per DESIGN.md §Typography. */}
-        <span className="font-display text-lg font-semibold tracking-tight">Truenote</span>
+        <BrandMark className="h-8 w-8" />
+        <span className="flex flex-col">
+          <span className="font-display text-lg font-semibold leading-none tracking-tight">
+            Truenote
+          </span>
+          <span className="mt-1 text-[9px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+            Answers with receipts
+          </span>
+        </span>
       </Link>
-      <div className="flex items-center gap-4">
+      <div className="flex min-w-0 items-center gap-3 sm:gap-4">
         <ProgramSelector user={user} />
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex min-w-0 items-center gap-2 text-sm">
           <span className="hidden text-muted-foreground sm:inline">{user.email}</span>
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="hidden rounded-full bg-muted px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground md:inline-flex">
             {ROLE_LABEL[user.role]}
           </span>
           <button

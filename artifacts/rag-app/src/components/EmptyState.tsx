@@ -23,17 +23,11 @@ export function EmptyState({
   children
 }: EmptyStateProps): JSX.Element {
   return (
-    <div className="rounded-lg border border-dashed border-border bg-muted/30 p-8 text-center">
-      <div className="relative mx-auto h-16 w-16">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -left-3 -top-2 h-20 w-20 rounded-full bg-primary/10 blur-2xl"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -bottom-1 -right-4 h-16 w-16 rounded-full bg-success/15 blur-2xl"
-        />
-        <div className="relative flex h-16 w-16 items-center justify-center">
+    <div className="empty-state">
+      <div className="empty-state-object">
+        <span className="empty-state-sheet empty-state-sheet-back" aria-hidden />
+        <span className="empty-state-sheet empty-state-sheet-mid" aria-hidden />
+        <div className="empty-state-core">
           <Icon className="h-6 w-6 text-muted-foreground" aria-hidden />
         </div>
       </div>
@@ -42,7 +36,7 @@ export function EmptyState({
         <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">{hint}</p>
       ) : null}
       {children ? (
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
           {children}
         </div>
       ) : null}

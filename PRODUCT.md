@@ -43,4 +43,4 @@ Target **WCAG 2.1 AAA for body text** (≥7:1 contrast) and **AA minimum for eve
 
 ---
 
-*Phase 2 illustration direction: organic blob shapes in the Cohere-illustration style. Do not invent placeholders in Phase 1.*
+*Illustration direction: The Luminous Archive, layered paper and translucent mineral forms gathering around a dense evidence core. Use it for rare brand moments and purposeful retrieval states, never as decorative noise across task surfaces.*

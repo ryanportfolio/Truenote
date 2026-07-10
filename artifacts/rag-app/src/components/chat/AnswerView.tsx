@@ -27,7 +27,11 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
 
   return (
     <>
-      <article className="rounded-lg border border-border bg-card p-4 shadow-card motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-240 motion-safe:ease-out-quart">
+      <article className="answer-surface motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-240 motion-safe:ease-out-quart">
+        <div className="answer-kicker">
+          <span className="answer-signal" aria-hidden />
+          Cited answer
+        </div>
         <AnswerMarkdown
           answer={result.answer}
           sources={result.sources}
@@ -36,10 +40,13 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
         {result.sources.length > 0 ? (
           // The receipt strip: "show the receipt" (PRODUCT.md) made literal.
           // Count + source documents in one quiet eyebrow line.
-          <p className="mt-3 text-xs uppercase tracking-wide text-muted-foreground">
-            Grounded in {result.sources.length} excerpt
-            {result.sources.length === 1 ? "" : "s"} · <ReceiptTitles sources={result.sources} />
-          </p>
+          <div className="receipt-strip">
+            <span className="receipt-count">{result.sources.length}</span>
+            <p>
+              Grounded excerpt{result.sources.length === 1 ? "" : "s"} ·{" "}
+              <ReceiptTitles sources={result.sources} />
+            </p>
+          </div>
         ) : null}
         <footer className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
           {showDebug ? (
@@ -206,7 +213,7 @@ function RefusalView({
   // it gets the same calm card as any answer. The amber lives only in the
   // badge chip, so the state is legible without the card shouting.
   return (
-    <article className="rounded-lg border border-border bg-card p-4 shadow-card motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-240 motion-safe:ease-out-quart">
+    <article className="answer-surface refusal-surface motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-240 motion-safe:ease-out-quart">
       <div className="flex items-center gap-2">
         <span className="rounded-full bg-warning/20 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-warning-foreground">
           Not in knowledge base
@@ -225,7 +232,7 @@ function RefusalView({
             className="btn-whisper gap-1.5 px-2.5 py-1 text-xs"
           >
             <Flag className="h-3.5 w-3.5" aria-hidden />
-            {flagged ? "Flagged — admins will review this gap" : "Flag as missing content"}
+            {flagged ? "Flagged. Admins will review this gap." : "Flag as missing content"}
           </button>
         ) : (
           <span aria-hidden />

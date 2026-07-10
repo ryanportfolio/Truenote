@@ -114,126 +114,139 @@ export function LoginPage({
   }
 
   return (
-    // The one brand moment in the app: organic blob washes (PRODUCT.md's
-    // Cohere-illustration direction) behind an otherwise calm card. Pure
-    // CSS, decorative only, opaque card keeps every contrast guarantee.
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-24 -top-32 h-96 w-96 rounded-full bg-primary/10 blur-3xl"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-40 -left-32 h-[28rem] w-[28rem] rounded-full bg-success/15 blur-3xl"
-      />
-      <form
-        onSubmit={handleSubmit}
-        className="relative w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-6 shadow-card"
-      >
-        <header className="space-y-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">Truenote</h1>
-          <p className="text-sm text-muted-foreground">
-            Sign in
-          </p>
-        </header>
+    <main className="auth-shell">
+      <section className="auth-panel" aria-labelledby="login-title">
+        <div className="auth-panel-inner">
+          <Link href="/" className="auth-wordmark" aria-label="Truenote home">
+            <span className="auth-wordmark-orbit" aria-hidden>
+              T
+            </span>
+            <span className="font-display text-xl font-semibold tracking-tight">Truenote</span>
+          </Link>
 
-        {demoAccounts.length > 0 ? (
-          <div className="space-y-2 rounded-lg border border-dashed border-border bg-muted/40 p-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Demo environment — credentials pre-filled
+          <div className="auth-intro">
+            <p className="auth-eyebrow">Calm. Precise. Cited.</p>
+            <h1 id="login-title" className="auth-title">
+              Know what is true.
+              <br />
+              <span>Show why.</span>
+            </h1>
+            <p className="auth-subtitle">
+              Grounded answers for the moments when guessing is not an option.
             </p>
-            <div className="flex flex-wrap gap-2">
-              {demoAccounts.map((account) => (
-                <button
-                  key={account.email}
-                  type="button"
-                  onClick={() => applyDemoAccount(account)}
-                  aria-pressed={selectedDemo === account.email}
-                  className={
-                    selectedDemo === account.email
-                      ? "rounded-full border border-primary bg-primary/10 px-3 py-1 text-xs font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      : "rounded-full border border-input px-3 py-1 text-xs text-muted-foreground transition-colors duration-100 ease-out hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  }
-                >
-                  {account.label}
-                </button>
-              ))}
-            </div>
           </div>
-        ) : null}
 
-        <div className="space-y-2">
-          <label htmlFor="email" className="text-sm font-medium">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="username"
-            required
-            value={email}
-            onChange={(e) => {
-              touchedRef.current = true;
-              setSelectedDemo(null);
-              setEmail(e.target.value);
-            }}
-            disabled={submitting}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
+          <form onSubmit={handleSubmit} className="auth-form">
+            {demoAccounts.length > 0 ? (
+              <fieldset className="auth-demo">
+                <legend>Demo access, credentials ready</legend>
+                <div className="flex flex-wrap gap-2">
+                  {demoAccounts.map((account) => (
+                    <button
+                      key={account.email}
+                      type="button"
+                      onClick={() => applyDemoAccount(account)}
+                      aria-pressed={selectedDemo === account.email}
+                      className={
+                        selectedDemo === account.email
+                          ? "auth-demo-chip auth-demo-chip-active"
+                          : "auth-demo-chip"
+                      }
+                    >
+                      {account.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            ) : null}
+
+            <div className="auth-field">
+              <label htmlFor="email">Email</label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="username"
+                required
+                value={email}
+                onChange={(e) => {
+                  touchedRef.current = true;
+                  setSelectedDemo(null);
+                  setEmail(e.target.value);
+                }}
+                disabled={submitting}
+              />
+            </div>
+
+            <div className="auth-field">
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => {
+                  touchedRef.current = true;
+                  setSelectedDemo(null);
+                  setPassword(e.target.value);
+                }}
+                disabled={submitting}
+              />
+            </div>
+
+            {error ? (
+              <p
+                role="alert"
+                className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                {error}
+              </p>
+            ) : null}
+
+            <div className="auth-actions">
+              <button
+                type="submit"
+                disabled={submitting || !email || !password}
+                className="btn-primary min-w-32 px-5 py-2.5 text-base"
+              >
+                {submitting ? "Signing in…" : "Enter Truenote"}
+              </button>
+
+              {emailResetAvailable ? (
+                <Link href="/forgot-password" className="auth-forgot">
+                  Forgot password?
+                </Link>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Contact an admin to reset your password.
+                </p>
+              )}
+            </div>
+          </form>
+
+          <p className="auth-trust-line">
+            <span aria-hidden>✓</span> Every answer cites a source or refuses.
+          </p>
         </div>
+      </section>
 
-        <div className="space-y-2">
-          <label htmlFor="password" className="text-sm font-medium">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => {
-              touchedRef.current = true;
-              setSelectedDemo(null);
-              setPassword(e.target.value);
-            }}
-            disabled={submitting}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
+      <section className="archive-visual" aria-hidden="true">
+        <img
+          src="/visuals/luminous-archive.png"
+          alt=""
+          aria-hidden
+          className="archive-image"
+          fetchPriority="high"
+        />
+        <div className="archive-light" aria-hidden />
+        <div className="archive-orbit archive-orbit-outer" aria-hidden />
+        <div className="archive-orbit archive-orbit-inner" aria-hidden />
+        <div className="archive-caption" aria-hidden>
+          <span>01</span>
+          <p>The Luminous Archive</p>
+          <i />
         </div>
-
-        {error ? (
-          <p
-            role="alert"
-            className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
-            {error}
-          </p>
-        ) : null}
-
-        <button
-          type="submit"
-          disabled={submitting || !email || !password}
-          className="btn-whisper w-full px-3 py-2"
-        >
-          {submitting ? "Signing in…" : "Sign in"}
-        </button>
-
-        {emailResetAvailable ? (
-          <p className="text-center text-xs text-muted-foreground">
-            <Link
-              href="/forgot-password"
-              className="text-foreground hover:underline"
-            >
-              Forgot password?
-            </Link>
-          </p>
-        ) : (
-          <p className="text-center text-xs text-muted-foreground">
-            Forgot your password? Contact an admin to reset it.
-          </p>
-        )}
-      </form>
-    </div>
+      </section>
+    </main>
   );
 }

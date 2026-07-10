@@ -148,11 +148,11 @@ Inline errors share one recipe everywhere (auth pages, admin forms, panels): `ro
 
 ## Loading states
 
-`.skeleton` (index.css): `--muted` bars, `rounded-md`, slow opacity breathing (`skeleton-pulse` 1.8s ease-in-out, 100→55%) — **no shimmer sweep**. `motion-safe:` only; every skeleton group carries `role="status"` + `sr-only` "Loading…" text. Shapes mimic the loaded layout (table rows, cards, mono bars). Chat's pending exchange keeps the stage label (it carries real pipeline information) above an `aria-hidden` answer-card silhouette. App boot = the Georgia wordmark breathing with the same keyframes. Text "Loading…" as UI is drift.
+`.skeleton` (index.css): `--muted` bars, `rounded-md`, slow opacity breathing (`skeleton-pulse` 1.8s ease-in-out, 100→55%) — **no shimmer sweep**. `motion-safe:` only; every skeleton group carries `role="status"` + `sr-only` "Loading…" text. Shapes mimic the loaded layout (table rows, cards, mono bars). Chat's pending exchange is the exception: a compact orbital evidence instrument visualizes retrieval while the live stage label carries the real pipeline state for assistive technology. App boot = the Georgia wordmark breathing with the same keyframes. Text "Loading…" as UI is drift.
 
 ## Empty states
 
-`EmptyState` component (`components/EmptyState.tsx`): dashed hairline card on `bg-muted/30`, the login blob language at quarter scale (aria-hidden `bg-primary/10` + `bg-success/15`, `blur-2xl`) behind a muted lucide icon, `font-medium` title, muted hint, optional action row (used for the chat example-question chips and the 404 "Go to Chat" link). Every list surface teaches on empty: Documents, Gaps (per-filter copy), Users, Programs, Chat first-run, 404.
+`EmptyState` component (`components/EmptyState.tsx`): dashed hairline surface with a code-native 3D stack of cobalt, mineral-green, and persimmon sheets behind the muted lucide icon. It echoes the login sculpture at icon scale without importing a heavy bitmap into work surfaces. Optional actions render as teaching chips (used for chat example questions and the 404 "Go to Chat" link). Every list surface teaches on empty: Documents, Gaps (per-filter copy), Users, Programs, Chat first-run, 404.
 
 ## Status colors
 
@@ -169,7 +169,7 @@ Semantic tokens only — raw Tailwind palette classes (`emerald-*`, `amber-*`, `
 
 ## Citations & receipts
 
-- **Receipt strip**: every grounded answer carries a 12px uppercase eyebrow under the body — `Grounded in N excerpts · <doc titles>` (unique titles, first two + count). PRODUCT.md's "show the receipt," literal. Titles link into the knowledge base reader (`/kb/:doc_id`) when the server resolved the doc id — the receipt is openable, not just named.
+- **Receipt strip**: every grounded answer carries a cobalt-tint evidence block under the body with a solid count medallion and `Grounded excerpt(s) · <doc titles>` (unique titles, first two + count). PRODUCT.md's "show the receipt," literal. Titles link into the knowledge base reader (`/kb/:doc_id`) when the server resolved the doc id — the receipt is openable, not just named.
 - **Citation peek**: chips show a hover/focus popover (`--shadow-panel`, `w-72`, doc title + first 160 excerpt chars in mono) via pure CSS `group-hover`/`group-focus-within`. Decorative `aria-hidden` speed aid; the click-through CitationPanel remains the canonical, screen-reader-reachable receipt. The panel ends with a "Read the full document" whisper link into `/kb/:doc_id`.
 - **Sticky composer**: the /chat form pins to the scrollport bottom (`sticky bottom-0`, solid canvas fill, 24px gradient fade above) so the ask box is always one glance away.
 
@@ -194,17 +194,19 @@ Shipped motion vocabulary (enter-only — panels are conditional-render; exit an
 | Credential banner reveal | fade-in, 240ms |
 | Copy-confirm Check icon | zoom-in from 75%, 100ms |
 | Skeletons, boot wordmark | `skeleton-pulse` 1.8s opacity breathing |
-| Wait-stage label, `parsing` status pill | `animate-pulse` (the only in-progress states get the only ambient motion) |
+| Retrieval instrument | Two orbital rings rotate around an evidence core while the stage label changes; 2.8–3.4s linear |
+| Login archive plate | 16s camera drift + 13–18s orbital traces, all disabled by `prefers-reduced-motion` |
 
-## Brand moments
+## Brand moments: The Luminous Archive
 
-The blob language (PRODUCT.md's Cohere-illustration direction) appears at exactly three scales, always decorative `aria-hidden`, always the same two tints (`bg-primary/10` + `bg-success/15`):
+The visual metaphor is evidence gathering into a trustworthy core. It uses three controlled art colors on the existing warm-neutral system: cobalt (`--primary`), mineral green (`--archive-green`), and persimmon (`--archive-coral`). These art colors never replace semantic status tokens.
 
-1. **Login** — full-bleed washes (`blur-3xl`) behind an opaque card; contrast guarantees untouched.
-2. **Empty states** — quarter scale (`blur-2xl`) behind a muted icon via `EmptyState`. Empty surfaces are pressure-free; decoration is allowed to be calm there.
-3. **The mark** — favicon: blue superellipse + white Georgia "T" (`#0040AB`/`#FDFDFC`, inline data URI, plus `theme-color: #E8E6DE`); TopBar: same blob rendered in **ink** next to the wordmark — persistent chrome doesn't spend the rare-blue budget. Mark + wordmark are a single home link, role-aware: manager and above → `/admin/documents`, CSR → `/chat` (quiet `hover:bg-muted` fill + the standard focus ring).
+1. **Login hero** — `public/visuals/luminous-archive.png`, an original 3D editorial sculpture generated for Truenote. Paper strata and translucent mineral rings orbit an ink-blue evidence core. The image is decorative, copy-safe, and slowly camera-drifts only when reduced motion is not requested.
+2. **Retrieval state** — code-native orbital rings turn the same metaphor into purposeful progress. The text stage remains canonical.
+3. **Empty states** — a tiny CSS 3D paper stack gives pressure-free surfaces a collectible object without using another bitmap.
+4. **The mark** — layered green and persimmon sheets sit behind a cobalt Georgia `T`. In persistent chrome it remains small and functional; on login it has enough depth to bridge into the sculpture.
 
-Everywhere else stays calm.
+Authenticated task surfaces remain calm. Depth concentrates around the answer, receipt, composer, active navigation, and state transitions.
 
 ## Token consumer contract
 
@@ -217,10 +219,11 @@ Mechanical inversion of the pre-pass HSL values, converted to OKLCH. No toggle. 
 ## What makes Truenote feel like Truenote
 
 1. **The brand-blue accent is rare.** Once or twice per screen: Ask button, active nav, citation chips. The restraint is what makes it branded.
-2. **Hairlines over shadows.** 1px warm `--border` divides; `shadow-card` whispers; only floating panels cast real shadow.
+2. **Depth has a job.** Warm hairlines still divide ordinary content. Stronger elevation is reserved for the composer, cited answers, active navigation, and the login sculpture.
 3. **Warm neutrals.** Stone, not slate. Semantic tokens only.
 4. **Tight density on CSR chat, generous whitespace on admin.** Same tokens, different rhythm.
 5. **Georgia headers over Verdana body.** The Carter pairing: editorial-serif page titles, workhorse-sans everything else — tight headings, relaxed body.
+6. **Evidence has a physical form.** Layered sheets, orbital traces, and a dense blue core recur at three scales without becoming decorative chrome.
 
 ## Responsive
 
