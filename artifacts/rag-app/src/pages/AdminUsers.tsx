@@ -261,7 +261,9 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
         // chosen — it ships as its own async chunk, so the CSV path and
         // non-admin bundles never pay for it.
         const { default: readXlsxFile } = await import("read-excel-file/browser");
-        parsed = parseUserXlsx((await readXlsxFile(file)) as unknown as ReadonlyArray<ReadonlyArray<unknown>>);
+        // readXlsxFile (v9) resolves to Sheet[]; parseUserXlsx takes the raw
+        // result and reduces it to the first sheet's grid.
+        parsed = parseUserXlsx(await readXlsxFile(file));
       } else {
         parsed = parseUserCsv(await file.text());
       }
