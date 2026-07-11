@@ -49,6 +49,11 @@ export function CitationPanel({ source, queryLogId, onClose, showDebug }: Citati
                 Version {source.version_number}
               </span>
             ) : null}
+            {source.superseded ? (
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                Updated since
+              </span>
+            ) : null}
           </span>
           {showDebug ? (
             <span className="text-xs text-muted-foreground">chunk_id: {source.chunk_id}</span>
@@ -69,6 +74,16 @@ export function CitationPanel({ source, queryLogId, onClose, showDebug }: Citati
         <pre className="whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 font-mono text-[13px] leading-relaxed">
           {source.excerpt}
         </pre>
+        {source.superseded ? (
+          // This exact excerpt is the CSR's durable receipt of what they were
+          // shown, but the document has since been replaced. Warn plainly so
+          // they don't re-quote superseded content on a later call.
+          <p className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-800 dark:text-amber-200">
+            This document has been updated since this answer. The excerpt above is
+            what you were shown at the time — check the current version before
+            relying on it.
+          </p>
+        ) : null}
         {documentHref ? (
           // The excerpt is the receipt; this is the full ledger. Navigating
           // unmounts the panel with the page, which is the right cleanup.

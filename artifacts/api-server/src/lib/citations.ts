@@ -26,7 +26,18 @@ export const LinkedSourceSchema = z
     citation_index: z.number().int().nonnegative(),
     /** UTF-16 offsets into the cited version's parsed_markdown. */
     source_start: z.number().int().nonnegative().nullable(),
-    source_end: z.number().int().positive().nullable()
+    source_end: z.number().int().positive().nullable(),
+    /**
+     * Runtime-only display flag, computed on the history read path and never
+     * persisted: true when the cited document version has since been replaced
+     * (is_active=false) but still exists. The excerpt stays the owner's
+     * durable receipt of what they were shown; the flag lets the UI mark it
+     * as no longer current so a CSR doesn't re-quote superseded content.
+     * Absent on the stored snapshot and on freshly generated citations (the
+     * version is active then). Deleted-version citations are dropped, not
+     * flagged.
+     */
+    superseded: z.boolean().optional()
   })
   .superRefine((source, ctx) => {
     const hasStart = source.source_start !== null;
@@ -353,4 +364,106 @@ export async function loadAuthorizedCitationReceipt(input: {
     }
     return null;
   }
+}
+
+interface VersionActivityRow {
+  id: string;
+  is_active: boolean;
+}
+
+/**
+ * Resolve the current activity of a set of document versions. The returned
+ * map distinguishes three states a history read must treat differently:
+ *   - key present, value true   → version is active (current)
+ *   - key present, value false  → version exists but was superseded/deactivated
+ *   - key ABSENT                → version no longer exists (its document was
+ *                                 deleted, cascading the version away)
+ *
+ * Returns null (not an empty map) on query failure, so callers can tell
+ * "lookup failed, fail open to current behavior" apart from "every cited
+ * version has genuinely been deleted, drop them all".
+ */
+export async function loadVersionActivity(
+  versionIds: string[]
+): Promise<Map<string, boolean> | null> {
+  const unique = Array.from(new Set(versionIds));
+  const out = new Map<string, boolean>();
+  if (unique.length === 0) return out;
+  try {
+    const ids = sql.join(unique.map((id) => sql`${id}::uuid`), sql`, `);
+    const result = await db.execute(sql`
+      SELECT id::text, is_active FROM document_versions WHERE id IN (${ids})
+    `);
+    for (const row of result.rows as unknown as VersionActivityRow[]) {
+      out.set(row.id, row.is_active === true);
+    }
+    return out;
+  } catch (error) {
+    warning("[citations] failed to load version activity:", error);
+    return null;
+  }
+}
+
+/**
+ * Fold live version activity into durable citation sources so a CSR's history
+ * reflects what content is still live:
+ *   - active version         → source unchanged
+ *   - superseded (inactive)  → source kept with superseded=true (still the
+ *                              owner's receipt of what they saw, but the UI
+ *                              marks it as no longer current)
+ *   - deleted (absent)       → source DROPPED: a removed document must stop
+ *                              serving its excerpt from history
+ *   - null document_version_id (legacy/degenerate receipt) → passthrough:
+ *                              nothing to tie it to a version, leave as-is
+ *
+ * `activity === null` means the lookup failed — fail open to current behavior
+ * rather than blanking valid history over a transient DB error. Pure and
+ * synchronous so the branch logic is unit-tested without a database.
+ */
+export function applyVersionActivity(
+  sources: LinkedSource[],
+  activity: Map<string, boolean> | null
+): LinkedSource[] {
+  if (activity === null) return sources;
+  const out: LinkedSource[] = [];
+  for (const source of sources) {
+    const versionId = source.document_version_id;
+    if (versionId === null) {
+      out.push(source);
+      continue;
+    }
+    if (!activity.has(versionId)) continue; // deleted → drop
+    out.push(
+      activity.get(versionId) === true ? source : { ...source, superseded: true }
+    );
+  }
+  return out;
+}
+
+/**
+ * Erase durable citation snapshots that reference a now-deleted document, so
+ * a removed document's excerpts are purged from every user's history at rest
+ * — not merely hidden at read time. The whole snapshot for a matching row is
+ * nulled (a partial edit would corrupt the index-aligned receipt); those rows
+ * fall back to the legacy resolver, which filters to active versions and so
+ * drops the deleted chunks. Program-scoped. Returns the number of rows
+ * scrubbed.
+ *
+ * Best-effort by design: the history read path (applyVersionActivity) already
+ * refuses to serve deleted-version excerpts, so a failure here is a lost
+ * at-rest cleanup, not an exposure.
+ */
+export async function purgeCitationSnapshotsForDocument(input: {
+  programId: string;
+  documentId: string;
+}): Promise<number> {
+  const marker = JSON.stringify([{ doc_id: input.documentId }]);
+  const result = await db.execute(sql`
+    UPDATE query_log
+    SET citation_snapshots = NULL
+    WHERE program_id = ${input.programId}::uuid
+      AND citation_snapshots @> ${marker}::jsonb
+    RETURNING id
+  `);
+  return result.rows.length;
 }

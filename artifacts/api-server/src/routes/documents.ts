@@ -15,6 +15,7 @@ import {
 } from "../middleware/current-user.js";
 import { canAccessProgram } from "../lib/auth/current-user.js";
 import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
+import { purgeCitationSnapshotsForDocument } from "../lib/citations.js";
 
 export const documentsRouter = Router();
 
@@ -404,6 +405,28 @@ documentsRouter.delete("/:id", async (req, res, next) => {
     res.json({ ok: true });
 
     void (async () => {
+      // Purge this document's excerpts from durable citation snapshots so a
+      // removal-for-cause (sensitive/wrong content) is erased from every
+      // user's chat history at rest, not just hidden at read time. The read
+      // path already refuses to serve deleted-version excerpts, so this is
+      // best-effort at-rest cleanup — logged, never fatal.
+      try {
+        const purged = await purgeCitationSnapshotsForDocument({
+          programId,
+          documentId: id
+        });
+        if (purged > 0) {
+          console.log(
+            `[documents] purged citation snapshots from ${purged} query_log row(s) for deleted document ${id}`
+          );
+        }
+      } catch (err) {
+        console.warn(
+          `[documents] citation snapshot purge failed for document ${id}:`,
+          err instanceof Error ? err.message : err
+        );
+      }
+
       const storage = getObjectStorage();
       for (const { sourceUrl } of candidateKeys) {
         if (!sourceUrl) continue;
