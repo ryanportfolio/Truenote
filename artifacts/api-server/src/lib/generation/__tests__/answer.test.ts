@@ -8,6 +8,9 @@ import { APPROVED_MODEL_ROUTES, DEFAULT_MODEL_ROUTE } from "../model-routing.js"
 const NANO_ROUTE = APPROVED_MODEL_ROUTES.find(
   (route) => route.id === "gpt-5.4-nano-azure-nitro"
 )!;
+const MERCURY_ROUTE = APPROVED_MODEL_ROUTES.find(
+  (route) => route.id === "mercury-2-inception"
+)!;
 
 interface CapturedRequest {
   model: string;
@@ -154,6 +157,27 @@ describe("generateAnswer provider fallback", () => {
     expect(result.payload.refused).toBe(false);
     expect(result.generationPath).toBe("fallback");
     warning.mockRestore();
+  });
+
+  it("routes Mercury 2 through Inception with low reasoning", async () => {
+    const requests: CapturedRequest[] = [];
+
+    const result = await generateAnswer(
+      { programName: "Test", question: "What is the fee?", chunks },
+      {
+        client: stubClient(answer, requests),
+        routeChain: [MERCURY_ROUTE]
+      }
+    );
+
+    expect(requests).toEqual([
+      expect.objectContaining({
+        model: "inception/mercury-2",
+        reasoning_effort: "low",
+        provider: expect.objectContaining({ only: ["inception"] })
+      })
+    ]);
+    expect(result.generationPath).toBe("primary");
   });
 
   it("retries with OpenAI when the primary response is not parseable", async () => {

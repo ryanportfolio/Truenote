@@ -654,7 +654,7 @@ export function PassageHighlighter({
               : !displaySupported
                 ? "This browser cannot display saved highlights."
                 : !canWriteHighlights
-                  ? "Highlights are read-only in the shared demo."
+                  ? "Highlights are read-only for this account."
                   : keyboardMode
                     ? "Keyboard mode: Tab to a passage, then press Enter."
                     : "Select a passage to save a personal highlight."}

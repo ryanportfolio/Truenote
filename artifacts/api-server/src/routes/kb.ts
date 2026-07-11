@@ -10,12 +10,10 @@ import {
 } from "../lib/kb-highlights.js";
 import {
   authedUser,
-  blockDemoWrites,
   requireAuth,
   requireCsrOrAbove,
   requireFreshPassword
 } from "../middleware/current-user.js";
-import { isDemoEmail } from "../lib/auth/demo-accounts.js";
 import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
 import {
   citationTargetMatchesMarkdown,
@@ -36,7 +34,9 @@ import {
 export const kbRouter = Router();
 
 kbRouter.use(requireAuth, requireFreshPassword, requireCsrOrAbove);
-kbRouter.use(blockDemoWrites);
+// Personal highlights are the only mutations on this router. They remain
+// available to demo accounts so visitors can experience the feature; every
+// row is still owner- and program-scoped, with the normal overlap/range caps.
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -275,7 +275,7 @@ kbRouter.get("/documents/:id/highlights", async (req, res, next) => {
     res.json({
       items: rows.map(serializeHighlight),
       documentVersionId,
-      canWriteHighlights: !isDemoEmail(user.email)
+      canWriteHighlights: true
     });
   } catch (err) {
     next(err);

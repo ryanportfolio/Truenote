@@ -241,7 +241,7 @@ export interface KbHighlightListResponse {
   items: KbHighlight[];
   /** Lets the client reject a list fetched across a document-version race. */
   documentVersionId: string;
-  /** Shared demo credentials can read highlights but cannot mutate them. */
+  /** Server capability flag for creating, editing, and removing highlights. */
   canWriteHighlights: boolean;
 }
 
