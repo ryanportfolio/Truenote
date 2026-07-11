@@ -733,3 +733,82 @@ usersRouter.post("/:id/reset-password", async (req, res, next) => {
     next(err);
   }
 });
+
+/**
+ * DELETE /api/admin/users/:id — permanently remove a user.
+ *
+ * Deliberate two-step removal (matches the UI): the target must already
+ * be deactivated. Deleting an active user is refused with 409, so removal
+ * is always intentional and the user's sessions are already gone before
+ * the row disappears.
+ *
+ * Scope gate is canManageUser (refuses self, enforces program scope,
+ * hides super_user targets from managers). Referential integrity is
+ * handled by the schema's ON DELETE rules: sessions and
+ * password_reset_tokens CASCADE; created_by on any users this account
+ * created is SET NULL so audit rows survive. The text-column references
+ * in query_log / chat_sessions / document_versions carry no FK and are
+ * historical — intentionally left intact.
+ *
+ * Atomicity: SELECT ... FOR UPDATE locks the row so a concurrent
+ * reactivate/PATCH can't slip between the isActive check and the DELETE.
+ */
+usersRouter.delete("/:id", async (req, res, next) => {
+  try {
+    const actor = authedUser(req);
+    const id = req.params.id;
+    if (!UUID_RE.test(id)) {
+      res.status(400).json({ error: "Invalid user id" });
+      return;
+    }
+
+    type TxResult = { kind: "ok" } | { kind: "not-found" } | { kind: "active" };
+
+    const txResult = await db.transaction(async (tx): Promise<TxResult> => {
+      const rows = await tx
+        .select({
+          id: users.id,
+          role: users.role,
+          programId: users.programId,
+          isActive: users.isActive
+        })
+        .from(users)
+        .where(eq(users.id, id))
+        .for("update")
+        .limit(1);
+      const target = rows[0];
+      if (!target) return { kind: "not-found" };
+      // 404 (not 403) on out-of-scope ids — same existence-hiding
+      // convention as loadManageableTarget and the documents routes.
+      if (
+        !canManageUser(actor, {
+          id: target.id,
+          role: target.role,
+          programId: target.programId
+        })
+      ) {
+        return { kind: "not-found" };
+      }
+      if (target.isActive) return { kind: "active" };
+
+      // Cascades sessions + password_reset_tokens; SET NULL on any
+      // created_by pointing here — all via the schema's ON DELETE rules.
+      await tx.delete(users).where(eq(users.id, id));
+      return { kind: "ok" };
+    });
+
+    if (txResult.kind === "not-found") {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    if (txResult.kind === "active") {
+      res
+        .status(409)
+        .json({ error: "Deactivate the user before deleting them" });
+      return;
+    }
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});

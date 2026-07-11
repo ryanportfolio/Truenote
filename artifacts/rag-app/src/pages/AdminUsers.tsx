@@ -10,6 +10,7 @@ import { FileUp, Users } from "lucide-react";
 import {
   bulkCreateUsers,
   createUser,
+  deleteUser,
   listPrograms,
   listUsers,
   resetUserPassword,
@@ -154,6 +155,13 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
     );
   }
 
+  function handleDeleted(item: UserListItem): void {
+    setItems((prev) => prev.filter((u) => u.id !== item.id));
+    // Drop a stale credential banner if it belonged to the deleted user —
+    // a temp password for an account that no longer exists is noise.
+    setCredentialBanner((prev) => (prev?.email === item.email ? null : prev));
+  }
+
   function handleBulkImported(): void {
     setLoading(true);
     void refresh();
@@ -214,6 +222,7 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
           programs={programs}
           onUpdated={handleUpdated}
           onReset={handleReset}
+          onDeleted={handleDeleted}
         />
       )}
     </div>
@@ -688,6 +697,7 @@ interface UsersTableProps {
   programs: Program[];
   onUpdated: (item: UserListItem) => void;
   onReset: (item: UserListItem, tempPassword: string) => void;
+  onDeleted: (item: UserListItem) => void;
 }
 
 function UsersTable({
@@ -695,7 +705,8 @@ function UsersTable({
   items,
   programs,
   onUpdated,
-  onReset
+  onReset,
+  onDeleted
 }: UsersTableProps): JSX.Element {
   // Compute the lookup map unconditionally so the hook order stays
   // stable on the empty-list render path (which used to early-return
@@ -725,6 +736,7 @@ function UsersTable({
           }
           onUpdated={onUpdated}
           onReset={onReset}
+          onDeleted={onDeleted}
         />
       ))}
     </ul>
@@ -737,6 +749,7 @@ interface UserRowProps {
   programName: string | null;
   onUpdated: (item: UserListItem) => void;
   onReset: (item: UserListItem, tempPassword: string) => void;
+  onDeleted: (item: UserListItem) => void;
 }
 
 /**
@@ -750,11 +763,14 @@ function UserRow({
   item,
   programName,
   onUpdated,
-  onReset
+  onReset,
+  onDeleted
 }: UserRowProps): JSX.Element {
   const [editing, setEditing] = useState(false);
   const [editedName, setEditedName] = useState(item.name);
-  const [busy, setBusy] = useState<"none" | "save" | "active" | "reset">("none");
+  const [busy, setBusy] = useState<
+    "none" | "save" | "active" | "reset" | "delete"
+  >("none");
   const [error, setError] = useState<string | null>(null);
 
   const manageable = canManageUserClient(actor, item);
@@ -806,6 +822,24 @@ function UserRow({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to reset password");
     } finally {
+      setBusy("none");
+    }
+  }
+
+  async function handleDelete(): Promise<void> {
+    const ok = window.confirm(
+      `Permanently delete ${item.email}? This removes the account for good and cannot be undone.`
+    );
+    if (!ok) return;
+    setBusy("delete");
+    setError(null);
+    try {
+      await deleteUser(item.id);
+      onDeleted(item);
+      // No setBusy("none") on success: the row unmounts when the parent
+      // drops it from the list, so touching state here would warn.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete user");
       setBusy("none");
     }
   }
@@ -910,6 +944,19 @@ function UserRow({
             >
               {busy === "reset" ? "Resetting…" : "Reset password"}
             </button>
+            {/* Delete is gated behind deactivation: an active user must be
+              * deactivated first (which revokes their sessions), then the
+              * destructive, irreversible delete becomes available. */}
+            {!item.isActive ? (
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                disabled={busy === "delete"}
+                className="rounded-full border border-destructive/30 px-3 py-1 text-xs font-medium text-destructive transition-colors duration-100 ease-out hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy === "delete" ? "Deleting…" : "Delete"}
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
