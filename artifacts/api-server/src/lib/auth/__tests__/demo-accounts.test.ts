@@ -41,7 +41,7 @@ describe("parseDemoAccounts", () => {
     expect(accounts?.[1]?.program).toBe("Demo Program");
   });
 
-  it("strips role and program from the public shape", () => {
+  it("keeps role but strips program from the public shape", () => {
     const accounts = parseDemoAccounts(VALID);
     expect(accounts).not.toBeNull();
     if (!accounts) return;
@@ -49,7 +49,8 @@ describe("parseDemoAccounts", () => {
     expect(publicAccounts[0]).toEqual({
       label: "Manager",
       email: "manager@demo.truenote",
-      password: "pw1"
+      password: "pw1",
+      role: "manager"
     });
   });
 });

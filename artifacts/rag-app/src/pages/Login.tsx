@@ -35,6 +35,27 @@ interface LoginPageProps {
  *   - No client-side rate limiting; server tolerates this
  *   - No "remember me" toggle — sessions are 7 days fixed
  */
+
+/**
+ * One line on what the selected demo role can do, shown beside the
+ * chips. Custom-typed credentials (no chip selected) get the generic
+ * invitation instead.
+ */
+const DEMO_ROLE_NOTES: Record<DemoAccount["role"], string> = {
+  manager:
+    "The admin side: upload documents, manage users, review gaps. Demo writes stay locked.",
+  csr: "The call-floor view: ask questions, follow citations, browse the knowledge base."
+};
+
+function demoNoteFor(
+  accounts: DemoAccount[],
+  selectedEmail: string | null
+): string {
+  const selected = accounts.find((a) => a.email === selectedEmail);
+  if (!selected) return "Two roles, one shared sandbox. Pick a chip to explore.";
+  return DEMO_ROLE_NOTES[selected.role];
+}
+
 export function LoginPage({
   onAuthenticated,
   redirectTo = null
@@ -144,22 +165,30 @@ export function LoginPage({
             {demoAccounts.length > 0 ? (
               <fieldset className="auth-demo">
                 <legend>Demo access, credentials ready</legend>
-                <div className="flex flex-wrap gap-2">
-                  {demoAccounts.map((account) => (
-                    <button
-                      key={account.email}
-                      type="button"
-                      onClick={() => applyDemoAccount(account)}
-                      aria-pressed={selectedDemo === account.email}
-                      className={
-                        selectedDemo === account.email
-                          ? "auth-demo-chip auth-demo-chip-active"
-                          : "auth-demo-chip"
-                      }
-                    >
-                      {account.label}
-                    </button>
-                  ))}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {demoAccounts.map((account) => (
+                      <button
+                        key={account.email}
+                        type="button"
+                        onClick={() => applyDemoAccount(account)}
+                        aria-pressed={selectedDemo === account.email}
+                        className={
+                          selectedDemo === account.email
+                            ? "auth-demo-chip auth-demo-chip-active"
+                            : "auth-demo-chip"
+                        }
+                      >
+                        {account.label}
+                      </button>
+                    ))}
+                  </div>
+                  {/* The note fills the fieldset's empty right half: what
+                    * the selected chip actually demos. aria-live so a
+                    * screen-reader chip switch announces the change. */}
+                  <p className="auth-demo-note" aria-live="polite">
+                    {demoNoteFor(demoAccounts, selectedDemo)}
+                  </p>
                 </div>
               </fieldset>
             ) : null}
