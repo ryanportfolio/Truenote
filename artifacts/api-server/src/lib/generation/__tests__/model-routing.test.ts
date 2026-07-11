@@ -7,17 +7,18 @@ import {
 } from "../model-routing.js";
 
 describe("approved model routing", () => {
-  it("defaults to GPT-5.4 Nano Nitro on Azure", () => {
+  it("defaults to GPT-5.6 Luna on OpenAI via OpenRouter at low reasoning", () => {
     expect(DEFAULT_MODEL_ROUTE).toMatchObject({
-      id: "gpt-5.4-nano-azure-nitro",
-      model: "openai/gpt-5.4-nano:nitro",
-      provider: "azure",
-      reasoningEffort: "medium"
+      id: "gpt-5.6-luna-openai",
+      model: "openai/gpt-5.6-luna",
+      provider: "openai",
+      reasoningEffort: "low"
     });
   });
 
-  it("contains only the three reviewed routes", () => {
+  it("contains only the reviewed routes, primary first", () => {
     expect(APPROVED_MODEL_ROUTES.map((route) => route.id)).toEqual([
+      "gpt-5.6-luna-openai",
       "gpt-5.4-nano-azure-nitro",
       "nemotron-3-super-digitalocean-nitro",
       "nemotron-3-ultra-together-nitro"

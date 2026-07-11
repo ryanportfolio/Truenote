@@ -152,7 +152,7 @@ function ModelRoutingPanel(): JSX.Element {
                         {option.providerLabel}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        Medium reasoning
+                        {option.reasoningEffort === "low" ? "Low" : "Medium"} reasoning
                       </span>
                     </span>
                     <span className="mt-1 block text-sm text-muted-foreground">

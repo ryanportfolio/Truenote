@@ -81,10 +81,10 @@ describe("generateAnswer provider fallback", () => {
 
     expect(primaryRequests).toEqual([
       expect.objectContaining({
-        model: "openai/gpt-5.4-nano:nitro",
-        reasoning_effort: "medium",
+        model: "openai/gpt-5.6-luna",
+        reasoning_effort: "low",
         provider: {
-          only: ["azure"],
+          only: ["openai"],
           zdr: true,
           data_collection: "deny",
           require_parameters: true,
@@ -111,7 +111,7 @@ describe("generateAnswer provider fallback", () => {
       }
     );
 
-    expect(primaryRequests[0]?.model).toBe("openai/gpt-5.4-nano:nitro");
+    expect(primaryRequests[0]?.model).toBe("openai/gpt-5.6-luna");
     expect(fallbackRequests).toEqual([
       expect.objectContaining({
         model: "gpt-5.6-luna",
