@@ -87,6 +87,7 @@ const ADMIN_TITLES: Record<string, string> = {
   "/admin/gaps": "Content gaps",
   "/admin/insights": "Content gaps",
   "/admin/model-routing": "Model routing",
+  "/admin/evaluations": "Evaluation Center",
   "/admin/programs": "Programs",
   "/admin/users": "Users"
 };

@@ -110,6 +110,7 @@ export interface GenerateAnswerInput {
 export interface GenerateAnswerResult {
   payload: AnswerPayload;
   llmCalled: boolean;
+  generationPath: "retrieval-refusal" | "primary" | "fallback" | "fallback-failed";
 }
 
 export interface GenerateAnswerDeps {
@@ -120,6 +121,8 @@ export interface GenerateAnswerDeps {
   /** Ordered approved-route chain override for tests (index 0 = primary).
    *  Production reads the persisted global order. */
   routeChain?: ApprovedModelRoute[];
+  /** Pin one approved route for a reproducible evaluation run. */
+  primaryRoute?: ApprovedModelRoute;
 }
 
 async function callGenerationModel(
@@ -198,7 +201,11 @@ export async function generateAnswer(
   deps: GenerateAnswerDeps = {}
 ): Promise<GenerateAnswerResult> {
   if (input.refusedByRetrieval || input.chunks.length === 0) {
-    return { payload: cannedRefusal(), llmCalled: false };
+    return {
+      payload: cannedRefusal(),
+      llmCalled: false,
+      generationPath: "retrieval-refusal"
+    };
   }
 
   const systemPrompt = buildSystemPrompt(input.programName);
@@ -211,10 +218,13 @@ export async function generateAnswer(
   // citation is a model error and advances to the next route. A valid grounded
   // refusal is NOT an error — it ends the walk and is returned as-is.
   const client = deps.client ?? getPrimaryClient();
-  const chain = deps.routeChain ?? (await getActiveModelChain());
+  const chain = deps.primaryRoute
+    ? [deps.primaryRoute]
+    : deps.routeChain ?? (await getActiveModelChain());
 
   let payload: AnswerPayload | null = null;
-  for (const route of chain) {
+  let generationPath: GenerateAnswerResult["generationPath"] = "primary";
+  for (const [index, route] of chain.entries()) {
     try {
       const routePayload = await callGenerationModel(
         client,
@@ -233,6 +243,7 @@ export async function generateAnswer(
       const normalized = normalizeAnswer(routePayload, input.chunks);
       if (!normalized) throw new Error(`route ${route.id} returned an invalid or uncited answer`);
       payload = normalized;
+      generationPath = index === 0 ? "primary" : "fallback";
       break;
     } catch (err) {
       console.warn(
@@ -255,6 +266,7 @@ export async function generateAnswer(
         { reasoningEffort: FALLBACK_MODEL.reasoningEffort }
       );
       payload = fallbackPayload ? normalizeAnswer(fallbackPayload, input.chunks) : null;
+      if (payload) generationPath = "fallback";
     } catch (err) {
       console.warn(
         "[generation] direct OpenAI backup failed:",
@@ -266,10 +278,14 @@ export async function generateAnswer(
 
   if (!payload) {
     // Every route and the backup failed to satisfy the schema — defensive refusal.
-    return { payload: cannedRefusal(), llmCalled: true };
+    return {
+      payload: cannedRefusal(),
+      llmCalled: true,
+      generationPath: "fallback-failed"
+    };
   }
 
-  return { payload, llmCalled: true };
+  return { payload, llmCalled: true, generationPath };
 }
 
 /**

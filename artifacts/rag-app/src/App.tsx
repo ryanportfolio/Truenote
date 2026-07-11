@@ -98,6 +98,11 @@ const loadAdminModelRoutingPage = once(() =>
     default: module.AdminModelRoutingPage
   }))
 );
+const loadAdminEvaluationsPage = once(() =>
+  import("@/pages/AdminEvaluations").then((module) => ({
+    default: module.AdminEvaluationsPage
+  }))
+);
 const loadAdminUsersPage = once(() =>
   import("@/pages/AdminUsers").then((module) => ({ default: module.AdminUsersPage }))
 );
@@ -127,6 +132,7 @@ const AdminPage = preloadable(loadAdminPage);
 const AdminGapsPage = preloadable(loadAdminGapsPage);
 const AdminProgramsPage = preloadable(loadAdminProgramsPage);
 const AdminModelRoutingPage = preloadable(loadAdminModelRoutingPage);
+const AdminEvaluationsPage = preloadable(loadAdminEvaluationsPage);
 const AdminUsersPage = preloadable(loadAdminUsersPage);
 const LoginPage = preloadable(loadLoginPage);
 const ChangePasswordPage = preloadable(loadChangePasswordPage);
@@ -150,6 +156,7 @@ export function preloadRoute(path: string): Promise<unknown> {
   }
   if (pathname === "/admin/programs") return loadAdminProgramsPage();
   if (pathname === "/admin/model-routing") return loadAdminModelRoutingPage();
+  if (pathname === "/admin/evaluations") return loadAdminEvaluationsPage();
   if (pathname === "/admin/users") return loadAdminUsersPage();
   if (pathname === "/forgot-password") return loadForgotPasswordPage();
   if (pathname === "/reset-password") return loadResetPasswordPage();
@@ -440,6 +447,9 @@ export function App(): JSX.Element {
         </Route>
         <Route path="/admin/model-routing">
           <AdminModelRoutingPage user={auth.user} />
+        </Route>
+        <Route path="/admin/evaluations">
+          <AdminEvaluationsPage user={auth.user} />
         </Route>
         <Route path="/admin/users">
           <AdminUsersPage user={auth.user} />

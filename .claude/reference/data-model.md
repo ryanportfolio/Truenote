@@ -76,6 +76,7 @@ CREATE TABLE query_log (
   feedback INT,  -- -1, 0, +1
   flagged_missing BOOLEAN DEFAULT false,  -- CSR flagged a refusal as missing content (added 2026-07-04)
   session_id UUID REFERENCES chat_sessions(id) ON DELETE SET NULL,  -- groups a conversation (added 2026-07-05); SET NULL preserves ops rows
+  citation_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb,  -- immutable ordered source receipts (added 2026-07-11)
   created_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX query_log_session_idx ON query_log (session_id);
@@ -147,6 +148,33 @@ CREATE TABLE app_settings (
   updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Durable super-user Evaluation Center jobs. Created after users because
+-- requested_by is an auth-table FK. Full EvalReport lives in report; list
+-- queries project report->'summary' so history stays lightweight.
+CREATE TABLE eval_runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  program_id UUID NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
+  requested_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL CHECK (status IN ('queued','running','completed','failed')),
+  question_id UUID REFERENCES eval_questions(id) ON DELETE SET NULL,
+  judge BOOLEAN NOT NULL DEFAULT false,
+  question_count INT NOT NULL DEFAULT 0,
+  completed_questions INT NOT NULL DEFAULT 0,
+  configuration JSONB NOT NULL DEFAULT '{}'::jsonb,
+  report JSONB,
+  error TEXT,
+  is_baseline BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  started_at TIMESTAMPTZ,
+  finished_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX eval_runs_program_created_idx ON eval_runs (program_id, created_at DESC);
+CREATE UNIQUE INDEX eval_runs_program_active_uidx ON eval_runs (program_id)
+  WHERE status IN ('queued','running');
+CREATE UNIQUE INDEX eval_runs_program_baseline_uidx ON eval_runs (program_id)
+  WHERE is_baseline = true;
 ```
 
 ## Invariants
@@ -158,6 +186,8 @@ CREATE TABLE app_settings (
 - **`users.role` + `users.program_id` are jointly constrained.** The DB CHECK enforces: `super_user` MUST have `program_id IS NULL`; every other role MUST have a non-null `program_id`. The app's program-scoping helpers (`canAccessProgram`, `requireRole`) rely on this. Bypassing the constraint at the SQL level (e.g., manual inserts) breaks the assumption that a manager always has a program scope.
 - **`sessions.token_hash` stores SHA-256 of the cookie value, not the cookie itself.** A leak of the sessions table does not yield active sessions on its own. Plaintext tokens are only ever in transit (cookie header) and in the cookie store on the user's browser.
 - **`chat_sessions` groups a CSR's `query_log` rows into a named conversation.** `query_log.session_id` is nullable with `ON DELETE SET NULL` — deleting a session must never drop ops/gap analytics rows. Sessions are scoped by `(user_id, program_id)`; the ask pipeline honors a client-supplied session id only when both match, so a leaked id can't stitch one user's ask into another's conversation or cross program scope. `title` is auto-generated (gpt-4o-mini) from the opening exchange, detached from the response path, guarded by `title IS NULL` so it fires once.
+- **`query_log.citation_snapshots` freezes source receipts.** New answers best-effort persist the ordered document id, document-version id/number, clean excerpt, and raw parsed-Markdown offsets after logging. History prefers this snapshot over live chunks, so a re-ingest cannot silently rewrite an old answer's evidence. Missing DDL degrades to legacy live-chunk reconstruction; it never fails an ask.
+- **`eval_runs` is the durable job + report boundary.** At most one queued/running row exists per program; the shared pg-boss worker consumes evaluation jobs sequentially. The row is also the queue outbox: its UUID is a time-windowed pg-boss singleton key and queued rows are reconciled after insert/send crashes. `configuration` privately retains the immutable question snapshot and current lease token (both stripped from list responses), while the public configuration records effective model/retrieval settings; every worker write is lease-fenced. `report` freezes per-question results. Only completed rows may be baselines; cancellation fences work by moving an active row to `failed` with an explicit cancellation reason.
 - **`users.email` is normalized to lowercase at the application layer**, stored as plain `TEXT`. Every write and lookup calls `.toLowerCase()` before touching the DB. The original Phase 2A design used `citext` for case-insensitive comparison, but the `citext` extension isn't available in all managed Postgres environments (specifically: Replit's production publish flow does not run `CREATE EXTENSION`, only DDL diff). The app-layer normalization preserves the case-insensitive contract without the extension dependency. **Detection rule:** any new code path that writes or compares `users.email` MUST lowercase first — otherwise duplicate accounts can be created (`Alice@foo.com` vs `alice@foo.com`) and logins will silently mismatch.
 - **Bulk CSV user import creates CSR accounts only.** Emails are normalized and deduplicated, existing accounts are skipped without mutation, and the effective program is enforced server-side. Each new user receives a separately salted hash of the reviewed temporary password `Truenote213` with `must_reset_password=true`, so first login always enters the existing forced-change flow.
 - **`app_settings` never authorizes arbitrary model ids or providers.** The model-routing API accepts only ids from the server-owned allowlist; the JSONB row stores an ordered list of approved preset ids (the fallback chain, `{"order":[...]}`), not an executable request body. Unknown ids are dropped and missing approved routes appended on read, so the resolved chain is always a permutation of the allowlist. The legacy single-id shape (`{"selectedId":"..."}`) is still read-compatible. Missing table/row/invalid value falls back to the default order (GPT-5.6 Luna primary, low reasoning).

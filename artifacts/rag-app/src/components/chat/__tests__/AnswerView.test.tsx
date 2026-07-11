@@ -12,7 +12,12 @@ const result: AskResponse = {
       chunk_id: "chunk-1",
       doc_title: "Cancellation Policy",
       excerpt: "The fee is $25.",
-      doc_id: null
+      doc_id: null,
+      document_version_id: null,
+      version_number: null,
+      citation_index: 0,
+      source_start: null,
+      source_end: null
     }
   ],
   refused: false,
@@ -26,7 +31,7 @@ const result: AskResponse = {
 describe("AnswerView", () => {
   it("does not render confidence, rerank score, or latency telemetry", () => {
     const html = renderToStaticMarkup(
-      <AnswerView result={result} showDebug />
+      <AnswerView result={result} question="What is the fee?" showDebug />
     );
 
     expect(html).not.toContain("Confidence:");
@@ -39,6 +44,7 @@ describe("AnswerView", () => {
     const html = renderToStaticMarkup(
       <AnswerView
         result={{ ...result, refused: true, answer: "Not found", sources: [] }}
+        question="What is the fee?"
         showDebug
       />
     );

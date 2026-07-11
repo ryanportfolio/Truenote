@@ -10,6 +10,12 @@ import type {
   CurrentUser,
   CreateKbHighlightRequest,
   DocumentListResponse,
+  EvalQuestionItem,
+  EvalQuestionListResponse,
+  EvalRunDetailResponse,
+  EvalRunListItem,
+  EvalRunListResponse,
+  SaveEvalQuestionRequest,
   KbDocumentListResponse,
   KbDocumentResponse,
   KbGapsResponse,
@@ -381,9 +387,22 @@ export async function listKbDocuments(): Promise<KbDocumentListResponse> {
 }
 
 /** Full parsed markdown of one live document. Throws on 404 (wrong program / not live). */
-export async function getKbDocument(documentId: string): Promise<KbDocumentResponse> {
+export async function getKbDocument(
+  documentId: string,
+  citation?: { versionId: string; queryLogId?: string; sourceIndex?: number }
+): Promise<KbDocumentResponse> {
+  const params = new URLSearchParams();
+  if (citation) {
+    params.set("version", citation.versionId);
+    if (citation.queryLogId !== undefined) params.set("query", citation.queryLogId);
+    if (citation.sourceIndex !== undefined) {
+      params.set("source", String(citation.sourceIndex));
+    }
+  }
+  const search = params.toString();
+  const suffix = search ? `?${search}` : "";
   const response = await fetch(
-    `/api/kb/documents/${encodeURIComponent(documentId)}`,
+    `/api/kb/documents/${encodeURIComponent(documentId)}${suffix}`,
     withDefaults()
   );
   return asJson<KbDocumentResponse>(response);
@@ -630,6 +649,96 @@ export async function resetUserPassword(
     withDefaults({ method: "POST" })
   );
   return readJsonOrThrow<ResetUserPasswordResponse>(response);
+}
+
+/** Super-user evaluation questions for the currently selected program. */
+export async function listEvalQuestions(): Promise<EvalQuestionListResponse> {
+  const response = await fetch("/api/admin/evaluations/questions", withDefaults());
+  return asJson<EvalQuestionListResponse>(response);
+}
+
+export async function createEvalQuestion(
+  payload: SaveEvalQuestionRequest
+): Promise<EvalQuestionItem> {
+  const response = await fetch(
+    "/api/admin/evaluations/questions",
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+  );
+  return (await asJson<{ item: EvalQuestionItem }>(response)).item;
+}
+
+export async function updateEvalQuestion(
+  id: string,
+  payload: SaveEvalQuestionRequest
+): Promise<EvalQuestionItem> {
+  const response = await fetch(
+    `/api/admin/evaluations/questions/${encodeURIComponent(id)}`,
+    withDefaults({
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+  );
+  return (await asJson<{ item: EvalQuestionItem }>(response)).item;
+}
+
+export async function deleteEvalQuestion(id: string): Promise<void> {
+  const response = await fetch(
+    `/api/admin/evaluations/questions/${encodeURIComponent(id)}`,
+    withDefaults({ method: "DELETE" })
+  );
+  if (!response.ok) await asJson<never>(response);
+}
+
+export async function listEvalRuns(limit = 20): Promise<EvalRunListResponse> {
+  const response = await fetch(
+    `/api/admin/evaluations/runs?limit=${encodeURIComponent(limit)}`,
+    withDefaults()
+  );
+  return asJson<EvalRunListResponse>(response);
+}
+
+export async function startEvalRun(input: {
+  judge?: boolean;
+  questionId?: string;
+} = {}): Promise<EvalRunListItem> {
+  const response = await fetch(
+    "/api/admin/evaluations/runs",
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input)
+    })
+  );
+  return (await asJson<{ item: EvalRunListItem }>(response)).item;
+}
+
+export async function getEvalRun(id: string): Promise<EvalRunDetailResponse> {
+  const response = await fetch(
+    `/api/admin/evaluations/runs/${encodeURIComponent(id)}`,
+    withDefaults()
+  );
+  return asJson<EvalRunDetailResponse>(response);
+}
+
+export async function cancelEvalRun(id: string): Promise<EvalRunListItem> {
+  const response = await fetch(
+    `/api/admin/evaluations/runs/${encodeURIComponent(id)}/cancel`,
+    withDefaults({ method: "POST" })
+  );
+  return (await asJson<{ item: EvalRunListItem }>(response)).item;
+}
+
+export async function setEvalBaseline(id: string): Promise<EvalRunListItem> {
+  const response = await fetch(
+    `/api/admin/evaluations/runs/${encodeURIComponent(id)}/baseline`,
+    withDefaults({ method: "POST" })
+  );
+  return (await asJson<{ item: EvalRunListItem }>(response)).item;
 }
 
 /**

@@ -6,7 +6,12 @@ const src = (id: string, title = "Doc"): Source => ({
   chunk_id: id,
   doc_title: title,
   excerpt: `excerpt of ${id}`,
-  doc_id: null
+    doc_id: null,
+    document_version_id: null,
+    version_number: null,
+    citation_index: 0,
+    source_start: null,
+    source_end: null
 });
 
 describe("annotateCitations", () => {
@@ -54,11 +59,40 @@ describe("answerForClipboard", () => {
       src("c1"),
       src("c2")
     ]);
-    expect(text).toBe("Fee is $5 [1], see [ghost] and [2].");
+    expect(text).toBe(
+      "Fee is $5 [1], see [ghost] and [2].\n\nSources:\n[1] Doc\n[2] Doc"
+    );
   });
 
   it("uses the same ordinal for repeated citations", () => {
     const text = answerForClipboard("[c1] then [c1]", [src("c1")]);
-    expect(text).toBe("[1] then [1]");
+    expect(text).toBe("[1] then [1]\n\nSources:\n[1] Doc");
+  });
+
+  it("includes the question and an absolute version-pinned receipt link", () => {
+    const text = answerForClipboard(
+      "Fee is $5 [c1].",
+      [
+        {
+          ...src("c1", "Cancellation Policy"),
+          doc_id: "doc-1",
+          document_version_id: "version-3",
+          version_number: 3,
+          source_start: 10,
+          source_end: 25
+        }
+      ],
+      {
+        question: "What is the fee?",
+        queryLogId: "query-1",
+        origin: "https://truenote.example"
+      }
+    );
+
+    expect(text).toBe(
+      "Question: What is the fee?\n\nAnswer:\nFee is $5 [1].\n\nSources:\n" +
+        "[1] Cancellation Policy (Version 3) — " +
+        "https://truenote.example/kb/doc-1?version=version-3&query=query-1&source=0"
+    );
   });
 });

@@ -17,6 +17,11 @@ import {
 } from "../middleware/current-user.js";
 import { isDemoEmail } from "../lib/auth/demo-accounts.js";
 import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
+import {
+  citationTargetMatchesMarkdown,
+  loadAuthorizedCitationReceipt,
+  type CitationTarget
+} from "../lib/citations.js";
 
 /**
  * CSR-facing knowledge base reader. Unlike /api/documents (manager+ admin
@@ -37,6 +42,26 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const MAX_HIGHLIGHTS_PER_VERSION = 500;
+const MAX_CITATION_SOURCE_INDEX = 63;
+
+export function parseCitationSourceIndex(value: unknown): number | null {
+  if (typeof value !== "string" || !/^(0|[1-9]\d*)$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed <= MAX_CITATION_SOURCE_INDEX
+    ? parsed
+    : null;
+}
+
+export function canServeKbVersion(
+  isActive: boolean,
+  citationAuthorized: boolean
+): boolean {
+  return isActive || citationAuthorized;
+}
+
+function queryString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
 
 interface ActiveVersionRow {
   document_version_id: string;
@@ -128,10 +153,17 @@ kbRouter.get("/documents/:id", async (req, res, next) => {
       res.status(400).json({ error: "No program selected." });
       return;
     }
+    const rawVersion = queryString(req.query.version);
+    if (rawVersion !== null && !UUID_RE.test(rawVersion)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const rows = await db
       .select({
         documentId: documents.id,
         documentVersionId: documentVersions.id,
+        versionNumber: documentVersions.versionNumber,
+        isActive: documentVersions.isActive,
         title: documents.title,
         markdown: documentVersions.parsedMarkdown,
         updatedAt: documentVersions.uploadedAt
@@ -141,8 +173,10 @@ kbRouter.get("/documents/:id", async (req, res, next) => {
         documentVersions,
         and(
           eq(documentVersions.documentId, documents.id),
-          eq(documentVersions.isActive, true),
-          eq(documentVersions.parseStatus, "ready")
+          eq(documentVersions.parseStatus, "ready"),
+          rawVersion
+            ? eq(documentVersions.id, rawVersion)
+            : eq(documentVersions.isActive, true)
         )
       )
       .where(and(eq(documents.id, id), eq(documents.programId, programId)))
@@ -153,12 +187,49 @@ kbRouter.get("/documents/:id", async (req, res, next) => {
       res.status(404).json({ error: "Not found" });
       return;
     }
+    const queryLogId = queryString(req.query.query);
+    const sourceIndex = parseCitationSourceIndex(req.query.source);
+    let citationTarget: CitationTarget | null = null;
+    let citationAuthorized = false;
+    if (
+      rawVersion !== null &&
+      queryLogId !== null &&
+      UUID_RE.test(queryLogId) &&
+      sourceIndex !== null
+    ) {
+      const receipt = await loadAuthorizedCitationReceipt({
+        queryLogId,
+        sourceIndex,
+        userId: user.id,
+        programId,
+        documentId: row.documentId,
+        documentVersionId: row.documentVersionId
+      });
+      citationAuthorized = receipt !== null;
+      citationTarget = receipt?.target ?? null;
+      if (
+        citationTarget &&
+        (!row.markdown || !citationTargetMatchesMarkdown(row.markdown, citationTarget))
+      ) {
+        citationTarget = null;
+      }
+    }
+    // Inactive versions are audit history, not a general CSR browsing API.
+    // Only the owner of a matching immutable answer receipt may open one.
+    if (!canServeKbVersion(row.isActive === true, citationAuthorized)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json({
       documentId: row.documentId,
       documentVersionId: row.documentVersionId,
+      versionNumber: row.versionNumber,
+      isCurrentVersion: row.isActive === true,
       title: row.title,
       markdown: row.markdown,
-      updatedAt: row.updatedAt ? row.updatedAt.toISOString() : null
+      updatedAt: row.updatedAt ? row.updatedAt.toISOString() : null,
+      citationAuthorized,
+      citationTarget
     });
   } catch (err) {
     next(err);

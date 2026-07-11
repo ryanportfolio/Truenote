@@ -27,6 +27,9 @@ export interface ChunkMetadata {
   heading_path?: string[];
   token_count?: number;
   segment_types?: string[];
+  /** UTF-16 offsets into document_versions.parsed_markdown. End is exclusive. */
+  source_start?: number;
+  source_end?: number;
 }
 
 export interface Chunk {
@@ -46,6 +49,9 @@ type SegmentType = "heading" | "table" | "list" | "paragraph" | "code";
 interface Segment {
   type: SegmentType;
   content: string;
+  /** Raw source bounds before chunk content normalizes blank-line spacing. */
+  sourceStart: number;
+  sourceEnd: number;
   /** Heading level 1-6, only set when type === "heading". */
   level?: number;
 }
@@ -59,12 +65,36 @@ const LIST_CONTINUATION_RE = /^\s{2,}\S/;
 
 export function extractSegments(markdown: string): Segment[] {
   const lines = markdown.split("\n");
+  const lineStarts: number[] = [];
+  let cursor = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    lineStarts.push(cursor);
+    cursor += (lines[index]?.length ?? 0) + (index < lines.length - 1 ? 1 : 0);
+  }
   const segments: Segment[] = [];
   let i = 0;
 
+  const sourceBounds = (
+    startLine: number,
+    endLineExclusive: number
+  ): { sourceStart: number; sourceEnd: number } => {
+    const lastLine = Math.max(startLine, endLineExclusive - 1);
+    return {
+      sourceStart: lineStarts[startLine] ?? markdown.length,
+      sourceEnd:
+        (lineStarts[lastLine] ?? markdown.length) + (lines[lastLine]?.length ?? 0)
+    };
+  };
+
   const pushParagraph = (start: number, end: number): void => {
     const text = lines.slice(start, end).join("\n").trim();
-    if (text.length > 0) segments.push({ type: "paragraph", content: text });
+    if (text.length > 0) {
+      segments.push({
+        type: "paragraph",
+        content: text,
+        ...sourceBounds(start, end)
+      });
+    }
   };
 
   while (i < lines.length) {
@@ -77,6 +107,7 @@ export function extractSegments(markdown: string): Segment[] {
       segments.push({
         type: "heading",
         content: line,
+        ...sourceBounds(i, i + 1),
         level: hashes.length
       });
       i++;
@@ -89,7 +120,11 @@ export function extractSegments(markdown: string): Segment[] {
       i++;
       while (i < lines.length && !FENCE_CLOSE_RE.test(lines[i] ?? "")) i++;
       if (i < lines.length) i++; // consume closing fence
-      segments.push({ type: "code", content: lines.slice(start, i).join("\n") });
+      segments.push({
+        type: "code",
+        content: lines.slice(start, i).join("\n"),
+        ...sourceBounds(start, i)
+      });
       continue;
     }
 
@@ -97,7 +132,11 @@ export function extractSegments(markdown: string): Segment[] {
     if (TABLE_LINE_RE.test(line)) {
       const start = i;
       while (i < lines.length && TABLE_LINE_RE.test(lines[i] ?? "")) i++;
-      segments.push({ type: "table", content: lines.slice(start, i).join("\n") });
+      segments.push({
+        type: "table",
+        content: lines.slice(start, i).join("\n"),
+        ...sourceBounds(start, i)
+      });
       continue;
     }
 
@@ -121,7 +160,11 @@ export function extractSegments(markdown: string): Segment[] {
       // Trim trailing blank lines.
       let end = i;
       while (end > start && (lines[end - 1] ?? "").trim() === "") end--;
-      segments.push({ type: "list", content: lines.slice(start, end).join("\n") });
+      segments.push({
+        type: "list",
+        content: lines.slice(start, end).join("\n"),
+        ...sourceBounds(start, end)
+      });
       continue;
     }
 
@@ -141,6 +184,14 @@ export function extractSegments(markdown: string): Segment[] {
   }
 
   return segments;
+}
+
+/** Rebuild the exact normalized body shape the chunk packer stores. */
+export function canonicalChunkContent(markdown: string): string {
+  return extractSegments(markdown)
+    .map((segment) => segment.content)
+    .join("\n\n")
+    .trim();
 }
 
 function updateHeadingPath(path: string[], level: number, text: string): string[] {
@@ -177,7 +228,9 @@ export function chunkMarkdown(markdown: string, options: ChunkerOptions): Chunk[
       metadata: {
         heading_path: [...bufHeadingPath],
         token_count: bufTokens,
-        segment_types: [...bufTypes]
+        segment_types: [...bufTypes],
+        source_start: buf[0]?.sourceStart,
+        source_end: buf[buf.length - 1]?.sourceEnd
       }
     });
     buf = [];
