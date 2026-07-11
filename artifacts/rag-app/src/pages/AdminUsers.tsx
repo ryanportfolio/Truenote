@@ -276,9 +276,18 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
       } else if (parsed.emails.length > 100) {
         setError("File can contain at most 100 unique emails");
       }
-    } catch {
+    } catch (err) {
+      // Surface the underlying reason instead of an opaque "couldn't read":
+      // it distinguishes an unsupported/corrupt file or a wrong extension
+      // (.xls, a Numbers export renamed .xlsx) from a parser-load failure.
+      // The console line keeps the full stack for devtools.
+      if (isXlsx) console.error("xlsx import failed", err);
+      const detail =
+        err instanceof Error && err.message ? `: ${err.message}` : "";
       setError(
-        isXlsx ? "Could not read this Excel file" : "Could not read this CSV file"
+        isXlsx
+          ? `Could not read this Excel file${detail}`
+          : "Could not read this CSV file"
       );
     }
   }
