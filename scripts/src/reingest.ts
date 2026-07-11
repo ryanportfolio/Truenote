@@ -34,6 +34,13 @@ import {
   prependContextHeader,
   stripContextHeader
 } from "../../artifacts/api-server/src/lib/ingestion/contextual.js";
+import {
+  isMissingCitationSnapshotsColumn,
+  linkedSourceFromChunk,
+  loadCitationSnapshots,
+  saveCitationSnapshots,
+  type LinkedSource
+} from "../../artifacts/api-server/src/lib/citations.js";
 
 interface CliArgs {
   programId?: string;
@@ -65,6 +72,158 @@ Options:
   --help, -h              Show this help`);
 }
 
+interface CitationBackfillRow {
+  query_log_id: string;
+  user_id: string;
+  program_id: string;
+  expected_count: number;
+  citation_index: number;
+  chunk_id: string;
+  content: string;
+  metadata: unknown;
+  document_id: string;
+  document_title: string;
+  document_version_id: string;
+  version_number: number;
+}
+
+/**
+ * Freeze legacy query-log receipts before chunk replacement. Old answers only
+ * stored chunk UUIDs; deleting those rows first would erase their source
+ * panels. The backfill deliberately runs before any embed/delete work and
+ * uses the same guarded snapshot writer as /api/ask.
+ */
+async function backfillCitationSnapshots(
+  dryRun: boolean,
+  programId?: string
+): Promise<void> {
+  const programCondition = programId
+    ? sql`AND q.program_id = ${programId}::uuid`
+    : sql``;
+  const result = await db
+    .execute(sql`
+      SELECT
+        q.id::text AS query_log_id,
+        q.user_id::text AS user_id,
+        q.program_id::text AS program_id,
+        cardinality(q.cited_chunk_ids)::int AS expected_count,
+        (cited.ordinality - 1)::int AS citation_index,
+        c.id::text AS chunk_id,
+        c.content,
+        c.metadata,
+        d.id::text AS document_id,
+        d.title AS document_title,
+        v.id::text AS document_version_id,
+        v.version_number
+      FROM query_log AS q
+      CROSS JOIN LATERAL
+        unnest(q.cited_chunk_ids) WITH ORDINALITY AS cited(chunk_id, ordinality)
+      INNER JOIN chunks AS c
+        ON c.id = cited.chunk_id
+       AND c.program_id = q.program_id
+      INNER JOIN document_versions AS v ON v.id = c.document_version_id
+      INNER JOIN documents AS d ON d.id = v.document_id
+      WHERE q.user_id IS NOT NULL
+        AND q.program_id IS NOT NULL
+        ${programCondition}
+        AND cardinality(q.cited_chunk_ids) > 0
+        AND COALESCE(q.citation_snapshots, '[]'::jsonb) = '[]'::jsonb
+      ORDER BY q.id, cited.ordinality
+    `)
+    .catch((error: unknown) => {
+      if (isMissingCitationSnapshotsColumn(error)) {
+        throw new Error(
+          "query_log.citation_snapshots is missing; apply REPLIT_HANDOFF B7 before reingest"
+        );
+      }
+      throw error;
+    });
+
+  interface PendingReceipt {
+    userId: string;
+    programId: string;
+    expectedCount: number;
+    sources: Array<LinkedSource | undefined>;
+  }
+  const pending = new Map<string, PendingReceipt>();
+  for (const row of result.rows as unknown as CitationBackfillRow[]) {
+    const receipt = pending.get(row.query_log_id) ?? {
+      userId: row.user_id,
+      programId: row.program_id,
+      expectedCount: Number(row.expected_count),
+      sources: []
+    };
+    receipt.sources[Number(row.citation_index)] = linkedSourceFromChunk({
+      chunkId: row.chunk_id,
+      docTitle: row.document_title,
+      content: row.content,
+      documentId: row.document_id,
+      documentVersionId: row.document_version_id,
+      versionNumber: Number(row.version_number),
+      metadata: row.metadata,
+      citationIndex: Number(row.citation_index)
+    });
+    pending.set(row.query_log_id, receipt);
+  }
+
+  let eligible = 0;
+  let saved = 0;
+  let incomplete = 0;
+  for (const [queryLogId, receipt] of pending) {
+    const complete =
+      receipt.sources.length === receipt.expectedCount &&
+      receipt.sources.every((source) => source !== undefined);
+    if (!complete) {
+      incomplete++;
+      continue;
+    }
+    eligible++;
+    if (!dryRun) {
+      const sources = receipt.sources as LinkedSource[];
+      const wrote = await saveCitationSnapshots({
+        queryLogId,
+        userId: receipt.userId,
+        programId: receipt.programId,
+        sources
+      });
+      if (wrote) {
+        saved++;
+      } else {
+        // The app may have frozen the same answer after our SELECT. Count that
+        // immutable receipt as safe only when its ordered chunk ids match.
+        const existing = (
+          await loadCitationSnapshots({
+            queryLogIds: [queryLogId],
+            userId: receipt.userId,
+            programId: receipt.programId
+          })
+        ).get(queryLogId);
+        if (
+          existing?.length === sources.length &&
+          existing.every((source, index) => source.chunk_id === sources[index]?.chunk_id)
+        ) {
+          saved++;
+        }
+      }
+    }
+  }
+  console.log(
+    dryRun
+      ? `[reingest] would freeze ${eligible} legacy citation receipt(s); ${incomplete} incomplete row(s) cannot be recovered`
+      : `[reingest] froze ${saved}/${eligible} legacy citation receipt(s); ${incomplete} incomplete row(s) could not be recovered`
+  );
+  if (incomplete > 0) {
+    throw new Error(
+      `${incomplete} legacy citation receipt(s) are only partly recoverable; refusing to replace their remaining chunks`
+    );
+  }
+  if (!dryRun && saved !== eligible) {
+    throw new Error(
+      `Citation receipt backfill saved ${saved}/${eligible}; refusing to replace chunk ids`
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -94,8 +253,12 @@ async function main(): Promise<void> {
     : versionRows;
   console.log(`[reingest] ${targets.length} active version(s) to process${args.dryRun ? " (dry run)" : ""}`);
 
+  // Must precede every chunk delete. This makes the deployment order
+  // DDL -> code/backfill -> reingest mechanically enforced by the script.
+  await backfillCitationSnapshots(args.dryRun, args.programId);
+
   const tokenize = createTiktokenTokenizer();
-  const embedder = new OpenAIEmbedder();
+  const embedder = args.dryRun ? null : new OpenAIEmbedder();
   let processed = 0;
   let skipped = 0;
 
@@ -167,6 +330,7 @@ async function main(): Promise<void> {
     }
 
     const all = [...textChunks, ...imageChunks];
+    if (!embedder) throw new Error("Embedding client unavailable outside dry-run");
     const embeddings = await embedder.embed(all.map((c) => c.content));
     const rows: NewChunk[] = all.map((c, idx) => {
       const embedding = embeddings[idx];

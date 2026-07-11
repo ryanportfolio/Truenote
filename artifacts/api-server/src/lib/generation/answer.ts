@@ -110,6 +110,7 @@ export interface GenerateAnswerInput {
 export interface GenerateAnswerResult {
   payload: AnswerPayload;
   llmCalled: boolean;
+  generationPath: "retrieval-refusal" | "primary" | "fallback" | "fallback-failed";
 }
 
 export interface GenerateAnswerDeps {
@@ -197,7 +198,11 @@ export async function generateAnswer(
   deps: GenerateAnswerDeps = {}
 ): Promise<GenerateAnswerResult> {
   if (input.refusedByRetrieval || input.chunks.length === 0) {
-    return { payload: cannedRefusal(), llmCalled: false };
+    return {
+      payload: cannedRefusal(),
+      llmCalled: false,
+      generationPath: "retrieval-refusal"
+    };
   }
 
   const systemPrompt = buildSystemPrompt(input.programName);
@@ -209,6 +214,7 @@ export async function generateAnswer(
   // empty answer, or invalid/missing citation from the primary triggers one
   // immediate direct OpenAI attempt. A valid refusal is not a model failure.
   let payload: AnswerPayload | null = null;
+  let generationPath: GenerateAnswerResult["generationPath"] = "primary";
   try {
     const client = deps.client ?? getPrimaryClient();
     const primaryRoute = deps.primaryRoute ?? (await getActiveModelRoute());
@@ -226,27 +232,40 @@ export async function generateAnswer(
     payload = normalizeAnswer(primaryPayload, input.chunks);
     if (!payload) throw new Error("primary model returned an invalid or uncited answer");
   } catch (err) {
+    generationPath = "fallback";
     console.warn(
       "[generation] OpenRouter primary failed; retrying with OpenAI:",
       err instanceof Error ? err.message : err
     );
-    const fallbackClient = deps.fallbackClient ?? getFallbackClient();
-    const fallbackPayload = await callGenerationModel(
-      fallbackClient,
-      FALLBACK_MODEL.model,
-      systemPrompt,
-      userPrompt,
-      { reasoningEffort: "low" }
-    );
-    payload = fallbackPayload ? normalizeAnswer(fallbackPayload, input.chunks) : null;
+    try {
+      const fallbackClient = deps.fallbackClient ?? getFallbackClient();
+      const fallbackPayload = await callGenerationModel(
+        fallbackClient,
+        FALLBACK_MODEL.model,
+        systemPrompt,
+        userPrompt,
+        { reasoningEffort: "low" }
+      );
+      payload = fallbackPayload ? normalizeAnswer(fallbackPayload, input.chunks) : null;
+    } catch (fallbackError) {
+      console.warn(
+        "[generation] OpenAI fallback failed; returning a safe refusal:",
+        fallbackError instanceof Error ? fallbackError.message : fallbackError
+      );
+      payload = null;
+    }
   }
 
   if (!payload) {
     // Both models failed to satisfy the schema — defensive refusal.
-    return { payload: cannedRefusal(), llmCalled: true };
+    return {
+      payload: cannedRefusal(),
+      llmCalled: true,
+      generationPath: "fallback-failed"
+    };
   }
 
-  return { payload, llmCalled: true };
+  return { payload, llmCalled: true, generationPath };
 }
 
 /**

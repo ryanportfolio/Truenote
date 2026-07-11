@@ -82,7 +82,7 @@ The global primary route is selected from a server-owned allowlist on `/admin/mo
 ## UI contract
 
 - Every CSR answer renders citation chips. If the LLM returns zero sources, treat as a refusal regardless of the `refused` flag.
-- Citation chip is clickable → opens a side panel with the full chunk text + a link to the source document at the right version.
+- Citation chip is clickable → opens a side panel with the clean source excerpt + an immutable deep link (`version`, query-log id, source position). The reader opens that READY historical version and marks the exact raw-Markdown span. Image-derived chunks keep a version-pinned receipt but may have no direct text span. Citation-target reads re-check query owner, program, source position, document, and version.
 - Refusal renders a clearly different visual state — not an error, but explicitly "not in KB."
 - Thumbs up/down writes to `query_log.feedback`. Low-feedback queries are the gold for KB improvement.
 

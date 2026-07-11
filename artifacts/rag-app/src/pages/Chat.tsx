@@ -432,7 +432,11 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
                 </div>
                 {exchange.result ? (
                   <Suspense fallback={<RetrievalState stage={stage} />}>
-                    <AnswerView result={exchange.result} showDebug={showDebug} />
+                    <AnswerView
+                      result={exchange.result}
+                      question={exchange.question}
+                      showDebug={showDebug}
+                    />
                   </Suspense>
                 ) : exchange.error ? (
                   <div className="flex items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
@@ -474,15 +478,14 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="What is the cancellation fee for the Basic plan?"
+            placeholder="How can I help?"
             rows={3}
             disabled={!hasProgram}
-            className="composer-input"
+            className="composer-input placeholder:opacity-90"
           />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span className="hidden text-xs text-muted-foreground sm:inline">
-              <kbd className="kbd">Enter</kbd> to ask · <kbd className="kbd">Shift</kbd>+
-              <kbd className="kbd">Enter</kbd> for a new line
+              <kbd className="kbd">Enter</kbd> to ask
             </span>
             <div className="flex items-center gap-2">
               {busy ? (

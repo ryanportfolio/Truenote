@@ -1,13 +1,16 @@
-import { eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "../db-client.js";
 import {
-  documents,
-  documentVersions,
   evalQuestions,
   programs
 } from "@workspace/db/schema";
 import { retrieve, type RetrievalTraceEntry } from "../retrieval/query.js";
-import { generateAnswer } from "../generation/answer.js";
+import {
+  generateAnswer,
+  type GenerateAnswerResult
+} from "../generation/answer.js";
+import type { ApprovedModelRoute } from "../generation/model-routing.js";
 import { judgeFaithfulness } from "./faithfulness.js";
 
 /**
@@ -83,7 +86,7 @@ export function expectedDocRank(
 export interface EvalRunOptions {
   /** Restrict to one program. Required when running across multiple programs would be ambiguous. */
   programId?: string;
-  /** Run a single question by id. Overrides programId filter. */
+  /** Run a single question by id. When programId is also set, both must match. */
   questionId?: string;
   /** Hard cap on questions to evaluate. Useful for fast smoke-tests. */
   limit?: number;
@@ -93,6 +96,8 @@ export interface EvalRunOptions {
    * run cheap.
    */
   judge?: boolean;
+  /** Immutable definitions captured when an async run was queued. */
+  questionSnapshot?: EvalQuestionDefinition[];
 }
 
 export interface EvalQuestionResult {
@@ -110,6 +115,7 @@ export interface EvalQuestionResult {
   citedChunkIds: string[];
   citedDocIds: string[];
   latencyMs: number;
+  generationPath: GenerateAnswerResult["generationPath"] | "not-run";
   // Scoring
   /** "in-kb" or "out-of-kb" — derived from expected fields. */
   kind: "in-kb" | "out-of-kb";
@@ -133,6 +139,8 @@ export interface EvalQuestionResult {
   faithfulnessPct: number | null;
   /** Claims the judge could not ground in the excerpts. Empty unless judged. */
   unsupportedClaims: string[];
+  /** True when the optional judge call failed for this answer. */
+  faithfulnessJudgeFailed: boolean;
   /** Set if the pipeline threw — pass is false, other fields default. */
   error: string | null;
 }
@@ -146,6 +154,10 @@ export interface EvalSummary {
   inKbPassed: number;
   outOfKbTotal: number;
   outOfKbPassed: number;
+  /** False-negative rate: in-KB questions the system refused. */
+  inKbRefusalRatePct: number | null;
+  /** Safety rate: out-of-KB questions the system correctly refused. */
+  outOfKbRefusalRatePct: number | null;
   // Sub-metrics (in-kb only; out-of-kb has no answer/citation to score)
   citationAccuracyPct: number | null;
   answerAccuracyPct: number | null;
@@ -172,6 +184,12 @@ export interface EvalSummary {
   meanFaithfulnessPct: number | null;
   /** Judged questions with at least one unsupported claim — the hallucination count. */
   unfaithfulQuestions: number;
+  /** Answers produced by the configured direct-OpenAI fallback. */
+  fallbackGenerationCount: number;
+  /** Questions where both the primary and fallback failed validation/call. */
+  failedFallbackCount: number;
+  /** Optional faithfulness judge calls that failed and were excluded. */
+  judgeFailures: number;
   // Latency
   latencyP50Ms: number;
   latencyP95Ms: number;
@@ -185,6 +203,52 @@ export interface EvalReport {
   results: EvalQuestionResult[];
 }
 
+/** Stable fingerprint of the exact scored definitions, not just their count. */
+export function evalQuestionSetHash(results: EvalQuestionResult[]): string {
+  const definitions = results.map((result) => ({
+    questionId: result.questionId,
+    question: result.question,
+    programId: result.programId,
+    kind: result.kind,
+    expectedDocId: result.expectedDocId,
+    expectedAnswerContains: result.expectedAnswerContains
+  }));
+  return createHash("sha256").update(JSON.stringify(definitions)).digest("hex");
+}
+
+/** Stable document ids for model-cited chunks, derived from retrieval truth. */
+export function citedDocumentIds(
+  citedChunkIds: string[],
+  retrieved: Array<{ id: string; documentId: string | null }>
+): string[] {
+  const cited = new Set(citedChunkIds);
+  return Array.from(
+    new Set(
+      retrieved
+        .filter((chunk) => cited.has(chunk.id))
+        .map((chunk) => chunk.documentId)
+        .filter((id): id is string => id !== null)
+    )
+  );
+}
+
+/** Score only verified sources actually referenced inline by the answer. */
+export function inlineCitedChunkIds(
+  answer: string,
+  sources: Array<{ chunk_id: string }>
+): string[] {
+  return sources
+    .filter((source) => answer.includes(`[${source.chunk_id}]`))
+    .map((source) => source.chunk_id);
+}
+
+export interface EvalRunCallbacks {
+  /** Called after each sequential question finishes. Useful for persisted UI progress. */
+  onProgress?: (completed: number, total: number) => void | Promise<void>;
+  /** Pin one approved route for the whole run so configuration cannot drift mid-suite. */
+  primaryRoute?: ApprovedModelRoute;
+}
+
 function classify(q: {
   expectedDocId: string | null;
   expectedAnswerContains: string[] | null;
@@ -196,13 +260,23 @@ function classify(q: {
   return hasDoc || hasPhrases ? "in-kb" : "out-of-kb";
 }
 
-function percentile(sortedMs: number[], p: number): number {
+export function percentile(sortedMs: number[], p: number): number {
   if (sortedMs.length === 0) return 0;
-  const idx = Math.min(
-    sortedMs.length - 1,
-    Math.floor((p / 100) * sortedMs.length)
+  const idx = Math.max(
+    0,
+    Math.min(sortedMs.length - 1, Math.ceil((p / 100) * sortedMs.length) - 1)
   );
   return sortedMs[idx] ?? 0;
+}
+
+export interface EvalQuestionDefinition {
+  id: string;
+  question: string;
+  programId: string | null;
+  programName: string | null;
+  expectedDocId: string | null;
+  expectedAnswerContains: string[] | null;
+  notes: string | null;
 }
 
 /**
@@ -210,18 +284,21 @@ function percentile(sortedMs: number[], p: number): number {
  * for the human-readable name on the report — programs have a stable
  * id but the name is what an operator scans the output by.
  */
-async function loadQuestions(opts: EvalRunOptions): Promise<
-  Array<{
-    id: string;
-    question: string;
-    programId: string | null;
-    programName: string | null;
-    expectedDocId: string | null;
-    expectedAnswerContains: string[] | null;
-    notes: string | null;
-  }>
-> {
-  const baseRows = await db
+export async function loadEvalQuestions(
+  opts: Pick<EvalRunOptions, "programId" | "questionId" | "limit">
+): Promise<EvalQuestionDefinition[]> {
+  const condition =
+    opts.questionId && opts.programId
+      ? and(
+          eq(evalQuestions.id, opts.questionId),
+          eq(evalQuestions.programId, opts.programId)
+        )
+      : opts.questionId
+        ? eq(evalQuestions.id, opts.questionId)
+        : opts.programId
+          ? eq(evalQuestions.programId, opts.programId)
+          : undefined;
+  let rows = await db
     .select({
       id: evalQuestions.id,
       question: evalQuestions.question,
@@ -232,46 +309,13 @@ async function loadQuestions(opts: EvalRunOptions): Promise<
       notes: evalQuestions.notes
     })
     .from(evalQuestions)
-    .leftJoin(programs, eq(programs.id, evalQuestions.programId));
-  let rows = baseRows;
-  if (opts.questionId) {
-    rows = rows.filter((r) => r.id === opts.questionId);
-  } else if (opts.programId) {
-    rows = rows.filter((r) => r.programId === opts.programId);
-  }
+    .leftJoin(programs, eq(programs.id, evalQuestions.programId))
+    .where(condition)
+    .orderBy(asc(evalQuestions.createdAt), asc(evalQuestions.id));
   if (opts.limit !== undefined && opts.limit > 0) {
     rows = rows.slice(0, opts.limit);
   }
   return rows;
-}
-
-/**
- * Resolve a list of chunk_ids to the distinct document_ids they belong
- * to. The eval question's expected_doc_id is a documents.id; the
- * generation step gives us chunk_ids; the join is documents →
- * document_versions → chunks. Done in one query.
- */
-async function chunkIdsToDocIds(chunkIds: string[]): Promise<string[]> {
-  if (chunkIds.length === 0) return [];
-  // Drizzle's `.where(inArray(...))` works for this, but we keep the
-  // join explicit so a future reader can see how chunk → doc resolves.
-  const rows = await db
-    .select({
-      chunkId: documentVersions.id,
-      documentId: documents.id
-    })
-    .from(documentVersions)
-    .innerJoin(documents, eq(documents.id, documentVersions.documentId));
-  // Filter client-side to avoid building an inArray expression — the
-  // eval set is small enough that the full table scan is cheaper than
-  // the SQL machinery. If this script ever runs against a 100k-chunk
-  // DB, swap to inArray.
-  const allowed = new Set(chunkIds);
-  const docs = new Set<string>();
-  for (const r of rows) {
-    if (allowed.has(r.chunkId)) docs.add(r.documentId);
-  }
-  return Array.from(docs);
 }
 
 /**
@@ -281,16 +325,9 @@ async function chunkIdsToDocIds(chunkIds: string[]): Promise<string[]> {
  * broken (e.g., expected_doc_id pointing at a deleted document).
  */
 async function evaluateOne(
-  q: {
-    id: string;
-    question: string;
-    programId: string | null;
-    programName: string | null;
-    expectedDocId: string | null;
-    expectedAnswerContains: string[] | null;
-    notes: string | null;
-  },
-  judge: boolean
+  q: EvalQuestionDefinition,
+  judge: boolean,
+  primaryRoute?: ApprovedModelRoute
 ): Promise<EvalQuestionResult> {
   const expectedPhrases = q.expectedAnswerContains ?? [];
   const kind = classify(q);
@@ -311,6 +348,7 @@ async function evaluateOne(
       citedChunkIds: [],
       citedDocIds: [],
       latencyMs: 0,
+      generationPath: "not-run",
       kind,
       pass: false,
       citationCorrect: q.expectedDocId === null ? null : false,
@@ -322,6 +360,7 @@ async function evaluateOne(
       failureStage: null,
       faithfulnessPct: null,
       unsupportedClaims: [],
+      faithfulnessJudgeFailed: false,
       error: "eval_question has no program_id — cannot run retrieval"
     };
   }
@@ -332,16 +371,25 @@ async function evaluateOne(
       question: q.question,
       withTrace: true
     });
-    const generation = await generateAnswer({
-      programName: q.programName ?? "the program",
-      question: q.question,
-      chunks: retrieval.chunks,
-      refusedByRetrieval: retrieval.refused
-    });
+    const generation = await generateAnswer(
+      {
+        programName: q.programName ?? "the program",
+        question: q.question,
+        chunks: retrieval.chunks,
+        refusedByRetrieval: retrieval.refused
+      },
+      primaryRoute ? { primaryRoute } : {}
+    );
     const latencyMs = Date.now() - startedAt;
 
-    const citedChunkIds = generation.payload.sources.map((s) => s.chunk_id);
-    const citedDocIds = await chunkIdsToDocIds(citedChunkIds);
+    const citedChunkIds = inlineCitedChunkIds(
+      generation.payload.answer,
+      generation.payload.sources
+    );
+    // Generation sources have already been validated against the retrieved
+    // chunk ids. Resolve their stable document ids from those same authorized
+    // rows instead of performing a second lookup that can race a re-ingest.
+    const citedDocIds = citedDocumentIds(citedChunkIds, retrieval.chunks);
 
     const refused = generation.payload.refused;
     const answer = generation.payload.answer;
@@ -404,12 +452,14 @@ async function evaluateOne(
     // rather than failing the question — the judge is instrumentation.
     let faithfulnessPct: number | null = null;
     let unsupportedClaims: string[] = [];
+    let faithfulnessJudgeFailed = false;
     if (judge && !refused && retrieval.chunks.length > 0) {
       try {
         const judgment = await judgeFaithfulness({ answer, chunks: retrieval.chunks });
         faithfulnessPct = judgment.faithfulnessPct;
         unsupportedClaims = judgment.unsupportedClaims;
       } catch (err) {
+        faithfulnessJudgeFailed = true;
         console.warn(
           `[eval] faithfulness judge failed for question ${q.id}:`,
           err instanceof Error ? err.message : err
@@ -431,6 +481,7 @@ async function evaluateOne(
       citedChunkIds,
       citedDocIds,
       latencyMs,
+      generationPath: generation.generationPath,
       kind,
       pass,
       citationCorrect,
@@ -442,6 +493,7 @@ async function evaluateOne(
       failureStage,
       faithfulnessPct,
       unsupportedClaims,
+      faithfulnessJudgeFailed,
       error: null
     };
   } catch (err) {
@@ -459,6 +511,7 @@ async function evaluateOne(
       citedChunkIds: [],
       citedDocIds: [],
       latencyMs: Date.now() - startedAt,
+      generationPath: "not-run",
       kind,
       pass: false,
       citationCorrect: q.expectedDocId === null ? null : false,
@@ -470,12 +523,13 @@ async function evaluateOne(
       failureStage: null,
       faithfulnessPct: null,
       unsupportedClaims: [],
+      faithfulnessJudgeFailed: false,
       error: err instanceof Error ? err.message : String(err)
     };
   }
 }
 
-function summarize(results: EvalQuestionResult[]): EvalSummary {
+export function summarizeEvalResults(results: EvalQuestionResult[]): EvalSummary {
   const passed = results.filter((r) => r.pass).length;
   const inKb = results.filter((r) => r.kind === "in-kb");
   const outOfKb = results.filter((r) => r.kind === "out-of-kb");
@@ -524,6 +578,13 @@ function summarize(results: EvalQuestionResult[]): EvalSummary {
       ? null
       : judged.reduce((sum, r) => sum + (r.faithfulnessPct ?? 0), 0) / judged.length;
   const unfaithfulQuestions = judged.filter((r) => r.unsupportedClaims.length > 0).length;
+  const fallbackGenerationCount = results.filter(
+    (r) => r.generationPath === "fallback"
+  ).length;
+  const failedFallbackCount = results.filter(
+    (r) => r.generationPath === "fallback-failed"
+  ).length;
+  const judgeFailures = results.filter((r) => r.faithfulnessJudgeFailed).length;
 
   const sortedLatency = results
     .map((r) => r.latencyMs)
@@ -537,6 +598,14 @@ function summarize(results: EvalQuestionResult[]): EvalSummary {
     inKbPassed: inKb.filter((r) => r.pass).length,
     outOfKbTotal: outOfKb.length,
     outOfKbPassed: outOfKb.filter((r) => r.pass).length,
+    inKbRefusalRatePct:
+      inKb.length === 0
+        ? null
+        : (inKb.filter((r) => r.refused).length / inKb.length) * 100,
+    outOfKbRefusalRatePct:
+      outOfKb.length === 0
+        ? null
+        : (outOfKb.filter((r) => r.refused).length / outOfKb.length) * 100,
     citationAccuracyPct:
       citationApplicable.length === 0
         ? null
@@ -558,28 +627,37 @@ function summarize(results: EvalQuestionResult[]): EvalSummary {
     judgedQuestions: judged.length,
     meanFaithfulnessPct,
     unfaithfulQuestions,
+    fallbackGenerationCount,
+    failedFallbackCount,
+    judgeFailures,
     latencyP50Ms: percentile(sortedLatency, 50),
     latencyP95Ms: percentile(sortedLatency, 95)
   };
 }
 
-export async function runEval(opts: EvalRunOptions = {}): Promise<EvalReport> {
+export async function runEval(
+  opts: EvalRunOptions = {},
+  callbacks: EvalRunCallbacks = {}
+): Promise<EvalReport> {
   const startedAt = new Date();
-  const questions = await loadQuestions(opts);
+  const questions = opts.questionSnapshot ?? (await loadEvalQuestions(opts));
   const results: EvalQuestionResult[] = [];
   // Sequential, not parallel. Concurrency would muddle the latency
   // numbers (each question would queue behind the others on the
   // shared OpenAI/Cohere pools) and could trip rate limits. Eval
   // runs are infrequent — the simple loop is the right default.
   for (const q of questions) {
-    results.push(await evaluateOne(q, opts.judge ?? false));
+    results.push(
+      await evaluateOne(q, opts.judge ?? false, callbacks.primaryRoute)
+    );
+    await callbacks.onProgress?.(results.length, questions.length);
   }
   const finishedAt = new Date();
   return {
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
-    summary: summarize(results),
+    summary: summarizeEvalResults(results),
     results
   };
 }

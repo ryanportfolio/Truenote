@@ -6,8 +6,11 @@ function ranked(id: string, versionId: string, score: number): RetrievalChunk {
     id,
     content: `content ${id}`,
     documentVersionId: versionId,
+    documentId: "doc-1",
+    versionNumber: 1,
     programId: "prog-1",
     docTitle: "Doc",
+    metadata: {},
     relevanceScore: score
   };
 }
@@ -17,10 +20,12 @@ function row(id: string, versionId: string, ordinal: number) {
     id,
     content: `content ${id}`,
     document_version_id: versionId,
+    version_number: 1,
     program_id: "prog-1",
     doc_title: "Doc",
     document_id: "doc-1",
-    ordinal
+    ordinal,
+    metadata: {}
   };
 }
 

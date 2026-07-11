@@ -109,13 +109,15 @@ eval — ${report.startedAt} → ${report.finishedAt} (${report.durationMs}ms)
 
   questions: ${s.totalQuestions}    passed: ${s.passed}    failed: ${s.failed}
   in-KB:     ${s.inKbPassed}/${s.inKbTotal}    out-of-KB: ${s.outOfKbPassed}/${s.outOfKbTotal}
+  refusal:   in-KB ${pct(s.inKbRefusalRatePct)}    out-of-KB ${pct(s.outOfKbRefusalRatePct)}
   citation:  ${pct(s.citationAccuracyPct)}    answer: ${pct(s.answerAccuracyPct)}
   recall:    candidates ${pct(s.retrievalRecallPct)}    post-rerank ${pct(s.rerankRecallPct)}    mean doc rank ${s.expectedDocRankMean === null ? "n/a" : s.expectedDocRankMean.toFixed(1)}
   in-KB failure stages: ${stageLine}${
-    s.judgedQuestions > 0
-      ? `\n  faithfulness: ${pct(s.meanFaithfulnessPct)} mean over ${s.judgedQuestions} judged — ${s.unfaithfulQuestions} answer(s) with unsupported claims`
+    s.judgedQuestions > 0 || s.judgeFailures > 0
+      ? `\n  faithfulness: ${pct(s.meanFaithfulnessPct)} mean over ${s.judgedQuestions} scored — ${s.judgeFailures} judge failure(s) — ${s.unfaithfulQuestions} answer(s) with unsupported claims`
       : ""
   }
+  generation fallback: ${s.fallbackGenerationCount}/${s.totalQuestions} answer(s) — ${s.failedFallbackCount} failed both routes
   latency:   p50 ${s.latencyP50Ms}ms  p95 ${s.latencyP95Ms}ms
 `);
 

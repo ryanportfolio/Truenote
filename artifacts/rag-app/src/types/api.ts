@@ -60,6 +60,14 @@ export interface Source {
    * the chunk (deleted between retrieval and lookup).
    */
   doc_id: string | null;
+  /** Immutable parsed document version that supplied this passage. */
+  document_version_id: string | null;
+  version_number: number | null;
+  /** Zero-based position in the query log's immutable citation snapshot. */
+  citation_index: number;
+  /** UTF-16 offsets into that version's parsed Markdown, when directly anchorable. */
+  source_start: number | null;
+  source_end: number | null;
 }
 
 export interface RetrievedChunk {
@@ -201,9 +209,19 @@ export interface KbDocumentResponse {
   documentId: string;
   /** Active parsed version rendered by the reader. */
   documentVersionId: string;
+  versionNumber: number;
+  /** False when a citation deep-link intentionally opens a historical version. */
+  isCurrentVersion: boolean;
   title: string;
   markdown: string | null;
   updatedAt: string | null;
+  /** True only when query/source matched the current user's immutable receipt. */
+  citationAuthorized: boolean;
+  citationTarget: {
+    excerpt: string;
+    sourceStart: number;
+    sourceEnd: number;
+  } | null;
 }
 
 export type KbHighlightColor = "yellow" | "green" | "blue";
@@ -278,6 +296,153 @@ export interface ModelRoutingConfig {
     providerLabel: string;
     reasoningEffort: "low";
   };
+}
+
+/** Super-user evaluation-center shapes. Mirrors /api/admin/evaluations. */
+export type EvalQuestionKind = "in-kb" | "out-of-kb";
+
+export interface EvalQuestionItem {
+  id: string;
+  programId: string;
+  question: string;
+  kind: EvalQuestionKind;
+  expectedDocId: string | null;
+  expectedDocTitle: string | null;
+  expectedAnswerContains: string[];
+  notes: string | null;
+  createdAt: string | null;
+}
+
+export interface EvalQuestionListResponse {
+  items: EvalQuestionItem[];
+  noProgramSelected?: boolean;
+}
+
+export interface SaveEvalQuestionRequest {
+  kind: EvalQuestionKind;
+  question: string;
+  expectedDocId?: string | null;
+  expectedAnswerContains?: string[];
+  notes?: string | null;
+}
+
+export type EvalFailureStage = "retrieval" | "rerank" | "threshold" | "generation";
+
+export interface EvalQuestionResult {
+  questionId: string;
+  question: string;
+  programId: string | null;
+  programName: string | null;
+  expectedDocId: string | null;
+  expectedAnswerContains: string[];
+  notes: string | null;
+  answer: string;
+  refused: boolean;
+  topScore: number | null;
+  citedChunkIds: string[];
+  citedDocIds: string[];
+  latencyMs: number;
+  generationPath: "retrieval-refusal" | "primary" | "fallback" | "fallback-failed" | "not-run";
+  kind: EvalQuestionKind;
+  pass: boolean;
+  citationCorrect: boolean | null;
+  phrasesPresent: Array<{ phrase: string; present: boolean }>;
+  answerCorrect: boolean | null;
+  retrievalHit: boolean | null;
+  rerankHit: boolean | null;
+  expectedDocRank: number | null;
+  failureStage: EvalFailureStage | null;
+  faithfulnessPct: number | null;
+  unsupportedClaims: string[];
+  faithfulnessJudgeFailed: boolean;
+  error: string | null;
+}
+
+export interface EvalSummary {
+  totalQuestions: number;
+  passed: number;
+  failed: number;
+  inKbTotal: number;
+  inKbPassed: number;
+  outOfKbTotal: number;
+  outOfKbPassed: number;
+  citationAccuracyPct: number | null;
+  answerAccuracyPct: number | null;
+  /** Refusal rate split by answerable vs intentionally unanswerable questions. */
+  inKbRefusalRatePct: number | null;
+  outOfKbRefusalRatePct: number | null;
+  retrievalRecallPct: number | null;
+  rerankRecallPct: number | null;
+  inKbFailuresByStage: Record<EvalFailureStage, number> & { unattributed: number };
+  expectedDocRankMean: number | null;
+  judgedQuestions: number;
+  meanFaithfulnessPct: number | null;
+  unfaithfulQuestions: number;
+  fallbackGenerationCount: number;
+  failedFallbackCount: number;
+  judgeFailures: number;
+  latencyP50Ms: number;
+  latencyP95Ms: number;
+}
+
+export interface EvalReport {
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  summary: EvalSummary;
+  results: EvalQuestionResult[];
+}
+
+export interface EvalRunConfiguration {
+  judge: boolean;
+  questionSetHash: string | null;
+  generation: {
+    id: string;
+    label: string;
+    model: string;
+    providerLabel: string;
+  };
+  fallback: {
+    label: string;
+    model: string;
+    providerLabel: string;
+  };
+  retrieval: {
+    topK: number;
+    candidateK: number;
+    threshold: number;
+    neighborAnchors: number;
+    rerankModel: string;
+  };
+}
+
+export type EvalRunStatus = "queued" | "running" | "completed" | "failed";
+
+export interface EvalRunListItem {
+  id: string;
+  status: EvalRunStatus;
+  questionId: string | null;
+  judge: boolean;
+  questionCount: number;
+  completedQuestions: number;
+  configuration: EvalRunConfiguration | null;
+  summary: EvalSummary | null;
+  error: string | null;
+  isBaseline: boolean;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface EvalRunListResponse {
+  persistenceReady: boolean;
+  items: EvalRunListItem[];
+  noProgramSelected?: boolean;
+}
+
+export interface EvalRunDetailResponse {
+  item: EvalRunListItem;
+  report: EvalReport | null;
 }
 
 /** Public, non-secret server config used by the SPA. */

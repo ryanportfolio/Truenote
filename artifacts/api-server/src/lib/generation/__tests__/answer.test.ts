@@ -46,8 +46,11 @@ const chunks = [
     id: "chunk-1",
     content: "The cancellation fee is $25.",
     documentVersionId: "version-1",
+    documentId: "document-1",
+    versionNumber: 1,
     programId: "program-1",
     docTitle: "Cancellation Policy",
+    metadata: {},
     relevanceScore: 0.9
   }
 ];
@@ -95,6 +98,7 @@ describe("generateAnswer provider fallback", () => {
     expect(primaryRequests[0]?.temperature).toBeUndefined();
     expect(fallbackRequests).toEqual([]);
     expect(result.payload.refused).toBe(false);
+    expect(result.generationPath).toBe("primary");
   });
 
   it("retries with OpenAI GPT-5.6 Luna at low reasoning when the primary request throws", async () => {
@@ -121,6 +125,7 @@ describe("generateAnswer provider fallback", () => {
     expect(fallbackRequests[0]?.provider).toBeUndefined();
     expect(fallbackRequests[0]?.temperature).toBeUndefined();
     expect(result.payload.refused).toBe(false);
+    expect(result.generationPath).toBe("fallback");
     warning.mockRestore();
   });
 
@@ -201,5 +206,22 @@ describe("generateAnswer provider fallback", () => {
 
     expect(fallbackRequests).toEqual([]);
     expect(result.payload.refused).toBe(true);
+    expect(result.generationPath).toBe("primary");
+  });
+
+  it("records a failed fallback and returns a safe refusal", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const result = await generateAnswer(
+      { programName: "Test", question: "What is the fee?", chunks },
+      {
+        client: throwingClient([]),
+        fallbackClient: throwingClient([]),
+        primaryRoute: DEFAULT_MODEL_ROUTE
+      }
+    );
+
+    expect(result.payload.refused).toBe(true);
+    expect(result.generationPath).toBe("fallback-failed");
+    warning.mockRestore();
   });
 });

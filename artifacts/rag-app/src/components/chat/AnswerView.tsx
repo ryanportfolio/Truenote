@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Check, Copy, Flag, ThumbsDown, ThumbsUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { answerForClipboard } from "@/lib/citation-rendering";
+import { citationDocumentHref } from "@/lib/citationLinks";
 import { submitFeedback, flagMissingContent } from "@/lib/api";
 import type { AskResponse } from "@/types/api";
 import { AnswerMarkdown } from "./AnswerMarkdown";
@@ -10,11 +11,12 @@ import { CitationPanel } from "./CitationPanel";
 
 interface AnswerViewProps {
   result: AskResponse;
+  question: string;
   /** Manager-and-above retrieval details kept inside source inspection. */
   showDebug: boolean;
 }
 
-export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element {
+export function AnswerView({ result, question, showDebug }: AnswerViewProps): JSX.Element {
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
 
   if (result.refused) {
@@ -45,14 +47,14 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
             <span className="receipt-count">{result.sources.length}</span>
             <p>
               Source passage{result.sources.length === 1 ? "" : "s"} ·{" "}
-              <ReceiptTitles sources={result.sources} />
+              <ReceiptTitles sources={result.sources} queryLogId={result.queryLogId} />
             </p>
           </div>
         ) : null}
         <footer className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
           <span aria-hidden />
           <div className="flex items-center gap-1">
-            <CopyAnswerButton result={result} />
+            <CopyAnswerButton result={result} question={question} />
             <FeedbackButtons result={result} />
           </div>
         </footer>
@@ -61,6 +63,7 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
       {openSource ? (
         <CitationPanel
           source={openSource}
+          queryLogId={result.queryLogId}
           onClose={() => setOpenChunkId(null)}
           showDebug={showDebug}
         />
@@ -74,11 +77,22 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
  * into the knowledge base reader when the server resolved its doc id —
  * the receipt isn't just named, it's openable.
  */
-function ReceiptTitles({ sources }: { sources: AskResponse["sources"] }): JSX.Element {
-  const unique = new Map<string, { title: string; docId: string | null }>();
+function ReceiptTitles({
+  sources,
+  queryLogId
+}: {
+  sources: AskResponse["sources"];
+  queryLogId: string | null;
+}): JSX.Element {
+  const unique = new Map<string, { title: string; href: string | null }>();
   for (const s of sources) {
     const key = s.doc_id ?? s.doc_title;
-    if (!unique.has(key)) unique.set(key, { title: s.doc_title, docId: s.doc_id ?? null });
+    if (!unique.has(key)) {
+      unique.set(key, {
+        title: s.doc_title,
+        href: citationDocumentHref(s, queryLogId)
+      });
+    }
   }
   const docs = Array.from(unique.values());
   const shown = docs.slice(0, 2);
@@ -86,11 +100,11 @@ function ReceiptTitles({ sources }: { sources: AskResponse["sources"] }): JSX.El
   return (
     <>
       {shown.map((doc, i) => (
-        <span key={doc.docId ?? doc.title}>
+        <span key={doc.href ?? doc.title}>
           {i > 0 ? " · " : ""}
-          {doc.docId ? (
+          {doc.href ? (
             <Link
-              href={`/kb/${doc.docId}`}
+              href={doc.href}
               className="underline underline-offset-2 transition-colors duration-100 ease-out hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {doc.title}
@@ -105,12 +119,18 @@ function ReceiptTitles({ sources }: { sources: AskResponse["sources"] }): JSX.El
   );
 }
 
-function CopyAnswerButton({ result }: { result: AskResponse }): JSX.Element {
+function CopyAnswerButton({ result, question }: { result: AskResponse; question: string }): JSX.Element {
   const [copied, setCopied] = useState(false);
 
   async function copy(): Promise<void> {
     try {
-      await navigator.clipboard.writeText(answerForClipboard(result.answer, result.sources));
+      await navigator.clipboard.writeText(
+        answerForClipboard(result.answer, result.sources, {
+          question,
+          queryLogId: result.queryLogId,
+          origin: window.location.origin
+        })
+      );
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -119,21 +139,26 @@ function CopyAnswerButton({ result }: { result: AskResponse }): JSX.Element {
   }
 
   return (
-    <button
+    <>
+      <span className="sr-only" aria-live="polite">
+        {copied ? "Answer and sources copied" : ""}
+      </span>
+      <button
       type="button"
       aria-label="Copy answer"
       onClick={() => void copy()}
       className="btn-icon"
-    >
-      {copied ? (
-        <Check
-          className="h-4 w-4 text-success motion-safe:animate-in motion-safe:zoom-in-75 motion-safe:duration-100"
-          aria-hidden
-        />
-      ) : (
-        <Copy className="h-4 w-4" aria-hidden />
-      )}
-    </button>
+      >
+        {copied ? (
+          <Check
+            className="h-4 w-4 text-success motion-safe:animate-in motion-safe:zoom-in-75 motion-safe:duration-100"
+            aria-hidden
+          />
+        ) : (
+          <Copy className="h-4 w-4" aria-hidden />
+        )}
+      </button>
+    </>
   );
 }
 
