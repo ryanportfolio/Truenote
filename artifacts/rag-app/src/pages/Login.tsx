@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { BrandField } from "@/components/BrandField";
 import { fetchConfig, login } from "@/lib/api";
+import { defaultLandingPath } from "@/lib/landing";
 import type { CurrentUser, DemoAccount } from "@/types/api";
 
 interface LoginPageProps {
@@ -107,11 +108,11 @@ export function LoginPage({
       onAuthenticated(user);
       // mustResetPassword always wins — even a captured redirectTo
       // can't bypass the forced-reset gate. Otherwise honor the deep
-      // link if one was captured by App.tsx, else default landing.
+      // link if one was captured by App.tsx, else use the role landing.
       if (user.mustResetPassword) {
         setLocation("/change-password");
       } else {
-        setLocation(redirectTo ?? "/");
+        setLocation(redirectTo ?? defaultLandingPath(user));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");

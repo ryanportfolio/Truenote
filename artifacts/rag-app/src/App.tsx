@@ -17,6 +17,7 @@ import {
 } from "@/components/layout/AppShellBoot";
 import { EmptyState } from "@/components/EmptyState";
 import { fetchMe, SESSION_EXPIRED_EVENT } from "@/lib/api";
+import { defaultLandingPath } from "@/lib/landing";
 import type { CurrentUser } from "@/types/api";
 import {
   clearSelectedProgram,
@@ -135,9 +136,10 @@ const ResetPasswordPage = preloadable(loadResetPasswordPage);
 export function preloadRoute(path: string): Promise<unknown> {
   const [pathname = "/"] = path.split(/[?#]/);
   if (pathname === "/" || pathname === "/login") {
-    // Demo access lands on Chat. Fetch it in parallel with login UI so the
-    // blue button never creates a post-auth chunk waterfall.
-    return Promise.all([loadLoginPage(), loadChatPage()]);
+    // The authenticated destination is role-dependent. Fetch both small
+    // landing chunks beside login so neither CSR nor manager gets a
+    // post-auth route waterfall.
+    return Promise.all([loadLoginPage(), loadChatPage(), loadAdminPage()]);
   }
   if (pathname === "/chat") return loadChatPage();
   if (pathname === "/kb") return loadKnowledgeBasePage();
@@ -411,7 +413,10 @@ export function App(): JSX.Element {
     >
       <Suspense fallback={<RouteBoot path={currentPath} />}>
         <Switch>
-        <Route path="/" component={() => <Redirect to="/chat" />} />
+        <Route
+          path="/"
+          component={() => <Redirect to={defaultLandingPath(auth.user)} />}
+        />
         <Route path="/chat">
           <ChatPage user={auth.user} />
         </Route>
