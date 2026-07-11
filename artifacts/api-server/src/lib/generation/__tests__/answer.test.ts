@@ -80,6 +80,7 @@ describe("generateAnswer provider fallback", () => {
     expect(primaryRequests).toEqual([
       expect.objectContaining({
         model: "nvidia/nemotron-3-ultra-550b-a55b",
+        reasoning_effort: "medium",
         provider: {
           zdr: true,
           data_collection: "deny",
@@ -88,6 +89,7 @@ describe("generateAnswer provider fallback", () => {
         }
       })
     ]);
+    expect(primaryRequests[0]?.temperature).toBeUndefined();
     expect(fallbackRequests).toEqual([]);
     expect(result.payload.refused).toBe(false);
   });

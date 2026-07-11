@@ -18,7 +18,8 @@ question
        no  → refuse, return "not in knowledge base"
        yes → neighbor expansion (ordinal ±1 of top RETRIEVAL_NEIGHBOR_ANCHORS
              anchors, same active version; unscored context, never gated)
-           → OpenRouter Nemotron 3 Ultra call with citation contract + ZDR
+           → OpenRouter Nemotron 3 Ultra (medium reasoning) call with
+             citation contract + ZDR
              (request/schema/citation failure → direct OpenAI
               gpt-5.6-luna backup at low reasoning)
   → render answer + citation chips
@@ -75,7 +76,7 @@ QUESTION: {question}
 
 Use strict structured outputs (`response_format: { type: 'json_schema', ... }`) through the OpenAI-compatible client — do NOT rely on prompt-only JSON. The model will occasionally drift if you only ask in prose.
 
-OpenRouter requests enforce `provider.zdr=true`, `data_collection="deny"`, and `require_parameters=true` in addition to the API key's ZDR guardrail. OpenRouter provider retries are disabled (`allow_fallbacks=false`) so an endpoint failure returns immediately to the app. Any Nemotron request error, schema/parse failure, empty answer, unknown source, or missing inline citation then retries through direct OpenAI `gpt-5.6-luna` with `reasoning_effort: "low"`. A valid grounded refusal does not retry. The direct path is outside OpenRouter's guardrail, so any required retention controls must also be enabled on the OpenAI organization.
+OpenRouter requests explicitly set `reasoning_effort: "medium"` and enforce `provider.zdr=true`, `data_collection="deny"`, and `require_parameters=true` in addition to the API key's ZDR guardrail. OpenRouter provider retries are disabled (`allow_fallbacks=false`) so an endpoint failure returns immediately to the app. Any Nemotron request error, schema/parse failure, empty answer, unknown source, or missing inline citation then retries through direct OpenAI `gpt-5.6-luna` with `reasoning_effort: "low"`. A valid grounded refusal does not retry. The direct path is outside OpenRouter's guardrail, so any required retention controls must also be enabled on the OpenAI organization.
 
 ## UI contract
 
@@ -90,3 +91,7 @@ OpenRouter requests enforce `provider.zdr=true`, `data_collection="deny"`, and `
 - BM25 via `ts_rank` on `to_tsvector('english', content)` handles most cases; if your KB has heavy industry jargon (insurance codes, telco SKUs), consider a custom dictionary.
 - The reranker threshold is a hyperparameter. Tune it against the eval set, not vibes.
 - Don't stream responses in v1. CSRs need the complete answer + citations to read to a customer — streaming partial state is a regression.
+
+### 2026-07-11: Demo prompts must track the seed corpus
+
+First-run questions in `artifacts/rag-app/src/pages/Chat.tsx` must stay answerable by the active demo corpus in `scripts/src/seed.ts`. Stale suggestions produce correct refusals on the live demo and make a working retrieval system look broken.
