@@ -8,6 +8,7 @@ import { BrandMark } from "@/components/BrandMark";
 interface TopBarProps {
   user: CurrentUser;
   onLogout: () => void;
+  onNavigateIntent: (path: string) => void;
 }
 
 /**
@@ -22,7 +23,11 @@ const ROLE_LABEL: Record<UserRole, string> = {
   csr: "CSR"
 };
 
-export function TopBar({ user, onLogout }: TopBarProps): JSX.Element {
+export function TopBar({
+  user,
+  onLogout,
+  onNavigateIntent
+}: TopBarProps): JSX.Element {
   async function handleLogout(): Promise<void> {
     try {
       await logout();
@@ -42,6 +47,8 @@ export function TopBar({ user, onLogout }: TopBarProps): JSX.Element {
     <header className="topbar-shell">
       <Link
         href={homeHref}
+        onPointerEnter={() => onNavigateIntent(homeHref)}
+        onFocus={() => onNavigateIntent(homeHref)}
         className="brand-home-link"
       >
         <BrandMark className="h-8 w-8" />
