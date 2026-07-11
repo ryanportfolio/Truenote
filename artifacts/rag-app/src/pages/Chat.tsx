@@ -49,9 +49,9 @@ interface Exchange {
 
 const STAGE_LABEL: Record<AskStage, string> = {
   rewriting: "Understanding the follow-up…",
-  searching: "Searching the knowledge base…",
-  reranking: "Ranking sources…",
-  generating: "Writing the answer…"
+  searching: "Searching documents…",
+  reranking: "Checking the closest passages…",
+  generating: "Preparing an answer…"
 };
 
 function RetrievalState({ stage }: { stage: AskStage | null }): JSX.Element {
@@ -84,12 +84,13 @@ function historyFrom(exchanges: Exchange[]): AskHistoryTurn[] {
     .map((e) => ({ question: e.question, answer: e.result?.answer ?? "" }));
 }
 
-// First-run teaching examples. Clicking prefills the textarea (never
+// First-run teaching examples. Every question must stay answerable by the
+// demo corpus in scripts/src/seed.ts. Clicking prefills the textarea (never
 // auto-submits) so the CSR sees the register questions are asked in.
 const EXAMPLE_QUESTIONS = [
   "What's the cancellation fee on the Basic plan?",
-  "How do I process a refund for a returned device?",
-  "What ID does a caller need to verify their account?"
+  "How long does a refund take to post to the original card?",
+  "Who must approve a courtesy refund?"
 ] as const;
 
 export function ChatPage({ user }: ChatPageProps): JSX.Element {
@@ -300,11 +301,11 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
       <header className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="max-w-xl">
-            <p className="page-eyebrow">Grounded lookup</p>
-            <h1 className="page-title">Ask with certainty.</h1>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              Search your program's knowledge, follow the evidence, and keep the call moving.
-            </p>
+            <h1 className="page-title">
+              Find the answer
+              <br />
+              <span>Check the source</span>
+            </h1>
             {sessionTitle ? (
               <p className="mt-2 inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                 {sessionTitle}
@@ -356,7 +357,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
               </p>
             ) : sessions.length === 0 ? (
               <p className="px-2 py-1.5 text-sm text-muted-foreground">
-                No past conversations yet. Ask a question to start one.
+                No past conversations yet.
               </p>
             ) : (
               <ul className="flex flex-col">
@@ -398,17 +399,16 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             role="status"
             className="rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
           >
-            Select a program from the picker in the header to start asking
-            questions. The knowledge base is program-scoped, so every answer
-            comes from one program's documents at a time.
+            Choose a program to search its documents. Each search stays inside
+            that program.
           </div>
         ) : null}
 
         {exchanges.length === 0 && hasProgram ? (
           <EmptyState
             icon={MessageSquare}
-            title="One question. A traceable answer."
-            hint="Begin with a policy, fee, process, or exact term from the call."
+            title="Ask the question in front of you"
+            hint="Search for a policy, fee, process, or exact term from the call."
           >
             {EXAMPLE_QUESTIONS.map((q) => (
               <button
@@ -469,7 +469,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
           />
         <form onSubmit={onSubmit} className="composer-frame">
           <label htmlFor="truenote-question" className="composer-label">
-            Ask Truenote
+            Ask a question
           </label>
           <textarea
             id="truenote-question"
@@ -478,15 +478,15 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Ask the knowledge base… e.g. 'What's the cancellation fee on the Basic plan?'"
+            placeholder="What is the cancellation fee for the Basic plan?"
             rows={3}
             disabled={!hasProgram}
             className="composer-input"
           />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span className="hidden text-xs text-muted-foreground sm:inline">
-              <kbd className="kbd">Enter</kbd> asks · <kbd className="kbd">Shift</kbd>+
-              <kbd className="kbd">Enter</kbd> new line
+              <kbd className="kbd">Enter</kbd> to ask · <kbd className="kbd">Shift</kbd>+
+              <kbd className="kbd">Enter</kbd> for a new line
             </span>
             <div className="flex items-center gap-2">
               {busy ? (

@@ -49,8 +49,7 @@ export function ForgotPasswordPage(): JSX.Element {
             Reset your password
           </h1>
           <p className="text-sm text-muted-foreground">
-            Enter your email and we&apos;ll send you a link to choose a new
-            password.
+            Enter your email. We will send a link to set a new password.
           </p>
         </header>
 

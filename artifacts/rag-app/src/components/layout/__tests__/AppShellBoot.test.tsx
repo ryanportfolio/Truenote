@@ -28,13 +28,14 @@ describe("isProtectedPath", () => {
     expect(html).toContain("app-shell flex h-screen flex-col");
     expect(html).toContain("topbar-shell");
     expect(html).toContain("w-16 flex-col p-2 md:w-60");
-    expect(html).toContain("Ask with certainty.");
+    expect(html).toContain("Find the answer");
+    expect(html).toContain("Check the source");
     expect(html).not.toMatch(/<(?:a|button|input|select|textarea)\b/);
   });
 
   it("uses knowledge-base-shaped main geometry for /kb", () => {
     const html = renderToStaticMarkup(<RouteBoot path="/kb" />);
-    expect(html).toContain("Knowledge base");
+    expect(html).toContain("Sources");
     expect(html).toContain("h-[38px]");
     expect(html).toContain("border-border bg-card shadow-card");
   });

@@ -9,11 +9,11 @@ function ChatRouteBoot(): JSX.Element {
       <header className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="w-full max-w-xl">
-            <p className="page-eyebrow">Grounded lookup</p>
-            <h1 className="page-title">Ask with certainty.</h1>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              Search your program's knowledge, follow the evidence, and keep the call moving.
-            </p>
+            <h1 className="page-title">
+              Find the answer
+              <br />
+              <span>Check the source</span>
+            </h1>
           </div>
           <div className="btn-whisper flex shrink-0 items-center gap-1.5 px-3 py-1.5">
             <History className="h-4 w-4" />
@@ -50,10 +50,10 @@ function KnowledgeRouteBoot({ document }: { document: boolean }): JSX.Element {
         ) : (
           <>
             <h1 className="font-display text-3xl font-semibold tracking-tight">
-              Knowledge base
+              Sources
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Every live document answers are grounded in. Open one to read it in full.
+              Documents used to answer questions. Open one to read it in full.
             </p>
           </>
         )}
@@ -163,7 +163,7 @@ export function AppShellBoot({ path }: { path: string }): JSX.Element {
               Truenote
             </span>
             <span className="mt-1 text-[9px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
-              Answers with receipts
+              Sources in view
             </span>
           </span>
         </div>

@@ -123,7 +123,7 @@ async function callGenerationModel(
   userPrompt: string,
   options: {
     useOpenRouterRouting?: boolean;
-    reasoningEffort?: "low";
+    reasoningEffort?: "low" | "medium";
   } = {}
 ): Promise<AnswerPayload | null> {
   const request = {
@@ -208,7 +208,7 @@ export async function generateAnswer(
       PRIMARY_GENERATION_MODEL,
       systemPrompt,
       userPrompt,
-      { useOpenRouterRouting: true }
+      { useOpenRouterRouting: true, reasoningEffort: "medium" }
     );
     if (!primaryPayload) throw new Error("primary model returned no parsed answer");
     payload = normalizeAnswer(primaryPayload, input.chunks);

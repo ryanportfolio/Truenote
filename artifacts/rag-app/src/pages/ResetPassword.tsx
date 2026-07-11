@@ -120,8 +120,8 @@ export function ResetPasswordPage({
             Set a new password
           </h1>
           <p className="text-sm text-muted-foreground">
-            Pick something at least {minLength} characters. You&apos;ll be
-            signed in automatically.
+            Choose a password with at least {minLength} characters. We will sign you in when you are
+            done.
           </p>
         </header>
 
