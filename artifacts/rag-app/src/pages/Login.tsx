@@ -235,21 +235,19 @@ export function LoginPage({
       </section>
 
       <section className="archive-visual" aria-hidden="true">
+        {/* React 18's DOM only knows the lowercase fetchpriority attribute
+          * (camelCase fetchPriority warns and gets dropped); the spread
+          * sidesteps the React 18 type defs that lack it. */}
         <img
           src="/visuals/luminous-archive.png"
           alt=""
           aria-hidden
           className="archive-image"
-          fetchPriority="high"
+          {...{ fetchpriority: "high" }}
         />
         <div className="archive-light" aria-hidden />
         <div className="archive-orbit archive-orbit-outer" aria-hidden />
         <div className="archive-orbit archive-orbit-inner" aria-hidden />
-        <div className="archive-caption" aria-hidden>
-          <span>01</span>
-          <p>The Luminous Archive</p>
-          <i />
-        </div>
       </section>
     </main>
   );
