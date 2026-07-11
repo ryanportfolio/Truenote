@@ -7,7 +7,7 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 | Var | Used for | Notes |
 |---|---|---|
 | `DATABASE_URL` | Neon Postgres (Replit-managed) | Must have `vector` and `pg_trgm` extensions enabled |
-| `OPENROUTER_API_KEY` | Primary answer generation (`nvidia/nemotron-3-ultra-550b-a55b`) | Assign key to the ZDR guardrail. Requests also send `provider.zdr=true`, deny data collection, and require structured-output support. |
+| `OPENROUTER_API_KEY` | Primary answer generation (`nvidia/nemotron-3-super-120b-a12b:nitro` on DigitalOcean) | Assign key to the ZDR guardrail. Requests pin `provider.only=["digitalocean"]`, send `provider.zdr=true`, deny data collection, and require structured-output support. |
 | `OPENAI_API_KEY` | Embeddings (`text-embedding-3-small`), vision, utility generation, and backup answers (`gpt-5.6-luna`, low reasoning) | Direct OpenAI fallback when primary answer generation fails. OpenRouter's ZDR guardrail does not govern this path; configure required retention controls on the OpenAI organization. |
 | `MISTRAL_API_KEY` | Mistral OCR for document parsing | `mistral-ocr-latest` |
 | `COHERE_API_KEY` | Rerank v3 | Cuts irrelevant chunks from final LLM context |

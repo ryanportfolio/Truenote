@@ -3,7 +3,7 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import type { RetrievalChunk } from "../retrieval/query.js";
 
-const PRIMARY_GENERATION_MODEL = "nvidia/nemotron-3-ultra-550b-a55b";
+const PRIMARY_GENERATION_MODEL = "nvidia/nemotron-3-super-120b-a12b:nitro";
 const FALLBACK_GENERATION_MODEL = "gpt-5.6-luna";
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
@@ -144,6 +144,7 @@ async function callGenerationModel(
     ? await client.beta.chat.completions.parse({
         ...request,
         provider: {
+          only: ["digitalocean"],
           zdr: true,
           data_collection: "deny",
           require_parameters: true,
@@ -151,6 +152,7 @@ async function callGenerationModel(
         }
       } as typeof request & {
         provider: {
+          only: string[];
           zdr: boolean;
           data_collection: "deny";
           require_parameters: boolean;
