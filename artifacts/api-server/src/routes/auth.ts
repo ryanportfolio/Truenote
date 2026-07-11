@@ -23,7 +23,12 @@ import {
   forgotPasswordEmailLimiter,
   forgotPasswordIpLimiter
 } from "../lib/auth/rate-limit.js";
-import { authedUser, requireAuth } from "../middleware/current-user.js";
+import {
+  authedUser,
+  DEMO_WRITE_BLOCKED_MESSAGE,
+  requireAuth
+} from "../middleware/current-user.js";
+import { isDemoEmail } from "../lib/auth/demo-accounts.js";
 import { getMinPasswordLength } from "../lib/config.js";
 import { getEmailSender } from "../lib/email/sender.js";
 
@@ -239,6 +244,14 @@ authRouter.post("/logout", async (req, res, next) => {
 authRouter.post("/change-password", requireAuth, async (req, res, next) => {
   try {
     const user = authedUser(req);
+    // Demo credentials are published on /api/config — that is the login
+    // feature. Letting any visitor rotate the password would lock every
+    // other visitor out of the shared demo, so demo accounts can't
+    // change their own password.
+    if (isDemoEmail(user.email)) {
+      res.status(403).json({ error: DEMO_WRITE_BLOCKED_MESSAGE });
+      return;
+    }
     const parsed = ChangePasswordBody.safeParse(req.body);
     if (!parsed.success) {
       const message =
@@ -477,6 +490,14 @@ authRouter.post("/forgot-password", async (req, res, next) => {
     // closes via the dummy argon2 verify.
     res.status(204).end();
 
+    // Demo accounts can't reset their published password — same
+    // shared-demo-lockout rationale as the change-password guard. The
+    // 204 already went out (indistinguishable from any other email),
+    // we just never issue a token or send anything.
+    if (isDemoEmail(email)) {
+      return;
+    }
+
     // Per-email rate limit landed AFTER the response so timing is
     // consistent. We still ran .hit() on the email above to record
     // the request; if it returned false, skip the actual lookup +
@@ -621,6 +642,13 @@ authRouter.post("/reset-password", async (req, res, next) => {
         .limit(1);
       const user = userRows[0];
       if (!user || !user.isActive) return null;
+
+      // Belt-and-suspenders: forgot-password never issues tokens for
+      // demo emails, but a token minted before the account became a
+      // demo account (or via a future code path) must still not rotate
+      // a published demo password. Generic invalid-link response — no
+      // need to advertise the account's demo status here.
+      if (isDemoEmail(user.email)) return null;
 
       await tx
         .update(users)

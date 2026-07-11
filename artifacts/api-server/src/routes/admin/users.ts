@@ -7,6 +7,7 @@ import { sessions, users, type UserRole } from "@workspace/db/schema";
 import { hashPassword } from "../../lib/auth/passwords.js";
 import {
   authedUser,
+  blockDemoWrites,
   requireAuth,
   requireFreshPassword,
   requireManagerOrAbove
@@ -24,7 +25,16 @@ const MIN_PASSWORD_LENGTH = getMinPasswordLength();
 
 export const usersRouter = Router();
 
-usersRouter.use(requireAuth, requireFreshPassword, requireManagerOrAbove);
+// blockDemoWrites: a demo manager may LIST users (the page renders, the
+// capability is visible) but can't create/edit/deactivate anyone or
+// reset passwords — any of those would let one anonymous visitor break
+// login for the next.
+usersRouter.use(
+  requireAuth,
+  requireFreshPassword,
+  requireManagerOrAbove,
+  blockDemoWrites
+);
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
