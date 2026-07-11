@@ -16,8 +16,10 @@ import {
 } from "../middleware/current-user.js";
 import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
 import {
+  applyVersionActivity,
   linkedSourceFromChunk,
   loadCitationSnapshots,
+  loadVersionActivity,
   withoutDurableCitation,
   type LinkedSource
 } from "../lib/citations.js";
@@ -204,39 +206,64 @@ sessionsRouter.get("/:id", async (req, res, next) => {
         .from(chunks)
         .innerJoin(documentVersions, eq(documentVersions.id, chunks.documentVersionId))
         .innerJoin(documents, eq(documents.id, documentVersions.documentId))
-        // Defense in depth: only resolve chunks in the caller's program.
-        .where(and(inArray(chunks.id, allChunkIds), eq(chunks.programId, programId)));
+        // Only resolve chunks in the caller's program AND from still-active
+        // versions. Legacy rows have no durable receipt, so a replaced or
+        // removed version has no audit claim to keep — it simply drops (the
+        // inline [id] renders as an unknown citation client-side). The
+        // snapshot path handles superseded/deleted versions separately below.
+        .where(
+          and(
+            inArray(chunks.id, allChunkIds),
+            eq(chunks.programId, programId),
+            eq(documentVersions.isActive, true)
+          )
+        );
       for (const c of chunkRows) {
         chunkMap.set(c.chunkId, c);
       }
     }
 
-    const exchanges: SessionExchange[] = logRows.map((r) => ({
-      queryLogId: r.id,
-      question: r.question,
-      answer: r.answer ?? "",
-      refused: r.refused ?? false,
-      latencyMs: r.latencyMs,
-      feedback: r.feedback,
-      sources:
-        snapshotsByLogId.get(r.id) ??
-        (r.citedChunkIds ?? []).flatMap((chunkId, citationIndex) => {
-          const chunk = chunkMap.get(chunkId);
-          if (!chunk) return [];
-          return [
-            withoutDurableCitation(linkedSourceFromChunk({
-              chunkId: chunk.chunkId,
-              docTitle: chunk.docTitle,
-              content: chunk.content,
-              documentId: chunk.docId,
-              documentVersionId: chunk.documentVersionId,
-              versionNumber: chunk.versionNumber,
-              metadata: chunk.metadata,
-              citationIndex
-            }))
-          ];
-        })
-    }));
+    // Fold live version activity into the durable snapshots: mark a citation
+    // whose version has since been replaced as superseded (kept, but flagged
+    // no-longer-current), and drop one whose version was deleted. Runs once
+    // over every snapshot version id in this session. The legacy fallback
+    // already filtered to active versions in its chunk query above.
+    const snapshotVersionIds = [...snapshotsByLogId.values()]
+      .flat()
+      .map((source) => source.document_version_id)
+      .filter((v): v is string => v !== null);
+    const versionActivity = await loadVersionActivity(snapshotVersionIds);
+
+    const exchanges: SessionExchange[] = logRows.map((r) => {
+      const snapshots = snapshotsByLogId.get(r.id);
+      const sources = snapshots
+        ? applyVersionActivity(snapshots, versionActivity)
+        : (r.citedChunkIds ?? []).flatMap((chunkId, citationIndex) => {
+            const chunk = chunkMap.get(chunkId);
+            if (!chunk) return [];
+            return [
+              withoutDurableCitation(linkedSourceFromChunk({
+                chunkId: chunk.chunkId,
+                docTitle: chunk.docTitle,
+                content: chunk.content,
+                documentId: chunk.docId,
+                documentVersionId: chunk.documentVersionId,
+                versionNumber: chunk.versionNumber,
+                metadata: chunk.metadata,
+                citationIndex
+              }))
+            ];
+          });
+      return {
+        queryLogId: r.id,
+        question: r.question,
+        answer: r.answer ?? "",
+        refused: r.refused ?? false,
+        latencyMs: r.latencyMs,
+        feedback: r.feedback,
+        sources
+      };
+    });
 
     const detail: SessionDetail = {
       id: session.id,
