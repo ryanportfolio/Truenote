@@ -3,6 +3,7 @@ import type {
   AskHistoryTurn,
   AskResponse,
   AskStage,
+  BulkCreateUsersResponse,
   ChangePasswordResponse,
   CreateUserRequest,
   CreateUserResponse,
@@ -534,6 +535,20 @@ export async function createUser(
     })
   );
   return readJsonOrThrow<CreateUserResponse>(response);
+}
+
+export async function bulkCreateUsers(
+  emails: string[]
+): Promise<BulkCreateUsersResponse> {
+  const response = await fetch(
+    "/api/admin/users/bulk",
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emails })
+    })
+  );
+  return readJsonOrThrow<BulkCreateUsersResponse>(response);
 }
 
 export async function updateUser(
