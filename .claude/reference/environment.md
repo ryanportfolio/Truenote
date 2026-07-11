@@ -36,13 +36,22 @@ When a new app-runtime package is needed:
 
 Please install the following package(s):
 
-npm:
 - <package-name>@<version>   # <reason>
 
-Run `npm install <package-name>`.
+This is a pnpm workspace. Install from the repo root, targeting the
+workspace that needs it, so the root pnpm-lock.yaml updates:
+
+    pnpm --filter <workspace-name> add <package-name>
+
+(e.g. the RAG frontend is `@workspace/rag-app`.)
 ```
 
 4. **Wait** for confirmation before continuing.
+
+> ⚠️ Do NOT write `npm install <pkg>` in the prompt — this is a pnpm
+> workspace. A bare `npm install` in a sub-package leaves the root
+> `pnpm-lock.yaml` untouched, so the dep never installs for the build.
+> Always `pnpm --filter <workspace> add <pkg>` from the root. (2026-07-11)
 
 ## Install Path B — Claude Code dev tooling (do it yourself when possible)
 
