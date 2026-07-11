@@ -31,11 +31,17 @@ const DemoAccountsSchema = z.array(DemoAccountSchema).min(1).max(4);
 
 export type DemoAccount = z.infer<typeof DemoAccountSchema>;
 
-/** Shape exposed on /api/config — no role/program internals needed there. */
+/**
+ * Shape exposed on /api/config. Role rides along so the login page can
+ * describe what each chip demos (it's already implied by the label and
+ * capped at "manager" by the schema — no new information leaks). The
+ * program name stays internal.
+ */
 export interface PublicDemoAccount {
   label: string;
   email: string;
   password: string;
+  role: "csr" | "manager";
 }
 
 /**
@@ -95,5 +101,10 @@ export function isDemoEmail(email: string): boolean {
 }
 
 export function toPublicDemoAccounts(accounts: DemoAccount[]): PublicDemoAccount[] {
-  return accounts.map(({ label, email, password }) => ({ label, email, password }));
+  return accounts.map(({ label, email, password, role }) => ({
+    label,
+    email,
+    password,
+    role
+  }));
 }
