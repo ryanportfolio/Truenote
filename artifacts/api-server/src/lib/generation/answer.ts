@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { RetrievalChunk } from "../retrieval/query.js";
 import {
   FALLBACK_MODEL,
-  getActiveModelRoute,
+  getActiveModelChain,
   type ApprovedModelRoute
 } from "./model-routing.js";
 
@@ -118,7 +118,10 @@ export interface GenerateAnswerDeps {
   client?: OpenAI;
   /** Backup generation client. Defaults to OpenAI. */
   fallbackClient?: OpenAI;
-  /** Approved route override for tests. Production reads the persisted global setting. */
+  /** Ordered approved-route chain override for tests (index 0 = primary).
+   *  Production reads the persisted global order. */
+  routeChain?: ApprovedModelRoute[];
+  /** Pin one approved route for a reproducible evaluation run. */
   primaryRoute?: ApprovedModelRoute;
 }
 
@@ -208,35 +211,51 @@ export async function generateAnswer(
   const systemPrompt = buildSystemPrompt(input.programName);
   const userPrompt = buildUserPrompt(input.question, input.chunks);
 
-  // OpenRouter is OpenAI-compatible, so every approved primary route and
-  // the direct OpenAI backup use the same strict
-  // Zod-derived JSON schema. Any thrown request, invalid structured response,
-  // empty answer, or invalid/missing citation from the primary triggers one
-  // immediate direct OpenAI attempt. A valid refusal is not a model failure.
+  // OpenRouter is OpenAI-compatible, so every approved route in the chain and
+  // the direct OpenAI backup share the same strict Zod-derived JSON schema.
+  // The admin-ordered chain is walked in order (index 0 = primary): any thrown
+  // request, invalid structured response, empty answer, or invalid/missing
+  // citation is a model error and advances to the next route. A valid grounded
+  // refusal is NOT an error — it ends the walk and is returned as-is.
+  const client = deps.client ?? getPrimaryClient();
+  const chain = deps.primaryRoute
+    ? [deps.primaryRoute]
+    : deps.routeChain ?? (await getActiveModelChain());
+
   let payload: AnswerPayload | null = null;
   let generationPath: GenerateAnswerResult["generationPath"] = "primary";
-  try {
-    const client = deps.client ?? getPrimaryClient();
-    const primaryRoute = deps.primaryRoute ?? (await getActiveModelRoute());
-    const primaryPayload = await callGenerationModel(
-      client,
-      primaryRoute.model,
-      systemPrompt,
-      userPrompt,
-      {
-        openRouterProvider: primaryRoute.provider,
-        reasoningEffort: primaryRoute.reasoningEffort
-      }
-    );
-    if (!primaryPayload) throw new Error("primary model returned no parsed answer");
-    payload = normalizeAnswer(primaryPayload, input.chunks);
-    if (!payload) throw new Error("primary model returned an invalid or uncited answer");
-  } catch (err) {
-    generationPath = "fallback";
-    console.warn(
-      "[generation] OpenRouter primary failed; retrying with OpenAI:",
-      err instanceof Error ? err.message : err
-    );
+  for (const [index, route] of chain.entries()) {
+    try {
+      const routePayload = await callGenerationModel(
+        client,
+        route.model,
+        systemPrompt,
+        userPrompt,
+        {
+          openRouterProvider: route.provider,
+          reasoningEffort: route.reasoningEffort
+        }
+      );
+      if (!routePayload) throw new Error(`route ${route.id} returned no parsed answer`);
+      // normalizeAnswer returns the canned refusal (non-null) for a valid
+      // refusal, so a refusal short-circuits the chain here; it returns null
+      // only for an empty/uncited/unknown-citation answer, which cascades.
+      const normalized = normalizeAnswer(routePayload, input.chunks);
+      if (!normalized) throw new Error(`route ${route.id} returned an invalid or uncited answer`);
+      payload = normalized;
+      generationPath = index === 0 ? "primary" : "fallback";
+      break;
+    } catch (err) {
+      console.warn(
+        `[generation] route ${route.id} failed; trying next in chain:`,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
+  if (!payload) {
+    // The whole OpenRouter chain errored. Last resort: direct OpenAI, which
+    // survives an OpenRouter-wide outage because it does not use OpenRouter.
     try {
       const fallbackClient = deps.fallbackClient ?? getFallbackClient();
       const fallbackPayload = await callGenerationModel(
@@ -244,20 +263,21 @@ export async function generateAnswer(
         FALLBACK_MODEL.model,
         systemPrompt,
         userPrompt,
-        { reasoningEffort: "low" }
+        { reasoningEffort: FALLBACK_MODEL.reasoningEffort }
       );
       payload = fallbackPayload ? normalizeAnswer(fallbackPayload, input.chunks) : null;
-    } catch (fallbackError) {
+      if (payload) generationPath = "fallback";
+    } catch (err) {
       console.warn(
-        "[generation] OpenAI fallback failed; returning a safe refusal:",
-        fallbackError instanceof Error ? fallbackError.message : fallbackError
+        "[generation] direct OpenAI backup failed:",
+        err instanceof Error ? err.message : err
       );
       payload = null;
     }
   }
 
   if (!payload) {
-    // Both models failed to satisfy the schema — defensive refusal.
+    // Every route and the backup failed to satisfy the schema — defensive refusal.
     return {
       payload: cannedRefusal(),
       llmCalled: true,

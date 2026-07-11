@@ -540,14 +540,14 @@ export async function getModelRouting(): Promise<ModelRoutingConfig> {
 }
 
 export async function updateModelRouting(
-  selectedId: string
+  order: string[]
 ): Promise<ModelRoutingConfig> {
   const response = await fetch(
     "/api/admin/model-routing",
     withDefaults({
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ selectedId })
+      body: JSON.stringify({ order })
     })
   );
   return asJson<ModelRoutingConfig>(response);
@@ -739,4 +739,23 @@ export async function setEvalBaseline(id: string): Promise<EvalRunListItem> {
     withDefaults({ method: "POST" })
   );
   return (await asJson<{ item: EvalRunListItem }>(response)).item;
+}
+
+/**
+ * Permanently delete a user. Server returns 204 No Content on success, so
+ * there's no body to parse — only decode + throw the error branch. The
+ * server refuses (409) unless the target is already deactivated.
+ */
+export async function deleteUser(id: string): Promise<void> {
+  const response = await fetch(
+    `/api/admin/users/${encodeURIComponent(id)}`,
+    withDefaults({ method: "DELETE" })
+  );
+  if (response.ok) return;
+  if (response.status === 401) {
+    notifySessionExpired();
+    throw new UnauthorizedError();
+  }
+  const body = (await response.json().catch(() => ({}))) as { error?: string };
+  throw new Error(body.error ?? `HTTP ${response.status}`);
 }

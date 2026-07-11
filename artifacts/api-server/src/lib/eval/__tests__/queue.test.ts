@@ -38,12 +38,16 @@ vi.mock("../../generation/model-routing.js", () => ({
     providerLabel: "OpenAI"
   },
   getModelRoutingState: vi.fn().mockResolvedValue({
-    route: {
-      id: "primary",
-      label: "Primary",
-      model: "primary-model",
-      providerLabel: "Provider"
-    }
+    routes: [
+      {
+        id: "primary",
+        label: "Primary",
+        model: "primary-model",
+        provider: "provider",
+        providerLabel: "Provider",
+        reasoningEffort: "low"
+      }
+    ]
   })
 }));
 

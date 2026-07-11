@@ -72,8 +72,9 @@ Implementation: `artifacts/api-server/src/lib/eval/runner.ts` is the pure runner
 
 The super-user `/admin/evaluations` surface manages program-scoped questions and
 queues durable runs through pg-boss. Runs execute in the existing worker, one
-question at a time, while `eval_runs` stores progress, the effective model and
-retrieval configuration, the full report, history, and one baseline per program.
+question at a time, while `eval_runs` stores progress, the pinned ordered model
+chain, direct backup, retrieval configuration, full report, history, and one
+baseline per program.
 Only one run per program may be queued/running. Missing `eval_runs` DDL returns a
 setup state and leaves question editing available; it never moves the model work
 into the HTTP request. Completed configuration snapshots include a hash of the

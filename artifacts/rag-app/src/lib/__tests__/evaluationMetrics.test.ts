@@ -42,5 +42,18 @@ describe("evaluation metrics", () => {
         configuration: { ...run.configuration!, questionSetHash: "changed" }
       })
     ).toBe(false);
+    expect(
+      comparableToBaseline(run, {
+        ...run,
+        id: "changed-chain",
+        configuration: {
+          ...run.configuration!,
+          routeChain: [
+            run.configuration!.generation,
+            { id: "route-2", label: "Route 2", model: "model-2", providerLabel: "Provider" }
+          ]
+        }
+      })
+    ).toBe(false);
   });
 });

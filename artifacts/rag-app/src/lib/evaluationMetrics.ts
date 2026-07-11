@@ -36,11 +36,13 @@ function sameConfiguration(
   return JSON.stringify({
     judge: left.judge,
     generation: left.generation,
+    routeChain: left.routeChain ?? [left.generation],
     fallback: left.fallback,
     retrieval: left.retrieval
   }) === JSON.stringify({
     judge: right.judge,
     generation: right.generation,
+    routeChain: right.routeChain ?? [right.generation],
     fallback: right.fallback,
     retrieval: right.retrieval
   });

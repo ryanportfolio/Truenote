@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "../db-client.js";
 
 export const ApprovedModelRouteIdSchema = z.enum([
+  "gpt-5.6-luna-openai",
   "gpt-5.4-nano-azure-nitro",
   "nemotron-3-super-digitalocean-nitro",
   "nemotron-3-ultra-together-nitro"
@@ -16,11 +17,20 @@ export interface ApprovedModelRoute {
   model: string;
   provider: string;
   providerLabel: string;
-  reasoningEffort: "medium";
+  reasoningEffort: "low" | "medium";
   description: string;
 }
 
 export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
+  {
+    id: "gpt-5.6-luna-openai",
+    label: "GPT-5.6 Luna",
+    model: "openai/gpt-5.6-luna",
+    provider: "openai",
+    providerLabel: "OpenAI",
+    reasoningEffort: "low",
+    description: "Primary route: fast, grounded answers at low reasoning."
+  },
   {
     id: "gpt-5.4-nano-azure-nitro",
     label: "GPT-5.4 Nano",
@@ -60,12 +70,67 @@ export const FALLBACK_MODEL = {
 
 const SETTING_KEY = "primary_generation_route";
 const CACHE_TTL_MS = 30_000;
+
+/** Current stored shape: an ordered chain of approved route ids. Index 0 is
+ *  the primary; each subsequent id is tried when the one before it errors. */
+const StoredOrderSchema = z.object({
+  order: z.array(z.string()).min(1)
+});
+/** Legacy shape from before ordered fallback chains: a single primary id.
+ *  Still read-compatible so an existing app_settings row keeps working — the
+ *  id becomes the primary and the remaining approved routes trail it. */
 const StoredSelectionSchema = z.object({
   selectedId: ApprovedModelRouteIdSchema
 });
 
+/** Default chain when nothing is persisted: the approved routes in listed
+ *  order (GPT-5.6 Luna primary). */
+export const DEFAULT_MODEL_ROUTE_ORDER: readonly ApprovedModelRouteId[] =
+  APPROVED_MODEL_ROUTES.map((route) => route.id);
+
+/**
+ * Resolve stored ids into the ordered approved-route chain. Unknown ids are
+ * dropped and duplicates collapsed, then any approved route missing from the
+ * stored order is appended in listed order — so a newly-approved model still
+ * participates as a tail fallback until an admin reorders it, and the chain is
+ * never empty. The allowlist stays authoritative: nothing outside
+ * APPROVED_MODEL_ROUTES can enter the chain.
+ */
+export function resolveModelRouteOrder(
+  ids: readonly string[]
+): ApprovedModelRoute[] {
+  const seen = new Set<string>();
+  const chain: ApprovedModelRoute[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const route = findApprovedModelRoute(id);
+    if (route) {
+      chain.push(route);
+      seen.add(id);
+    }
+  }
+  for (const route of APPROVED_MODEL_ROUTES) {
+    if (!seen.has(route.id)) {
+      chain.push(route);
+      seen.add(route.id);
+    }
+  }
+  return chain;
+}
+
+/** Extract the stored id order from either the current `{ order }` shape or
+ *  the legacy `{ selectedId }` shape. Anything unrecognized → default order. */
+function readStoredOrder(value: unknown): readonly string[] {
+  const ordered = StoredOrderSchema.safeParse(value);
+  if (ordered.success) return ordered.data.order;
+  const legacy = StoredSelectionSchema.safeParse(value);
+  if (legacy.success) return [legacy.data.selectedId];
+  return DEFAULT_MODEL_ROUTE_ORDER;
+}
+
 export interface ModelRoutingState {
-  route: ApprovedModelRoute;
+  /** Ordered fallback chain; index 0 is the primary route. Never empty. */
+  routes: ApprovedModelRoute[];
   persistenceReady: boolean;
 }
 
@@ -122,11 +187,8 @@ export async function getModelRoutingState(): Promise<ModelRoutingState> {
       LIMIT 1
     `);
     const row = result.rows[0] as unknown as SettingRow | undefined;
-    const parsed = StoredSelectionSchema.safeParse(row?.value);
     state = {
-      route: parsed.success
-        ? resolveApprovedModelRoute(parsed.data.selectedId)
-        : DEFAULT_MODEL_ROUTE,
+      routes: resolveModelRouteOrder(readStoredOrder(row?.value)),
       persistenceReady: true
     };
   } catch (error) {
@@ -136,23 +198,28 @@ export async function getModelRoutingState(): Promise<ModelRoutingState> {
         error instanceof Error ? error.message : error
       );
     }
-    state = { route: DEFAULT_MODEL_ROUTE, persistenceReady: false };
+    state = {
+      routes: resolveModelRouteOrder(DEFAULT_MODEL_ROUTE_ORDER),
+      persistenceReady: false
+    };
   }
 
   cached = { state, expiresAt: now + CACHE_TTL_MS };
   return state;
 }
 
-export async function getActiveModelRoute(): Promise<ApprovedModelRoute> {
-  return (await getModelRoutingState()).route;
+export async function getActiveModelChain(): Promise<ApprovedModelRoute[]> {
+  return (await getModelRoutingState()).routes;
 }
 
-export async function saveActiveModelRoute(
-  id: ApprovedModelRouteId,
+export async function saveModelRouteOrder(
+  ids: readonly ApprovedModelRouteId[],
   updatedBy: string
 ): Promise<ModelRoutingState> {
-  const route = resolveApprovedModelRoute(id);
-  const value = JSON.stringify({ selectedId: route.id });
+  // Normalize through the same resolver the read path uses, so the stored
+  // order is always a full, deduped permutation of the allowlist.
+  const routes = resolveModelRouteOrder(ids);
+  const value = JSON.stringify({ order: routes.map((route) => route.id) });
   await db.execute(sql`
     INSERT INTO app_settings (key, value, updated_by, updated_at)
     VALUES (${SETTING_KEY}, ${value}::jsonb, ${updatedBy}::uuid, now())
@@ -161,7 +228,7 @@ export async function saveActiveModelRoute(
       updated_by = EXCLUDED.updated_by,
       updated_at = now()
   `);
-  const state = { route, persistenceReady: true };
+  const state = { routes, persistenceReady: true };
   cached = { state, expiresAt: Date.now() + CACHE_TTL_MS };
   return state;
 }

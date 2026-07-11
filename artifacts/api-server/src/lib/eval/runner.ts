@@ -184,7 +184,7 @@ export interface EvalSummary {
   meanFaithfulnessPct: number | null;
   /** Judged questions with at least one unsupported claim — the hallucination count. */
   unfaithfulQuestions: number;
-  /** Answers produced by the configured direct-OpenAI fallback. */
+  /** Answers produced after the primary route failed. */
   fallbackGenerationCount: number;
   /** Questions where both the primary and fallback failed validation/call. */
   failedFallbackCount: number;
@@ -245,8 +245,8 @@ export function inlineCitedChunkIds(
 export interface EvalRunCallbacks {
   /** Called after each sequential question finishes. Useful for persisted UI progress. */
   onProgress?: (completed: number, total: number) => void | Promise<void>;
-  /** Pin one approved route for the whole run so configuration cannot drift mid-suite. */
-  primaryRoute?: ApprovedModelRoute;
+  /** Pin the ordered approved-route chain so configuration cannot drift mid-suite. */
+  routeChain?: ApprovedModelRoute[];
 }
 
 function classify(q: {
@@ -327,7 +327,7 @@ export async function loadEvalQuestions(
 async function evaluateOne(
   q: EvalQuestionDefinition,
   judge: boolean,
-  primaryRoute?: ApprovedModelRoute
+  routeChain?: ApprovedModelRoute[]
 ): Promise<EvalQuestionResult> {
   const expectedPhrases = q.expectedAnswerContains ?? [];
   const kind = classify(q);
@@ -378,7 +378,7 @@ async function evaluateOne(
         chunks: retrieval.chunks,
         refusedByRetrieval: retrieval.refused
       },
-      primaryRoute ? { primaryRoute } : {}
+      routeChain ? { routeChain } : {}
     );
     const latencyMs = Date.now() - startedAt;
 
@@ -648,7 +648,7 @@ export async function runEval(
   // runs are infrequent — the simple loop is the right default.
   for (const q of questions) {
     results.push(
-      await evaluateOne(q, opts.judge ?? false, callbacks.primaryRoute)
+      await evaluateOne(q, opts.judge ?? false, callbacks.routeChain)
     );
     await callbacks.onProgress?.(results.length, questions.length);
   }

@@ -19,6 +19,13 @@ export interface EvalRunConfiguration {
     model: string;
     providerLabel: string;
   };
+  /** Ordered OpenRouter chain pinned for this run; absent on legacy runs. */
+  routeChain?: Array<{
+    id: string;
+    label: string;
+    model: string;
+    providerLabel: string;
+  }>;
   fallback: {
     label: string;
     model: string;

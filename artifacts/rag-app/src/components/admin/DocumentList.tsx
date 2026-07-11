@@ -5,6 +5,7 @@ import { deleteDocument } from "@/lib/api";
 import type { DocumentListItem } from "@/types/api";
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { PreviewPanel } from "./PreviewPanel";
 
 interface DocumentListProps {
@@ -42,13 +43,15 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
   // the row being deleted (instead of blocking the whole table).
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   async function handleDelete(item: DocumentListItem): Promise<void> {
-    // Browser-native confirm — good enough for Phase 1, no modal lib needed.
-    // Phase 2 may swap in a styled confirmation dialog.
-    const ok = window.confirm(
-      `Delete "${item.title}"? This removes the document, all its versions, and all its chunks. Citations in past chats may stop resolving.`
-    );
+    const ok = await confirm({
+      title: "Delete document?",
+      message: `Delete "${item.title}"? This removes the document, all its versions, and all its chunks. Citations in past chats may stop resolving.`,
+      confirmLabel: "Delete document",
+      tone: "danger"
+    });
     if (!ok) return;
     setDeleteError(null);
     setDeletingId(item.documentId);

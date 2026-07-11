@@ -38,6 +38,7 @@ import {
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/EmptyState";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { RelativeTime } from "@/components/RelativeTime";
 import type {
   CurrentUser,
@@ -75,6 +76,7 @@ export function AdminEvaluationsPage({
 }
 
 function EvaluationCenter(): JSX.Element {
+  const confirm = useConfirm();
   const [tab, setTab] = useState<CenterTab>("results");
   const [runsState, setRunsState] = useState<EvalRunListResponse | null>(null);
   const [questions, setQuestions] = useState<EvalQuestionItem[]>([]);
@@ -271,9 +273,14 @@ function EvaluationCenter(): JSX.Element {
   }
 
   async function cancelRun(run: EvalRunListItem): Promise<void> {
-    if (!window.confirm("Cancel this evaluation run? It will stop after the current question finishes.")) {
-      return;
-    }
+    const confirmed = await confirm({
+      title: "Cancel evaluation run?",
+      message:
+        "The worker will stop after the current question finishes. Completed results from this run will not become a report.",
+      confirmLabel: "Cancel run",
+      tone: "danger"
+    });
+    if (!confirmed) return;
     const programGeneration = programGenerationRef.current;
     setCancelingRunId(run.id);
     setError(null);
@@ -590,7 +597,10 @@ function RunsPanel({
 
           {selectedRun.configuration ? (
             <p className="text-xs text-muted-foreground">
-              {selectedRun.configuration.generation.label} + {selectedRun.configuration.fallback.label} fallback · top {selectedRun.configuration.retrieval.topK}
+              {(selectedRun.configuration.routeChain ?? [selectedRun.configuration.generation])
+                .map((route) => route.label)
+                .join(" → ")}
+              {" → "}{selectedRun.configuration.fallback.label} direct backup · top {selectedRun.configuration.retrieval.topK}
               {" · "}threshold {selectedRun.configuration.retrieval.threshold}
               {selectedRun.judge ? " · faithfulness judge on" : ""}
             </p>
@@ -745,7 +755,7 @@ function SummaryMetrics({
               {fallbackGenerationCount}/{summary.totalQuestions}
             </span>
             {failedFallbackCount > 0
-              ? ` · ${failedFallbackCount} failed both routes`
+              ? ` · ${failedFallbackCount} failed all routes`
               : ""}
           </p>
           <p className="sm:col-span-2">

@@ -8,12 +8,11 @@ import {
   requireSuperUser
 } from "../../middleware/current-user.js";
 import {
-  APPROVED_MODEL_ROUTES,
   ApprovedModelRouteIdSchema,
   FALLBACK_MODEL,
   getModelRoutingState,
   isMissingModelSettingsTable,
-  saveActiveModelRoute,
+  saveModelRouteOrder,
   type ModelRoutingState
 } from "../../lib/generation/model-routing.js";
 
@@ -26,13 +25,15 @@ modelRoutingRouter.use(
   blockDemoWrites
 );
 
-const UpdateBody = z.object({ selectedId: ApprovedModelRouteIdSchema });
+const UpdateBody = z.object({
+  order: z.array(ApprovedModelRouteIdSchema).min(1)
+});
 
 function responseFor(state: ModelRoutingState) {
   return {
-    selectedId: state.route.id,
+    order: state.routes.map((route) => route.id),
+    routes: state.routes,
     persistenceReady: state.persistenceReady,
-    options: APPROVED_MODEL_ROUTES,
     fallback: FALLBACK_MODEL
   };
 }
@@ -48,13 +49,13 @@ modelRoutingRouter.get("/", async (_req, res, next) => {
 modelRoutingRouter.put("/", async (req, res, next) => {
   const parsed = UpdateBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: "Choose an approved model route" });
+    res.status(400).json({ error: "Provide an ordered list of approved model routes" });
     return;
   }
 
   try {
     const user = authedUser(req);
-    const state = await saveActiveModelRoute(parsed.data.selectedId, user.id);
+    const state = await saveModelRouteOrder(parsed.data.order, user.id);
     res.json(responseFor(state));
   } catch (error) {
     if (isMissingModelSettingsTable(error)) {

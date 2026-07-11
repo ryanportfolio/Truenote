@@ -39,17 +39,27 @@ async function captureConfiguration(judge: boolean) {
     getModelRoutingState(),
     Promise.resolve(getRetrievalRuntimeConfig())
   ]);
+  const primaryRoute = modelState.routes[0];
+  if (!primaryRoute) {
+    throw new Error("No approved generation route is configured");
+  }
   return {
-    primaryRoute: modelState.route,
+    routeChain: modelState.routes,
     configuration: {
       judge,
       questionSetHash: null,
       generation: {
-        id: modelState.route.id,
-        label: modelState.route.label,
-        model: modelState.route.model,
-        providerLabel: modelState.route.providerLabel
+        id: primaryRoute.id,
+        label: primaryRoute.label,
+        model: primaryRoute.model,
+        providerLabel: primaryRoute.providerLabel
       },
+      routeChain: modelState.routes.map((route) => ({
+        id: route.id,
+        label: route.label,
+        model: route.model,
+        providerLabel: route.providerLabel
+      })),
       fallback: {
         label: FALLBACK_MODEL.label,
         model: FALLBACK_MODEL.model,
@@ -134,7 +144,7 @@ export async function executeEvalRun(
   if (!run) return;
 
   try {
-    const { configuration, primaryRoute } = await captureConfiguration(run.judge);
+    const { configuration, routeChain } = await captureConfiguration(run.judge);
     if (!(await setEvalRunConfiguration(run.id, run.leaseToken, configuration))) {
       throw new Error("Evaluation run lease was replaced before execution");
     }
@@ -159,7 +169,7 @@ export async function executeEvalRun(
             throw new Error("Evaluation run lease was replaced during execution");
           }
         },
-        primaryRoute
+        routeChain
       }
     );
     if (report.summary.totalQuestions === 0) {

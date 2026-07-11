@@ -282,14 +282,16 @@ export interface ModelRoutingOption {
   model: string;
   provider: string;
   providerLabel: string;
-  reasoningEffort: "medium";
+  reasoningEffort: "low" | "medium";
   description: string;
 }
 
 export interface ModelRoutingConfig {
-  selectedId: string;
+  /** Ordered approved-route ids; index 0 is the primary. */
+  order: string[];
+  /** The same routes as objects, in fallback order (index 0 = primary). */
+  routes: ModelRoutingOption[];
   persistenceReady: boolean;
-  options: ModelRoutingOption[];
   fallback: {
     label: string;
     model: string;
@@ -402,6 +404,12 @@ export interface EvalRunConfiguration {
     model: string;
     providerLabel: string;
   };
+  routeChain?: Array<{
+    id: string;
+    label: string;
+    model: string;
+    providerLabel: string;
+  }>;
   fallback: {
     label: string;
     model: string;

@@ -1409,3 +1409,41 @@
     min-height: 4.75rem;
   }
 }
+
+/* Large-desktop scaling — logged-in app only.
+ *
+ * The UI is rem-based end to end (Tailwind spacing + every component style in
+ * this file), and the root stays at the browser's 16px, a rhythm tuned for
+ * ~1280–1440 logical px. On a 1920×1080 monitor at 100% OS scale the viewport
+ * is 1920 CSS px, so that same 16px chrome reads small and sparse — exactly
+ * what a manual browser zoom corrects. Step the root font up at wide
+ * breakpoints so the whole interface grows in proportion (type, padding, gaps,
+ * control sizes) with zero per-component work, because every size unit is rem.
+ *
+ * Scope: gated on :has(.app-shell) — the wrapper mounted only on authenticated
+ * routes (see AppShell). The login/auth/reset pages carry no .app-shell, so
+ * they keep the 16px baseline; scaling is deliberately not wanted there. Body-
+ * portaled popovers still inherit the scaled root, so they stay consistent.
+ *
+ * Layout does not reflow: Tailwind's sm/md/lg/xl breakpoints are px-evaluated
+ * against the viewport, independent of root font-size — content only grows,
+ * columns don't rearrange. Tune the steps to taste; 19px ≈ the +20% zoom that
+ * reads well at 1920 (16 × 1.2 = 19.2). The 2560px cap keeps 1440p/4K at 100%
+ * from ballooning. */
+@media (min-width: 1600px) {
+  :root:has(.app-shell) {
+    font-size: 17px;
+  }
+}
+
+@media (min-width: 1920px) {
+  :root:has(.app-shell) {
+    font-size: 19px;
+  }
+}
+
+@media (min-width: 2560px) {
+  :root:has(.app-shell) {
+    font-size: 20px;
+  }
+}

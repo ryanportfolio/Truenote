@@ -10,6 +10,7 @@ import { FileUp, Users } from "lucide-react";
 import {
   bulkCreateUsers,
   createUser,
+  deleteUser,
   listPrograms,
   listUsers,
   resetUserPassword,
@@ -17,8 +18,9 @@ import {
 } from "@/lib/api";
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
-import { parseUserCsv } from "@/lib/userCsv";
+import { parseUserCsv, parseUserXlsx, type ParsedUserCsv } from "@/lib/userCsv";
 import type {
   BulkCreateUsersResponse,
   CreateUserRequest,
@@ -154,6 +156,13 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
     );
   }
 
+  function handleDeleted(item: UserListItem): void {
+    setItems((prev) => prev.filter((u) => u.id !== item.id));
+    // Drop a stale credential banner if it belonged to the deleted user —
+    // a temp password for an account that no longer exists is noise.
+    setCredentialBanner((prev) => (prev?.email === item.email ? null : prev));
+  }
+
   function handleBulkImported(): void {
     setLoading(true);
     void refresh();
@@ -214,6 +223,7 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
           programs={programs}
           onUpdated={handleUpdated}
           onReset={handleReset}
+          onDeleted={handleDeleted}
         />
       )}
     </div>
@@ -241,11 +251,23 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
     setFileName(file?.name ?? "");
     if (!file) return;
     if (file.size > 1_000_000) {
-      setError("CSV must be 1 MB or smaller");
+      setError("File must be 1 MB or smaller");
       return;
     }
+    const isXlsx = file.name.toLowerCase().endsWith(".xlsx");
     try {
-      const parsed = parseUserCsv(await file.text());
+      let parsed: ParsedUserCsv;
+      if (isXlsx) {
+        // Load the xlsx parser only when an Excel file is actually
+        // chosen — it ships as its own async chunk, so the CSV path and
+        // non-admin bundles never pay for it.
+        const { default: readXlsxFile } = await import("read-excel-file/browser");
+        // readXlsxFile (v9) resolves to Sheet[]; parseUserXlsx takes the raw
+        // result and reduces it to the first sheet's grid.
+        parsed = parseUserXlsx(await readXlsxFile(file));
+      } else {
+        parsed = parseUserCsv(await file.text());
+      }
       setEmails(parsed.emails);
       setInvalidRows(parsed.invalidRows);
       if (parsed.invalidRows.length > 0) {
@@ -253,12 +275,23 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
           `Fix invalid email row${parsed.invalidRows.length === 1 ? "" : "s"}: ${parsed.invalidRows.slice(0, 10).join(", ")}`
         );
       } else if (parsed.emails.length === 0) {
-        setError("CSV does not contain any email addresses");
+        setError("File does not contain any email addresses");
       } else if (parsed.emails.length > 100) {
-        setError("CSV can contain at most 100 unique emails");
+        setError("File can contain at most 100 unique emails");
       }
-    } catch {
-      setError("Could not read this CSV file");
+    } catch (err) {
+      // Surface the underlying reason instead of an opaque "couldn't read":
+      // it distinguishes an unsupported/corrupt file or a wrong extension
+      // (.xls, a Numbers export renamed .xlsx) from a parser-load failure.
+      // The console line keeps the full stack for devtools.
+      if (isXlsx) console.error("xlsx import failed", err);
+      const detail =
+        err instanceof Error && err.message ? `: ${err.message}` : "";
+      setError(
+        isXlsx
+          ? `Could not read this Excel file${detail}`
+          : "Could not read this CSV file"
+      );
     }
   }
 
@@ -295,17 +328,17 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
       <div>
         <h2 className="text-sm font-semibold">Import CSR emails</h2>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Upload one email per row, or a CSV with an email column. Users join
-          the current program with temporary password{" "}
+          Upload one email per row, or a CSV or Excel (.xlsx) file with an email
+          column. Users join the current program with temporary password{" "}
           <code>Truenote213</code> and must replace it at first login.
         </p>
       </div>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium">CSV file</span>
+        <span className="font-medium">CSV or Excel file</span>
         <input
           type="file"
-          accept=".csv,text/csv"
+          accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           onChange={(event) => void selectFile(event)}
           disabled={submitting}
           className="cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:cursor-pointer file:rounded-full file:border file:border-border file:bg-secondary file:px-3 file:py-1 file:text-xs file:font-medium hover:file:border-foreground/30"
@@ -359,7 +392,7 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
           className="btn-whisper gap-2 px-4 py-2 text-sm"
         >
           <FileUp className="h-4 w-4" aria-hidden />
-          {submitting ? "Adding users…" : "Add CSV users"}
+          {submitting ? "Adding users…" : "Add users"}
         </button>
       </div>
     </form>
@@ -464,17 +497,29 @@ function CreateUserForm({
     return [];
   }, [actor.role]);
 
+  // Default to Manager when the actor can assign it (super_user and
+  // senior_manager actors) rather than the top of the list — for a
+  // super_user that would be the high-privilege super_user role, a poor
+  // default for a destructive-if-wrong choice. Managers can only assign
+  // csr, so they fall through to it.
+  const defaultRole = useMemo<UserRole>(
+    () =>
+      assignableRoles.includes("manager")
+        ? "manager"
+        : assignableRoles[0] ?? "csr",
+    [assignableRoles]
+  );
+
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<UserRole>(
-    assignableRoles[0] ?? "csr"
-  );
+  const [role, setRole] = useState<UserRole>(defaultRole);
   // For super_user actors: programId starts unset for non-super_user
   // roles (forces a deliberate pick); for super_user role it's locked
   // to null. For other actors it's locked to actor.programId.
   const [programId, setProgramId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   // Reset programId when role changes if super_user role is picked
   // (must be null) or when switching from super_user to another role
@@ -506,6 +551,19 @@ function CreateUserForm({
       setError("Select a program for this user");
       return;
     }
+    // Super user is the highest privilege tier — full access to every
+    // program and user. Make an admin stop and confirm before minting one,
+    // so it's never a slip of the role dropdown.
+    if (role === "super_user") {
+      const confirmed = await confirm({
+        title: "Add a SUPER USER?",
+        message:
+          "Super users have full access to every program and every user across the entire system — the highest level of access there is.\n\nAre you sure you want to add one?",
+        confirmLabel: "Add super user",
+        cancelLabel: "Cancel"
+      });
+      if (!confirmed) return;
+    }
     setSubmitting(true);
     try {
       const payload: CreateUserRequest = {
@@ -518,7 +576,7 @@ function CreateUserForm({
       onCreated(response.item, response.tempPassword);
       setEmail("");
       setName("");
-      setRole(assignableRoles[0] ?? "csr");
+      setRole(defaultRole);
       setProgramId("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create user");
@@ -655,6 +713,7 @@ interface UsersTableProps {
   programs: Program[];
   onUpdated: (item: UserListItem) => void;
   onReset: (item: UserListItem, tempPassword: string) => void;
+  onDeleted: (item: UserListItem) => void;
 }
 
 function UsersTable({
@@ -662,7 +721,8 @@ function UsersTable({
   items,
   programs,
   onUpdated,
-  onReset
+  onReset,
+  onDeleted
 }: UsersTableProps): JSX.Element {
   // Compute the lookup map unconditionally so the hook order stays
   // stable on the empty-list render path (which used to early-return
@@ -692,6 +752,7 @@ function UsersTable({
           }
           onUpdated={onUpdated}
           onReset={onReset}
+          onDeleted={onDeleted}
         />
       ))}
     </ul>
@@ -704,6 +765,7 @@ interface UserRowProps {
   programName: string | null;
   onUpdated: (item: UserListItem) => void;
   onReset: (item: UserListItem, tempPassword: string) => void;
+  onDeleted: (item: UserListItem) => void;
 }
 
 /**
@@ -717,12 +779,16 @@ function UserRow({
   item,
   programName,
   onUpdated,
-  onReset
+  onReset,
+  onDeleted
 }: UserRowProps): JSX.Element {
   const [editing, setEditing] = useState(false);
   const [editedName, setEditedName] = useState(item.name);
-  const [busy, setBusy] = useState<"none" | "save" | "active" | "reset">("none");
+  const [busy, setBusy] = useState<
+    "none" | "save" | "active" | "reset" | "delete"
+  >("none");
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const manageable = canManageUserClient(actor, item);
 
@@ -761,9 +827,12 @@ function UserRow({
   }
 
   async function handleResetPassword(): Promise<void> {
-    const ok = window.confirm(
-      `Reset password for ${item.email}? Their active sessions will be revoked.`
-    );
+    const ok = await confirm({
+      title: "Reset password?",
+      message: `Reset the password for ${item.email}? Their active sessions will be revoked and they'll receive a new temporary password.`,
+      confirmLabel: "Reset password",
+      tone: "danger"
+    });
     if (!ok) return;
     setBusy("reset");
     setError(null);
@@ -773,6 +842,27 @@ function UserRow({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to reset password");
     } finally {
+      setBusy("none");
+    }
+  }
+
+  async function handleDelete(): Promise<void> {
+    const ok = await confirm({
+      title: "Delete user?",
+      message: `Permanently delete ${item.email}? This removes the account for good and cannot be undone.`,
+      confirmLabel: "Delete user",
+      tone: "danger"
+    });
+    if (!ok) return;
+    setBusy("delete");
+    setError(null);
+    try {
+      await deleteUser(item.id);
+      onDeleted(item);
+      // No setBusy("none") on success: the row unmounts when the parent
+      // drops it from the list, so touching state here would warn.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete user");
       setBusy("none");
     }
   }
@@ -877,6 +967,19 @@ function UserRow({
             >
               {busy === "reset" ? "Resetting…" : "Reset password"}
             </button>
+            {/* Delete is gated behind deactivation: an active user must be
+              * deactivated first (which revokes their sessions), then the
+              * destructive, irreversible delete becomes available. */}
+            {!item.isActive ? (
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                disabled={busy === "delete"}
+                className="rounded-full border border-destructive/30 px-3 py-1 text-xs font-medium text-destructive transition-colors duration-100 ease-out hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy === "delete" ? "Deleting…" : "Delete"}
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
