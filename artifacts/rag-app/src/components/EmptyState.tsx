@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 interface EmptyStateProps {
   icon: LucideIcon;
-  title: string;
+  title?: ReactNode;
   hint?: ReactNode;
   /** Optional actions rendered under the hint (links, prefill chips). */
   children?: ReactNode;
@@ -36,7 +36,7 @@ export function EmptyState({
           <Icon className="h-6 w-6 text-muted-foreground" aria-hidden />
         </div>
       </div>
-      <p className="mt-3 text-sm font-medium">{title}</p>
+      {title ? <p className="mt-3 text-sm font-medium">{title}</p> : null}
       {hint ? (
         <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">{hint}</p>
       ) : null}

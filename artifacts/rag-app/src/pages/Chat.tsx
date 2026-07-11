@@ -405,11 +405,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
         ) : null}
 
         {exchanges.length === 0 && hasProgram ? (
-          <EmptyState
-            icon={MessageSquare}
-            title="Ask the question in front of you"
-            hint="Search for a policy, fee, process, or exact term from the call."
-          >
+          <EmptyState icon={MessageSquare}>
             {EXAMPLE_QUESTIONS.map((q) => (
               <button
                 key={q}
