@@ -7,10 +7,14 @@ import type {
   CreateUserRequest,
   CreateUserResponse,
   CurrentUser,
+  CreateKbHighlightRequest,
   DocumentListResponse,
   KbDocumentListResponse,
   KbDocumentResponse,
   KbGapsResponse,
+  KbHighlight,
+  KbHighlightColor,
+  KbHighlightListResponse,
   LoginResponse,
   ModelRoutingConfig,
   PreviewResponse,
@@ -382,6 +386,57 @@ export async function getKbDocument(documentId: string): Promise<KbDocumentRespo
     withDefaults()
   );
   return asJson<KbDocumentResponse>(response);
+}
+
+/** Personal highlights for the active parsed version of one scoped document. */
+export async function listKbHighlights(
+  documentId: string
+): Promise<KbHighlightListResponse> {
+  const response = await fetch(
+    `/api/kb/documents/${encodeURIComponent(documentId)}/highlights`,
+    withDefaults()
+  );
+  return asJson<KbHighlightListResponse>(response);
+}
+
+export async function createKbHighlight(
+  documentId: string,
+  payload: CreateKbHighlightRequest
+): Promise<KbHighlight> {
+  const response = await fetch(
+    `/api/kb/documents/${encodeURIComponent(documentId)}/highlights`,
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+  );
+  const json = await asJson<{ item: KbHighlight }>(response);
+  return json.item;
+}
+
+export async function updateKbHighlight(
+  highlightId: string,
+  color: KbHighlightColor
+): Promise<KbHighlight> {
+  const response = await fetch(
+    `/api/kb/highlights/${encodeURIComponent(highlightId)}`,
+    withDefaults({
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ color })
+    })
+  );
+  const json = await asJson<{ item: KbHighlight }>(response);
+  return json.item;
+}
+
+export async function deleteKbHighlight(highlightId: string): Promise<void> {
+  const response = await fetch(
+    `/api/kb/highlights/${encodeURIComponent(highlightId)}`,
+    withDefaults({ method: "DELETE" })
+  );
+  await asJson<{ ok: true }>(response);
 }
 
 export async function fetchKbGaps(windowDays: number): Promise<KbGapsResponse> {

@@ -41,6 +41,11 @@
      * copy-confirm. 7.61:1 text on card (AAA); 7.75:1 white-on for filled uses. */
     --success: 43.52% 0.0428 168.8; /* #39594D */
     --success-foreground: 99.38% 0.0013 106.4;
+    /* Annotation colors are not semantic states. Kept separate from warning,
+     * success, and primary so passage colors never imply status. */
+    --highlight-yellow: 84% 0.105 85;
+    --highlight-green: 78% 0.07 165;
+    --highlight-blue: 79% 0.085 255;
     --border: 88.52% 0.0042 91.5; /* #DAD9D6 warm hairline — the Cohere divider */
     --input: 88.52% 0.0042 91.5;
     --ring: 41.41% 0.1807 261.2;
@@ -78,6 +83,9 @@
     --warning-foreground: 28.01% 0.0563 94.1;
     --success: 54.67% 0.054 167.1; /* #517B6A Cohere dark accent */
     --success-foreground: 21.2% 0.0092 255.6;
+    --highlight-yellow: 72% 0.1 85;
+    --highlight-green: 68% 0.065 165;
+    --highlight-blue: 70% 0.08 255;
     --border: 31.56% 0.0121 258.4;
     --input: 31.56% 0.0121 258.4;
     --ring: 71.47% 0.1512 254.8;
@@ -190,6 +198,66 @@
    * size, muted fill, hairline — reads as a key without shouting. */
   .kbd {
     @apply rounded border border-border bg-muted px-1 font-mono text-[11px] font-medium text-muted-foreground;
+  }
+
+  /* Personal KB highlights. CSS Custom Highlight keeps ReactMarkdown's DOM
+   * under React ownership. Underlines make the saved state non-color-only. */
+  ::highlight(kb-highlight-yellow) {
+    background-color: oklch(var(--highlight-yellow) / 0.55);
+    text-decoration: underline 1px oklch(var(--foreground) / 0.45);
+    text-underline-offset: 0.13em;
+  }
+  ::highlight(kb-highlight-green) {
+    background-color: oklch(var(--highlight-green) / 0.5);
+    text-decoration: underline 1px oklch(var(--foreground) / 0.45);
+    text-underline-offset: 0.13em;
+  }
+  ::highlight(kb-highlight-blue) {
+    background-color: oklch(var(--highlight-blue) / 0.5);
+    text-decoration: underline 1px oklch(var(--foreground) / 0.45);
+    text-underline-offset: 0.13em;
+  }
+
+  .kb-highlight-swatch[data-highlight-color="yellow"],
+  .kb-highlight-color-button[data-highlight-color="yellow"] {
+    background-color: oklch(var(--highlight-yellow) / 0.72);
+  }
+  .kb-highlight-swatch[data-highlight-color="green"],
+  .kb-highlight-color-button[data-highlight-color="green"] {
+    background-color: oklch(var(--highlight-green) / 0.68);
+  }
+  .kb-highlight-swatch[data-highlight-color="blue"],
+  .kb-highlight-color-button[data-highlight-color="blue"] {
+    background-color: oklch(var(--highlight-blue) / 0.68);
+  }
+
+  .kb-highlight-color-button {
+    @apply inline-grid h-9 w-9 cursor-pointer place-items-center rounded-full text-foreground
+           transition-[box-shadow,transform] duration-100 ease-out
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+           disabled:cursor-not-allowed disabled:opacity-50;
+    border: 1px solid oklch(var(--foreground) / 0.18);
+  }
+  .kb-highlight-color-button:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+  .kb-highlight-color-button[aria-pressed="true"] {
+    box-shadow: 0 0 0 2px oklch(var(--card)), 0 0 0 4px oklch(var(--foreground) / 0.72);
+  }
+  [data-keyboard-highlight-mode="true"] [data-kb-highlight-block] {
+    border-radius: 0.25rem;
+  }
+  [data-keyboard-highlight-mode="true"] [data-kb-highlight-block]:focus {
+    outline: 2px solid oklch(var(--ring));
+    outline-offset: 3px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .kb-highlight-color-button {
+      transition: none;
+    }
+    .kb-highlight-color-button:hover:not(:disabled) {
+      transform: none;
+    }
   }
 
   /* Specular border glint for the login "glass" card: a 1px conic
