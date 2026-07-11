@@ -518,54 +518,183 @@
 
   .auth-demo {
     min-width: 0;
-    border-radius: 0.75rem;
-    background: oklch(var(--card));
-    padding: 0.75rem;
-    box-shadow: inset 0 0 0 1px oklch(var(--border));
+    border: 0;
+    padding: 0;
   }
 
   .auth-demo legend {
-    padding: 0 0.35rem;
-    color: oklch(var(--muted-foreground));
-    font-size: 0.67rem;
+    margin-bottom: 0.65rem;
+    color: oklch(var(--foreground));
+    font-size: 0.68rem;
     font-weight: 600;
-    letter-spacing: 0.11em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
   }
 
-  /* Fills the fieldset's right half beside the chips: one quiet line on
-   * what the selected role demos. flex:1 + min-width keeps it beside the
-   * chips at the panel's 29rem width and wraps below only when the
-   * stacked mobile layout narrows the card. */
-  .auth-demo-note {
-    flex: 1;
-    min-width: 11rem;
-    color: oklch(var(--muted-foreground));
-    font-size: 0.7rem;
-    line-height: 1.45;
+  .auth-demo-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
   }
 
-  .auth-demo-chip {
+  .auth-demo-role {
+    position: relative;
+    display: grid;
+    min-height: 5.15rem;
+    align-content: end;
+    overflow: hidden;
     cursor: pointer;
     border: 1px solid oklch(var(--border));
-    border-radius: 999px;
-    padding: 0.3rem 0.7rem;
-    color: oklch(var(--muted-foreground));
-    font-size: 0.75rem;
-    transition: 120ms cubic-bezier(0.25, 1, 0.5, 1);
+    border-radius: 0.85rem;
+    background: oklch(var(--card) / 0.9);
+    padding: 0.85rem 4rem 0.8rem 0.9rem;
+    text-align: left;
+    box-shadow: inset 0 1px 0 oklch(var(--card)),
+      0 5px 16px oklch(var(--archive-ink) / 0.06);
+    transition: border-color 180ms cubic-bezier(0.25, 1, 0.5, 1),
+      background-color 180ms cubic-bezier(0.25, 1, 0.5, 1),
+      box-shadow 180ms cubic-bezier(0.25, 1, 0.5, 1),
+      transform 180ms cubic-bezier(0.25, 1, 0.5, 1);
   }
 
-  .auth-demo-chip:hover,
-  .auth-demo-chip-active {
-    border-color: oklch(var(--primary) / 0.45);
-    background: oklch(var(--primary) / 0.09);
+  .auth-demo-role::before {
+    position: absolute;
+    top: -1.5rem;
+    right: 1.25rem;
+    width: 2.9rem;
+    height: 7.25rem;
+    border: 1px solid oklch(var(--archive-green) / 0.45);
+    border-radius: 70% 30% 68% 32%;
+    background: oklch(var(--archive-green) / 0.15);
+    content: "";
+    pointer-events: none;
+    transform: rotate(28deg);
+    transition: transform 240ms cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  .auth-demo-role:nth-child(even)::before {
+    border-color: oklch(var(--archive-coral) / 0.48);
+    background: oklch(var(--archive-coral) / 0.14);
+    transform: rotate(-28deg);
+  }
+
+  .auth-demo-role:hover:not(:disabled) {
+    border-color: oklch(var(--primary) / 0.38);
+    box-shadow: inset 0 1px 0 oklch(var(--card)),
+      0 9px 22px oklch(var(--archive-ink) / 0.11);
+    transform: translateY(-2px);
+  }
+
+  .auth-demo-role:hover:not(:disabled)::before,
+  .auth-demo-role-active::before {
+    transform: rotate(34deg) scale(1.06);
+  }
+
+  .auth-demo-role:nth-child(even):hover:not(:disabled)::before,
+  .auth-demo-role-active:nth-child(even)::before {
+    transform: rotate(-34deg) scale(1.06);
+  }
+
+  .auth-demo-role-active {
+    border-color: oklch(var(--primary) / 0.55);
+    background: oklch(var(--primary) / 0.075);
     color: oklch(var(--primary));
+    box-shadow: inset 0 0 0 1px oklch(var(--primary) / 0.08),
+      0 8px 20px oklch(var(--primary) / 0.1);
   }
 
-  .auth-demo-chip:focus-visible,
+  .auth-demo-role:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .auth-demo-role:focus-visible,
   .auth-forgot:focus-visible {
     outline: 2px solid oklch(var(--ring));
     outline-offset: 2px;
+  }
+
+  .auth-demo-role-number {
+    position: absolute;
+    top: 0.7rem;
+    left: 0.9rem;
+    color: oklch(var(--muted-foreground));
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.58rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+  }
+
+  .auth-demo-role-name,
+  .auth-demo-role-promise {
+    position: relative;
+    z-index: 1;
+  }
+
+  .auth-demo-role-name {
+    color: oklch(var(--foreground));
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+
+  .auth-demo-role-active .auth-demo-role-name {
+    color: oklch(var(--primary));
+  }
+
+  .auth-demo-role-promise {
+    margin-top: 0.2rem;
+    color: oklch(var(--muted-foreground));
+    font-size: 0.64rem;
+    line-height: 1.35;
+  }
+
+  .auth-demo-role-orbit {
+    position: absolute;
+    top: 50%;
+    right: -0.45rem;
+    width: 4.3rem;
+    height: 2.7rem;
+    border: 1px solid oklch(var(--primary) / 0.24);
+    border-radius: 50%;
+    pointer-events: none;
+    transform: translateY(-50%) rotate(-16deg);
+  }
+
+  .auth-demo-role:nth-child(even) .auth-demo-role-orbit {
+    transform: translateY(-50%) rotate(16deg);
+  }
+
+  .auth-demo-role-orbit span {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 42% 58% 48% 52%;
+    background: oklch(var(--archive-ink));
+    box-shadow: 0 0 0 0.35rem oklch(var(--primary) / 0.08),
+      -0.75rem 0.55rem 0 oklch(var(--archive-coral) / 0.72);
+    transform: translate(-50%, -50%) rotate(12deg);
+    transition: box-shadow 240ms cubic-bezier(0.25, 1, 0.5, 1),
+      transform 240ms cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  .auth-demo-role:nth-child(even) .auth-demo-role-orbit span {
+    box-shadow: 0 0 0 0.35rem oklch(var(--primary) / 0.08),
+      0.7rem -0.5rem 0 oklch(var(--archive-green) / 0.72);
+  }
+
+  .auth-demo-role-active .auth-demo-role-orbit span {
+    box-shadow: 0 0 0 0.5rem oklch(var(--primary) / 0.12),
+      -0.75rem 0.55rem 0 oklch(var(--archive-coral) / 0.82);
+    transform: translate(-50%, -50%) rotate(12deg) scale(1.08);
+  }
+
+  .auth-demo-role-active:nth-child(even) .auth-demo-role-orbit span {
+    box-shadow: 0 0 0 0.5rem oklch(var(--primary) / 0.12),
+      0.7rem -0.5rem 0 oklch(var(--archive-green) / 0.82);
   }
 
   .auth-field {
@@ -1017,7 +1146,7 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .archive-image {
-    animation: archive-drift 16s cubic-bezier(0.25, 1, 0.5, 1) infinite alternate;
+    animation: archive-breathe 22s cubic-bezier(0.45, 0, 0.55, 1) infinite;
     will-change: transform;
   }
 
@@ -1042,12 +1171,14 @@
   }
 }
 
-@keyframes archive-drift {
-  from {
+@keyframes archive-breathe {
+  0%,
+  100% {
     transform: scale(1.02) translate3d(0, 0, 0);
   }
-  to {
-    transform: scale(1.065) translate3d(-0.8%, -0.6%, 0);
+
+  50% {
+    transform: scale(1.055) translate3d(-0.45%, -0.35%, 0);
   }
 }
 
@@ -1085,7 +1216,7 @@
 
 /* Short desktop viewports: a 1080p monitor at 125% Windows scaling gives
  * the page ~740 CSS px of height, and the auth panel's tall rhythm
- * (840px with demo chips) forced a needless scrollbar. Compress the
+ * (840px with demo role portals) forced a needless scrollbar. Compress the
  * vertical spends so the whole login fits without scrolling; widths
  * ≤900px keep the stacked mobile layout's own spacing. */
 @media (min-width: 901px) and (max-height: 820px) {
@@ -1198,5 +1329,15 @@
 
   .receipt-strip {
     align-items: start;
+  }
+}
+
+@media (max-width: 360px) {
+  .auth-demo-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-demo-role {
+    min-height: 4.75rem;
   }
 }

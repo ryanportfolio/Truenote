@@ -3,7 +3,9 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import type { RetrievalChunk } from "../retrieval/query.js";
 
-const GENERATION_MODEL = "gpt-4o";
+const PRIMARY_GENERATION_MODEL = "nvidia/nemotron-3-ultra-550b-a55b";
+const FALLBACK_GENERATION_MODEL = "gpt-5.6-luna";
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
 export const SourceSchema = z.object({
   chunk_id: z.string(),
@@ -77,10 +79,21 @@ export function cannedRefusal(): AnswerPayload {
   };
 }
 
-let _client: OpenAI | null = null;
-function getClient(): OpenAI {
-  if (!_client) _client = new OpenAI();
-  return _client;
+let _primaryClient: OpenAI | null = null;
+function getPrimaryClient(): OpenAI {
+  if (!_primaryClient) {
+    _primaryClient = new OpenAI({
+      apiKey: process.env.OPENROUTER_API_KEY,
+      baseURL: OPENROUTER_BASE_URL
+    });
+  }
+  return _primaryClient;
+}
+
+let _fallbackClient: OpenAI | null = null;
+function getFallbackClient(): OpenAI {
+  if (!_fallbackClient) _fallbackClient = new OpenAI();
+  return _fallbackClient;
 }
 
 export interface GenerateAnswerInput {
@@ -97,7 +110,79 @@ export interface GenerateAnswerResult {
 }
 
 export interface GenerateAnswerDeps {
+  /** Primary generation client. Defaults to OpenRouter. */
   client?: OpenAI;
+  /** Backup generation client. Defaults to OpenAI. */
+  fallbackClient?: OpenAI;
+}
+
+async function callGenerationModel(
+  client: OpenAI,
+  model: string,
+  systemPrompt: string,
+  userPrompt: string,
+  options: {
+    useOpenRouterRouting?: boolean;
+    reasoningEffort?: "low";
+  } = {}
+): Promise<AnswerPayload | null> {
+  const request = {
+    model,
+    ...(options.reasoningEffort
+      ? { reasoning_effort: options.reasoningEffort }
+      : { temperature: 0 }),
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ],
+    response_format: zodResponseFormat(AnswerSchema, "answer")
+  } satisfies OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
+
+  // Keep privacy + schema guarantees in the request itself, even though the
+  // OpenRouter API key is also assigned to a matching account guardrail.
+  const completion = options.useOpenRouterRouting
+    ? await client.beta.chat.completions.parse({
+        ...request,
+        provider: {
+          zdr: true,
+          data_collection: "deny",
+          require_parameters: true,
+          allow_fallbacks: false
+        }
+      } as typeof request & {
+        provider: {
+          zdr: boolean;
+          data_collection: "deny";
+          require_parameters: boolean;
+          allow_fallbacks: boolean;
+        };
+      })
+    : await client.beta.chat.completions.parse(request);
+
+  return completion.choices[0]?.message.parsed ?? null;
+}
+
+/**
+ * Replace model-authored source metadata with retrieved ground truth, then
+ * reject any non-refusal answer that is empty, uncited, or cites only chunks
+ * the model never received. A rejected primary answer is a provider failure
+ * for routing purposes and must be retried through the backup model.
+ */
+function normalizeAnswer(
+  payload: AnswerPayload,
+  chunks: RetrievalChunk[]
+): AnswerPayload | null {
+  if (payload.refused) return cannedRefusal();
+
+  const sources = validateSources(payload.sources, chunks);
+  const hasInlineCitation = sources.some((source) =>
+    payload.answer.includes(`[${source.chunk_id}]`)
+  );
+  if (payload.answer.trim().length === 0 || sources.length === 0 || !hasInlineCitation) {
+    return null;
+  }
+
+  return { ...payload, sources };
 }
 
 export async function generateAnswer(
@@ -111,41 +196,42 @@ export async function generateAnswer(
   const systemPrompt = buildSystemPrompt(input.programName);
   const userPrompt = buildUserPrompt(input.question, input.chunks);
 
-  const client = deps.client ?? getClient();
-  // OpenAI structured outputs — Zod -> JSON schema -> guaranteed shape from
-  // the model. We do NOT rely on "respond as JSON" in the prompt alone
-  // (retrieval.md → Generation contract).
-  const completion = await client.beta.chat.completions.parse({
-    model: GENERATION_MODEL,
-    temperature: 0,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt }
-    ],
-    response_format: zodResponseFormat(AnswerSchema, "answer")
-  });
-
-  const choice = completion.choices[0];
-  if (!choice?.message.parsed) {
-    // Model failed to satisfy the schema — defensive refusal.
-    return { payload: cannedRefusal(), llmCalled: true };
+  // OpenRouter is OpenAI-compatible, so both providers use the same strict
+  // Zod-derived JSON schema. Any thrown request, invalid structured response,
+  // empty answer, or invalid/missing citation from Nemotron triggers one
+  // immediate direct OpenAI attempt. A valid refusal is not a model failure.
+  let payload: AnswerPayload | null = null;
+  try {
+    const client = deps.client ?? getPrimaryClient();
+    const primaryPayload = await callGenerationModel(
+      client,
+      PRIMARY_GENERATION_MODEL,
+      systemPrompt,
+      userPrompt,
+      { useOpenRouterRouting: true }
+    );
+    if (!primaryPayload) throw new Error("primary model returned no parsed answer");
+    payload = normalizeAnswer(primaryPayload, input.chunks);
+    if (!payload) throw new Error("primary model returned an invalid or uncited answer");
+  } catch (err) {
+    console.warn(
+      "[generation] OpenRouter primary failed; retrying with OpenAI:",
+      err instanceof Error ? err.message : err
+    );
+    const fallbackClient = deps.fallbackClient ?? getFallbackClient();
+    const fallbackPayload = await callGenerationModel(
+      fallbackClient,
+      FALLBACK_GENERATION_MODEL,
+      systemPrompt,
+      userPrompt,
+      { reasoningEffort: "low" }
+    );
+    payload = fallbackPayload ? normalizeAnswer(fallbackPayload, input.chunks) : null;
   }
 
-  let payload = choice.message.parsed;
-
-  // Replace LLM-returned sources with trusted ones built from the retrieved
-  // chunks. The LLM can:
-  //   - cite a chunk_id we never sent (hallucination)
-  //   - cite a real chunk_id but invent the excerpt or doc_title
-  // Either way, the CitationPanel would display the LLM's text as if it were
-  // ground truth. We don't take that risk — the chunk's actual content +
-  // title are authoritative.
-  payload = { ...payload, sources: validateSources(payload.sources, input.chunks) };
-
-  // Hard rule from the mission: zero sources => refusal, regardless of the
-  // model's `refused` flag. An answer without citations is not an answer.
-  if (payload.sources.length === 0) {
-    payload = cannedRefusal();
+  if (!payload) {
+    // Both models failed to satisfy the schema — defensive refusal.
+    return { payload: cannedRefusal(), llmCalled: true };
   }
 
   return { payload, llmCalled: true };

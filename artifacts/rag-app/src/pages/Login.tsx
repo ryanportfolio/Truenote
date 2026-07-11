@@ -36,25 +36,10 @@ interface LoginPageProps {
  *   - No "remember me" toggle — sessions are 7 days fixed
  */
 
-/**
- * One line on what the selected demo role can do, shown beside the
- * chips. Custom-typed credentials (no chip selected) get the generic
- * invitation instead.
- */
-const DEMO_ROLE_NOTES: Record<DemoAccount["role"], string> = {
-  manager:
-    "The admin side: upload documents, manage users, review gaps. Demo writes stay locked.",
-  csr: "The call-floor view: ask questions, follow citations, browse the knowledge base."
+const DEMO_ROLE_PROMISES: Record<DemoAccount["role"], string> = {
+  manager: "Build. Review. Improve.",
+  csr: "Ask. Verify. Answer."
 };
-
-function demoNoteFor(
-  accounts: DemoAccount[],
-  selectedEmail: string | null
-): string {
-  const selected = accounts.find((a) => a.email === selectedEmail);
-  if (!selected) return "Two roles, one shared sandbox. Pick a chip to explore.";
-  return DEMO_ROLE_NOTES[selected.role];
-}
 
 export function LoginPage({
   onAuthenticated,
@@ -164,31 +149,37 @@ export function LoginPage({
           <form onSubmit={handleSubmit} className="auth-form">
             {demoAccounts.length > 0 ? (
               <fieldset className="auth-demo">
-                <legend>Demo access, credentials ready</legend>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    {demoAccounts.map((account) => (
+                <legend>Choose your view</legend>
+                <div className="auth-demo-grid">
+                  {demoAccounts.map((account, index) => {
+                    const selected = selectedDemo === account.email;
+                    return (
                       <button
                         key={account.email}
                         type="button"
                         onClick={() => applyDemoAccount(account)}
-                        aria-pressed={selectedDemo === account.email}
+                        aria-pressed={selected}
+                        aria-label={`Use the ${account.label} demo`}
+                        disabled={submitting}
                         className={
-                          selectedDemo === account.email
-                            ? "auth-demo-chip auth-demo-chip-active"
-                            : "auth-demo-chip"
+                          selected
+                            ? "auth-demo-role auth-demo-role-active"
+                            : "auth-demo-role"
                         }
                       >
-                        {account.label}
+                        <span className="auth-demo-role-number" aria-hidden>
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <span className="auth-demo-role-name">{account.label}</span>
+                        <span className="auth-demo-role-promise">
+                          {DEMO_ROLE_PROMISES[account.role]}
+                        </span>
+                        <span className="auth-demo-role-orbit" aria-hidden>
+                          <span />
+                        </span>
                       </button>
-                    ))}
-                  </div>
-                  {/* The note fills the fieldset's empty right half: what
-                    * the selected chip actually demos. aria-live so a
-                    * screen-reader chip switch announces the change. */}
-                  <p className="auth-demo-note" aria-live="polite">
-                    {demoNoteFor(demoAccounts, selectedDemo)}
-                  </p>
+                    );
+                  })}
                 </div>
               </fieldset>
             ) : null}
