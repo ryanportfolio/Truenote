@@ -2,6 +2,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { attachCurrentUser } from "./middleware/current-user.js";
 import { registerRoutes } from "./routes/index.js";
@@ -10,6 +11,51 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function createApp(): Express {
   const app = express();
+  const dist = path.resolve(__dirname, "../../rag-app/dist");
+
+  // Serve the built SPA before API middleware. Authenticated browsers send
+  // the session cookie on every same-origin request; if static files flow
+  // through attachCurrentUser, each HTML/JS/CSS request waits on a database
+  // session lookup before Express can read the file. Vite fingerprints files
+  // under /assets, so they are safe to cache forever. Unhashed public files
+  // keep Express's revalidation behavior.
+  if (process.env.NODE_ENV === "production") {
+    const assetsDir = path.join(dist, "assets");
+    app.get("/assets/*", (req: Request, res: Response, next: NextFunction) => {
+      const accepted = req.headers["accept-encoding"] ?? "";
+      const suffix = accepted.includes("br")
+        ? ".br"
+        : accepted.includes("gzip")
+          ? ".gz"
+          : null;
+      if (!suffix) return next();
+
+      const relativePath = req.params[0];
+      if (typeof relativePath !== "string") return next();
+      const originalPath = path.resolve(assetsDir, relativePath);
+      const compressedPath = `${originalPath}${suffix}`;
+      if (
+        !originalPath.startsWith(`${assetsDir}${path.sep}`) ||
+        !existsSync(compressedPath)
+      ) {
+        return next();
+      }
+
+      res.type(originalPath);
+      res.setHeader("Content-Encoding", suffix === ".br" ? "br" : "gzip");
+      res.vary("Accept-Encoding");
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      res.sendFile(compressedPath);
+    });
+    app.use(
+      "/assets",
+      express.static(assetsDir, {
+        immutable: true,
+        maxAge: "1y"
+      })
+    );
+    app.use(express.static(dist, { index: false, maxAge: 0 }));
+  }
 
   // CORS — explicit allowlist. Two facts shape this:
   //   1. credentials:true REQUIRES a specific Access-Control-Allow-Origin
@@ -28,14 +74,15 @@ export function createApp(): Express {
     .map((s) => s.trim())
     .filter(Boolean);
   app.use(
+    "/api",
     cors({
       credentials: true,
       origin: corsAllowed.length > 0 ? corsAllowed : false
     })
   );
-  app.use(express.json({ limit: "1mb" }));
-  app.use(cookieParser());
-  app.use(attachCurrentUser);
+  app.use("/api", express.json({ limit: "1mb" }));
+  app.use("/api", cookieParser());
+  app.use("/api", attachCurrentUser);
 
   registerRoutes(app);
 
@@ -47,9 +94,10 @@ export function createApp(): Express {
   // In production the Vite dev server is not running, so the api-server
   // serves the pre-built frontend from rag-app/dist and handles SPA routing.
   if (process.env.NODE_ENV === "production") {
-    const dist = path.resolve(__dirname, "../../rag-app/dist");
-    app.use(express.static(dist));
     app.get("*", (_req: Request, res: Response) => {
+      // HTML must revalidate so a new deploy can point at its new hashed
+      // assets immediately. The assets themselves remain immutable above.
+      res.setHeader("Cache-Control", "no-cache");
       res.sendFile(path.join(dist, "index.html"));
     });
   }
