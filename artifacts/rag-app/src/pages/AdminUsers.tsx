@@ -329,8 +329,8 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
         <h2 className="text-sm font-semibold">Import CSR emails</h2>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
           Upload one email per row, or a CSV or Excel (.xlsx) file with an email
-          column. Users join the current program with temporary password{" "}
-          <code>Truenote213</code> and must replace it at first login.
+          column. Each user joins the current program and is emailed a private
+          link to set their own password — you don&apos;t distribute anything.
         </p>
       </div>
 
@@ -373,10 +373,13 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
               : ""}
             .
           </p>
-          <p className="mt-1">
-            Temporary password: <code>{result.temporaryPassword}</code>. Every
-            imported user must change it after signing in.
-          </p>
+          {result.invitedCount > 0 ? (
+            <p className="mt-1">
+              Sent {result.invitedCount} invitation
+              {result.invitedCount === 1 ? "" : "s"} to set a password. Each new
+              user gets an email with a private link — no password to share.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
