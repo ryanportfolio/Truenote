@@ -64,19 +64,19 @@ const FILTERS: ReadonlyArray<{ value: QueryLogFilter; label: string }> = [
 const EMPTY_COPY: Record<QueryLogFilter, { title: string; hint: string }> = {
   flagged: {
     title: "No flagged gaps",
-    hint: "When a CSR flags a refusal as missing content, it lands here."
+    hint: "A CSR marked a question as missing content."
   },
   refused: {
     title: "No refusals in this scope",
-    hint: "Refusals are logged automatically whenever the assistant can't ground an answer."
+    hint: "The documents did not support an answer."
   },
   negative: {
     title: "No thumbs-down answers",
-    hint: "When a CSR thumbs-down an answer, it shows up here for review."
+    hint: "A CSR gave an answer a thumbs-down."
   },
   all: {
     title: "No questions yet",
-    hint: "Once CSRs start asking, every query in this scope appears here."
+    hint: "Questions appear here after a CSR asks."
   }
 };
 
@@ -152,14 +152,14 @@ function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
       <header>
         <h1 className="font-display text-3xl font-semibold tracking-tight">Content gaps</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Questions the knowledge base couldn't answer well. Flags come from CSRs; refusals
-          are logged automatically. Fill a gap by uploading the missing document.
+          Questions the documents did not answer. Flags and refusals appear here. Add the missing
+          document to close a gap.
         </p>
       </header>
 
       {noProgramSelected ? (
         <div className="rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          Select a program from the picker in the header to see its content gaps.
+          Choose a program to see its content gaps.
         </div>
       ) : (
         <>
@@ -232,8 +232,8 @@ function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
 
                 {gaps.items.length === 0 ? (
                   <p className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                    No repeated gaps in the last {gaps.windowDays} days — the queue below has the
-                    row-level detail.
+                    No repeated gaps in the last {gaps.windowDays} days. The queue below has each
+                    query.
                   </p>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
