@@ -1,32 +1,68 @@
 import { Router } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../lib/db-client.js";
 import { documents, documentVersions } from "@workspace/db/schema";
 import {
+  createHighlightSchema,
+  serializeHighlight,
+  updateHighlightSchema,
+  type KbHighlightRow
+} from "../lib/kb-highlights.js";
+import {
   authedUser,
+  blockDemoWrites,
   requireAuth,
   requireCsrOrAbove,
   requireFreshPassword
 } from "../middleware/current-user.js";
+import { isDemoEmail } from "../lib/auth/demo-accounts.js";
 import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
 
 /**
  * CSR-facing knowledge base reader. Unlike /api/documents (manager+ admin
- * surface: uploads, previews of any version, deletes), these endpoints are
- * read-only, restricted to ACTIVE + parse-ready versions, and open to every
- * authenticated role — a CSR browsing the KB is the product working as
- * intended.
+ * surface: uploads, previews of any version, deletes), document reads are
+ * restricted to ACTIVE + parse-ready versions and open to every authenticated
+ * role. Personal highlights add owner-scoped writes around that read surface.
  *
- * Program scoping is enforced server-side on both endpoints (the same
+ * Program scoping is enforced server-side on every endpoint (the same
  * `program_id` predicate retrieval uses). Cross-program ids return 404,
  * not 403, to avoid leaking existence.
  */
 export const kbRouter = Router();
 
 kbRouter.use(requireAuth, requireFreshPassword, requireCsrOrAbove);
+kbRouter.use(blockDemoWrites);
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const MAX_HIGHLIGHTS_PER_VERSION = 500;
+
+interface ActiveVersionRow {
+  document_version_id: string;
+  parsed_markdown: string | null;
+}
+
+async function findActiveVersion(
+  documentId: string,
+  programId: string
+): Promise<string | null> {
+  const rows = await db
+    .select({ documentVersionId: documentVersions.id })
+    .from(documents)
+    .innerJoin(
+      documentVersions,
+      and(
+        eq(documentVersions.documentId, documents.id),
+        eq(documentVersions.isActive, true),
+        eq(documentVersions.parseStatus, "ready")
+      )
+    )
+    .where(and(eq(documents.id, documentId), eq(documents.programId, programId)))
+    .orderBy(desc(documentVersions.uploadedAt))
+    .limit(1);
+  return rows[0]?.documentVersionId ?? null;
+}
 
 export interface KbDocumentListItem {
   documentId: string;
@@ -95,6 +131,7 @@ kbRouter.get("/documents/:id", async (req, res, next) => {
     const rows = await db
       .select({
         documentId: documents.id,
+        documentVersionId: documentVersions.id,
         title: documents.title,
         markdown: documentVersions.parsedMarkdown,
         updatedAt: documentVersions.uploadedAt
@@ -118,10 +155,288 @@ kbRouter.get("/documents/:id", async (req, res, next) => {
     }
     res.json({
       documentId: row.documentId,
+      documentVersionId: row.documentVersionId,
       title: row.title,
       markdown: row.markdown,
       updatedAt: row.updatedAt ? row.updatedAt.toISOString() : null
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Personal highlights for the document's current active parsed version. */
+kbRouter.get("/documents/:id/highlights", async (req, res, next) => {
+  try {
+    const user = authedUser(req);
+    const documentId = req.params.id;
+    if (!UUID_RE.test(documentId)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    const programId = await resolveEffectiveProgramId(user, req);
+    if (programId === null) {
+      res.status(400).json({ error: "No program selected." });
+      return;
+    }
+    const documentVersionId = await findActiveVersion(documentId, programId);
+    if (documentVersionId === null) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const result = await db.execute(sql`
+      SELECT
+        id::text,
+        highlighted_text,
+        start_offset,
+        end_offset,
+        color,
+        created_at,
+        updated_at
+      FROM kb_highlights
+      WHERE user_id = ${user.id}::uuid
+        AND document_id = ${documentId}::uuid
+        AND document_version_id = ${documentVersionId}::uuid
+      ORDER BY start_offset, created_at
+    `);
+    const rows = result.rows as unknown as KbHighlightRow[];
+    res.json({
+      items: rows.map(serializeHighlight),
+      documentVersionId,
+      canWriteHighlights: !isDemoEmail(user.email)
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+kbRouter.post("/documents/:id/highlights", async (req, res, next) => {
+  try {
+    const user = authedUser(req);
+    const documentId = req.params.id;
+    if (!UUID_RE.test(documentId)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    const parsed = createHighlightSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid highlight." });
+      return;
+    }
+    const programId = await resolveEffectiveProgramId(user, req);
+    if (programId === null) {
+      res.status(400).json({ error: "No program selected." });
+      return;
+    }
+    const outcome = await db.transaction(async (tx) => {
+      // Lock the active version row so activation cannot invalidate it
+      // between validation and insert. This join also re-enforces program
+      // scope inside the write transaction.
+      const activeResult = await tx.execute(sql`
+        SELECT
+          v.id::text AS document_version_id,
+          v.parsed_markdown
+        FROM documents AS d
+        INNER JOIN document_versions AS v ON v.document_id = d.id
+        WHERE d.id = ${documentId}::uuid
+          AND d.program_id = ${programId}::uuid
+          AND v.is_active = true
+          AND v.parse_status = 'ready'
+        ORDER BY v.uploaded_at DESC
+        LIMIT 1
+        FOR SHARE OF v
+      `);
+      const active = activeResult.rows[0] as unknown as ActiveVersionRow | undefined;
+      if (!active) return { kind: "not_found" } as const;
+      if (active.document_version_id !== parsed.data.documentVersionId) {
+        return { kind: "changed" } as const;
+      }
+
+      // ReactMarkdown's flattened text should never materially exceed its
+      // source. This generous ceiling rejects off-document writes without
+      // rejecting passages that span markdown formatting markers.
+      const markdownLength = active.parsed_markdown?.length ?? 0;
+      const renderedTextCeiling = Math.max(1_024, markdownLength * 2 + 1_024);
+      if (markdownLength === 0 || parsed.data.endOffset > renderedTextCeiling) {
+        return { kind: "invalid_range" } as const;
+      }
+
+      // Serialize creates for one user's document version. This makes the
+      // overlap check + insert atomic without requiring btree_gist.
+      await tx.execute(sql`
+        SELECT pg_advisory_xact_lock(
+          hashtext(${`${user.id}:${active.document_version_id}`})
+        )
+      `);
+
+      const countResult = await tx.execute(sql`
+        SELECT count(*)::int AS count
+        FROM kb_highlights
+        WHERE user_id = ${user.id}::uuid
+          AND document_version_id = ${active.document_version_id}::uuid
+      `);
+      const count = Number(countResult.rows[0]?.["count"] ?? 0);
+      if (count >= MAX_HIGHLIGHTS_PER_VERSION) {
+        return { kind: "limit" } as const;
+      }
+
+      const overlap = await tx.execute(sql`
+        SELECT id
+        FROM kb_highlights
+        WHERE user_id = ${user.id}::uuid
+          AND document_version_id = ${active.document_version_id}::uuid
+          AND start_offset < ${parsed.data.endOffset}
+          AND end_offset > ${parsed.data.startOffset}
+        LIMIT 1
+      `);
+      if (overlap.rows.length > 0) return { kind: "overlap" } as const;
+
+      const result = await tx.execute(sql`
+        INSERT INTO kb_highlights (
+          user_id,
+          document_id,
+          document_version_id,
+          highlighted_text,
+          start_offset,
+          end_offset,
+          color
+        ) VALUES (
+          ${user.id}::uuid,
+          ${documentId}::uuid,
+          ${active.document_version_id}::uuid,
+          ${parsed.data.highlightedText},
+          ${parsed.data.startOffset},
+          ${parsed.data.endOffset},
+          ${parsed.data.color}
+        )
+        RETURNING
+          id::text,
+          highlighted_text,
+          start_offset,
+          end_offset,
+          color,
+          created_at,
+          updated_at
+      `);
+      const row = result.rows[0] as unknown as KbHighlightRow | undefined;
+      if (!row) throw new Error("Highlight insert returned no row");
+      return { kind: "created", row } as const;
+    });
+
+    if (outcome.kind === "not_found") {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    if (outcome.kind === "changed") {
+      res.status(409).json({
+        error: "This document changed. Reload it before highlighting."
+      });
+      return;
+    }
+    if (outcome.kind === "invalid_range") {
+      res.status(400).json({ error: "Invalid highlight range." });
+      return;
+    }
+    if (outcome.kind === "limit") {
+      res.status(409).json({
+        error: `You can save up to ${MAX_HIGHLIGHTS_PER_VERSION} highlights per document.`
+      });
+      return;
+    }
+    if (outcome.kind === "overlap") {
+      res.status(409).json({
+        error: "That passage overlaps an existing highlight."
+      });
+      return;
+    }
+    res.status(201).json({ item: serializeHighlight(outcome.row) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+kbRouter.patch("/highlights/:id", async (req, res, next) => {
+  try {
+    const user = authedUser(req);
+    const highlightId = req.params.id;
+    if (!UUID_RE.test(highlightId)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    const parsed = updateHighlightSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid highlight color." });
+      return;
+    }
+    const programId = await resolveEffectiveProgramId(user, req);
+    if (programId === null) {
+      res.status(400).json({ error: "No program selected." });
+      return;
+    }
+    const result = await db.execute(sql`
+      UPDATE kb_highlights AS h
+      SET color = ${parsed.data.color}, updated_at = now()
+      FROM documents AS d, document_versions AS v
+      WHERE h.id = ${highlightId}::uuid
+        AND h.user_id = ${user.id}::uuid
+        AND d.id = h.document_id
+        AND d.program_id = ${programId}::uuid
+        AND v.id = h.document_version_id
+        AND v.document_id = d.id
+        AND v.is_active = true
+        AND v.parse_status = 'ready'
+      RETURNING
+        h.id::text,
+        h.highlighted_text,
+        h.start_offset,
+        h.end_offset,
+        h.color,
+        h.created_at,
+        h.updated_at
+    `);
+    const row = result.rows[0] as unknown as KbHighlightRow | undefined;
+    if (!row) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    res.json({ item: serializeHighlight(row) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+kbRouter.delete("/highlights/:id", async (req, res, next) => {
+  try {
+    const user = authedUser(req);
+    const highlightId = req.params.id;
+    if (!UUID_RE.test(highlightId)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    const programId = await resolveEffectiveProgramId(user, req);
+    if (programId === null) {
+      res.status(400).json({ error: "No program selected." });
+      return;
+    }
+    const result = await db.execute(sql`
+      DELETE FROM kb_highlights AS h
+      USING documents AS d, document_versions AS v
+      WHERE h.id = ${highlightId}::uuid
+        AND h.user_id = ${user.id}::uuid
+        AND d.id = h.document_id
+        AND d.program_id = ${programId}::uuid
+        AND v.id = h.document_version_id
+        AND v.document_id = d.id
+        AND v.is_active = true
+        AND v.parse_status = 'ready'
+      RETURNING h.id
+    `);
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

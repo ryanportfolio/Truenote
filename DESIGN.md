@@ -21,6 +21,7 @@ The visual reference is docs.cohere.com's light theme (extracted from its deploy
 | `--success` | `43.52% 0.0428 168.8` | `#39594D` | Evergreen (Cohere's accent): ready pills, thumbs-up, copy-confirm. **7.61:1** on card |
 | `--warning` | `77.04% 0.1646 70.7` | `#F59F0A` | Amber — tint washes + badge chips only, never running text |
 | `--warning-foreground` | `28.01% 0.0563 94.1` | `#322801` | Text on warning tints |
+| `--highlight-yellow` / `green` / `blue` | dedicated OKLCH values | | Personal passage annotations. Never reuse semantic warning/success/primary tokens for user color choices |
 | `--destructive` | `42.61% 0.1584 27.3` | `#921616` | Errors. **7.16:1** on bg, **8.79:1** on card — AAA even on the canvas |
 | `--border` / `--input` | `88.52% 0.0042 91.5` | `#DAD9D6` | Warm hairline. Every division is 1px of this |
 | `--ring` | = `--primary` | | Focus rings |
@@ -176,6 +177,8 @@ Semantic tokens only — raw Tailwind palette classes (`emerald-*`, `amber-*`, `
 ## Knowledge base reader (/kb)
 
 CSR-facing read surface for the same corpus answers are grounded in (sidebar "Knowledge base," minRole csr). List: single card of divided rows (title + relative time), client-side title filter with an inset search icon. Reader: one article card, `max-w-3xl`, doc title in display face over a hairline rule, then the parsed markdown. Unlike AnswerMarkdown, real-document rendering allows headings (stepped display scale), links (underlined `--primary`, new tab), and code; images render as a dashed placeholder chip carrying the alt text — OCR-local image refs aren't served. Cross-program or removed docs land on a calm EmptyState, not an error.
+
+Personal passage highlights are anchored to the active document version and saved per user. Pointer/touch selection opens a compact color-and-save group; keyboard mode makes readable blocks focusable so Tab + Enter reaches the same flow. Saved passages stay manageable from an inline list. Yellow, green, and blue use dedicated annotation tokens plus an underline, so color is never the only signal. Shared demo accounts are explicitly read-only.
 
 ## Chat session history
 

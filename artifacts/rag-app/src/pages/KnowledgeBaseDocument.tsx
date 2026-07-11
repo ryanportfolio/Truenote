@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -6,6 +6,7 @@ import { ArrowLeft, BookOpen } from "lucide-react";
 import { getKbDocument } from "@/lib/api";
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
+import { PassageHighlighter } from "@/components/kb/PassageHighlighter";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 import type { KbDocumentResponse } from "@/types/api";
 
@@ -16,16 +17,20 @@ type DocState =
 
 export function KbDocumentPage({ documentId }: { documentId: string }): JSX.Element {
   const [state, setState] = useState<DocState>({ status: "loading" });
+  const loadGenerationRef = useRef(0);
 
   useEffect(() => {
-    let cancelled = false;
+    let disposed = false;
     async function load(): Promise<void> {
+      const generation = ++loadGenerationRef.current;
       setState({ status: "loading" });
       try {
         const doc = await getKbDocument(documentId);
-        if (!cancelled) setState({ status: "ready", doc });
+        if (!disposed && generation === loadGenerationRef.current) {
+          setState({ status: "ready", doc });
+        }
       } catch (err) {
-        if (!cancelled) {
+        if (!disposed && generation === loadGenerationRef.current) {
           const message = err instanceof Error ? err.message : "Failed to load document";
           setState({
             status: "error",
@@ -40,7 +45,8 @@ export function KbDocumentPage({ documentId }: { documentId: string }): JSX.Elem
     // reload surfaces the clean not-found state instead of stale content.
     window.addEventListener(SELECTED_PROGRAM_CHANGED_EVENT, load as EventListener);
     return () => {
-      cancelled = true;
+      disposed = true;
+      loadGenerationRef.current += 1;
       window.removeEventListener(SELECTED_PROGRAM_CHANGED_EVENT, load as EventListener);
     };
   }, [documentId]);
@@ -93,7 +99,12 @@ export function KbDocumentPage({ documentId }: { documentId: string }): JSX.Elem
             ) : null}
           </header>
           {state.doc.markdown ? (
-            <DocMarkdown markdown={state.doc.markdown} />
+            <PassageHighlighter
+              documentId={state.doc.documentId}
+              documentVersionId={state.doc.documentVersionId}
+            >
+              <DocMarkdown markdown={state.doc.markdown} />
+            </PassageHighlighter>
           ) : (
             <p className="mt-4 text-sm text-muted-foreground">
               This document has no readable content yet.

@@ -199,9 +199,40 @@ export interface KbDocumentListResponse {
 
 export interface KbDocumentResponse {
   documentId: string;
+  /** Active parsed version rendered by the reader. */
+  documentVersionId: string;
   title: string;
   markdown: string | null;
   updatedAt: string | null;
+}
+
+export type KbHighlightColor = "yellow" | "green" | "blue";
+
+/** One personal passage highlight anchored to a rendered document version. */
+export interface KbHighlight {
+  id: string;
+  highlightedText: string;
+  startOffset: number;
+  endOffset: number;
+  color: KbHighlightColor;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KbHighlightListResponse {
+  items: KbHighlight[];
+  /** Lets the client reject a list fetched across a document-version race. */
+  documentVersionId: string;
+  /** Shared demo credentials can read highlights but cannot mutate them. */
+  canWriteHighlights: boolean;
+}
+
+export interface CreateKbHighlightRequest {
+  documentVersionId: string;
+  highlightedText: string;
+  startOffset: number;
+  endOffset: number;
+  color: KbHighlightColor;
 }
 
 export interface UploadResponse {
