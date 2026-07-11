@@ -20,8 +20,12 @@ export interface RetrievalChunk {
   id: string;
   content: string;
   documentVersionId: string;
+  documentId: string | null;
+  versionNumber: number;
   programId: string;
   docTitle?: string;
+  /** Raw JSONB metadata. Citation code validates fields before use. */
+  metadata: unknown;
   relevanceScore: number;
   /**
    * True for ordinal-adjacent context chunks pulled in by neighbor
@@ -73,10 +77,12 @@ interface CandidateRow {
   id: string;
   content: string;
   document_version_id: string;
+  version_number: number;
   program_id: string;
   doc_title: string | null;
   document_id: string | null;
   ordinal: number | null;
+  metadata: unknown;
 }
 
 function readNumberEnv(key: string, fallback: number, parser: (s: string) => number): number {
@@ -84,6 +90,37 @@ function readNumberEnv(key: string, fallback: number, parser: (s: string) => num
   if (!raw) return fallback;
   const n = parser(raw);
   return Number.isFinite(n) ? n : fallback;
+}
+
+export interface RetrievalRuntimeConfig {
+  threshold: number;
+  topK: number;
+  candidateK: number;
+  neighborAnchors: number;
+}
+
+/** The effective retrieval settings used by both live asks and eval snapshots. */
+export function getRetrievalRuntimeConfig(): RetrievalRuntimeConfig {
+  return {
+    threshold: readNumberEnv(
+      "RERANK_CONFIDENCE_THRESHOLD",
+      DEFAULT_RERANK_THRESHOLD,
+      Number.parseFloat
+    ),
+    topK: readNumberEnv("RETRIEVAL_TOP_K", DEFAULT_TOP_K, (s) =>
+      Number.parseInt(s, 10)
+    ),
+    candidateK: readNumberEnv(
+      "RETRIEVAL_CANDIDATE_K",
+      DEFAULT_CANDIDATE_K,
+      (s) => Number.parseInt(s, 10)
+    ),
+    neighborAnchors: readNumberEnv(
+      "RETRIEVAL_NEIGHBOR_ANCHORS",
+      DEFAULT_NEIGHBOR_ANCHORS,
+      (s) => Number.parseInt(s, 10)
+    )
+  };
 }
 
 /**
@@ -103,6 +140,7 @@ async function vectorSearch(
   const vec = `[${embedding.join(",")}]`;
   const result = await db.execute(sql`
     SELECT c.id, c.content, c.document_version_id, c.program_id, c.ordinal,
+           c.metadata, dv.version_number,
            d.title AS doc_title, d.id AS document_id
     FROM chunks c
     JOIN document_versions dv ON dv.id = c.document_version_id
@@ -128,6 +166,7 @@ async function bm25Search(
 ): Promise<CandidateRow[]> {
   const result = await db.execute(sql`
     SELECT c.id, c.content, c.document_version_id, c.program_id, c.ordinal,
+           c.metadata, dv.version_number,
            d.title AS doc_title, d.id AS document_id
     FROM chunks c
     JOIN document_versions dv ON dv.id = c.document_version_id
@@ -163,6 +202,7 @@ async function trigramSearch(
 ): Promise<CandidateRow[]> {
   const result = await db.execute(sql`
     SELECT c.id, c.content, c.document_version_id, c.program_id, c.ordinal,
+           c.metadata, dv.version_number,
            d.title AS doc_title, d.id AS document_id
     FROM chunks c
     JOIN document_versions dv ON dv.id = c.document_version_id
@@ -209,6 +249,7 @@ async function fetchNeighborRows(
   );
   const result = await db.execute(sql`
     SELECT c.id, c.content, c.document_version_id, c.program_id, c.ordinal,
+           c.metadata, dv.version_number,
            d.title AS doc_title, d.id AS document_id
     FROM chunks c
     JOIN document_versions dv ON dv.id = c.document_version_id
@@ -258,8 +299,11 @@ export function expandWithNeighbors(
         id: row.id,
         content: row.content,
         documentVersionId: row.document_version_id,
+        documentId: row.document_id,
+        versionNumber: row.version_number,
         programId: row.program_id,
         docTitle: row.doc_title ?? undefined,
+        metadata: row.metadata,
         relevanceScore: 0,
         neighbor: true
       });
@@ -272,20 +316,11 @@ export async function retrieve(
   input: RetrievalInput,
   deps: RetrievalDeps = {}
 ): Promise<RetrievalResult> {
-  const threshold = readNumberEnv(
-    "RERANK_CONFIDENCE_THRESHOLD",
-    DEFAULT_RERANK_THRESHOLD,
-    Number.parseFloat
-  );
-  const topK = input.topK ?? readNumberEnv("RETRIEVAL_TOP_K", DEFAULT_TOP_K, (s) => parseInt(s, 10));
-  const candidateK =
-    input.candidateK ??
-    readNumberEnv("RETRIEVAL_CANDIDATE_K", DEFAULT_CANDIDATE_K, (s) => parseInt(s, 10));
-  const neighborAnchors = readNumberEnv(
-    "RETRIEVAL_NEIGHBOR_ANCHORS",
-    DEFAULT_NEIGHBOR_ANCHORS,
-    (s) => parseInt(s, 10)
-  );
+  const runtime = getRetrievalRuntimeConfig();
+  const threshold = runtime.threshold;
+  const topK = input.topK ?? runtime.topK;
+  const candidateK = input.candidateK ?? runtime.candidateK;
+  const neighborAnchors = runtime.neighborAnchors;
 
   const emptyTrace = (trigramFallback = false): RetrievalTrace => ({
     candidates: [],
@@ -358,8 +393,11 @@ export async function retrieve(
       id: cand.id,
       content: cand.content,
       documentVersionId: cand.document_version_id,
+      documentId: cand.document_id,
+      versionNumber: cand.version_number,
       programId: cand.program_id,
       docTitle: cand.doc_title ?? undefined,
+      metadata: cand.metadata,
       relevanceScore: r.relevance_score
     });
   }

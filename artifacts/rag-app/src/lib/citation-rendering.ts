@@ -14,6 +14,7 @@
  */
 
 import type { Source } from "@/types/api";
+import { citationDocumentHref } from "@/lib/citationLinks";
 
 const CITATION_RE = /\[([^\]]+)\]/g;
 
@@ -58,15 +59,23 @@ export function annotateCitations(answer: string, sources: Source[]): AnnotatedA
 }
 
 /**
- * Plain-text form for the clipboard: known citations become "[N]", unknown
- * bracket tokens are kept verbatim. Markdown syntax is left as-is — CSRs
- * paste into CRM notes where lightweight markdown reads fine.
+ * CRM-ready clipboard form: known citations become "[N]", unknown bracket
+ * tokens stay verbatim, and cited sources get a matching legend with any
+ * durable version/deep link. Markdown stays lightweight and readable.
  */
-export function answerForClipboard(answer: string, sources: Source[]): string {
+export function answerForClipboard(
+  answer: string,
+  sources: Source[],
+  options: {
+    question?: string;
+    queryLogId?: string | null;
+    origin?: string;
+  } = {}
+): string {
   const known = new Set(sources.map((s) => s.chunk_id));
   const ordinals = new Map<string, number>();
   let next = 1;
-  return answer.replace(CITATION_RE, (raw: string, id: string) => {
+  const rewritten = answer.replace(CITATION_RE, (raw: string, id: string) => {
     if (!known.has(id)) return raw;
     let ordinal = ordinals.get(id);
     if (ordinal === undefined) {
@@ -76,4 +85,20 @@ export function answerForClipboard(answer: string, sources: Source[]): string {
     }
     return `[${ordinal}]`;
   });
+  const sourceById = new Map(sources.map((source) => [source.chunk_id, source]));
+  const legend = Array.from(ordinals.entries())
+    .sort((left, right) => left[1] - right[1])
+    .flatMap(([chunkId, ordinal]) => {
+      const source = sourceById.get(chunkId);
+      if (!source) return [];
+      const version = source.version_number ? ` (Version ${source.version_number})` : "";
+      const href = citationDocumentHref(source, options.queryLogId ?? null);
+      const url =
+        href && options.origin ? new URL(href, options.origin).toString() : href;
+      return [`[${ordinal}] ${source.doc_title}${version}${url ? ` — ${url}` : ""}`];
+    });
+  const body = options.question
+    ? `Question: ${options.question}\n\nAnswer:\n${rewritten}`
+    : rewritten;
+  return legend.length > 0 ? `${body}\n\nSources:\n${legend.join("\n")}` : body;
 }

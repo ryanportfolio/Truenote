@@ -1,5 +1,9 @@
-import PgBoss from "pg-boss";
 import { runIngestion } from "./run.js";
+import {
+  ensureQueue,
+  getBoss,
+  stopBoss
+} from "../jobs/boss.js";
 
 export const INGEST_DOCUMENT_VERSION_QUEUE = "ingest-document-version";
 
@@ -7,50 +11,12 @@ export interface IngestDocumentVersionPayload {
   documentVersionId: string;
 }
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __pgBoss: PgBoss | undefined;
-}
-
-async function ensureQueue(boss: PgBoss, name: string): Promise<void> {
-  // pg-boss v10 requires queues to be explicitly registered before send() /
-  // work(). If you skip this, send() silently returns null and nothing lands
-  // in pgboss.job — the famous v9 → v10 footgun. Per-queue options live here
-  // (instead of per-send) so retry / expiration are uniform.
-  // Job retention rides pg-boss's defaults; `deleteAfterSeconds` used to be
-  // passed here but it is a constructor-level maintenance option, not a
-  // queue option — createQueue ignored it in every v10.
-  // The catch is defensive: createQueue is idempotent at the SQL level, but
-  // the JS wrapper has been known to surface unique-constraint errors when
-  // two processes race on first start (api-server + worker). Swallowing
-  // "already exists" lets both processes safely initialize.
-  try {
-    await boss.createQueue(name, {
-      name, // pg-boss 10.4's Queue options type requires the name repeated here
-      retryLimit: 3,
-      retryDelay: 30,
-      retryBackoff: true,
-      expireInSeconds: 900 // 15 min — OCR + embed + chunker should be well under
-    });
-  } catch (err) {
-    if (!/already exists|duplicate|unique constraint/i.test(String(err))) {
-      throw err;
-    }
-  }
-}
-
-async function getBoss(): Promise<PgBoss> {
-  if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL is not set");
-  }
-  if (!globalThis.__pgBoss) {
-    const boss = new PgBoss({ connectionString: process.env.DATABASE_URL });
-    await boss.start();
-    await ensureQueue(boss, INGEST_DOCUMENT_VERSION_QUEUE);
-    globalThis.__pgBoss = boss;
-  }
-  return globalThis.__pgBoss;
-}
+const INGEST_QUEUE_POLICY = {
+  retryLimit: 3,
+  retryDelay: 30,
+  retryBackoff: true,
+  expireInSeconds: 900 // 15 min — OCR + embed + chunker should be well under
+} as const;
 
 /**
  * Enqueue a document version for ingestion. Returns the pg-boss job id (or
@@ -58,6 +24,7 @@ async function getBoss(): Promise<PgBoss> {
  */
 export async function enqueueIngestion(documentVersionId: string): Promise<string | null> {
   const boss = await getBoss();
+  await ensureQueue(boss, INGEST_DOCUMENT_VERSION_QUEUE, INGEST_QUEUE_POLICY);
   return boss.send(INGEST_DOCUMENT_VERSION_QUEUE, { documentVersionId });
 }
 
@@ -76,6 +43,7 @@ export async function enqueueIngestion(documentVersionId: string): Promise<strin
  */
 export async function startIngestionWorker(): Promise<void> {
   const boss = await getBoss();
+  await ensureQueue(boss, INGEST_DOCUMENT_VERSION_QUEUE, INGEST_QUEUE_POLICY);
   await boss.work<IngestDocumentVersionPayload>(
     INGEST_DOCUMENT_VERSION_QUEUE,
     { batchSize: 1 },
@@ -93,9 +61,4 @@ export async function startIngestionWorker(): Promise<void> {
  * drain — without it, a hung Mistral OCR call or stalled OpenAI request
  * blocks shutdown forever and the platform has to SIGKILL the process.
  */
-export async function stopBoss(): Promise<void> {
-  if (globalThis.__pgBoss) {
-    await globalThis.__pgBoss.stop({ graceful: true, timeout: 30_000 });
-    globalThis.__pgBoss = undefined;
-  }
-}
+export { stopBoss };

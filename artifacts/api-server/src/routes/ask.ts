@@ -1,16 +1,14 @@
 import { Router, type Request, type Response } from "express";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../lib/db-client.js";
 import {
   chatSessions,
-  chunks,
-  documentVersions,
   programs,
   queryLog
 } from "@workspace/db/schema";
 import { retrieve } from "../lib/retrieval/query.js";
-import { generateAnswer, type Source } from "../lib/generation/answer.js";
+import { generateAnswer } from "../lib/generation/answer.js";
 import { rewriteFollowUp, type HistoryTurn } from "../lib/generation/rewrite.js";
 import { nameSession } from "../lib/generation/name-session.js";
 import {
@@ -22,6 +20,14 @@ import {
 import type { CurrentUser } from "../lib/auth/current-user.js";
 import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
 import { canAccessProgram } from "../lib/auth/current-user.js";
+import {
+  buildLinkedSources,
+  saveCitationSnapshots,
+  withoutDurableCitation,
+  type LinkedSource
+} from "../lib/citations.js";
+
+export type { LinkedSource } from "../lib/citations.js";
 
 export const askRouter = Router();
 
@@ -84,12 +90,6 @@ const AskBody = z.object({
  * the LLM call.
  */
 export type AskStage = "rewriting" | "searching" | "reranking" | "generating";
-
-/** A generation Source plus the owning document id, for KB deep links. */
-export type LinkedSource = Source & {
-  /** Resolved via chunks → document_versions; null if the chunk vanished. */
-  doc_id: string | null;
-};
 
 export interface AskResponse {
   queryLogId: string | null;
@@ -284,25 +284,14 @@ async function runAsk(
   const latencyMs = Date.now() - t0;
   const cited = uniqueUuids(generation.payload.sources.map((s) => s.chunk_id));
 
-  // Resolve each cited chunk to its owning document so the client can link
-  // "read the full document" from receipts and citation panels. Program
-  // scope is already guaranteed: every cited chunk came out of retrieval,
-  // which filters on program_id.
-  const docByChunkId = new Map<string, string>();
-  if (cited.length > 0) {
-    const chunkDocs = await db
-      .select({ chunkId: chunks.id, documentId: documentVersions.documentId })
-      .from(chunks)
-      .innerJoin(documentVersions, eq(documentVersions.id, chunks.documentVersionId))
-      .where(inArray(chunks.id, cited));
-    for (const r of chunkDocs) {
-      if (r.documentId) docByChunkId.set(r.chunkId, r.documentId);
-    }
-  }
-  const linkedSources: LinkedSource[] = generation.payload.sources.map((s) => ({
-    ...s,
-    doc_id: docByChunkId.get(s.chunk_id) ?? null
-  }));
+  // Build the receipt from the retrieval rows already authorized by the
+  // program-scoped SQL query. Those rows carry document-version identity and
+  // raw parsed-markdown offsets, so a same-version re-ingest cannot race this
+  // response by replacing the chunks before a second lookup.
+  const linkedSources = buildLinkedSources(
+    generation.payload.sources,
+    retrieval.chunks
+  );
 
   const inserted = await db
     .insert(queryLog)
@@ -317,16 +306,33 @@ async function runAsk(
       latencyMs
     })
     .returning({ id: queryLog.id });
+  const queryLogId = inserted[0]?.id ?? null;
+
+  // Best effort by contract: code may deploy before the raw DDL adds the
+  // JSONB column. Missing-column writes degrade to the legacy chunk-id
+  // history path and must never turn a grounded answer into a 500.
+  let responseSources = linkedSources;
+  if (linkedSources.length > 0) {
+    const saved = queryLogId
+      ? await saveCitationSnapshots({
+          queryLogId,
+          userId: user.id,
+          programId,
+          sources: linkedSources
+        })
+      : false;
+    if (!saved) responseSources = linkedSources.map(withoutDurableCitation);
+  }
 
   await touchSession(sessionId);
   // Name the session from its first real exchange (no-op if already named).
   scheduleSessionNaming(sessionId, question, generation.payload.answer);
 
   return {
-    queryLogId: inserted[0]?.id ?? null,
+    queryLogId,
     sessionId,
     answer: generation.payload.answer,
-    sources: linkedSources,
+    sources: responseSources,
     refused: generation.payload.refused,
     confidence: generation.payload.confidence,
     retrievedChunks: retrieval.chunks.map((c) => ({

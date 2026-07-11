@@ -36,7 +36,7 @@ export interface RerankResult {
  */
 const DEFAULT_RERANK_MODEL = "rerank-english-v3.0";
 
-function rerankModel(): string {
+export function getRerankModel(): string {
   return process.env.COHERE_RERANK_MODEL || DEFAULT_RERANK_MODEL;
 }
 
@@ -45,7 +45,7 @@ export async function rerankWithCohere(input: RerankInput): Promise<RerankResult
   const c = client();
   const top = Math.min(input.topN ?? 8, input.documents.length);
   const response = await c.rerank({
-    model: rerankModel(),
+    model: getRerankModel(),
     query: input.question,
     documents: input.documents,
     topN: top

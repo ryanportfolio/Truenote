@@ -15,7 +15,12 @@ import {
   requireFreshPassword
 } from "../middleware/current-user.js";
 import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
-import type { LinkedSource } from "./ask.js";
+import {
+  linkedSourceFromChunk,
+  loadCitationSnapshots,
+  withoutDurableCitation,
+  type LinkedSource
+} from "../lib/citations.js";
 
 /**
  * CSR chat session history. A session groups the query_log rows from one
@@ -144,50 +149,65 @@ sessionsRouter.get("/:id", async (req, res, next) => {
       )
       .orderBy(asc(queryLog.createdAt));
 
-    // Reconstruct citation sources from the stored chunk ids. A cited chunk
-    // may no longer resolve for two reasons — its version was re-ingested
-    // (chunk ids change, doc ids don't) OR its version was replaced by a
-    // newer one (the old version is deactivated but its chunks linger in the
-    // table). Either way the citation simply drops and the answer's inline
-    // [id] renders as an unknown citation client-side. The excerpt is the
-    // full chunk content (the live LLM-trimmed excerpt isn't stored); the
-    // citation panel already renders full chunk text.
+    // Durable snapshots are the primary receipt. They retain the exact
+    // document version, clean excerpt, and raw markdown range even when a
+    // same-version re-ingest replaces every chunk id.
+    const loadedSnapshots = await loadCitationSnapshots({
+      queryLogIds: logRows.map((row) => row.id),
+      userId: user.id,
+      programId
+    });
+    const snapshotsByLogId = new Map<string, LinkedSource[]>();
+    for (const row of logRows) {
+      const snapshots = loadedSnapshots.get(row.id);
+      const citedIds = row.citedChunkIds ?? [];
+      if (
+        snapshots &&
+        snapshots.length === citedIds.length &&
+        snapshots.every((source, index) => source.chunk_id === citedIds[index])
+      ) {
+        snapshotsByLogId.set(row.id, snapshots);
+      }
+    }
+
+    // Legacy fallback for rows written before citation_snapshots DDL (or
+    // while it was unavailable). This preserves current behavior, but it is
+    // intentionally not the durability mechanism: replaced chunks can drop.
     const allChunkIds = Array.from(
-      new Set(logRows.flatMap((r) => r.citedChunkIds ?? []))
+      new Set(
+        logRows
+          .filter((row) => !snapshotsByLogId.has(row.id))
+          .flatMap((row) => row.citedChunkIds ?? [])
+      )
     );
-    const chunkMap = new Map<string, LinkedSource>();
+    interface ResolvedChunk {
+      chunkId: string;
+      content: string;
+      metadata: unknown;
+      docId: string;
+      docTitle: string;
+      documentVersionId: string;
+      versionNumber: number;
+    }
+    const chunkMap = new Map<string, ResolvedChunk>();
     if (allChunkIds.length > 0) {
       const chunkRows = await db
         .select({
           chunkId: chunks.id,
           content: chunks.content,
+          metadata: chunks.metadata,
           docId: documents.id,
-          docTitle: documents.title
+          docTitle: documents.title,
+          documentVersionId: documentVersions.id,
+          versionNumber: documentVersions.versionNumber
         })
         .from(chunks)
         .innerJoin(documentVersions, eq(documentVersions.id, chunks.documentVersionId))
         .innerJoin(documents, eq(documents.id, documentVersions.documentId))
-        // Only resolve chunks in the caller's program AND from still-active
-        // versions. The is_active filter is a content-removal boundary: when
-        // a manager replaces a document version to correct or remove info,
-        // the old version's chunks stay in the table (only the version flips
-        // inactive) — without this filter a CSR could reopen an old chat and
-        // still see the superseded excerpt. Every other chunk query in
-        // retrieval filters is_active too; this one must match.
-        .where(
-          and(
-            inArray(chunks.id, allChunkIds),
-            eq(chunks.programId, programId),
-            eq(documentVersions.isActive, true)
-          )
-        );
+        // Defense in depth: only resolve chunks in the caller's program.
+        .where(and(inArray(chunks.id, allChunkIds), eq(chunks.programId, programId)));
       for (const c of chunkRows) {
-        chunkMap.set(c.chunkId, {
-          chunk_id: c.chunkId,
-          doc_title: c.docTitle,
-          excerpt: c.content,
-          doc_id: c.docId
-        });
+        chunkMap.set(c.chunkId, c);
       }
     }
 
@@ -198,9 +218,24 @@ sessionsRouter.get("/:id", async (req, res, next) => {
       refused: r.refused ?? false,
       latencyMs: r.latencyMs,
       feedback: r.feedback,
-      sources: (r.citedChunkIds ?? [])
-        .map((cid) => chunkMap.get(cid))
-        .filter((s): s is LinkedSource => s !== undefined)
+      sources:
+        snapshotsByLogId.get(r.id) ??
+        (r.citedChunkIds ?? []).flatMap((chunkId, citationIndex) => {
+          const chunk = chunkMap.get(chunkId);
+          if (!chunk) return [];
+          return [
+            withoutDurableCitation(linkedSourceFromChunk({
+              chunkId: chunk.chunkId,
+              docTitle: chunk.docTitle,
+              content: chunk.content,
+              documentId: chunk.docId,
+              documentVersionId: chunk.documentVersionId,
+              versionNumber: chunk.versionNumber,
+              metadata: chunk.metadata,
+              citationIndex
+            }))
+          ];
+        })
     }));
 
     const detail: SessionDetail = {

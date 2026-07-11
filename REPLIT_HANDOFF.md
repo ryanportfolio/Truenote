@@ -342,6 +342,113 @@ but the super-user Model routing page cannot persist changes.
 
 ---
 
+## B7. Replit Agent DDL prompt — exact citation snapshots
+
+Ask the Replit Agent to run this against the dev database. It is
+idempotent and safe to re-run.
+
+```sql
+ALTER TABLE query_log
+  ADD COLUMN IF NOT EXISTS citation_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb;
+```
+
+This column freezes the ordered source receipt for each new answer: document,
+document version, clean excerpt, and raw-Markdown offsets. Until the column
+exists, asking and session history continue to work with legacy live-chunk
+citations; exact version-pinned links are simply unavailable.
+
+Apply that DDL to the **development database**, verify it there, then republish;
+Replit's Publish flow promotes the dev/prod schema difference. After the merged
+code is deployed in development, restart the worker and run the re-ingest so
+existing development chunks receive raw source offsets:
+
+```bash
+pnpm --filter @workspace/scripts run reingest
+```
+
+The script enforces the safe order before replacing any chunks:
+
+1. Backfill every recoverable legacy `query_log` citation into an immutable,
+   version-pinned snapshot using the existing chunk rows.
+2. Abort before chunk deletion if any receipt is only partly recoverable or
+   the backfill does not save every eligible receipt.
+3. Re-chunk and re-embed the active document versions with raw source offsets.
+
+Confirm the script reports `froze N/N legacy citation receipt(s)` before its
+first `rewrote` line, then wait for it to finish before testing a new answer.
+Older backfilled answers retain their source panels and pinned versions; rows
+whose old chunks had no offsets may not have an exact passage jump. New answers
+created after re-ingest receive exact offsets automatically.
+
+Publish promotes schema, not row-data backfills. Before claiming that existing
+production documents support exact passage jumps, confirm a Replit-supported,
+production-safe way to run the same receipt-backfill/re-ingest workflow (or
+re-upload those documents) and verify its output. Do not point this DDL prompt
+or an ad-hoc local command at the production database.
+
+---
+
+## B8. Replit Agent DDL prompt — Evaluation Center
+
+Ask the Replit Agent to run this against the dev database. It is idempotent
+and safe to re-run.
+
+```sql
+CREATE TABLE IF NOT EXISTS eval_runs (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  program_id          UUID NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
+  requested_by        UUID REFERENCES users(id) ON DELETE SET NULL,
+  status              TEXT NOT NULL DEFAULT 'queued',
+  question_id         UUID REFERENCES eval_questions(id) ON DELETE SET NULL,
+  judge               BOOLEAN NOT NULL DEFAULT false,
+  question_count      INTEGER NOT NULL DEFAULT 0,
+  completed_questions INTEGER NOT NULL DEFAULT 0,
+  configuration       JSONB NOT NULL DEFAULT '{}'::jsonb,
+  report              JSONB,
+  error               TEXT,
+  is_baseline         BOOLEAN NOT NULL DEFAULT false,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  started_at          TIMESTAMPTZ,
+  finished_at         TIMESTAMPTZ,
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CONSTRAINT eval_runs_status_check
+    CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+  CONSTRAINT eval_runs_counts_check
+    CHECK (
+      question_count >= 0
+      AND completed_questions >= 0
+      AND completed_questions <= question_count
+    ),
+  CONSTRAINT eval_runs_baseline_check
+    CHECK (NOT is_baseline OR status = 'completed')
+);
+
+CREATE INDEX IF NOT EXISTS eval_questions_program_id_idx
+  ON eval_questions (program_id);
+
+CREATE INDEX IF NOT EXISTS eval_runs_program_created_idx
+  ON eval_runs (program_id, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS eval_runs_program_active_uidx
+  ON eval_runs (program_id)
+  WHERE status IN ('queued', 'running');
+
+CREATE UNIQUE INDEX IF NOT EXISTS eval_runs_program_baseline_uidx
+  ON eval_runs (program_id)
+  WHERE is_baseline = true;
+```
+
+After applying, restart both `api-server` and the existing background worker.
+The worker now consumes both document-ingestion and `run-evaluation` jobs.
+Until this table exists, the super-user Evaluation Center shows a setup notice,
+keeps question editing available, and disables runs without crashing the app.
+Evaluation rows also act as a durable queue outbox: worker startup, a one-minute
+worker reconciliation loop, and run-list reads re-send queued run UUIDs with a
+time-windowed singleton key after an API insert/send crash.
+
+---
+
 ## C. Replit Secrets checklist
 
 Set these in Replit Secrets (Tools → Secrets). The app reads them via

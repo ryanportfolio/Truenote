@@ -1,5 +1,5 @@
-import { and, eq, ne } from "drizzle-orm";
-import { db } from "../db-client.js";
+import { and, eq, isNull, ne, or } from "drizzle-orm";
+import { db, withPgAdvisoryLock } from "../db-client.js";
 import { chunks, documents, documentVersions, type ChunkMetadata } from "@workspace/db/schema";
 import { sha256Hex } from "../parsing/hash.js";
 import {
@@ -92,6 +92,27 @@ export async function runIngestion(
   input: RunIngestionInput,
   deps: RunIngestionDeps = {}
 ): Promise<void> {
+  const ran = await withPgAdvisoryLock(
+    `document-version-ingestion:${input.documentVersionId}`,
+    () => runClaimedIngestion(input, deps)
+  );
+  if (!ran) {
+    // Lock contention is not proof the other worker will commit. In
+    // particular, pg-boss can redeliver an expired job while its original
+    // handler is still alive. A soft-success here would acknowledge that
+    // retry; if the original then failed, no job would remain to recover it.
+    // Throw so pg-boss retains retry responsibility. Once the other worker
+    // commits, a later delivery acquires the lock and no-ops on `ready`.
+    throw new Error(
+      `Document version ${input.documentVersionId} is already being processed`
+    );
+  }
+}
+
+async function runClaimedIngestion(
+  input: RunIngestionInput,
+  deps: RunIngestionDeps
+): Promise<void> {
   const versionId = input.documentVersionId;
 
   // Atomic test-and-set: UPDATE...WHERE...RETURNING is the only DB
@@ -102,18 +123,29 @@ export async function runIngestion(
   // we'd press on into a SELECT that throws "not found," driving
   // pg-boss to retry the job to exhaustion against a resource the
   // user already discarded. The empty `returning` is the soft-
-  // success signal: the user deleted the version, so there's
-  // nothing for us to do.
+  // success signal: the version was deleted or is already ready. A session-
+  // level advisory lock above serializes duplicate workers while still being
+  // released by a crash, so an expired retry can reclaim `parsing`. Ready
+  // versions are immutable audit/citation evidence;
+  // re-chunking them goes through scripts/reingest.ts, which never overwrites
+  // parsed_markdown.
   const claimed = await db
     .update(documentVersions)
     .set({ parseStatus: "parsing" })
-    .where(eq(documentVersions.id, versionId))
+    .where(
+      and(
+        eq(documentVersions.id, versionId),
+        or(
+          isNull(documentVersions.parseStatus),
+          ne(documentVersions.parseStatus, "ready")
+        )
+      )
+    )
     .returning({ id: documentVersions.id });
   if (claimed.length === 0) {
     console.log(
-      `[ingestion] version ${versionId} no longer exists; ` +
-        "treating as soft-success (job was likely enqueued just before " +
-        "the parent document was deleted)."
+      `[ingestion] version ${versionId} is not claimable; ` +
+        "treating as soft-success (deleted or already ready)."
     );
     return;
   }

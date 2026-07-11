@@ -8,6 +8,7 @@ describe("isProtectedPath", () => {
     "/kb",
     "/kb/document-1",
     "/admin/documents",
+    "/admin/evaluations",
     "/admin/users?role=manager"
   ])("treats %s as an authenticated surface", (path) => {
     expect(isProtectedPath(path)).toBe(true);
@@ -38,5 +39,10 @@ describe("isProtectedPath", () => {
     expect(html).toContain("Sources");
     expect(html).toContain("h-[38px]");
     expect(html).toContain("border-border bg-card shadow-card");
+  });
+
+  it("names the evaluation route during lazy loading", () => {
+    const html = renderToStaticMarkup(<RouteBoot path="/admin/evaluations" />);
+    expect(html).toContain("Evaluation Center");
   });
 });

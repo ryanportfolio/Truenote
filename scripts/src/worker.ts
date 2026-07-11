@@ -13,18 +13,39 @@ import {
   startIngestionWorker,
   stopBoss
 } from "../../artifacts/api-server/src/lib/ingestion/queue.js";
+import { startEvaluationWorker } from "../../artifacts/api-server/src/lib/eval/queue.js";
+
+async function closePoolWithDeadline(timeoutMs = 5_000): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  const closed = await Promise.race([
+    closePool().then(() => true),
+    new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+    })
+  ]);
+  if (timer) clearTimeout(timer);
+  if (!closed) {
+    // A checked-out advisory-lock client means ingestion is still hung. The
+    // imminent process exit destroys that session and releases its lock.
+    console.warn(`[worker] database pool did not drain within ${timeoutMs}ms; forcing exit`);
+  }
+}
 
 async function main(): Promise<void> {
-  console.log("[worker] starting ingestion worker");
+  console.log("[worker] starting background workers");
+  // Start sequentially: both modules share one lazily initialized pg-boss
+  // client, and each path explicitly registers its own queue before work().
   await startIngestionWorker();
+  const stopEvaluationReconciler = await startEvaluationWorker();
   console.log("[worker] ready");
 
   const shutdown = async (signal: string): Promise<void> => {
     console.log(`[worker] received ${signal}, draining…`);
+    stopEvaluationReconciler();
     // Stop pg-boss first so no new jobs start; this also caps the wait via
     // the 30s timeout inside stopBoss. Then drain the Drizzle pool.
     await stopBoss();
-    await closePool();
+    await closePoolWithDeadline();
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));
