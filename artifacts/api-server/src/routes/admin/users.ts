@@ -19,12 +19,21 @@ import {
 import { resolveEffectiveProgramId } from "../../lib/auth/effective-program.js";
 import { getMinPasswordLength } from "../../lib/config.js";
 import {
-  BULK_USER_TEMP_PASSWORD,
   BulkUserEmailsSchema,
   bulkUserValues,
   nameFromEmail,
   normalizeBulkEmails
 } from "../../lib/auth/bulk-users.js";
+import {
+  createResetToken,
+  INVITE_TOKEN_DURATION_MS
+} from "../../lib/auth/password-reset.js";
+import {
+  getEmailSender,
+  isEmailDeliveryConfigured
+} from "../../lib/email/sender.js";
+import { resolveAppBaseUrl } from "../../lib/email/links.js";
+import { renderInviteEmail } from "../../lib/email/templates.js";
 
 // Read once at module load — same convention as routes/auth.ts so the
 // admin-supplied-password floor stays in lockstep with change-password.
@@ -324,13 +333,26 @@ usersRouter.post("/", async (req, res, next) => {
 });
 
 /**
- * POST /api/admin/users/bulk — create CSR accounts from CSV-derived emails.
+ * POST /api/admin/users/bulk — create CSR accounts from CSV-derived emails
+ * and email each new user a one-time link to set their own password.
  *
  * The frontend parses the file, but the server revalidates every address,
  * fixes the role to CSR, and resolves the target program from the actor's
  * effective scope. Existing emails are skipped without modifying them.
- * Each account gets its own Argon2 salt even though the reviewed temporary
- * plaintext is shared, and every account is forced through password reset.
+ *
+ * Delivery model (why there is no returned temp password):
+ *   Each new account is created with an UNGUESSABLE random password hash
+ *   that nobody — not the admin, not the user — ever sees. The account is
+ *   unusable until the user consumes an invite link (a one-shot reset
+ *   token) and chooses their own password. This removes the admin from
+ *   the credential-distribution loop entirely: an import of hundreds of
+ *   users sends hundreds of individual "set your password" emails, rather
+ *   than dumping hundreds of plaintext passwords onto the admin's screen
+ *   for manual hand-delivery.
+ *
+ * Because the account is unreachable without the emailed link, we refuse
+ * up-front (creating nothing) if email delivery isn't wired in
+ * production — otherwise we'd mint accounts no one can ever log into.
  */
 usersRouter.post("/bulk", async (req, res, next) => {
   try {
@@ -339,12 +361,6 @@ usersRouter.post("/bulk", async (req, res, next) => {
     if (!parsed.success) {
       const message = parsed.error.issues[0]?.message ?? "Invalid CSV emails";
       res.status(400).json({ error: message });
-      return;
-    }
-    if (BULK_USER_TEMP_PASSWORD.length < MIN_PASSWORD_LENGTH) {
-      res.status(409).json({
-        error: `The bulk temporary password is shorter than MIN_PASSWORD_LENGTH (${MIN_PASSWORD_LENGTH})`
-      });
       return;
     }
 
@@ -360,10 +376,41 @@ usersRouter.post("/bulk", async (req, res, next) => {
       return;
     }
 
+    // Preconditions for delivery, checked BEFORE any account is created so
+    // a misconfigured deployment can't leave a trail of unreachable users.
+    //   - baseUrl null: only happens in production when APP_BASE_URL is
+    //     unset (resolveAppBaseUrl refuses to trust request headers there);
+    //     without it we can't build a link at all.
+    //   - no real email provider in production: getEmailSender would fall
+    //     back to the console logger, so the invite links would vanish into
+    //     server stdout instead of reaching users.
+    // Both are operator-fixable Replit Secrets, hence 503 + "an
+    // administrator" rather than a 4xx the importing manager could act on.
+    const baseUrl = resolveAppBaseUrl(req);
+    if (baseUrl === null) {
+      res.status(503).json({
+        error:
+          "Invite emails can't be sent because APP_BASE_URL isn't configured. Ask an administrator to set it before importing users."
+      });
+      return;
+    }
+    if (process.env.NODE_ENV === "production" && !isEmailDeliveryConfigured()) {
+      res.status(503).json({
+        error:
+          "Invite emails can't be sent because email delivery isn't configured. Ask an administrator to set RESEND_API_KEY and RESEND_FROM_EMAIL before importing users."
+      });
+      return;
+    }
+
     const emails = normalizeBulkEmails(parsed.data.emails);
     // Sequential hashing intentionally bounds memory. Each Argon2 operation
     // uses ~19 MiB; Promise.all over a 100-row import could exhaust a small
     // Replit instance even though it appears faster locally.
+    //
+    // The hashed value is a throwaway: a fresh random string per user,
+    // discarded immediately. Login with it is impossible (no one knows
+    // it), and mustResetPassword=true is a further backstop. The user's
+    // real password is set through the invite link.
     const candidates: Array<{
       email: string;
       name: string;
@@ -373,7 +420,7 @@ usersRouter.post("/bulk", async (req, res, next) => {
       candidates.push({
         email,
         name: nameFromEmail(email),
-        passwordHash: await hashPassword(BULK_USER_TEMP_PASSWORD)
+        passwordHash: await hashPassword(randomBytes(32).toString("base64url"))
       });
     }
 
@@ -408,12 +455,63 @@ usersRouter.post("/bulk", async (req, res, next) => {
       }
     });
 
+    // Mint one invite token per created user IN-REQUEST so the returned
+    // count is authoritative and every new account has a working link
+    // before we respond. The actual send is slow (Resend round-trips), so
+    // it runs fire-and-forget after the response — same posture as
+    // forgot-password. A per-user token/send failure is logged, not fatal:
+    // that user recovers via the standard forgot-password flow.
+    const invites: Array<{
+      email: string;
+      name: string;
+      setupUrl: string;
+      expiresAt: Date;
+    }> = [];
+    for (const row of created) {
+      try {
+        const { token, expiresAt } = await createResetToken(
+          row.id,
+          INVITE_TOKEN_DURATION_MS
+        );
+        const setupUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
+        invites.push({ email: row.email, name: row.name, setupUrl, expiresAt });
+      } catch (err) {
+        console.warn(
+          `[admin] bulk import: failed to mint invite token for ${row.email}:`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+
     res.status(created.length > 0 ? 201 : 200).json({
       created,
       skippedEmails,
-      temporaryPassword: BULK_USER_TEMP_PASSWORD,
+      invitedCount: invites.length,
       forcedPasswordReset: true
     });
+
+    // Past the response — no res.* calls, errors are logged only. The
+    // closure reads `invites` (plain data captured above), never `req`.
+    if (invites.length > 0) {
+      void (async () => {
+        const sender = getEmailSender();
+        for (const invite of invites) {
+          try {
+            const { subject, html, text } = renderInviteEmail({
+              name: invite.name,
+              setupUrl: invite.setupUrl,
+              expiresAt: invite.expiresAt
+            });
+            await sender.send({ to: invite.email, subject, html, text });
+          } catch (err) {
+            console.warn(
+              `[admin] bulk import: invite email to ${invite.email} failed:`,
+              err instanceof Error ? err.message : err
+            );
+          }
+        }
+      })();
+    }
   } catch (err) {
     next(err);
   }

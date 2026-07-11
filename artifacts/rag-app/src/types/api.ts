@@ -544,7 +544,12 @@ export interface CreateUserResponse {
 export interface BulkCreateUsersResponse {
   created: UserListItem[];
   skippedEmails: string[];
-  temporaryPassword: string;
+  /**
+   * How many created users were emailed a one-time "set your password"
+   * invite link. No plaintext password is ever returned — each user sets
+   * their own via the emailed link, so the admin distributes nothing.
+   */
+  invitedCount: number;
   forcedPasswordReset: true;
 }
 

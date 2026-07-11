@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  BULK_USER_TEMP_PASSWORD,
   BulkUserEmailsSchema,
   MAX_BULK_USERS,
   bulkUserValues,
@@ -21,8 +20,7 @@ describe("bulk user helpers", () => {
     );
   });
 
-  it("keeps the reviewed temporary-password and batch-size contracts", () => {
-    expect(BULK_USER_TEMP_PASSWORD).toBe("Truenote213");
+  it("keeps the batch-size contract", () => {
     expect(
       BulkUserEmailsSchema.safeParse({
         emails: Array.from(

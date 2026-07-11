@@ -19,6 +19,16 @@ import { passwordResetTokens } from "@workspace/db/schema";
  */
 export const RESET_TOKEN_DURATION_MS = 60 * 60 * 1000;
 
+/**
+ * Longer lifetime for admin-issued account invitations. A brand-new user
+ * may not open the email immediately, and unlike a self-service reset
+ * there's no prior credential to fall back on. 7 days is long enough for
+ * a new hire to get set up; if it still lapses, the standard
+ * forgot-password flow mints a fresh (short-lived) link because the
+ * account already exists and is active.
+ */
+export const INVITE_TOKEN_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+
 export interface IssuedResetToken {
   token: string;
   expiresAt: Date;
@@ -32,12 +42,19 @@ export function hashResetToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+/**
+ * Mint a one-shot token for `userId`. `ttlMs` defaults to the
+ * self-service reset lifetime; pass INVITE_TOKEN_DURATION_MS for
+ * admin-issued invitations. The consume path (routes/auth.ts
+ * reset-password) treats every token identically regardless of lifetime.
+ */
 export async function createResetToken(
-  userId: string
+  userId: string,
+  ttlMs: number = RESET_TOKEN_DURATION_MS
 ): Promise<IssuedResetToken> {
   const token = generateResetToken();
   const tokenHash = hashResetToken(token);
-  const expiresAt = new Date(Date.now() + RESET_TOKEN_DURATION_MS);
+  const expiresAt = new Date(Date.now() + ttlMs);
   await db
     .insert(passwordResetTokens)
     .values({ userId, tokenHash, expiresAt });

@@ -31,6 +31,8 @@ import {
 import { isDemoEmail } from "../lib/auth/demo-accounts.js";
 import { getMinPasswordLength } from "../lib/config.js";
 import { getEmailSender } from "../lib/email/sender.js";
+import { resolveAppBaseUrl } from "../lib/email/links.js";
+import { renderResetEmail } from "../lib/email/templates.js";
 
 export const authRouter = Router();
 
@@ -325,120 +327,6 @@ authRouter.post("/change-password", requireAuth, async (req, res, next) => {
     next(err);
   }
 });
-
-/**
- * Resolve the public base URL we should embed in outgoing emails.
- *
- * Production posture (NODE_ENV=production): APP_BASE_URL is the ONLY
- * source. We refuse to fall back to request headers because
- * X-Forwarded-Host is attacker-controlled — a `POST /forgot-password`
- * with a spoofed header would otherwise embed the attacker's domain
- * into the victim's reset email, delivering the plaintext token to
- * the attacker on click. Returning null causes the email send to
- * abort (logged warning), which is strictly better than mailing a
- * compromised link.
- *
- * Dev posture: APP_BASE_URL still wins if set; otherwise fall back to
- * X-Forwarded-Proto / X-Forwarded-Host / req.get("host") so a
- * developer running on localhost without env vars gets a clickable
- * link in their terminal-logged email.
- *
- * The startup check in index.ts also refuses to boot in production
- * without APP_BASE_URL, so this branch is defense-in-depth — the
- * exploit window only opens if the startup check is bypassed.
- */
-function resolveAppBaseUrl(
-  req: import("express").Request
-): string | null {
-  const fromEnv = process.env.APP_BASE_URL?.trim();
-  if (fromEnv) return fromEnv.replace(/\/$/, "");
-  if (process.env.NODE_ENV === "production") {
-    return null;
-  }
-  const forwardedProto =
-    req.header("x-forwarded-proto")?.split(",")[0]?.trim() || req.protocol;
-  const forwardedHost =
-    req.header("x-forwarded-host")?.split(",")[0]?.trim() || req.get("host");
-  return `${forwardedProto}://${forwardedHost}`.replace(/\/$/, "");
-}
-
-/**
- * Minimal HTML escape for splicing untrusted values into the reset
- * email template. The base URL comes from APP_BASE_URL (operator-set)
- * but is still env-string so a misconfigured value could include
- * angle brackets or quotes that escape the href attribute. The user
- * name field is already control-char-stripped at the zod schema, but
- * Unicode is still allowed — escape it the same way so a `<` or `&`
- * in a future schema relaxation doesn't quietly become an XSS bug.
- */
-function escapeHtml(input: string): string {
-  return input.replace(/[<>"'&]/g, (c) => {
-    switch (c) {
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case '"':
-        return "&quot;";
-      case "'":
-        return "&#x27;";
-      case "&":
-        return "&amp;";
-    }
-    return c;
-  });
-}
-
-/**
- * Render the password-reset email. Hand-written HTML — keeps audit
- * logs readable, no template runtime dep. Plain text fallback exists
- * for clients that block HTML or render preview snippets.
- */
-function renderResetEmail(args: {
-  name: string;
-  resetUrl: string;
-  expiresAt: Date;
-}): { subject: string; html: string; text: string } {
-  const subject = "Reset your password";
-  const expiresIso = args.expiresAt.toISOString();
-  // Every interpolation into the HTML template goes through escapeHtml
-  // so a stray quote or bracket in any input field can't escape an
-  // attribute or open a tag. The plaintext body uses raw values
-  // because text/plain has no markup to escape.
-  const safeName = escapeHtml(args.name);
-  const safeUrl = escapeHtml(args.resetUrl);
-  const safeExpires = escapeHtml(expiresIso);
-  // Inline styles only — most email clients strip <style> tags.
-  const html = `
-<!doctype html>
-<html>
-  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #0f172a; background: #f8fafc; padding: 24px;">
-    <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
-      <h1 style="margin: 0 0 16px; font-size: 18px;">Reset your password</h1>
-      <p>Hi ${safeName},</p>
-      <p>We received a request to reset your password. Click the button below to choose a new one. This link expires at ${safeExpires}.</p>
-      <p style="text-align: center; margin: 24px 0;">
-        <a href="${safeUrl}" style="display: inline-block; background: #0f172a; color: #ffffff; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: 500;">Reset password</a>
-      </p>
-      <p style="font-size: 13px; color: #64748b;">If the button doesn't work, paste this URL into your browser:</p>
-      <p style="font-size: 13px; word-break: break-all;"><a href="${safeUrl}">${safeUrl}</a></p>
-      <p style="font-size: 13px; color: #64748b;">If you didn't request a reset, you can ignore this email — your password won't change.</p>
-    </div>
-  </body>
-</html>`.trim();
-  const text = [
-    `Hi ${args.name},`,
-    "",
-    "We received a request to reset your password. Use the link below to choose a new one:",
-    "",
-    args.resetUrl,
-    "",
-    `This link expires at ${expiresIso}.`,
-    "",
-    "If you didn't request a reset, you can ignore this email — your password won't change."
-  ].join("\n");
-  return { subject, html, text };
-}
 
 /**
  * POST /api/auth/forgot-password — request a reset link.
