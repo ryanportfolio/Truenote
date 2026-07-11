@@ -8,6 +8,7 @@ import { sha256Hex } from "../lib/parsing/hash.js";
 import { enqueueIngestion } from "../lib/ingestion/queue.js";
 import {
   authedUser,
+  blockDemoWrites,
   requireAuth,
   requireFreshPassword,
   requireManagerOrAbove
@@ -71,8 +72,16 @@ export interface DocumentListItem {
  *   requireFreshPassword → first-login users must change password first
  *   requireManagerOrAbove → CSRs are read-only on their own program via
  *                           future endpoints; no document admin for CSRs
+ *   blockDemoWrites      → demo accounts browse/preview but can't upload
+ *                           or delete (shared demo content must survive
+ *                           anonymous visitors)
  */
-documentsRouter.use(requireAuth, requireFreshPassword, requireManagerOrAbove);
+documentsRouter.use(
+  requireAuth,
+  requireFreshPassword,
+  requireManagerOrAbove,
+  blockDemoWrites
+);
 
 documentsRouter.get("/", async (req, res, next) => {
   try {

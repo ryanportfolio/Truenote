@@ -66,6 +66,34 @@ export function getDemoAccounts(): DemoAccount[] | null {
   return parseDemoAccounts(process.env.DEMO_LOGIN_ACCOUNTS);
 }
 
+/**
+ * Demo accounts are shared, publicly-credentialed users — anyone on the
+ * internet is "logged in" as them. Mutations that would degrade the demo
+ * for the next visitor (uploading/deleting documents, editing users,
+ * rotating the published password) are refused with this message. The
+ * env var doesn't change within a process in practice, but tests swap it
+ * per-case, so the cache is keyed on the raw value rather than
+ * computed once at module load.
+ */
+let demoEmailCache: { raw: string | undefined; set: Set<string> } | null =
+  null;
+
+export function getDemoEmailSet(): Set<string> {
+  const raw = process.env.DEMO_LOGIN_ACCOUNTS;
+  if (!demoEmailCache || demoEmailCache.raw !== raw) {
+    const accounts = parseDemoAccounts(raw);
+    demoEmailCache = {
+      raw,
+      set: new Set((accounts ?? []).map((a) => a.email.toLowerCase()))
+    };
+  }
+  return demoEmailCache.set;
+}
+
+export function isDemoEmail(email: string): boolean {
+  return getDemoEmailSet().has(email.toLowerCase());
+}
+
 export function toPublicDemoAccounts(accounts: DemoAccount[]): PublicDemoAccount[] {
   return accounts.map(({ label, email, password }) => ({ label, email, password }));
 }

@@ -1,5 +1,9 @@
-import { describe, it, expect } from "vitest";
-import { parseDemoAccounts, toPublicDemoAccounts } from "../demo-accounts.js";
+import { afterEach, describe, it, expect } from "vitest";
+import {
+  isDemoEmail,
+  parseDemoAccounts,
+  toPublicDemoAccounts
+} from "../demo-accounts.js";
 
 const VALID = JSON.stringify([
   { label: "Manager", email: "manager@demo.truenote", password: "pw1", role: "manager" },
@@ -47,5 +51,40 @@ describe("parseDemoAccounts", () => {
       email: "manager@demo.truenote",
       password: "pw1"
     });
+  });
+});
+
+describe("isDemoEmail", () => {
+  const ORIGINAL = process.env.DEMO_LOGIN_ACCOUNTS;
+
+  afterEach(() => {
+    if (ORIGINAL === undefined) {
+      delete process.env.DEMO_LOGIN_ACCOUNTS;
+    } else {
+      process.env.DEMO_LOGIN_ACCOUNTS = ORIGINAL;
+    }
+  });
+
+  it("is always false when demo mode is off", () => {
+    delete process.env.DEMO_LOGIN_ACCOUNTS;
+    expect(isDemoEmail("manager@demo.truenote")).toBe(false);
+  });
+
+  it("matches configured demo emails case-insensitively", () => {
+    process.env.DEMO_LOGIN_ACCOUNTS = VALID;
+    expect(isDemoEmail("manager@demo.truenote")).toBe(true);
+    expect(isDemoEmail("MANAGER@Demo.Truenote")).toBe(true);
+    expect(isDemoEmail("csr@demo.truenote")).toBe(true);
+    expect(isDemoEmail("real.admin@company.com")).toBe(false);
+  });
+
+  it("tracks env changes rather than caching the first value forever", () => {
+    process.env.DEMO_LOGIN_ACCOUNTS = VALID;
+    expect(isDemoEmail("csr@demo.truenote")).toBe(true);
+    process.env.DEMO_LOGIN_ACCOUNTS = JSON.stringify([
+      { label: "Other", email: "other@demo.truenote", password: "pw" }
+    ]);
+    expect(isDemoEmail("csr@demo.truenote")).toBe(false);
+    expect(isDemoEmail("other@demo.truenote")).toBe(true);
   });
 });

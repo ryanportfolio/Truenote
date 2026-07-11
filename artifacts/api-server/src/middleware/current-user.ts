@@ -8,6 +8,7 @@ import {
   type CurrentUser,
   type UserRole
 } from "../lib/auth/current-user.js";
+import { isDemoEmail } from "../lib/auth/demo-accounts.js";
 
 /**
  * App-level middleware. Resolves `req.user` from the session cookie if one
@@ -110,6 +111,52 @@ export const requireSuperUser = requireRole("super_user");
 export const requireSeniorManagerOrAbove = requireRole("senior_manager");
 export const requireManagerOrAbove = requireRole("manager");
 export const requireCsrOrAbove = requireRole("csr");
+
+/**
+ * User-facing copy for every demo-write refusal. Kept as a single export
+ * so the frontend can match on the exact string and the message never
+ * drifts between routes.
+ */
+export const DEMO_WRITE_BLOCKED_MESSAGE = "Demo accounts can't do this";
+
+/**
+ * Demo-account write guard. Demo deployments publish working credentials
+ * on /api/config, so a "logged-in manager" may be any anonymous visitor.
+ * They get the full read experience (and /api/ask — that IS the demo),
+ * but mutations that would degrade the shared demo for the next visitor
+ * are refused: document upload/delete, user create/edit/reset,
+ * program create.
+ *
+ * Method-based (anything but GET/HEAD/OPTIONS) so a new mutating route
+ * added to a guarded router is blocked by default rather than forgotten.
+ * Mount AFTER requireAuth on routers whose non-GET routes should be
+ * demo-frozen; routers that must stay demo-usable (ask, sessions) simply
+ * don't mount it.
+ *
+ * `ok: false` rides along for callers typed against the upload response
+ * shape; everyone else reads `error`.
+ */
+export function blockDemoWrites(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  if (
+    req.user &&
+    req.method !== "GET" &&
+    req.method !== "HEAD" &&
+    req.method !== "OPTIONS" &&
+    isDemoEmail(req.user.email)
+  ) {
+    res.status(403).json({
+      ok: false,
+      error: DEMO_WRITE_BLOCKED_MESSAGE,
+      code: "demo_account"
+    });
+    return;
+  }
+  next();
+}
 
 /**
  * Forced-password-reset gate. The bootstrap super_user and any user

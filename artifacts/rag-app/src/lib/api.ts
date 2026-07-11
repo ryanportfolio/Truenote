@@ -97,8 +97,19 @@ async function asJson<T>(response: Response): Promise<T> {
       throw new UnauthorizedError();
     }
     const body = await response.text().catch(() => "");
+    // Server errors are JSON with a human-readable `error` field (e.g.
+    // "Demo accounts can't do this"). Surface that string directly —
+    // pages render err.message in their alert boxes, and a raw
+    // "HTTP 403: {json}" dump there reads like a crash, not a notice.
+    let message = "";
+    try {
+      const parsed = JSON.parse(body) as { error?: unknown };
+      if (typeof parsed.error === "string") message = parsed.error;
+    } catch {
+      // non-JSON body — fall through to the status-line message
+    }
     throw new Error(
-      `HTTP ${response.status}: ${body.slice(0, 500) || response.statusText}`
+      message || `HTTP ${response.status}: ${body.slice(0, 500) || response.statusText}`
     );
   }
   return (await response.json()) as T;

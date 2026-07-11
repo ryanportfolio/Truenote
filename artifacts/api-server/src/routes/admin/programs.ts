@@ -5,6 +5,7 @@ import { db } from "../../lib/db-client.js";
 import { programs } from "@workspace/db/schema";
 import {
   authedUser,
+  blockDemoWrites,
   requireAuth,
   requireFreshPassword,
   requireManagerOrAbove,
@@ -13,7 +14,16 @@ import {
 
 export const programsRouter = Router();
 
-programsRouter.use(requireAuth, requireFreshPassword, requireManagerOrAbove);
+// blockDemoWrites is defense-in-depth here: program creation is already
+// super_user-only and demo roles are schema-capped at manager, so a demo
+// account can't reach the POST today — the guard keeps that true if a
+// manager-level mutation is ever added to this router.
+programsRouter.use(
+  requireAuth,
+  requireFreshPassword,
+  requireManagerOrAbove,
+  blockDemoWrites
+);
 
 export interface ProgramListItem {
   id: string;
