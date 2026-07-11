@@ -24,6 +24,7 @@ import type {
   KbHighlightListResponse,
   LoginResponse,
   ModelRoutingConfig,
+  ObservabilityResponse,
   PreviewResponse,
   Program,
   ProgramListResponse,
@@ -551,6 +552,21 @@ export async function updateModelRouting(
     })
   );
   return asJson<ModelRoutingConfig>(response);
+}
+
+export async function getObservability(
+  hours: number,
+  limit = 100
+): Promise<ObservabilityResponse> {
+  const params = new URLSearchParams({
+    hours: String(hours),
+    limit: String(limit)
+  });
+  const response = await fetch(
+    `/api/admin/observability?${params.toString()}`,
+    withDefaults()
+  );
+  return asJson<ObservabilityResponse>(response);
 }
 
 /**

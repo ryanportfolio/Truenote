@@ -11,6 +11,13 @@ import { retrieve } from "../lib/retrieval/query.js";
 import { generateAnswer } from "../lib/generation/answer.js";
 import { rewriteFollowUp, type HistoryTurn } from "../lib/generation/rewrite.js";
 import { nameSession } from "../lib/generation/name-session.js";
+import { getRerankModel } from "../lib/retrieval/rerank.js";
+import {
+  PIPELINE_TIMING_VERSION,
+  elapsedMs,
+  type PipelineTimingBreakdown
+} from "../lib/observability/pipeline-timing.js";
+import { savePipelineTiming } from "../lib/observability/pipeline-timing-store.js";
 import {
   authedUser,
   requireAuth,
@@ -105,6 +112,11 @@ export interface AskResponse {
   topScore: number | null;
   /** The standalone question retrieval actually ran, when a follow-up was rewritten. Null otherwise. */
   rewrittenQuestion: string | null;
+}
+
+interface AskTimingSeed {
+  startedAt: number;
+  stages: Record<string, number>;
 }
 
 /**
@@ -211,15 +223,18 @@ async function runAsk(
   programId: string,
   sessionId: string,
   history: HistoryTurn[],
-  onStage?: (stage: AskStage) => void
+  onStage?: (stage: AskStage) => void,
+  timingSeed: AskTimingSeed = { startedAt: performance.now(), stages: {} }
 ): Promise<AskResponse> {
-  const t0 = Date.now();
+  const stages = { ...timingSeed.stages };
 
   if (question.length > MAX_QUESTION_CHARS) {
     // Log as a refusal so ops sees these in query_log alongside real misses.
     // Truncate the stored question so a malicious 100MB POST doesn't bloat
     // the row.
-    const latencyMs = Date.now() - t0;
+    const finalizationStartedAt = performance.now();
+    const queryLogWriteStartedAt = performance.now();
+    const latencyAtInsert = elapsedMs(timingSeed.startedAt);
     const inserted = await db
       .insert(queryLog)
       .values({
@@ -230,31 +245,58 @@ async function runAsk(
         answer: TOO_LONG_TEXT,
         citedChunkIds: [],
         refused: true,
-        latencyMs
+        latencyMs: latencyAtInsert
       })
       .returning({ id: queryLog.id });
+    stages.queryLogWrite = elapsedMs(queryLogWriteStartedAt);
     // Keep the session at the top of history, but don't name it from an
     // over-long (likely junk) question — a real exchange names it later.
+    const sessionTouchStartedAt = performance.now();
     await touchSession(sessionId);
+    stages.sessionTouch = elapsedMs(sessionTouchStartedAt);
+    stages.finalization = elapsedMs(finalizationStartedAt);
+    const timing: PipelineTimingBreakdown = {
+      version: PIPELINE_TIMING_VERSION,
+      totalMs: elapsedMs(timingSeed.startedAt),
+      stages,
+      counts: {
+        vectorCandidates: 0,
+        keywordCandidates: 0,
+        mergedCandidates: 0,
+        rankedChunks: 0,
+        contextChunks: 0
+      },
+      context: {
+        rewriteCalled: false,
+        trigramFallback: false,
+        generationPath: "retrieval-refusal",
+        rerankModel: getRerankModel()
+      },
+      providerAttempts: []
+    };
+    const queryLogId = inserted[0]?.id ?? null;
+    if (queryLogId) void savePipelineTiming(queryLogId, timing);
     return {
-      queryLogId: inserted[0]?.id ?? null,
+      queryLogId,
       sessionId,
       answer: TOO_LONG_TEXT,
       sources: [],
       refused: true,
       confidence: "low",
       retrievedChunks: [],
-      latencyMs,
+      latencyMs: timing.totalMs,
       topScore: null,
       rewrittenQuestion: null
     };
   }
 
+  const programLookupStartedAt = performance.now();
   const programRows = await db
     .select({ name: programs.name })
     .from(programs)
     .where(eq(programs.id, programId))
     .limit(1);
+  stages.programLookup = elapsedMs(programLookupStartedAt);
   const programName = programRows[0]?.name ?? "the program";
 
   // Follow-up rewriting: resolve conversational references into a
@@ -263,7 +305,9 @@ async function runAsk(
   // logged — it's what the CSR typed; the rewrite is surfaced on the
   // response for operator debugging.
   if (history.length > 0) onStage?.("rewriting");
+  const rewriteStartedAt = performance.now();
   const rewrite = await rewriteFollowUp({ question, history });
+  stages.rewrite = elapsedMs(rewriteStartedAt);
   const searchQuestion = rewrite.standaloneQuestion;
   const rewrittenQuestion = searchQuestion !== question ? searchQuestion : null;
 
@@ -272,16 +316,21 @@ async function runAsk(
     { programId, question: searchQuestion },
     { onRerankStart: () => onStage?.("reranking") }
   );
+  stages.retrieval = retrieval.timing.totalMs;
+  Object.assign(stages, retrieval.timing.stages);
 
   if (!retrieval.refused) onStage?.("generating");
+  const generationStartedAt = performance.now();
   const generation = await generateAnswer({
     programName,
     question: searchQuestion,
     chunks: retrieval.chunks,
     refusedByRetrieval: retrieval.refused
   });
+  stages.generation = elapsedMs(generationStartedAt);
 
-  const latencyMs = Date.now() - t0;
+  const finalizationStartedAt = performance.now();
+  const responseAssemblyStartedAt = performance.now();
   const cited = uniqueUuids(generation.payload.sources.map((s) => s.chunk_id));
 
   // Build the receipt from the retrieval rows already authorized by the
@@ -292,7 +341,10 @@ async function runAsk(
     generation.payload.sources,
     retrieval.chunks
   );
+  stages.responseAssembly = elapsedMs(responseAssemblyStartedAt);
 
+  const queryLogWriteStartedAt = performance.now();
+  const latencyAtInsert = elapsedMs(timingSeed.startedAt);
   const inserted = await db
     .insert(queryLog)
     .values({
@@ -303,15 +355,17 @@ async function runAsk(
       answer: generation.payload.answer,
       citedChunkIds: cited,
       refused: generation.payload.refused,
-      latencyMs
+      latencyMs: latencyAtInsert
     })
     .returning({ id: queryLog.id });
+  stages.queryLogWrite = elapsedMs(queryLogWriteStartedAt);
   const queryLogId = inserted[0]?.id ?? null;
 
   // Best effort by contract: code may deploy before the raw DDL adds the
   // JSONB column. Missing-column writes degrade to the legacy chunk-id
   // history path and must never turn a grounded answer into a 500.
   let responseSources = linkedSources;
+  const citationSnapshotsStartedAt = performance.now();
   if (linkedSources.length > 0) {
     const saved = queryLogId
       ? await saveCitationSnapshots({
@@ -323,10 +377,29 @@ async function runAsk(
       : false;
     if (!saved) responseSources = linkedSources.map(withoutDurableCitation);
   }
+  stages.citationSnapshots = elapsedMs(citationSnapshotsStartedAt);
 
+  const sessionTouchStartedAt = performance.now();
   await touchSession(sessionId);
+  stages.sessionTouch = elapsedMs(sessionTouchStartedAt);
   // Name the session from its first real exchange (no-op if already named).
   scheduleSessionNaming(sessionId, question, generation.payload.answer);
+  stages.finalization = elapsedMs(finalizationStartedAt);
+
+  const timing: PipelineTimingBreakdown = {
+    version: PIPELINE_TIMING_VERSION,
+    totalMs: elapsedMs(timingSeed.startedAt),
+    stages,
+    counts: retrieval.timing.counts,
+    context: {
+      rewriteCalled: rewrite.llmCalled,
+      trigramFallback: retrieval.timing.trigramFallback,
+      generationPath: generation.generationPath,
+      rerankModel: retrieval.timing.rerankModel
+    },
+    providerAttempts: generation.providerAttempts
+  };
+  if (queryLogId) void savePipelineTiming(queryLogId, timing);
 
   return {
     queryLogId,
@@ -340,7 +413,7 @@ async function runAsk(
       content: c.content,
       docTitle: c.docTitle
     })),
-    latencyMs,
+    latencyMs: timing.totalMs,
     topScore: retrieval.topScore,
     rewrittenQuestion
   };
@@ -356,6 +429,7 @@ async function touchSession(sessionId: string): Promise<void> {
 
 askRouter.post("/ask", async (req, res, next) => {
   try {
+    const requestStartedAt = performance.now();
     const parsed = AskBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid request body" });
@@ -363,11 +437,26 @@ askRouter.post("/ask", async (req, res, next) => {
     }
     const question = parsed.data.question.trim();
     const user = authedUser(req);
+    const programScopeStartedAt = performance.now();
     const programId = await resolveAskProgram(req, res);
     if (programId === null) return;
+    const programScopeMs = elapsedMs(programScopeStartedAt);
+    const sessionResolutionStartedAt = performance.now();
     const sessionId = await resolveOrCreateSession(user, programId, parsed.data.sessionId);
+    const sessionResolutionMs = elapsedMs(sessionResolutionStartedAt);
 
-    res.json(await runAsk(question, user, programId, sessionId, parsed.data.history ?? []));
+    res.json(await runAsk(
+      question,
+      user,
+      programId,
+      sessionId,
+      parsed.data.history ?? [],
+      undefined,
+      {
+        startedAt: requestStartedAt,
+        stages: { programScope: programScopeMs, sessionResolution: sessionResolutionMs }
+      }
+    ));
   } catch (err) {
     next(err);
   }
@@ -382,6 +471,7 @@ askRouter.post("/ask", async (req, res, next) => {
  */
 askRouter.post("/ask/stream", async (req, res, next) => {
   try {
+    const requestStartedAt = performance.now();
     const parsed = AskBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid request body" });
@@ -389,11 +479,15 @@ askRouter.post("/ask/stream", async (req, res, next) => {
     }
     const question = parsed.data.question.trim();
     const user = authedUser(req);
+    const programScopeStartedAt = performance.now();
     const programId = await resolveAskProgram(req, res);
     if (programId === null) return;
+    const programScopeMs = elapsedMs(programScopeStartedAt);
     // Resolve the session BEFORE streaming starts so a failure here is a
     // clean pre-stream error, not a mid-stream break.
+    const sessionResolutionStartedAt = performance.now();
     const sessionId = await resolveOrCreateSession(user, programId, parsed.data.sessionId);
+    const sessionResolutionMs = elapsedMs(sessionResolutionStartedAt);
 
     res.status(200);
     res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
@@ -408,8 +502,17 @@ askRouter.post("/ask/stream", async (req, res, next) => {
     };
 
     try {
-      const result = await runAsk(question, user, programId, sessionId, parsed.data.history ?? [], (stage) =>
-        send({ type: "stage", stage })
+      const result = await runAsk(
+        question,
+        user,
+        programId,
+        sessionId,
+        parsed.data.history ?? [],
+        (stage) => send({ type: "stage", stage }),
+        {
+          startedAt: requestStartedAt,
+          stages: { programScope: programScopeMs, sessionResolution: sessionResolutionMs }
+        }
       );
       send({ type: "result", result });
     } catch (err) {

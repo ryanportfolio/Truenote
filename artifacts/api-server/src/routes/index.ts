@@ -13,6 +13,7 @@ import { usersRouter } from "./admin/users.js";
 import { insightsRouter } from "./admin/insights.js";
 import { modelRoutingRouter } from "./admin/model-routing.js";
 import { evaluationsRouter } from "./admin/evaluations.js";
+import { observabilityRouter } from "./admin/observability.js";
 
 export function registerRoutes(app: Express): void {
   app.use("/health", healthRouter);
@@ -31,6 +32,7 @@ export function registerRoutes(app: Express): void {
   app.use("/api/admin/insights", insightsRouter);
   app.use("/api/admin/model-routing", modelRoutingRouter);
   app.use("/api/admin/evaluations", evaluationsRouter);
+  app.use("/api/admin/observability", observabilityRouter);
   app.use("/api/documents", documentsRouter);
   app.use("/api/kb", kbRouter);
   app.use("/api/sessions", sessionsRouter);

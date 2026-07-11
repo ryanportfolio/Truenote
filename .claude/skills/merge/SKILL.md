@@ -1,12 +1,12 @@
 ---
-description: Turn on Auto-Merge Mode for the session — going forward, every completed task is automatically committed, pushed, opened as a PR, and merged into main (with conflict resolution), no per-merge confirmation. Use when the user says /merge, "auto-merge for the session", "commit and merge to main going forward", or "keep merging to main as we go".
+description: Turn on Auto-Merge Mode for the session — immediately integrate any already-completed verified work, then automatically commit, push, open a PR, and merge every future completed task into main (with conflict resolution), no per-merge confirmation. Use when the user says /merge, "merge this and keep auto-merging", "auto-merge for the session", "commit and merge to main going forward", or "keep merging to main as we go".
 ---
 
 # Merge — Auto-Merge Mode (Session-Wide)
 
 > Note: inside a git worktree this skill may be exposed under a directory-scoped name (e.g. `.claude/worktrees/<name>:merge`). Invoke the scoped name — same skill, same behavior.
 
-Invoking `/merge` does NOT do a one-off merge. It **flips on Auto-Merge Mode for the rest of the session**, like `/caveman` persists. From the moment it is on, every time a task is complete and verified (to the extent this environment allows), you run the **integration cycle** below automatically — no waiting to be asked, no per-merge confirmation.
+Invoking `/merge` immediately integrates any already-completed, verified, unintegrated work in the current session, then **flips on Auto-Merge Mode for the rest of the session**, like `/caveman` persists. From the moment it is on, every time a task is complete and verified (to the extent this environment allows), you run the **integration cycle** below automatically — no waiting to be asked, no per-merge confirmation.
 
 Invoking `/merge` IS the user's standing authorization to merge into `main` repeatedly for the session. That is why there is no per-merge confirm gate (see [Why no confirm](#why-no-per-merge-confirm)).
 
@@ -16,7 +16,7 @@ On `/merge`, announce activation in **plain prose** (not caveman), so the user c
 
 > **Auto-Merge Mode is ON for this session.** From now on, when a task is complete I will, without asking: commit the touched files, push, ensure a PR exists, and merge it into `main` (resolving conflicts where unambiguous). The session branch is kept the whole session. Say "stop merge" to turn this off.
 
-Then continue the current work. The cycle fires on the **next** task completion (and every one after), not retroactively.
+After announcing activation, inspect the current worktree. If it contains already-completed and verified work from this session, run the integration cycle for that work immediately. Then continue current work; the cycle also fires on every future task completion.
 
 ## The Integration Cycle
 
