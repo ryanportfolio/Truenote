@@ -11,6 +11,7 @@ interface PreviewPanelProps {
 export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Element {
   const [data, setData] = useState<PreviewResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
 
@@ -22,6 +23,16 @@ export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Ele
     closeRef.current?.focus();
     return () => restoreRef.current?.focus();
   }, []);
+
+  // Close when a pointer press lands outside the panel. Registered after
+  // mount, so the click that opened the panel never triggers it.
+  useEffect(() => {
+    function onPointerDown(event: PointerEvent): void {
+      if (!panelRef.current?.contains(event.target as Node)) onClose();
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [onClose]);
 
   function onKeyDown(event: React.KeyboardEvent): void {
     if (event.key === "Escape") onClose();
@@ -45,6 +56,7 @@ export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Ele
 
   return (
     <aside
+      ref={panelRef}
       role="dialog"
       aria-label="Parsed text"
       onKeyDown={onKeyDown}
