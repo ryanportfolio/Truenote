@@ -89,6 +89,7 @@ CREATE TABLE eval_questions (
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
 ```
 
 ## Auth tables (Phase 2A)
@@ -137,6 +138,15 @@ CREATE TABLE password_reset_tokens (
 );
 CREATE INDEX password_reset_tokens_user_id_idx ON password_reset_tokens(user_id);
 CREATE INDEX password_reset_tokens_expires_at_idx ON password_reset_tokens(expires_at);
+
+-- Global operator settings. Values remain JSONB so new allowlisted settings
+-- do not require one table per setting; the application owns validation.
+CREATE TABLE app_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 ```
 
 ## Invariants
@@ -149,6 +159,7 @@ CREATE INDEX password_reset_tokens_expires_at_idx ON password_reset_tokens(expir
 - **`sessions.token_hash` stores SHA-256 of the cookie value, not the cookie itself.** A leak of the sessions table does not yield active sessions on its own. Plaintext tokens are only ever in transit (cookie header) and in the cookie store on the user's browser.
 - **`chat_sessions` groups a CSR's `query_log` rows into a named conversation.** `query_log.session_id` is nullable with `ON DELETE SET NULL` — deleting a session must never drop ops/gap analytics rows. Sessions are scoped by `(user_id, program_id)`; the ask pipeline honors a client-supplied session id only when both match, so a leaked id can't stitch one user's ask into another's conversation or cross program scope. `title` is auto-generated (gpt-4o-mini) from the opening exchange, detached from the response path, guarded by `title IS NULL` so it fires once.
 - **`users.email` is normalized to lowercase at the application layer**, stored as plain `TEXT`. Every write and lookup calls `.toLowerCase()` before touching the DB. The original Phase 2A design used `citext` for case-insensitive comparison, but the `citext` extension isn't available in all managed Postgres environments (specifically: Replit's production publish flow does not run `CREATE EXTENSION`, only DDL diff). The app-layer normalization preserves the case-insensitive contract without the extension dependency. **Detection rule:** any new code path that writes or compares `users.email` MUST lowercase first — otherwise duplicate accounts can be created (`Alice@foo.com` vs `alice@foo.com`) and logins will silently mismatch.
+- **`app_settings` never authorizes arbitrary model ids or providers.** The model-routing API accepts only ids from the server-owned allowlist; the JSONB row stores the selected preset id, not an executable request body. Missing table/row/invalid value falls back to GPT-5.4 Nano Nitro on Azure.
 
 ## Schema change protocol
 

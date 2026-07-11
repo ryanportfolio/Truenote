@@ -12,6 +12,7 @@ import type {
   KbDocumentResponse,
   KbGapsResponse,
   LoginResponse,
+  ModelRoutingConfig,
   PreviewResponse,
   Program,
   ProgramListResponse,
@@ -456,6 +457,25 @@ export async function createProgram(name: string): Promise<Program> {
   }
   const json = (await response.json()) as { item: Program };
   return json.item;
+}
+
+export async function getModelRouting(): Promise<ModelRoutingConfig> {
+  const response = await fetch("/api/admin/model-routing", withDefaults());
+  return asJson<ModelRoutingConfig>(response);
+}
+
+export async function updateModelRouting(
+  selectedId: string
+): Promise<ModelRoutingConfig> {
+  const response = await fetch(
+    "/api/admin/model-routing",
+    withDefaults({
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selectedId })
+    })
+  );
+  return asJson<ModelRoutingConfig>(response);
 }
 
 /**

@@ -227,6 +227,28 @@ export interface ProgramListResponse {
   items: Program[];
 }
 
+export interface ModelRoutingOption {
+  id: string;
+  label: string;
+  model: string;
+  provider: string;
+  providerLabel: string;
+  reasoningEffort: "medium";
+  description: string;
+}
+
+export interface ModelRoutingConfig {
+  selectedId: string;
+  persistenceReady: boolean;
+  options: ModelRoutingOption[];
+  fallback: {
+    label: string;
+    model: string;
+    providerLabel: string;
+    reasoningEffort: "low";
+  };
+}
+
 /** Public, non-secret server config used by the SPA. */
 export interface AppConfig {
   /**

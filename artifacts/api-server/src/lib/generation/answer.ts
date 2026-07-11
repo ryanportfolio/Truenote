@@ -2,9 +2,12 @@ import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import type { RetrievalChunk } from "../retrieval/query.js";
+import {
+  FALLBACK_MODEL,
+  getActiveModelRoute,
+  type ApprovedModelRoute
+} from "./model-routing.js";
 
-const PRIMARY_GENERATION_MODEL = "nvidia/nemotron-3-super-120b-a12b:nitro";
-const FALLBACK_GENERATION_MODEL = "gpt-5.6-luna";
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
 export const SourceSchema = z.object({
@@ -114,6 +117,8 @@ export interface GenerateAnswerDeps {
   client?: OpenAI;
   /** Backup generation client. Defaults to OpenAI. */
   fallbackClient?: OpenAI;
+  /** Approved route override for tests. Production reads the persisted global setting. */
+  primaryRoute?: ApprovedModelRoute;
 }
 
 async function callGenerationModel(
@@ -122,7 +127,7 @@ async function callGenerationModel(
   systemPrompt: string,
   userPrompt: string,
   options: {
-    useOpenRouterRouting?: boolean;
+    openRouterProvider?: string;
     reasoningEffort?: "low" | "medium";
   } = {}
 ): Promise<AnswerPayload | null> {
@@ -140,11 +145,11 @@ async function callGenerationModel(
 
   // Keep privacy + schema guarantees in the request itself, even though the
   // OpenRouter API key is also assigned to a matching account guardrail.
-  const completion = options.useOpenRouterRouting
+  const completion = options.openRouterProvider
     ? await client.beta.chat.completions.parse({
         ...request,
         provider: {
-          only: ["digitalocean"],
+          only: [options.openRouterProvider],
           zdr: true,
           data_collection: "deny",
           require_parameters: true,
@@ -198,19 +203,24 @@ export async function generateAnswer(
   const systemPrompt = buildSystemPrompt(input.programName);
   const userPrompt = buildUserPrompt(input.question, input.chunks);
 
-  // OpenRouter is OpenAI-compatible, so both providers use the same strict
+  // OpenRouter is OpenAI-compatible, so every approved primary route and
+  // the direct OpenAI backup use the same strict
   // Zod-derived JSON schema. Any thrown request, invalid structured response,
-  // empty answer, or invalid/missing citation from Nemotron triggers one
+  // empty answer, or invalid/missing citation from the primary triggers one
   // immediate direct OpenAI attempt. A valid refusal is not a model failure.
   let payload: AnswerPayload | null = null;
   try {
     const client = deps.client ?? getPrimaryClient();
+    const primaryRoute = deps.primaryRoute ?? (await getActiveModelRoute());
     const primaryPayload = await callGenerationModel(
       client,
-      PRIMARY_GENERATION_MODEL,
+      primaryRoute.model,
       systemPrompt,
       userPrompt,
-      { useOpenRouterRouting: true, reasoningEffort: "medium" }
+      {
+        openRouterProvider: primaryRoute.provider,
+        reasoningEffort: primaryRoute.reasoningEffort
+      }
     );
     if (!primaryPayload) throw new Error("primary model returned no parsed answer");
     payload = normalizeAnswer(primaryPayload, input.chunks);
@@ -223,7 +233,7 @@ export async function generateAnswer(
     const fallbackClient = deps.fallbackClient ?? getFallbackClient();
     const fallbackPayload = await callGenerationModel(
       fallbackClient,
-      FALLBACK_GENERATION_MODEL,
+      FALLBACK_MODEL.model,
       systemPrompt,
       userPrompt,
       { reasoningEffort: "low" }

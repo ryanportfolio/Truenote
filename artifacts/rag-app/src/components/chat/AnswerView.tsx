@@ -10,7 +10,7 @@ import { CitationPanel } from "./CitationPanel";
 
 interface AnswerViewProps {
   result: AskResponse;
-  /** Manager-and-above pipeline telemetry (scores, latency, chunk ids). */
+  /** Manager-and-above retrieval details kept inside source inspection. */
   showDebug: boolean;
 }
 
@@ -18,7 +18,7 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
 
   if (result.refused) {
-    return <RefusalView result={result} showDebug={showDebug} />;
+    return <RefusalView result={result} />;
   }
 
   const openSource = openChunkId
@@ -50,20 +50,7 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
           </div>
         ) : null}
         <footer className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
-          {showDebug ? (
-            <div className="flex flex-wrap items-center gap-3 tabular-nums">
-              <span>Confidence: {result.confidence}</span>
-              {result.topScore !== null ? <span>Top score: {result.topScore.toFixed(2)}</span> : null}
-              <span>{result.latencyMs} ms</span>
-              {result.rewrittenQuestion ? (
-                <span title="Follow-up rewritten for retrieval">
-                  Searched as: “{result.rewrittenQuestion}”
-                </span>
-              ) : null}
-            </div>
-          ) : (
-            <span aria-hidden />
-          )}
+          <span aria-hidden />
           <div className="flex items-center gap-1">
             <CopyAnswerButton result={result} />
             <FeedbackButtons result={result} />
@@ -187,13 +174,7 @@ function FeedbackButtons({ result }: { result: AskResponse }): JSX.Element {
   );
 }
 
-function RefusalView({
-  result,
-  showDebug
-}: {
-  result: AskResponse;
-  showDebug: boolean;
-}): JSX.Element {
+function RefusalView({ result }: { result: AskResponse }): JSX.Element {
   const [flagged, setFlagged] = useState(false);
   const [flagBusy, setFlagBusy] = useState(false);
 
@@ -239,7 +220,6 @@ function RefusalView({
           <span aria-hidden />
         )}
         <div className="flex items-center gap-1">
-          {showDebug ? <span className="mr-2">{result.latencyMs} ms</span> : null}
           <FeedbackButtons result={result} />
         </div>
       </footer>

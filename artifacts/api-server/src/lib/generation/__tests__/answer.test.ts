@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type OpenAI from "openai";
 import type { AnswerPayload } from "../answer.js";
 import { generateAnswer } from "../answer.js";
+import { DEFAULT_MODEL_ROUTE } from "../model-routing.js";
 
 interface CapturedRequest {
   model: string;
@@ -65,7 +66,7 @@ const answer: AnswerPayload = {
 };
 
 describe("generateAnswer provider fallback", () => {
-  it("uses Nemotron Super Nitro on DigitalOcean as the primary answer model", async () => {
+  it("uses the selected approved OpenRouter route", async () => {
     const primaryRequests: CapturedRequest[] = [];
     const fallbackRequests: CapturedRequest[] = [];
 
@@ -73,16 +74,17 @@ describe("generateAnswer provider fallback", () => {
       { programName: "Test", question: "What is the fee?", chunks },
       {
         client: stubClient(answer, primaryRequests),
-        fallbackClient: stubClient(answer, fallbackRequests)
+        fallbackClient: stubClient(answer, fallbackRequests),
+        primaryRoute: DEFAULT_MODEL_ROUTE
       }
     );
 
     expect(primaryRequests).toEqual([
       expect.objectContaining({
-        model: "nvidia/nemotron-3-super-120b-a12b:nitro",
+        model: "openai/gpt-5.4-nano:nitro",
         reasoning_effort: "medium",
         provider: {
-          only: ["digitalocean"],
+          only: ["azure"],
           zdr: true,
           data_collection: "deny",
           require_parameters: true,
@@ -104,13 +106,12 @@ describe("generateAnswer provider fallback", () => {
       { programName: "Test", question: "What is the fee?", chunks },
       {
         client: throwingClient(primaryRequests),
-        fallbackClient: stubClient(answer, fallbackRequests)
+        fallbackClient: stubClient(answer, fallbackRequests),
+        primaryRoute: DEFAULT_MODEL_ROUTE
       }
     );
 
-    expect(primaryRequests[0]?.model).toBe(
-      "nvidia/nemotron-3-super-120b-a12b:nitro"
-    );
+    expect(primaryRequests[0]?.model).toBe("openai/gpt-5.4-nano:nitro");
     expect(fallbackRequests).toEqual([
       expect.objectContaining({
         model: "gpt-5.6-luna",
@@ -131,7 +132,8 @@ describe("generateAnswer provider fallback", () => {
       { programName: "Test", question: "What is the fee?", chunks },
       {
         client: stubClient(null, []),
-        fallbackClient: stubClient(answer, fallbackRequests)
+        fallbackClient: stubClient(answer, fallbackRequests),
+        primaryRoute: DEFAULT_MODEL_ROUTE
       }
     );
 
@@ -152,7 +154,8 @@ describe("generateAnswer provider fallback", () => {
       { programName: "Test", question: "What is the fee?", chunks },
       {
         client: stubClient(invalidAnswer, []),
-        fallbackClient: stubClient(answer, fallbackRequests)
+        fallbackClient: stubClient(answer, fallbackRequests),
+        primaryRoute: DEFAULT_MODEL_ROUTE
       }
     );
 
@@ -169,7 +172,8 @@ describe("generateAnswer provider fallback", () => {
       { programName: "Test", question: "What is the fee?", chunks },
       {
         client: stubClient({ ...answer, answer: "The cancellation fee is **$25**." }, []),
-        fallbackClient: stubClient(answer, fallbackRequests)
+        fallbackClient: stubClient(answer, fallbackRequests),
+        primaryRoute: DEFAULT_MODEL_ROUTE
       }
     );
 
@@ -190,7 +194,8 @@ describe("generateAnswer provider fallback", () => {
       { programName: "Test", question: "What is the fee?", chunks },
       {
         client: stubClient(refusal, []),
-        fallbackClient: stubClient(answer, fallbackRequests)
+        fallbackClient: stubClient(answer, fallbackRequests),
+        primaryRoute: DEFAULT_MODEL_ROUTE
       }
     );
 
