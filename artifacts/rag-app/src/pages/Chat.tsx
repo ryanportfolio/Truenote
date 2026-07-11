@@ -84,12 +84,13 @@ function historyFrom(exchanges: Exchange[]): AskHistoryTurn[] {
     .map((e) => ({ question: e.question, answer: e.result?.answer ?? "" }));
 }
 
-// First-run teaching examples. Clicking prefills the textarea (never
+// First-run teaching examples. Every question must stay answerable by the
+// demo corpus in scripts/src/seed.ts. Clicking prefills the textarea (never
 // auto-submits) so the CSR sees the register questions are asked in.
 const EXAMPLE_QUESTIONS = [
   "What's the cancellation fee on the Basic plan?",
-  "How do I process a refund for a returned device?",
-  "What ID does a caller need to verify their account?"
+  "How long does a refund take to post to the original card?",
+  "Who must approve a courtesy refund?"
 ] as const;
 
 export function ChatPage({ user }: ChatPageProps): JSX.Element {
