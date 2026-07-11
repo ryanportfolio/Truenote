@@ -148,13 +148,20 @@ void main() {
   // touch before the ink arrives — gives the wash its watercolor edge.
   col = mix(col, PAPER, smoothstep(0.5, 0.72, f) * 0.35);
 
-  float blueInk = smoothstep(0.42, 0.68, f);
-  col = mix(col, BLUE,  blueInk * wBlue * 0.3);
+  // Anchor assist: the field drifts with time, so a fixed threshold can
+  // leave a corner nearly dry at unlucky phases (seen in production —
+  // the random per-visit phase made the whole wash close to invisible).
+  // Near each anchor core the threshold relaxes, guaranteeing the pool
+  // is always present; f still textures its shape and motion.
+  float coreB = smoothstep(0.6, 0.12, distance(uv, vec2(0.88, 0.9)));
+  float blueInk = smoothstep(0.42 - 0.24 * coreB, 0.68 - 0.24 * coreB, f);
+  col = mix(col, BLUE,  blueInk * wBlue * 0.32);
   col = mix(col, VIVID, smoothstep(0.56, 0.75, f) * wBlue * 0.18);
 
   float g = fbm(p * 1.35 + 1.7 * q + vec2(3.1, 7.7));
-  float greenInk = smoothstep(0.4, 0.66, g);
-  col = mix(col, GREEN, greenInk * wGreen * 0.28);
+  float coreG = smoothstep(0.55, 0.1, distance(uv, vec2(0.08, 0.05)));
+  float greenInk = smoothstep(0.4 - 0.2 * coreG, 0.66 - 0.2 * coreG, g);
+  col = mix(col, GREEN, greenInk * wGreen * 0.3);
 
   // One thin amber filament tracing an isocontour of the field, gated
   // to where ink has actually pooled — the warm accent at homeopathic
