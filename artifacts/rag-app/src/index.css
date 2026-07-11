@@ -484,6 +484,19 @@
     mask-image: linear-gradient(to top, transparent 2%, black 18%);
   }
 
+  /* BrandField boots at idle (never blocking the form's first paint),
+   * so its canvas starts transparent — cream paper, not a flash of
+   * black canvas — and fades in when the first frame has drawn
+   * (BrandField adds .brand-field-ready). */
+  .brand-field-canvas {
+    opacity: 0;
+    transition: opacity 0.7s ease;
+  }
+
+  .brand-field-canvas.brand-field-ready {
+    opacity: 1;
+  }
+
   /* Dissolve the watercolor BEFORE the panel/image boundary. The old
    * gradient straddled the seam (right: -2rem), leaving the field at
    * ~half strength exactly at the edge — a hard blue-to-sculpture line.
@@ -851,8 +864,13 @@
   .archive-light {
     position: absolute;
     inset: 0;
-    background: radial-gradient(circle at 68% 46%, transparent 0 18%, oklch(94% 0.03 80 / 0.08) 44%, oklch(21% 0.03 255 / 0.16) 100%);
-    mix-blend-mode: multiply;
+    /* Normal-blended vignette. This used to be a multiply-blended
+     * gradient, but mix-blend-mode over the breathing image forces the
+     * compositor to re-blend the whole panel every animation frame —
+     * ruinous on machines without a GPU. Alphas are retuned so the
+     * darkening over the image's bright range matches the old multiply
+     * result (multiply's edge factor ≈0.85 ≙ ~0.2 alpha of this ink). */
+    background: radial-gradient(circle at 68% 46%, transparent 0 18%, oklch(21% 0.03 255 / 0.03) 44%, oklch(21% 0.03 255 / 0.2) 100%);
     pointer-events: none;
   }
 
@@ -1218,12 +1236,16 @@
     will-change: transform;
   }
 
+  /* will-change pins each ring to its own compositor layer, so the
+   * rotation never repaints — just re-composites two small ellipses. */
   .archive-orbit-outer {
     animation: orbit-outer 18s linear infinite;
+    will-change: transform;
   }
 
   .archive-orbit-inner {
     animation: orbit-inner 13s linear infinite reverse;
+    will-change: transform;
   }
 
   .retrieval-ring-one {
@@ -1237,6 +1259,16 @@
   .retrieval-core {
     animation: retrieval-core 1.7s ease-in-out infinite;
   }
+}
+
+/* No-GPU machines (BrandField's WebGL probe sets data-perf="low" on
+ * <html>): park the full-panel breathe — its scale change re-composites
+ * the whole image on the CPU every frame, and the motion is subtle
+ * enough that the base frame (scale 1.02) reads identically. The orbit
+ * rings stay live: two small composited layers are cheap once the big
+ * spends are gone, and they carry the visual's sense of life. */
+:root[data-perf="low"] .archive-image {
+  animation: none;
 }
 
 @keyframes archive-breathe {

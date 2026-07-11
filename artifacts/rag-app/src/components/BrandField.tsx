@@ -23,6 +23,13 @@ import {
  *     pure-CSS blur blobs, so the page never regresses below what
  *     shipped before this component existed
  *   - rAF loop pauses when the tab is hidden
+ *   - init is deferred to idle time, so the shader compile (100ms+
+ *     under a software rasterizer) never blocks the form's first paint;
+ *     the canvas fades in when its first frame is ready
+ *   - no GPU at all (SwiftShader/llvmpipe software WebGL) → one curated
+ *     static frame, no loop: same composition, zero ongoing CPU cost.
+ *     The detection also sets data-perf="low" on <html> so CSS can park
+ *     its own decorative loops (see .archive-image)
  *   - renders at a capped, sub-native resolution (the field is soft by
  *     design, so upscaling is invisible and the fill-rate cost drops
  *     ~4x on hiDPI screens)
@@ -178,6 +185,40 @@ void main() {
 }
 `;
 
+/**
+ * True when WebGL is only available through a software rasterizer
+ * (no usable GPU). Animating the field there taxes the same CPU the
+ * whole page runs on — the right move is a single static frame.
+ *
+ * Probe on a throwaway canvas: a canvas's context attributes are fixed
+ * by its first getContext call, so the visible canvas can't be reused
+ * to ask a second question.
+ */
+function isSoftwareRenderer(gl: WebGLRenderingContext): boolean {
+  try {
+    const probeCanvas = document.createElement("canvas");
+    const probe = probeCanvas.getContext("webgl", {
+      failIfMajorPerformanceCaveat: true
+    });
+    if (!probe) return true;
+    (probe.getExtension("WEBGL_lose_context") as { loseContext(): void } | null)?.loseContext();
+  } catch {
+    return true;
+  }
+  // Belt and braces: some browsers hand out a caveat-free context while
+  // still rasterizing in software — the unmasked renderer string tells.
+  // "Basic Render" = Microsoft Basic Render Driver, Windows' WARP
+  // software adapter.
+  const info = gl.getExtension("WEBGL_debug_renderer_info");
+  if (info) {
+    const renderer = String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL) ?? "");
+    if (/swiftshader|llvmpipe|software|basic render/i.test(renderer)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function compile(gl: WebGLRenderingContext, type: number, src: string): WebGLShader | null {
   const shader = gl.createShader(type);
   if (!shader) return null;
@@ -203,6 +244,235 @@ function StaticBlobs(): JSX.Element {
   );
 }
 
+/**
+ * Boot the field on a canvas. Returns a disposer, or null when the
+ * component should fall back to the CSS blobs (onFallback has already
+ * been called in that case — it may also fire later on context loss).
+ */
+function initField(canvas: HTMLCanvasElement, onFallback: () => void): (() => void) | null {
+  const gl = canvas.getContext("webgl", {
+    alpha: false,
+    antialias: false,
+    depth: false,
+    stencil: false,
+    powerPreference: "low-power"
+  });
+  if (!gl) {
+    onFallback();
+    return null;
+  }
+
+  const vert = compile(gl, gl.VERTEX_SHADER, VERT);
+  const frag = compile(gl, gl.FRAGMENT_SHADER, FRAG);
+  const program = gl.createProgram();
+  if (!vert || !frag || !program) {
+    onFallback();
+    return null;
+  }
+  gl.attachShader(program, vert);
+  gl.attachShader(program, frag);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    onFallback();
+    return null;
+  }
+  gl.useProgram(program);
+
+  // One fullscreen triangle (covers the clip square with 3 verts).
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array([-1, -1, 3, -1, -1, 3]),
+    gl.STATIC_DRAW
+  );
+  const aPos = gl.getAttribLocation(program, "a_pos");
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  const uRes = gl.getUniformLocation(program, "u_res");
+  const uTime = gl.getUniformLocation(program, "u_time");
+  const uPointer = gl.getUniformLocation(program, "u_pointer");
+  const uLens = gl.getUniformLocation(program, "u_lens");
+  const uOctaves = gl.getUniformLocation(program, "u_octaves");
+
+  // No usable GPU: even a governed loop taxes the CPU the whole page
+  // runs on. Hold one curated static frame instead, and flag the page
+  // so CSS parks its own decorative loops (see [data-perf="low"] rules).
+  const softwareOnly = isSoftwareRenderer(gl);
+  if (softwareOnly) {
+    document.documentElement.dataset.perf = "low";
+  }
+
+  // Adaptive quality: starts at full (tier 0) and only ever steps
+  // down; capable hardware keeps the shipped visual untouched.
+  const governor = createGovernor();
+  let tier = DEFAULT_TIER;
+  let frozen = false;
+  gl.uniform1f(uOctaves, tier.octaves);
+
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const start = performance.now();
+  // Each visit opens a different page of the field — the composition
+  // is tuned to hold at any t, so a random phase keeps the moment
+  // from feeling canned. The reduced-motion frame stays the fixed,
+  // curated t=46 (deterministic, reviewed against contrast).
+  const phase = Math.random() * 400;
+  let raf = 0;
+  let running = false;
+
+  // Pointer state, smoothed in JS so the shader gets pre-eased values.
+  let targetX = 0.5;
+  let targetY = 0.5;
+  let pointerX = 0.5;
+  let pointerY = 0.5;
+  let targetLens = 0;
+  let lens = 0;
+
+  function resize(): void {
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+    const w = Math.max(1, Math.round(canvas.clientWidth * dpr * tier.scale));
+    const h = Math.max(1, Math.round(canvas.clientHeight * dpr * tier.scale));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+      gl?.viewport(0, 0, w, h);
+    }
+  }
+
+  function draw(timeSeconds: number): void {
+    if (!gl) return;
+    resize();
+    gl.uniform2f(uRes, canvas.width, canvas.height);
+    gl.uniform1f(uTime, timeSeconds);
+    gl.uniform2f(uPointer, pointerX, pointerY);
+    gl.uniform1f(uLens, lens);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  let lastDrawn = 0;
+
+  function frame(now: number): void {
+    raf = requestAnimationFrame(frame);
+    // ~30fps cap: the field is too slow for 60fps to be visible, and
+    // skipping every other vsync halves the GPU cost outright.
+    if (now - lastDrawn < TARGET_INTERVAL_MS) return;
+    const delta = lastDrawn === 0 ? 0 : now - lastDrawn;
+    lastDrawn = now;
+    // Smoothing factors are per DRAWN frame (~33ms tick), tuned to
+    // the same time constant the old per-vsync 0.06/0.05 gave.
+    pointerX += (targetX - pointerX) * 0.12;
+    pointerY += (targetY - pointerY) * 0.12;
+    lens += (targetLens - lens) * 0.1;
+    draw(phase + (now - start) / 1000);
+    if (delta === 0) return;
+    const verdict = governor.sample(delta);
+    if (verdict === "stepped") {
+      tier = governor.tier;
+      gl?.uniform1f(uOctaves, tier.octaves);
+      // resize() picks up the new scale on the next draw.
+    } else if (verdict === "freeze") {
+      // Floor tier: hold the last-drawn frame. Same composition,
+      // no motion — smooth page beats moving ink on this hardware.
+      frozen = true;
+      stopLoop();
+    }
+  }
+
+  function startLoop(): void {
+    if (running || frozen || softwareOnly || reduced.matches) return;
+    running = true;
+    raf = requestAnimationFrame(frame);
+  }
+
+  function stopLoop(): void {
+    running = false;
+    cancelAnimationFrame(raf);
+  }
+
+  /** Static modes: one hand-picked frozen frame, no loop, no lens. */
+  function renderStatic(): void {
+    lens = 0;
+    draw(46.0);
+  }
+
+  /** Fade the canvas in once a real frame exists (.brand-field-canvas). */
+  function reveal(): void {
+    canvas.classList.add("brand-field-ready");
+  }
+
+  function onPointerMove(e: PointerEvent): void {
+    targetX = e.clientX / window.innerWidth;
+    targetY = 1 - e.clientY / window.innerHeight;
+    targetLens = 1;
+  }
+  function onPointerLeave(): void {
+    targetLens = 0;
+  }
+  function onVisibility(): void {
+    if (document.hidden) stopLoop();
+    else if (!reduced.matches) startLoop();
+  }
+  function onMotionPref(): void {
+    if (reduced.matches) {
+      stopLoop();
+      renderStatic();
+    } else {
+      startLoop();
+    }
+  }
+  function onContextLost(e: Event): void {
+    e.preventDefault();
+    stopLoop();
+    onFallback();
+  }
+
+  const ro = new ResizeObserver(() => {
+    if (reduced.matches || softwareOnly) renderStatic();
+  });
+  ro.observe(canvas);
+
+  // The static modes never run the loop, so the lens never moves —
+  // skip the pointer plumbing entirely there.
+  if (!softwareOnly) {
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+    document.documentElement.addEventListener("pointerleave", onPointerLeave);
+  }
+  document.addEventListener("visibilitychange", onVisibility);
+  reduced.addEventListener("change", onMotionPref);
+  canvas.addEventListener("webglcontextlost", onContextLost);
+
+  // First frame synchronously (within the idle boot): rAF doesn't fire
+  // in hidden/backgrounded tabs, and a login page restored from a
+  // background tab should show the field, not a blank canvas, on its
+  // first visible paint.
+  if (reduced.matches || softwareOnly) {
+    renderStatic();
+  } else {
+    draw(phase);
+    startLoop();
+  }
+  reveal();
+
+  return () => {
+    stopLoop();
+    ro.disconnect();
+    window.removeEventListener("pointermove", onPointerMove);
+    document.documentElement.removeEventListener("pointerleave", onPointerLeave);
+    document.removeEventListener("visibilitychange", onVisibility);
+    reduced.removeEventListener("change", onMotionPref);
+    canvas.removeEventListener("webglcontextlost", onContextLost);
+    // Deliberately NOT losing the context here: StrictMode double-mounts
+    // effects, and a killed context survives on the reused canvas node,
+    // which would trip the fallback on the second mount. The browser
+    // reclaims the context with the canvas when the page really unmounts.
+    gl.deleteProgram(program);
+    gl.deleteShader(vert);
+    gl.deleteShader(frag);
+    gl.deleteBuffer(buf);
+  };
+}
+
 export function BrandField(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fallback, setFallback] = useState(false);
@@ -211,208 +481,28 @@ export function BrandField(): JSX.Element {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const gl = canvas.getContext("webgl", {
-      alpha: false,
-      antialias: false,
-      depth: false,
-      stencil: false,
-      powerPreference: "low-power"
-    });
-    if (!gl) {
-      setFallback(true);
-      return;
-    }
+    let dispose: (() => void) | null = null;
+    let cancelled = false;
+    const boot = (): void => {
+      if (cancelled) return;
+      dispose = initField(canvas, () => setFallback(true));
+    };
 
-    const vert = compile(gl, gl.VERTEX_SHADER, VERT);
-    const frag = compile(gl, gl.FRAGMENT_SHADER, FRAG);
-    const program = gl.createProgram();
-    if (!vert || !frag || !program) {
-      setFallback(true);
-      return;
-    }
-    gl.attachShader(program, vert);
-    gl.attachShader(program, frag);
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      setFallback(true);
-      return;
-    }
-    gl.useProgram(program);
-
-    // One fullscreen triangle (covers the clip square with 3 verts).
-    const buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([-1, -1, 3, -1, -1, 3]),
-      gl.STATIC_DRAW
-    );
-    const aPos = gl.getAttribLocation(program, "a_pos");
-    gl.enableVertexAttribArray(aPos);
-    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
-
-    const uRes = gl.getUniformLocation(program, "u_res");
-    const uTime = gl.getUniformLocation(program, "u_time");
-    const uPointer = gl.getUniformLocation(program, "u_pointer");
-    const uLens = gl.getUniformLocation(program, "u_lens");
-    const uOctaves = gl.getUniformLocation(program, "u_octaves");
-
-    // Adaptive quality: starts at full (tier 0) and only ever steps
-    // down; capable hardware keeps the shipped visual untouched.
-    const governor = createGovernor();
-    let tier = DEFAULT_TIER;
-    let frozen = false;
-    gl.uniform1f(uOctaves, tier.octaves);
-
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const start = performance.now();
-    // Each visit opens a different page of the field — the composition
-    // is tuned to hold at any t, so a random phase keeps the moment
-    // from feeling canned. The reduced-motion frame stays the fixed,
-    // curated t=46 (deterministic, reviewed against contrast).
-    const phase = Math.random() * 400;
-    let raf = 0;
-    let running = false;
-
-    // Pointer state, smoothed in JS so the shader gets pre-eased values.
-    let targetX = 0.5;
-    let targetY = 0.5;
-    let pointerX = 0.5;
-    let pointerY = 0.5;
-    let targetLens = 0;
-    let lens = 0;
-
-    function resize(): void {
-      if (!canvas || !gl) return;
-      const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-      const w = Math.max(1, Math.round(canvas.clientWidth * dpr * tier.scale));
-      const h = Math.max(1, Math.round(canvas.clientHeight * dpr * tier.scale));
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
-        gl.viewport(0, 0, w, h);
-      }
-    }
-
-    function draw(timeSeconds: number): void {
-      if (!canvas || !gl) return;
-      resize();
-      gl.uniform2f(uRes, canvas.width, canvas.height);
-      gl.uniform1f(uTime, timeSeconds);
-      gl.uniform2f(uPointer, pointerX, pointerY);
-      gl.uniform1f(uLens, lens);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-    }
-
-    let lastDrawn = 0;
-
-    function frame(now: number): void {
-      raf = requestAnimationFrame(frame);
-      // ~30fps cap: the field is too slow for 60fps to be visible, and
-      // skipping every other vsync halves the GPU cost outright.
-      if (now - lastDrawn < TARGET_INTERVAL_MS) return;
-      const delta = lastDrawn === 0 ? 0 : now - lastDrawn;
-      lastDrawn = now;
-      // Smoothing factors are per DRAWN frame (~33ms tick), tuned to
-      // the same time constant the old per-vsync 0.06/0.05 gave.
-      pointerX += (targetX - pointerX) * 0.12;
-      pointerY += (targetY - pointerY) * 0.12;
-      lens += (targetLens - lens) * 0.1;
-      draw(phase + (now - start) / 1000);
-      if (delta === 0) return;
-      const verdict = governor.sample(delta);
-      if (verdict === "stepped") {
-        tier = governor.tier;
-        gl?.uniform1f(uOctaves, tier.octaves);
-        // resize() picks up the new scale on the next draw.
-      } else if (verdict === "freeze") {
-        // Floor tier: hold the last-drawn frame. Same composition,
-        // no motion — smooth page beats moving ink on this hardware.
-        frozen = true;
-        stopLoop();
-      }
-    }
-
-    function startLoop(): void {
-      if (running || frozen || reduced.matches) return;
-      running = true;
-      raf = requestAnimationFrame(frame);
-    }
-
-    function stopLoop(): void {
-      running = false;
-      cancelAnimationFrame(raf);
-    }
-
-    /** Reduced motion: one hand-picked frozen frame, no loop, no lens. */
-    function renderStatic(): void {
-      lens = 0;
-      draw(46.0);
-    }
-
-    function onPointerMove(e: PointerEvent): void {
-      targetX = e.clientX / window.innerWidth;
-      targetY = 1 - e.clientY / window.innerHeight;
-      targetLens = 1;
-    }
-    function onPointerLeave(): void {
-      targetLens = 0;
-    }
-    function onVisibility(): void {
-      if (document.hidden) stopLoop();
-      else if (!reduced.matches) startLoop();
-    }
-    function onMotionPref(): void {
-      if (reduced.matches) {
-        stopLoop();
-        renderStatic();
-      } else {
-        startLoop();
-      }
-    }
-    function onContextLost(e: Event): void {
-      e.preventDefault();
-      stopLoop();
-      setFallback(true);
-    }
-
-    const ro = new ResizeObserver(() => {
-      if (reduced.matches) renderStatic();
-    });
-    ro.observe(canvas);
-
-    window.addEventListener("pointermove", onPointerMove, { passive: true });
-    document.documentElement.addEventListener("pointerleave", onPointerLeave);
-    document.addEventListener("visibilitychange", onVisibility);
-    reduced.addEventListener("change", onMotionPref);
-    canvas.addEventListener("webglcontextlost", onContextLost);
-
-    // First frame synchronously: rAF doesn't fire in hidden/backgrounded
-    // tabs, and a login page restored from a background tab should show
-    // the field, not a blank canvas, on its first visible paint.
-    if (reduced.matches) {
-      renderStatic();
-    } else {
-      draw(phase);
-      startLoop();
-    }
+    // Boot at idle: the shader compile can take 100ms+ under a software
+    // rasterizer, and decoration must never block the form's first
+    // paint. The timeout bounds how late the field arrives on busy
+    // loads; the canvas fades in from transparent either way, so the
+    // page shows calm cream paper — never a flash of black canvas.
+    const hasIdle = typeof window.requestIdleCallback === "function";
+    const handle = hasIdle
+      ? window.requestIdleCallback(boot, { timeout: 500 })
+      : window.setTimeout(boot, 1);
 
     return () => {
-      stopLoop();
-      ro.disconnect();
-      window.removeEventListener("pointermove", onPointerMove);
-      document.documentElement.removeEventListener("pointerleave", onPointerLeave);
-      document.removeEventListener("visibilitychange", onVisibility);
-      reduced.removeEventListener("change", onMotionPref);
-      canvas.removeEventListener("webglcontextlost", onContextLost);
-      // Deliberately NOT losing the context here: StrictMode double-mounts
-      // effects, and a killed context survives on the reused canvas node,
-      // which would trip the fallback on the second mount. The browser
-      // reclaims the context with the canvas when the page really unmounts.
-      gl.deleteProgram(program);
-      gl.deleteShader(vert);
-      gl.deleteShader(frag);
-      gl.deleteBuffer(buf);
+      cancelled = true;
+      if (hasIdle) window.cancelIdleCallback(handle);
+      else window.clearTimeout(handle);
+      dispose?.();
     };
   }, []);
 
@@ -421,7 +511,7 @@ export function BrandField(): JSX.Element {
       {fallback ? (
         <StaticBlobs />
       ) : (
-        <canvas ref={canvasRef} className="h-full w-full" />
+        <canvas ref={canvasRef} className="brand-field-canvas h-full w-full" />
       )}
     </div>
   );

@@ -41,7 +41,17 @@ export const TARGET_INTERVAL_MS = 31;
 /** Sustained average above this (≈ <25fps drawn) means "step down". */
 const SLOW_INTERVAL_MS = 40;
 
-/** Drawn frames per judgment window (~1.5s at the 30fps cap). */
+/**
+ * Drawn frames in the FIRST judgment window (~0.5s at the 30fps cap).
+ * Short on purpose: hardware that can't hold budget at all (weak iGPU
+ * that dodged the software-renderer probe) janks the whole page while
+ * we deliberate, so the first verdict lands fast. Later windows use
+ * the longer steady-state WINDOW — a settled tier shouldn't step again
+ * on half a second of noise.
+ */
+export const FIRST_WINDOW = 15;
+
+/** Drawn frames per steady-state judgment window (~1.5s at the 30fps cap). */
 const WINDOW = 45;
 
 /**
@@ -62,6 +72,7 @@ export function createGovernor(): Governor {
   let tierIndex = 0;
   let sum = 0;
   let count = 0;
+  let windowSize = FIRST_WINDOW;
 
   return {
     get tier(): QualityTier {
@@ -75,10 +86,12 @@ export function createGovernor(): Governor {
       }
       sum += deltaMs;
       count += 1;
-      if (count < WINDOW) return "same";
+      if (count < windowSize) return "same";
       const avg = sum / count;
       sum = 0;
       count = 0;
+      // First full window judged (either way) → steady-state cadence.
+      windowSize = WINDOW;
       if (avg <= SLOW_INTERVAL_MS) return "same";
       if (tierIndex < QUALITY_TIERS.length - 1) {
         tierIndex += 1;
