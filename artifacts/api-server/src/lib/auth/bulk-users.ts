@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-export const BULK_USER_TEMP_PASSWORD = "Truenote213";
 export const MAX_BULK_USERS = 100;
 
 export const BulkUserEmailsSchema = z.object({

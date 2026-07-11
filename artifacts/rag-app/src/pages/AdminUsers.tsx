@@ -329,8 +329,8 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
         <h2 className="text-sm font-semibold">Import CSR emails</h2>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
           Upload one email per row, or a CSV or Excel (.xlsx) file with an email
-          column. Users join the current program with temporary password{" "}
-          <code>Truenote213</code> and must replace it at first login.
+          column. Users join the current program with unique temporary passwords
+          and must replace them at first login.
         </p>
       </div>
 
@@ -373,10 +373,22 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
               : ""}
             .
           </p>
-          <p className="mt-1">
-            Temporary password: <code>{result.temporaryPassword}</code>. Every
-            imported user must change it after signing in.
-          </p>
+          {result.temporaryPasswords.length > 0 ? (
+            <div className="mt-2">
+              <p>
+                Temporary passwords are shown once. Share each password only
+                with its matching user through an approved out-of-band channel.
+              </p>
+              <ul className="mt-2 space-y-1">
+                {result.temporaryPasswords.map((credential) => (
+                  <li key={credential.email}>
+                    <span className="font-medium">{credential.email}</span>:{" "}
+                    <code>{credential.password}</code>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

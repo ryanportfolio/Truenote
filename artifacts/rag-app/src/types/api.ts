@@ -373,7 +373,7 @@ export interface CreateUserResponse {
 export interface BulkCreateUsersResponse {
   created: UserListItem[];
   skippedEmails: string[];
-  temporaryPassword: string;
+  temporaryPasswords: Array<{ email: string; password: string }>;
   forcedPasswordReset: true;
 }
 

@@ -19,7 +19,6 @@ import {
 import { resolveEffectiveProgramId } from "../../lib/auth/effective-program.js";
 import { getMinPasswordLength } from "../../lib/config.js";
 import {
-  BULK_USER_TEMP_PASSWORD,
   BulkUserEmailsSchema,
   bulkUserValues,
   nameFromEmail,
@@ -341,13 +340,6 @@ usersRouter.post("/bulk", async (req, res, next) => {
       res.status(400).json({ error: message });
       return;
     }
-    if (BULK_USER_TEMP_PASSWORD.length < MIN_PASSWORD_LENGTH) {
-      res.status(409).json({
-        error: `The bulk temporary password is shorter than MIN_PASSWORD_LENGTH (${MIN_PASSWORD_LENGTH})`
-      });
-      return;
-    }
-
     const programId = await resolveEffectiveProgramId(actor, req);
     if (programId === null) {
       res.status(400).json({
@@ -368,16 +360,26 @@ usersRouter.post("/bulk", async (req, res, next) => {
       email: string;
       name: string;
       passwordHash: string;
+      tempPassword: string;
     }> = [];
     for (const email of emails) {
+      const tempPassword = generateTempPassword();
+      if (tempPassword.length < MIN_PASSWORD_LENGTH) {
+        res.status(409).json({
+          error: `The bulk temporary password is shorter than MIN_PASSWORD_LENGTH (${MIN_PASSWORD_LENGTH})`
+        });
+        return;
+      }
       candidates.push({
         email,
         name: nameFromEmail(email),
-        passwordHash: await hashPassword(BULK_USER_TEMP_PASSWORD)
+        passwordHash: await hashPassword(tempPassword),
+        tempPassword
       });
     }
 
     const created: UserListItem[] = [];
+    const temporaryPasswords: Array<{ email: string; password: string }> = [];
     const skippedEmails: string[] = [];
     await db.transaction(async (tx) => {
       for (const candidate of candidates) {
@@ -403,15 +405,22 @@ usersRouter.post("/bulk", async (req, res, next) => {
             createdAt: users.createdAt
           });
         const row = inserted[0];
-        if (row) created.push(toListItem(row));
-        else skippedEmails.push(candidate.email);
+        if (row) {
+          created.push(toListItem(row));
+          temporaryPasswords.push({
+            email: candidate.email,
+            password: candidate.tempPassword
+          });
+        } else {
+          skippedEmails.push(candidate.email);
+        }
       }
     });
 
     res.status(created.length > 0 ? 201 : 200).json({
       created,
       skippedEmails,
-      temporaryPassword: BULK_USER_TEMP_PASSWORD,
+      temporaryPasswords,
       forcedPasswordReset: true
     });
   } catch (err) {
