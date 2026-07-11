@@ -18,7 +18,7 @@ import {
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
-import { parseUserCsv } from "@/lib/userCsv";
+import { parseUserCsv, parseUserXlsx, type ParsedUserCsv } from "@/lib/userCsv";
 import type {
   BulkCreateUsersResponse,
   CreateUserRequest,
@@ -241,11 +241,21 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
     setFileName(file?.name ?? "");
     if (!file) return;
     if (file.size > 1_000_000) {
-      setError("CSV must be 1 MB or smaller");
+      setError("File must be 1 MB or smaller");
       return;
     }
+    const isXlsx = file.name.toLowerCase().endsWith(".xlsx");
     try {
-      const parsed = parseUserCsv(await file.text());
+      let parsed: ParsedUserCsv;
+      if (isXlsx) {
+        // Load the xlsx parser only when an Excel file is actually
+        // chosen — it ships as its own async chunk, so the CSV path and
+        // non-admin bundles never pay for it.
+        const { default: readXlsxFile } = await import("read-excel-file");
+        parsed = parseUserXlsx(await readXlsxFile(file));
+      } else {
+        parsed = parseUserCsv(await file.text());
+      }
       setEmails(parsed.emails);
       setInvalidRows(parsed.invalidRows);
       if (parsed.invalidRows.length > 0) {
@@ -253,12 +263,14 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
           `Fix invalid email row${parsed.invalidRows.length === 1 ? "" : "s"}: ${parsed.invalidRows.slice(0, 10).join(", ")}`
         );
       } else if (parsed.emails.length === 0) {
-        setError("CSV does not contain any email addresses");
+        setError("File does not contain any email addresses");
       } else if (parsed.emails.length > 100) {
-        setError("CSV can contain at most 100 unique emails");
+        setError("File can contain at most 100 unique emails");
       }
     } catch {
-      setError("Could not read this CSV file");
+      setError(
+        isXlsx ? "Could not read this Excel file" : "Could not read this CSV file"
+      );
     }
   }
 
@@ -295,17 +307,17 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
       <div>
         <h2 className="text-sm font-semibold">Import CSR emails</h2>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Upload one email per row, or a CSV with an email column. Users join
-          the current program with temporary password{" "}
+          Upload one email per row, or a CSV or Excel (.xlsx) file with an email
+          column. Users join the current program with temporary password{" "}
           <code>Truenote213</code> and must replace it at first login.
         </p>
       </div>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium">CSV file</span>
+        <span className="font-medium">CSV or Excel file</span>
         <input
           type="file"
-          accept=".csv,text/csv"
+          accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           onChange={(event) => void selectFile(event)}
           disabled={submitting}
           className="cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:cursor-pointer file:rounded-full file:border file:border-border file:bg-secondary file:px-3 file:py-1 file:text-xs file:font-medium hover:file:border-foreground/30"
@@ -359,7 +371,7 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
           className="btn-whisper gap-2 px-4 py-2 text-sm"
         >
           <FileUp className="h-4 w-4" aria-hidden />
-          {submitting ? "Adding users…" : "Add CSV users"}
+          {submitting ? "Adding users…" : "Add users"}
         </button>
       </div>
     </form>
