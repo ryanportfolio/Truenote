@@ -144,12 +144,14 @@ sessionsRouter.get("/:id", async (req, res, next) => {
       )
       .orderBy(asc(queryLog.createdAt));
 
-    // Reconstruct citation sources from the stored chunk ids. Chunk ids
-    // change on re-ingest (doc ids don't), so a chunk cited by an old
-    // answer may no longer resolve — those citations simply drop, and the
-    // answer's inline [id] renders as an unknown citation client-side.
-    // The excerpt is the full chunk content (the live LLM-trimmed excerpt
-    // isn't stored); the citation panel already renders full chunk text.
+    // Reconstruct citation sources from the stored chunk ids. A cited chunk
+    // may no longer resolve for two reasons — its version was re-ingested
+    // (chunk ids change, doc ids don't) OR its version was replaced by a
+    // newer one (the old version is deactivated but its chunks linger in the
+    // table). Either way the citation simply drops and the answer's inline
+    // [id] renders as an unknown citation client-side. The excerpt is the
+    // full chunk content (the live LLM-trimmed excerpt isn't stored); the
+    // citation panel already renders full chunk text.
     const allChunkIds = Array.from(
       new Set(logRows.flatMap((r) => r.citedChunkIds ?? []))
     );
@@ -165,8 +167,20 @@ sessionsRouter.get("/:id", async (req, res, next) => {
         .from(chunks)
         .innerJoin(documentVersions, eq(documentVersions.id, chunks.documentVersionId))
         .innerJoin(documents, eq(documents.id, documentVersions.documentId))
-        // Defense in depth: only resolve chunks in the caller's program.
-        .where(and(inArray(chunks.id, allChunkIds), eq(chunks.programId, programId)));
+        // Only resolve chunks in the caller's program AND from still-active
+        // versions. The is_active filter is a content-removal boundary: when
+        // a manager replaces a document version to correct or remove info,
+        // the old version's chunks stay in the table (only the version flips
+        // inactive) — without this filter a CSR could reopen an old chat and
+        // still see the superseded excerpt. Every other chunk query in
+        // retrieval filters is_active too; this one must match.
+        .where(
+          and(
+            inArray(chunks.id, allChunkIds),
+            eq(chunks.programId, programId),
+            eq(documentVersions.isActive, true)
+          )
+        );
       for (const c of chunkRows) {
         chunkMap.set(c.chunkId, {
           chunk_id: c.chunkId,
