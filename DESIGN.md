@@ -178,7 +178,7 @@ Semantic tokens only — raw Tailwind palette classes (`emerald-*`, `amber-*`, `
 
 CSR-facing read surface for the same corpus answers are grounded in (sidebar "Knowledge base," minRole csr). List: single card of divided rows (title + relative time), client-side title filter with an inset search icon. Reader: one article card, `max-w-3xl`, doc title in display face over a hairline rule, then the parsed markdown. Unlike AnswerMarkdown, real-document rendering allows headings (stepped display scale), links (underlined `--primary`, new tab), and code; images render as a dashed placeholder chip carrying the alt text — OCR-local image refs aren't served. Cross-program or removed docs land on a calm EmptyState, not an error.
 
-Personal passage highlights are anchored to the active document version and saved per user. Pointer/touch selection opens a compact color-and-save group; keyboard mode makes readable blocks focusable so Tab + Enter reaches the same flow. Saved passages stay manageable from an inline list. Yellow, green, and blue use dedicated annotation tokens plus an underline, so color is never the only signal. Shared demo accounts are explicitly read-only.
+Personal passage highlights are anchored to the active document version and saved per user. Pointer/touch selection opens a compact color-and-save group; keyboard mode makes readable blocks focusable so Tab + Enter reaches the same flow. Saved passages stay manageable from an inline list. Yellow, green, and blue use dedicated annotation tokens plus an underline, so color is never the only signal. Demo accounts can create highlights so visitors can experience the complete interaction; owner, program, range, overlap, and count guards still apply.
 
 ## Chat session history
 

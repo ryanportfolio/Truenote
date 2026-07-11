@@ -18,11 +18,10 @@ question
        no  → refuse, return "not in knowledge base"
        yes → neighbor expansion (ordinal ±1 of top RETRIEVAL_NEIGHBOR_ANCHORS
              anchors, same active version; unscored context, never gated)
-           → OpenRouter approved primary route selected by a super user
-             (medium reasoning) with
-             citation contract + ZDR
-             (request/schema/citation failure → direct OpenAI
-              gpt-5.6-luna backup at low reasoning)
+           → OpenRouter approved route chain ordered by a super user
+             with route-specific reasoning, citation contract, and ZDR
+             (request/schema/citation failure → next route; exhausted chain
+              → direct OpenAI gpt-5.6-luna backup at low reasoning)
   → render answer + citation chips
   → log to query_log
 ```
@@ -77,7 +76,7 @@ QUESTION: {question}
 
 Use strict structured outputs (`response_format: { type: 'json_schema', ... }`) through the OpenAI-compatible client — do NOT rely on prompt-only JSON. The model will occasionally drift if you only ask in prose.
 
-The approved routes form a server-owned allowlist that a super user orders into a fallback chain on `/admin/model-routing`: GPT-5.6 Luna on OpenAI at low reasoning (default primary), GPT-5.4 Nano Nitro on Azure, Nemotron 3 Super Nitro on DigitalOcean, and Nemotron 3 Ultra Nitro on Together. The order (an array of approved ids) lives in `app_settings`; a missing/legacy/invalid value degrades safely to the listed default order, and any approved route absent from a stored order is appended as a tail fallback so the chain is never empty. Each OpenRouter request pins that route's provider with `provider.only`, sets `reasoning_effort` to the route's own effort (`"low"` for Luna, `"medium"` for the others), and enforces `provider.zdr=true`, `data_collection="deny"`, `require_parameters=true`, and `allow_fallbacks=false`. Generation walks the chain in order: any request error, schema/parse failure, empty answer, unknown source, or missing inline citation advances to the next route. A valid grounded refusal is success and ends the walk — it never cascades. If the whole chain errors, one final attempt runs through direct OpenAI `gpt-5.6-luna` at `reasoning_effort: "low"` (outside OpenRouter, so it survives an OpenRouter-wide outage); any required retention controls must therefore also be enabled on the OpenAI organization.
+The approved routes form a server-owned allowlist that a super user orders into a fallback chain on `/admin/model-routing`: GPT-5.6 Luna on OpenAI at low reasoning (default primary), GPT-5.4 Nano Nitro on Azure, Nemotron 3 Super Nitro on DigitalOcean, Nemotron 3 Ultra Nitro on Together, and Mercury 2 on Inception at low reasoning. The order (an array of approved ids) lives in `app_settings`; a missing/legacy/invalid value degrades safely to the listed default order, and any approved route absent from a stored order is appended as a tail fallback so the chain is never empty. Each OpenRouter request pins that route's provider with `provider.only`, sets `reasoning_effort` to the route's own effort (`"low"` for Luna and Mercury 2, `"medium"` for the others), and enforces `provider.zdr=true`, `data_collection="deny"`, `require_parameters=true`, and `allow_fallbacks=false`. Generation walks the chain in order: any request error, schema/parse failure, empty answer, unknown source, or missing inline citation advances to the next route. A valid grounded refusal is success and ends the walk; it never cascades. If the whole chain errors, one final attempt runs through direct OpenAI `gpt-5.6-luna` at `reasoning_effort: "low"` (outside OpenRouter, so it survives an OpenRouter-wide outage); any required retention controls must therefore also be enabled on the OpenAI organization.
 
 ## UI contract
 

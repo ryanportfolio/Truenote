@@ -6,7 +6,8 @@ export const ApprovedModelRouteIdSchema = z.enum([
   "gpt-5.6-luna-openai",
   "gpt-5.4-nano-azure-nitro",
   "nemotron-3-super-digitalocean-nitro",
-  "nemotron-3-ultra-together-nitro"
+  "nemotron-3-ultra-together-nitro",
+  "mercury-2-inception"
 ]);
 
 export type ApprovedModelRouteId = z.infer<typeof ApprovedModelRouteIdSchema>;
@@ -57,6 +58,15 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     providerLabel: "Together",
     reasoningEffort: "medium",
     description: "Larger open model for harder multi-step questions."
+  },
+  {
+    id: "mercury-2-inception",
+    label: "Mercury 2",
+    model: "inception/mercury-2",
+    provider: "inception",
+    providerLabel: "Inception",
+    reasoningEffort: "low",
+    description: "Ultra-fast diffusion model for low-latency grounded answers."
   }
 ];
 
@@ -172,7 +182,7 @@ export function isMissingModelSettingsTable(error: unknown): boolean {
 
 /**
  * Read the global primary route. Missing DDL never breaks answer generation:
- * the approved GPT-5.4 Nano/Azure default remains active until storage lands.
+ * the approved GPT-5.6 Luna/OpenAI default remains active until storage lands.
  */
 export async function getModelRoutingState(): Promise<ModelRoutingState> {
   const now = Date.now();

@@ -130,8 +130,8 @@ export const DEMO_WRITE_BLOCKED_MESSAGE = "Demo accounts can't do this";
  * Method-based (anything but GET/HEAD/OPTIONS) so a new mutating route
  * added to a guarded router is blocked by default rather than forgotten.
  * Mount AFTER requireAuth on routers whose non-GET routes should be
- * demo-frozen; routers that must stay demo-usable (ask, sessions) simply
- * don't mount it.
+ * demo-frozen; routers that must stay demo-usable (ask, sessions, personal
+ * knowledge-base highlights) simply don't mount it.
  *
  * `ok: false` rides along for callers typed against the upload response
  * shape; everyone else reads `error`.

@@ -22,8 +22,17 @@ describe("approved model routing", () => {
       "gpt-5.6-luna-openai",
       "gpt-5.4-nano-azure-nitro",
       "nemotron-3-super-digitalocean-nitro",
-      "nemotron-3-ultra-together-nitro"
+      "nemotron-3-ultra-together-nitro",
+      "mercury-2-inception"
     ]);
+  });
+
+  it("includes Mercury 2 through Inception at low reasoning", () => {
+    expect(findApprovedModelRoute("mercury-2-inception")).toMatchObject({
+      model: "inception/mercury-2",
+      provider: "inception",
+      reasoningEffort: "low"
+    });
   });
 
   it("rejects arbitrary model ids by resolving to the approved default", () => {
@@ -42,7 +51,8 @@ describe("resolveModelRouteOrder", () => {
       "nemotron-3-super-digitalocean-nitro",
       "gpt-5.6-luna-openai",
       "gpt-5.4-nano-azure-nitro",
-      "nemotron-3-ultra-together-nitro"
+      "nemotron-3-ultra-together-nitro",
+      "mercury-2-inception"
     ]);
   });
 
@@ -56,7 +66,8 @@ describe("resolveModelRouteOrder", () => {
       "gpt-5.4-nano-azure-nitro",
       "gpt-5.6-luna-openai",
       "nemotron-3-super-digitalocean-nitro",
-      "nemotron-3-ultra-together-nitro"
+      "nemotron-3-ultra-together-nitro",
+      "mercury-2-inception"
     ]);
   });
 

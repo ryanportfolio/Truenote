@@ -327,7 +327,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
 INSERT INTO app_settings (key, value)
 VALUES (
   'primary_generation_route',
-  '{"order":["gpt-5.6-luna-openai","gpt-5.4-nano-azure-nitro","nemotron-3-super-digitalocean-nitro","nemotron-3-ultra-together-nitro"]}'::jsonb
+  '{"order":["gpt-5.6-luna-openai","gpt-5.4-nano-azure-nitro","nemotron-3-super-digitalocean-nitro","nemotron-3-ultra-together-nitro","mercury-2-inception"]}'::jsonb
 )
 ON CONFLICT (key) DO NOTHING;
 ```

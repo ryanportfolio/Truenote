@@ -86,7 +86,7 @@ Every change touching ingestion, retrieval, or generation runs the suite. Exit c
 | Parsing | Mistral OCR |
 | Embeddings | OpenAI `text-embedding-3-small` |
 | Reranking | Cohere Rerank |
-| Generation | Super-user-ordered approved OpenRouter fallback chain (GPT-5.6 Luna/OpenAI low-reasoning default primary; cascades to the next route on any model error, not on a grounded refusal), with a final direct-OpenAI GPT-5.6 Luna low-reasoning backup |
+| Generation | Super-user-ordered approved OpenRouter fallback chain (GPT-5.6 Luna/OpenAI low-reasoning default primary; Mercury 2/Inception available as a low-latency option; cascades on model errors, not grounded refusals), with a final direct-OpenAI GPT-5.6 Luna low-reasoning backup |
 | Hosting | Replit (object storage, secrets, deploys) |
 
 ## Repository layout
