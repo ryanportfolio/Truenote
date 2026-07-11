@@ -631,3 +631,22 @@ export async function resetUserPassword(
   );
   return readJsonOrThrow<ResetUserPasswordResponse>(response);
 }
+
+/**
+ * Permanently delete a user. Server returns 204 No Content on success, so
+ * there's no body to parse — only decode + throw the error branch. The
+ * server refuses (409) unless the target is already deactivated.
+ */
+export async function deleteUser(id: string): Promise<void> {
+  const response = await fetch(
+    `/api/admin/users/${encodeURIComponent(id)}`,
+    withDefaults({ method: "DELETE" })
+  );
+  if (response.ok) return;
+  if (response.status === 401) {
+    notifySessionExpired();
+    throw new UnauthorizedError();
+  }
+  const body = (await response.json().catch(() => ({}))) as { error?: string };
+  throw new Error(body.error ?? `HTTP ${response.status}`);
+}
