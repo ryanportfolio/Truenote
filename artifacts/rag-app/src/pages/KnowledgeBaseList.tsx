@@ -114,10 +114,19 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
       </header>
 
       {state.status === "loading" ? (
-        <div className="flex flex-col gap-2" aria-hidden>
-          <div className="skeleton h-12 w-full rounded-lg" />
-          <div className="skeleton h-12 w-full rounded-lg" />
-          <div className="skeleton h-12 w-3/4 rounded-lg" />
+        <div role="status">
+          <div className="flex flex-col gap-5" aria-hidden>
+            <div className="skeleton h-[38px] w-full rounded-md" />
+            <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
+              <div className="border-b border-border px-4 py-3">
+                <div className="skeleton h-4 w-2/3" />
+              </div>
+              <div className="px-4 py-3">
+                <div className="skeleton h-4 w-1/2" />
+              </div>
+            </div>
+          </div>
+          <span className="sr-only">Loading…</span>
         </div>
       ) : null}
 

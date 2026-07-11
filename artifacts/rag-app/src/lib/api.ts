@@ -131,7 +131,9 @@ export async function fetchConfig(): Promise<AppConfig> {
 }
 
 export async function fetchMe(): Promise<CurrentUser | null> {
-  const response = await fetch("/api/me", withDefaults());
+  // /api/me never consumes program scope. Keep this request header-free so
+  // it exactly matches index.html's credentialed fetch preload.
+  const response = await fetch("/api/me", { credentials: "include" });
   if (response.status === 401) return null;
   const json = await asJson<{ user: CurrentUser }>(response);
   return json.user;
