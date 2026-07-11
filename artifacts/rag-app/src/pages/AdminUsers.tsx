@@ -18,6 +18,7 @@ import {
 } from "@/lib/api";
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 import { parseUserCsv, parseUserXlsx, type ParsedUserCsv } from "@/lib/userCsv";
 import type {
@@ -518,6 +519,7 @@ function CreateUserForm({
   const [programId, setProgramId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   // Reset programId when role changes if super_user role is picked
   // (must be null) or when switching from super_user to another role
@@ -553,10 +555,13 @@ function CreateUserForm({
     // program and user. Make an admin stop and confirm before minting one,
     // so it's never a slip of the role dropdown.
     if (role === "super_user") {
-      const confirmed = window.confirm(
-        `Are you sure you want to add a SUPER USER?\n\n` +
-          `Super users have full access to every program and every user across the entire system — the highest level of access there is.`
-      );
+      const confirmed = await confirm({
+        title: "Add a SUPER USER?",
+        message:
+          "Super users have full access to every program and every user across the entire system — the highest level of access there is.\n\nAre you sure you want to add one?",
+        confirmLabel: "Add super user",
+        cancelLabel: "Cancel"
+      });
       if (!confirmed) return;
     }
     setSubmitting(true);
@@ -783,6 +788,7 @@ function UserRow({
     "none" | "save" | "active" | "reset" | "delete"
   >("none");
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const manageable = canManageUserClient(actor, item);
 
@@ -821,9 +827,12 @@ function UserRow({
   }
 
   async function handleResetPassword(): Promise<void> {
-    const ok = window.confirm(
-      `Reset password for ${item.email}? Their active sessions will be revoked.`
-    );
+    const ok = await confirm({
+      title: "Reset password?",
+      message: `Reset the password for ${item.email}? Their active sessions will be revoked and they'll receive a new temporary password.`,
+      confirmLabel: "Reset password",
+      tone: "danger"
+    });
     if (!ok) return;
     setBusy("reset");
     setError(null);
@@ -838,9 +847,12 @@ function UserRow({
   }
 
   async function handleDelete(): Promise<void> {
-    const ok = window.confirm(
-      `Permanently delete ${item.email}? This removes the account for good and cannot be undone.`
-    );
+    const ok = await confirm({
+      title: "Delete user?",
+      message: `Permanently delete ${item.email}? This removes the account for good and cannot be undone.`,
+      confirmLabel: "Delete user",
+      tone: "danger"
+    });
     if (!ok) return;
     setBusy("delete");
     setError(null);
