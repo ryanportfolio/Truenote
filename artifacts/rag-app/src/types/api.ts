@@ -68,6 +68,14 @@ export interface Source {
   /** UTF-16 offsets into that version's parsed Markdown, when directly anchorable. */
   source_start: number | null;
   source_end: number | null;
+  /**
+   * Runtime-only, history read path: true when the cited document version has
+   * since been replaced. The excerpt is still what the CSR was shown, but it's
+   * no longer the current source — the UI marks it so a CSR doesn't re-quote
+   * superseded content. Absent on live answers; deleted-version citations are
+   * dropped server-side rather than flagged.
+   */
+  superseded?: boolean;
 }
 
 export interface RetrievedChunk {
@@ -544,7 +552,12 @@ export interface CreateUserResponse {
 export interface BulkCreateUsersResponse {
   created: UserListItem[];
   skippedEmails: string[];
-  temporaryPassword: string;
+  /**
+   * How many created users were emailed a one-time "set your password"
+   * invite link. No plaintext password is ever returned — each user sets
+   * their own via the emailed link, so the admin distributes nothing.
+   */
+  invitedCount: number;
   forcedPasswordReset: true;
 }
 

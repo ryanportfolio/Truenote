@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyVersionActivity,
   citationTargetFromLinkedSource,
   citationReceiptFromLinkedSource,
   citationTargetMatchesMarkdown,
@@ -145,5 +146,86 @@ describe("citation snapshots", () => {
       source_start: null,
       source_end: null
     });
+  });
+});
+
+describe("applyVersionActivity", () => {
+  const activeVersion = "9e382f88-d8e8-4599-92d3-1c0b5873d631";
+  const supersededVersion = "0270dfbc-563c-4d61-9f5d-ff5dd50ce0cb";
+  const deletedVersion = "b1c2d3e4-5f60-4a71-8b92-0c1d2e3f4a5b";
+
+  function sourceForVersion(versionId: string, citationIndex: number) {
+    return linkedSourceFromChunk({
+      chunkId: ids.chunk,
+      docTitle: "Cancellation Policy",
+      content: "[Cancellation Policy]\nThe cancellation fee is **$25**.",
+      documentId: ids.document,
+      documentVersionId: versionId,
+      versionNumber: 3,
+      metadata: {
+        context_header: "[Cancellation Policy]",
+        source_start: 22,
+        source_end: 54
+      },
+      citationIndex
+    });
+  }
+
+  it("keeps active-version citations unchanged", () => {
+    const out = applyVersionActivity(
+      [sourceForVersion(activeVersion, 0)],
+      new Map([[activeVersion, true]])
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]?.superseded).toBeUndefined();
+  });
+
+  it("flags a superseded (inactive but existing) version, preserving the receipt", () => {
+    const out = applyVersionActivity(
+      [sourceForVersion(supersededVersion, 0)],
+      new Map([[supersededVersion, false]])
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]?.superseded).toBe(true);
+    expect(out[0]?.excerpt).toBe("The cancellation fee is **$25**.");
+  });
+
+  it("drops a citation whose version no longer exists (document deleted)", () => {
+    const out = applyVersionActivity(
+      [sourceForVersion(deletedVersion, 0)],
+      new Map([[activeVersion, true]])
+    );
+    expect(out).toHaveLength(0);
+  });
+
+  it("passes through legacy sources that have no version id", () => {
+    const legacy = withoutDurableCitation(sourceForVersion(activeVersion, 0));
+    expect(legacy.document_version_id).toBeNull();
+    expect(applyVersionActivity([legacy], new Map())).toEqual([legacy]);
+  });
+
+  it("fails open (keeps everything) when the activity lookup failed", () => {
+    const sources = [
+      sourceForVersion(activeVersion, 0),
+      sourceForVersion(deletedVersion, 1)
+    ];
+    expect(applyVersionActivity(sources, null)).toEqual(sources);
+  });
+
+  it("resolves a mixed set per source, keeping original citation indexes", () => {
+    const out = applyVersionActivity(
+      [
+        sourceForVersion(activeVersion, 0),
+        sourceForVersion(supersededVersion, 1),
+        sourceForVersion(deletedVersion, 2)
+      ],
+      new Map([
+        [activeVersion, true],
+        [supersededVersion, false]
+      ])
+    );
+    expect(out.map((s) => s.citation_index)).toEqual([0, 1]);
+    expect(out[0]?.superseded).toBeUndefined();
+    expect(out[1]?.superseded).toBe(true);
   });
 });

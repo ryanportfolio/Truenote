@@ -124,6 +124,21 @@ export class ResendEmailSender implements EmailSender {
 
 let _sender: EmailSender | null = null;
 
+/**
+ * True when a REAL email provider is configured (both RESEND_API_KEY and
+ * RESEND_FROM_EMAIL present). When false, getEmailSender() falls back to
+ * the console logger — fine in dev (a developer reads the link from
+ * stdout), but a caller that must actually deliver mail to reach the user
+ * (e.g. bulk-import invites, where the account is unreachable without the
+ * link) should refuse up-front in production rather than mint accounts
+ * whose only credential vanishes into server logs.
+ */
+export function isEmailDeliveryConfigured(): boolean {
+  return Boolean(
+    process.env.RESEND_API_KEY?.trim() && process.env.RESEND_FROM_EMAIL?.trim()
+  );
+}
+
 export function getEmailSender(): EmailSender {
   if (_sender) return _sender;
   const apiKey = process.env.RESEND_API_KEY?.trim();

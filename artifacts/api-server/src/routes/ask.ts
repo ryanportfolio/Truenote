@@ -413,11 +413,20 @@ askRouter.post("/ask/stream", async (req, res, next) => {
       );
       send({ type: "result", result });
     } catch (err) {
-      // Headers are already sent; deliver the error in-band.
-      send({
-        type: "error",
-        message: err instanceof Error ? err.message : "Failed to answer"
-      });
+      // Headers are already sent, so the central error handler can't run.
+      // Mirror its production redaction: raw err.message (Postgres schema/
+      // constraint text, provider detail, sometimes connection strings via
+      // pool errors) must not reach the client in production — send a
+      // generic string there and keep full detail in the server log for
+      // operators. In dev, surface the real message for debugging.
+      console.error("[ask] stream pipeline error:", err);
+      const message =
+        process.env.NODE_ENV === "production"
+          ? "Failed to answer"
+          : err instanceof Error
+            ? err.message
+            : "Failed to answer";
+      send({ type: "error", message });
     } finally {
       res.end();
     }

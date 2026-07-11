@@ -50,21 +50,30 @@ export class SlidingWindowLimiter {
 
   /**
    * Returns true if the hit was accepted (under the cap); false if
-   * the key is rate-limited. Records the hit either way so a caller
-   * who hammers a throttled endpoint stays throttled until the
-   * window slides past them.
+   * the key is rate-limited.
+   *
+   * Only ACCEPTED hits are stored, which caps each key's array at
+   * `limit` entries. An earlier version recorded denied hits too (to
+   * keep a hammering caller locked while they flooded), but that let a
+   * single key's array grow unbounded for the whole window under a
+   * flood — heap pressure plus O(n) shift() cost when the window later
+   * slid. Storing only accepted hits keeps the same "N per window"
+   * guarantee with O(limit) memory: a flooder still gets exactly
+   * `limit` through per window and the rest are cheaply rejected
+   * without being remembered.
    */
   hit(key: string): boolean {
     const now = Date.now();
     const cutoff = now - this.options.windowMs;
     const bucket = this.buckets.get(key) ?? { hits: [] };
-    // Drop hits older than the window. Cheap because the array is
-    // already in insertion order — splice from the front.
+    // Drop hits older than the window. Cheap because the array holds at
+    // most `limit` entries (only accepted hits are stored) and is in
+    // insertion order — shift from the front.
     while (bucket.hits.length > 0 && (bucket.hits[0] ?? 0) < cutoff) {
       bucket.hits.shift();
     }
     const allowed = bucket.hits.length < this.options.limit;
-    bucket.hits.push(now);
+    if (allowed) bucket.hits.push(now);
     if (!this.buckets.has(key)) {
       if (this.buckets.size >= this.maxKeys) {
         // Evict the oldest insertion to bound memory.
@@ -103,6 +112,29 @@ export const forgotPasswordIpLimiter = new SlidingWindowLimiter({
  */
 export const forgotPasswordEmailLimiter = new SlidingWindowLimiter({
   limit: 3,
+  windowMs: 10 * 60 * 1000
+});
+
+/**
+ * Per-IP throttle for POST /api/auth/login. DELIBERATELY VERY GENEROUS:
+ * a call center commonly puts many CSRs behind a single shared egress IP,
+ * so this must never lock out a legitimate shift-change login burst
+ * (dozens of people signing in, some fat-fingering a password, within a
+ * couple of minutes). It exists only to blunt *unbounded* online password
+ * guessing and the CPU cost of forced Argon2 verifications from one
+ * source — NOT to be a precise brute-force control.
+ *
+ * We intentionally throttle per-IP only, never per-account: per-account
+ * lockout would hand an attacker a denial-of-service (fail a victim's
+ * logins on purpose to lock them out), which for a tool CSRs must reach
+ * mid-call is worse than the guessing it would prevent.
+ *
+ * 2000 attempts / 10 min per IP caps a single source to ~3.3/s (Argon2
+ * CPU well under one core) while sitting orders of magnitude above any
+ * real office's login volume.
+ */
+export const loginIpLimiter = new SlidingWindowLimiter({
+  limit: 2000,
   windowMs: 10 * 60 * 1000
 });
 
