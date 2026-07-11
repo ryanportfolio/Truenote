@@ -2,7 +2,11 @@ import { and, eq, ne } from "drizzle-orm";
 import { db } from "../db-client.js";
 import { chunks, documents, documentVersions, type ChunkMetadata } from "@workspace/db/schema";
 import { sha256Hex } from "../parsing/hash.js";
-import { callMistralOcr, type OcrResult } from "../parsing/mistral-ocr.js";
+import {
+  callMistralOcr,
+  type OcrResult,
+  type OcrPageImage
+} from "../parsing/mistral-ocr.js";
 import { docxToMarkdown } from "../parsing/docx.js";
 import { chunkMarkdown } from "../parsing/chunker.js";
 import { createTiktokenTokenizer } from "../parsing/tokenizer.js";
@@ -37,6 +41,20 @@ const OCR_MIMES = new Set([
   "image/jpg",
   "image/webp"
 ]);
+
+/**
+ * Cap on how many extracted images per document version we send to GPT-4o
+ * vision. `detail:"low"` already fixes the per-image token cost, so the
+ * only unbounded axis is COUNT: a single 20MB upload can pack thousands of
+ * tiny image extracts, and an authenticated uploader (manager+) could use
+ * that to run up vision spend or tie up an ingestion worker on one job.
+ * 200 sits far above any realistic legitimate document (even a long
+ * scanned manual is well under this) while bounding worst-case cost and
+ * runtime per doc. Images beyond the cap are simply not enriched — the
+ * document still ingests with all its text chunks plus the first 200
+ * image descriptions.
+ */
+const MAX_IMAGES_DESCRIBED_PER_VERSION = 200;
 
 const PASSTHROUGH_TEXT_MIMES = new Set([
   "text/markdown",
@@ -210,38 +228,56 @@ export async function runIngestion(
     const imageDescriptions: ImageDescription[] = [];
     if (ocrResult) {
       const describer = deps.imageDescriber ?? new OpenAIImageDescriber();
+      // Flatten to the describable images (those carrying base64), then
+      // cap on COUNT — the real cost/DoS amplification axis (see
+      // MAX_IMAGES_DESCRIBED_PER_VERSION). Vision calls stay sequential
+      // to bound concurrent OpenAI load, same as before.
+      const describable: Array<{ pageIndex: number; image: OcrPageImage }> = [];
       for (const page of ocrResult.pages) {
         for (const image of page.images) {
-          if (!image.image_base64) continue;
-          try {
-            // Mistral returns PNG-encoded extracts; pass the MIME
-            // explicitly so a future encoding change surfaces here.
-            const description = await describer.describe(
-              image.image_base64,
-              "image/png"
-            );
-            const trimmed = description.trim();
-            if (trimmed.length === 0) continue;
-            // Doc-title header (no heading path — OCR image extracts don't
-            // carry section position) so images retrieve by document name.
-            const imageHeader = buildContextHeader(doc.title);
-            imageDescriptions.push({
-              content: prependContextHeader(
-                imageHeader,
-                `[Image on page ${page.index + 1}]: ${trimmed}`
-              ),
-              metadata: {
-                has_image: true,
-                ...(imageHeader ? { context_header: imageHeader } : {}),
-                ...(image.id ? { image_url: image.id } : {})
-              }
-            });
-          } catch (err) {
-            console.warn(
-              `[ingestion] vision describe failed for page ${page.index} image ${image.id ?? "?"}:`,
-              err instanceof Error ? err.message : err
-            );
+          if (image.image_base64) {
+            describable.push({ pageIndex: page.index, image });
           }
+        }
+      }
+      if (describable.length > MAX_IMAGES_DESCRIBED_PER_VERSION) {
+        console.warn(
+          `[ingestion] version ${versionId}: ${describable.length} images exceed the ` +
+            `${MAX_IMAGES_DESCRIBED_PER_VERSION}-image describe cap; enriching the first ` +
+            `${MAX_IMAGES_DESCRIBED_PER_VERSION}, skipping ${describable.length - MAX_IMAGES_DESCRIBED_PER_VERSION}`
+        );
+      }
+      const capped = describable.slice(0, MAX_IMAGES_DESCRIBED_PER_VERSION);
+      for (const { pageIndex, image } of capped) {
+        // image_base64 is guaranteed present (filtered above), but re-read
+        // into a local so the type narrows for describe().
+        const imageBase64 = image.image_base64;
+        if (!imageBase64) continue;
+        try {
+          // Mistral returns PNG-encoded extracts; pass the MIME
+          // explicitly so a future encoding change surfaces here.
+          const description = await describer.describe(imageBase64, "image/png");
+          const trimmed = description.trim();
+          if (trimmed.length === 0) continue;
+          // Doc-title header (no heading path — OCR image extracts don't
+          // carry section position) so images retrieve by document name.
+          const imageHeader = buildContextHeader(doc.title);
+          imageDescriptions.push({
+            content: prependContextHeader(
+              imageHeader,
+              `[Image on page ${pageIndex + 1}]: ${trimmed}`
+            ),
+            metadata: {
+              has_image: true,
+              ...(imageHeader ? { context_header: imageHeader } : {}),
+              ...(image.id ? { image_url: image.id } : {})
+            }
+          });
+        } catch (err) {
+          console.warn(
+            `[ingestion] vision describe failed for page ${pageIndex} image ${image.id ?? "?"}:`,
+            err instanceof Error ? err.message : err
+          );
         }
       }
     }

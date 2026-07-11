@@ -21,7 +21,8 @@ import {
 import {
   clientIpFrom,
   forgotPasswordEmailLimiter,
-  forgotPasswordIpLimiter
+  forgotPasswordIpLimiter,
+  loginIpLimiter
 } from "../lib/auth/rate-limit.js";
 import {
   authedUser,
@@ -139,6 +140,19 @@ function getDummyHash(): Promise<string> {
  */
 authRouter.post("/login", async (req, res, next) => {
   try {
+    // Per-IP throttle BEFORE any Argon2 work, so a flood can't force
+    // unbounded verifications from one source. Very generous (see
+    // loginIpLimiter) so a shared-office IP is never locked out. A 429
+    // here leaks nothing about accounts — it reflects only the
+    // requester's own request rate.
+    const ip = clientIpFrom(req);
+    if (!loginIpLimiter.hit(ip)) {
+      res.status(429).json({
+        error: "Too many login attempts. Try again in a few minutes."
+      });
+      return;
+    }
+
     const parsed = LoginBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid request" });
