@@ -64,11 +64,7 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
 
   if (items.length === 0) {
     return (
-      <EmptyState
-        icon={FileText}
-        title="No documents yet"
-        hint="Upload an SOP, policy, or screenshot above — parsed versions appear here for preview."
-      />
+      <EmptyState icon={FileText} title="No source documents yet" />
     );
   }
 
@@ -119,7 +115,7 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
                         disabled={isDeleting}
                         className="btn-whisper px-2.5 py-1 text-xs"
                       >
-                        Preview
+                        Parsed text
                       </button>
                     ) : null}
                     <button

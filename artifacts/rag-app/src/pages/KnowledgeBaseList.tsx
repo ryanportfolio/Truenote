@@ -107,9 +107,9 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6">
       <header>
-        <h1 className="font-display text-3xl font-semibold tracking-tight">Knowledge base</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Sources</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Every live document answers are grounded in. Open one to read it in full.
+          Documents used to answer questions. Open one to read it in full.
         </p>
       </header>
 
@@ -144,16 +144,12 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
           role="status"
           className="rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
         >
-          Select a program from the picker in the header to browse its knowledge base.
+          Choose a program to browse its documents.
         </div>
       ) : null}
 
       {state.status === "ready" && state.items.length === 0 ? (
-        <EmptyState
-          icon={BookOpen}
-          title="No documents yet"
-          hint="When admins upload and publish documents for your program, they appear here."
-        />
+        <EmptyState icon={BookOpen} title="No source documents yet" />
       ) : null}
 
       {state.status === "ready" && state.items.length > 0 ? (

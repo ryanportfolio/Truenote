@@ -143,7 +143,7 @@ export function UploadForm({ onUploaded, initialTitle }: UploadFormProps): JSX.E
       )}
     >
       <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium">Title</span>
+        <span className="font-medium">Document name</span>
         <input
           ref={titleRef}
           type="text"

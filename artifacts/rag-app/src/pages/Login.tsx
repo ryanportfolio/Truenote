@@ -37,8 +37,8 @@ interface LoginPageProps {
  */
 
 const DEMO_ROLE_PROMISES: Record<DemoAccount["role"], string> = {
-  manager: "Build. Review. Improve.",
-  csr: "Ask. Verify. Answer."
+  manager: "Manage the program",
+  csr: "Ask and check sources"
 };
 
 export function LoginPage({
@@ -135,15 +135,11 @@ export function LoginPage({
           </Link>
 
           <div className="auth-intro">
-            <p className="auth-eyebrow">Calm. Precise. Cited.</p>
             <h1 id="login-title" className="auth-title">
-              Know what is true.
+              Find the answer
               <br />
-              <span>Show why.</span>
+              <span>Check the source</span>
             </h1>
-            <p className="auth-subtitle">
-              Grounded answers for the moments when guessing is not an option.
-            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="auth-form">
@@ -233,7 +229,7 @@ export function LoginPage({
                 disabled={submitting || !email || !password}
                 className="btn-primary min-w-32 px-5 py-2.5 text-base"
               >
-                {submitting ? "Signing in…" : "Enter Truenote"}
+                {submitting ? "Signing in…" : "Sign in"}
               </button>
 
               {emailResetAvailable ? (
@@ -248,9 +244,7 @@ export function LoginPage({
             </div>
           </form>
 
-          <p className="auth-trust-line">
-            <span aria-hidden>✓</span> Every answer cites a source or refuses.
-          </p>
+
         </div>
       </section>
 

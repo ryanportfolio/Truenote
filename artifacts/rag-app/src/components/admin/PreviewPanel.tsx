@@ -46,14 +46,14 @@ export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Ele
   return (
     <aside
       role="dialog"
-      aria-label="Parsed markdown preview"
+      aria-label="Parsed text"
       onKeyDown={onKeyDown}
       className="fixed right-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-[min(640px,90vw)] flex-col border-l border-border bg-card shadow-panel motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-right-4 motion-safe:duration-240 motion-safe:ease-out-quart"
     >
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
         <div className="flex flex-col">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground">Preview</span>
-          <span className="text-sm font-medium">{data?.title ?? "Parsed markdown"}</span>
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">Parsed text</span>
+          <span className="text-sm font-medium">{data?.title ?? "Document"}</span>
         </div>
         <button
           ref={closeRef}
@@ -82,7 +82,7 @@ export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Ele
           </div>
         ) : data.markdown === null ? (
           <p className="text-sm text-muted-foreground">
-            No parsed markdown yet. Status: {data.parseStatus ?? "unknown"}.
+            The parsed text is not ready yet. Status: {data.parseStatus ?? "unknown"}.
           </p>
         ) : (
           <pre className="whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 font-mono text-[13px] leading-relaxed">
