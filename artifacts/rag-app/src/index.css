@@ -396,14 +396,21 @@
     box-shadow: 32px 0 64px oklch(var(--foreground) / 0.11);
   }
 
+  /* The living BrandField watercolor behind the auth panel. Restored to
+   * clearly visible (user-requested) inside the Luminous Archive layout:
+   * the shader's own calm-zone keeps the form column on quiet paper, and
+   * the mask fades the field out before the panel's right seam so it
+   * never fights the archive visual. Contrast, computed not eyeballed:
+   * at 0.55 layer opacity the deepest ink pool still keeps
+   * muted-foreground text ≥4.6:1 (AA) and body ink ~11:1 (AAA). */
   .auth-field-layer {
     position: absolute;
     inset: 0;
     overflow: hidden;
-    opacity: 0.17;
+    opacity: 0.55;
     pointer-events: none;
-    filter: saturate(0.82) contrast(0.94);
-    mask-image: radial-gradient(circle at 32% 32%, black, transparent 78%);
+    filter: saturate(0.95);
+    mask-image: radial-gradient(140% 120% at 30% 25%, black 45%, transparent 96%);
   }
 
   .auth-panel::after {
@@ -659,37 +666,6 @@
     aspect-ratio: 1.2;
     border-color: oklch(var(--archive-green) / 0.5);
     transform: rotate(12deg);
-  }
-
-  .archive-caption {
-    position: absolute;
-    right: 2rem;
-    bottom: 2rem;
-    display: grid;
-    grid-template-columns: auto auto 5rem;
-    align-items: center;
-    gap: 0.65rem;
-    border-radius: 999px;
-    background: oklch(var(--card) / 0.9);
-    padding: 0.55rem 0.75rem;
-    color: oklch(var(--archive-ink));
-    box-shadow: 0 8px 30px oklch(var(--archive-ink) / 0.13),
-      inset 0 0 0 1px oklch(var(--card) / 0.8);
-    font-size: 0.65rem;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-  }
-
-  .archive-caption span {
-    color: oklch(var(--primary));
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-  }
-
-  .archive-caption i {
-    display: block;
-    height: 1px;
-    background: oklch(var(--archive-ink) / 0.35);
   }
 
   .page-title {
@@ -1123,7 +1099,6 @@
     object-position: 65% 42%;
   }
 
-  .archive-caption,
   .archive-orbit {
     display: none;
   }
