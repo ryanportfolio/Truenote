@@ -57,5 +57,25 @@ describe("parseUserXlsx", () => {
       invalidRows: [3]
     });
   });
+
+  it("reads the first sheet's data from read-excel-file's Sheet[] result", () => {
+    // read-excel-file v9's default export resolves to Sheet[] =
+    // [{ sheet, data }]. Only the first sheet's grid is used.
+    expect(
+      parseUserXlsx([
+        { sheet: "People", data: [["email"], ["alice@example.com"]] },
+        { sheet: "Other", data: [["ignored@example.com"]] }
+      ])
+    ).toEqual({
+      emails: ["alice@example.com"],
+      invalidRows: []
+    });
+  });
+
+  it("returns nothing for shapes it doesn't recognize", () => {
+    expect(parseUserXlsx(null)).toEqual({ emails: [], invalidRows: [] });
+    expect(parseUserXlsx({})).toEqual({ emails: [], invalidRows: [] });
+    expect(parseUserXlsx([])).toEqual({ emails: [], invalidRows: [] });
+  });
 });
 
