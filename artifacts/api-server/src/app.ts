@@ -48,8 +48,32 @@ export function createApp(): Express {
   // serves the pre-built frontend from rag-app/dist and handles SPA routing.
   if (process.env.NODE_ENV === "production") {
     const dist = path.resolve(__dirname, "../../rag-app/dist");
-    app.use(express.static(dist));
+    // Cache policy by asset class. Without explicit headers express.static
+    // sends ETag-only, so every logged-in navigation revalidates every
+    // chunk against the server — one round-trip per asset, and Replit
+    // round-trips are the expensive part of page loads here.
+    //   /assets/*  — Vite content-hashed filenames; a change means a new
+    //                URL, so cache forever.
+    //   images     — stable brand files (public/), rarely swapped; a day.
+    //   .html + everything else (perf-tier.js, manifest-ish files with
+    //                stable names) — no-cache: always revalidate so a
+    //                deploy propagates immediately.
+    const assetsDir = `${path.sep}assets${path.sep}`;
+    app.use(
+      express.static(dist, {
+        setHeaders: (res, filePath) => {
+          if (filePath.includes(assetsDir)) {
+            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          } else if (/\.(webp|png|jpe?g|svg|ico|woff2?)$/i.test(filePath)) {
+            res.setHeader("Cache-Control", "public, max-age=86400");
+          } else {
+            res.setHeader("Cache-Control", "no-cache");
+          }
+        }
+      })
+    );
     app.get("*", (_req: Request, res: Response) => {
+      res.setHeader("Cache-Control", "no-cache");
       res.sendFile(path.join(dist, "index.html"));
     });
   }
