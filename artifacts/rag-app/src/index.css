@@ -396,21 +396,21 @@
     box-shadow: 32px 0 64px oklch(var(--foreground) / 0.11);
   }
 
-  /* The living BrandField watercolor behind the auth panel. Restored to
-   * clearly visible (user-requested) inside the Luminous Archive layout:
-   * the shader's own calm-zone keeps the form column on quiet paper, and
-   * the mask fades the field out before the panel's right seam so it
-   * never fights the archive visual. Contrast, computed not eyeballed:
-   * at 0.55 layer opacity the deepest ink pool still keeps
-   * muted-foreground text ≥4.6:1 (AA) and body ink ~11:1 (AAA). */
+  /* The living BrandField watercolor behind the auth panel, at close to
+   * its original full strength (user-requested) inside the Luminous
+   * Archive layout. Text safety, computed not eyeballed: the shader's
+   * calm-zone holds the form column on near-cream paper (headline ink is
+   * ≥10:1 even over the deepest pool), and the bottom fade keeps the
+   * muted trust line off the bottom-left green pool, whose worst-case
+   * tint would otherwise graze AA. The right seam needs no mask — the
+   * .auth-panel::after gradient already dissolves it. */
   .auth-field-layer {
     position: absolute;
     inset: 0;
     overflow: hidden;
-    opacity: 0.55;
+    opacity: 0.85;
     pointer-events: none;
-    filter: saturate(0.95);
-    mask-image: radial-gradient(140% 120% at 30% 25%, black 45%, transparent 96%);
+    mask-image: linear-gradient(to top, transparent 2%, black 18%);
   }
 
   .auth-panel::after {
@@ -1053,6 +1053,29 @@
     box-shadow: 0 0 0 0.85rem oklch(var(--primary) / 0.05),
       0 0 2.7rem oklch(var(--primary) / 0.42);
     transform: scale(0.88);
+  }
+}
+
+/* Short desktop viewports: a 1080p monitor at 125% Windows scaling gives
+ * the page ~740 CSS px of height, and the auth panel's tall rhythm
+ * (840px with demo chips) forced a needless scrollbar. Compress the
+ * vertical spends so the whole login fits without scrolling; widths
+ * ≤900px keep the stacked mobile layout's own spacing. */
+@media (min-width: 901px) and (max-height: 820px) {
+  .auth-panel-inner {
+    padding: 1.75rem 0;
+  }
+
+  .auth-intro {
+    margin: 2.25rem 0 1.5rem;
+  }
+
+  .auth-title {
+    font-size: 2.6rem;
+  }
+
+  .auth-trust-line {
+    margin-top: 1.5rem;
   }
 }
 
