@@ -7,9 +7,14 @@ import {
   type ComponentProps,
   type ComponentType
 } from "react";
-import { Link, Route, Switch, Redirect } from "wouter";
+import { Link, Route, Switch, Redirect, useLocation } from "wouter";
 import { SearchX } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
+import {
+  AppShellBoot,
+  isProtectedPath,
+  RouteBoot
+} from "@/components/layout/AppShellBoot";
 import { EmptyState } from "@/components/EmptyState";
 import { fetchMe, SESSION_EXPIRED_EVENT } from "@/lib/api";
 import type { CurrentUser } from "@/types/api";
@@ -150,7 +155,17 @@ function preloadCurrentRoute(): void {
 
 preloadCurrentRoute();
 
+// Begin the session probe during module evaluation instead of waiting for
+// the first committed render and its effect. index.html preloads /api/me, so
+// this usually consumes a response already moving beside the JS bundle.
+const initialUserRequest =
+  typeof window === "undefined" ? null : fetchMe();
+void initialUserRequest?.catch(() => undefined);
+
 function AppBoot(): JSX.Element {
+  const path = typeof window === "undefined" ? "/" : window.location.pathname;
+  if (isProtectedPath(path)) return <AppShellBoot path={path} />;
+
   return (
     <div className="flex min-h-screen items-center justify-center">
       <div
@@ -256,6 +271,7 @@ function captureRedirectTarget(): string | null {
 }
 
 export function App(): JSX.Element {
+  const [currentPath] = useLocation();
   const [auth, setAuth] = useState<AuthState>({ status: "loading" });
 
   // Initial session probe on mount. fetchMe() returns null on 401 instead
@@ -264,7 +280,7 @@ export function App(): JSX.Element {
   // unauthenticated — better to show login than a stuck spinner).
   useEffect(() => {
     let cancelled = false;
-    fetchMe()
+    (initialUserRequest ?? fetchMe())
       .then((user) => {
         if (cancelled) return;
         if (!user) {
@@ -381,12 +397,12 @@ export function App(): JSX.Element {
   }
 
   return (
-    <Suspense fallback={<AppBoot />}>
-      <AppShell
-        user={auth.user}
-        onLogout={handleLogout}
-        onNavigateIntent={(path) => void preloadRoute(path)}
-      >
+    <AppShell
+      user={auth.user}
+      onLogout={handleLogout}
+      onNavigateIntent={(path) => void preloadRoute(path)}
+    >
+      <Suspense fallback={<RouteBoot path={currentPath} />}>
         <Switch>
         <Route path="/" component={() => <Redirect to="/chat" />} />
         <Route path="/chat">
@@ -435,7 +451,7 @@ export function App(): JSX.Element {
           </div>
         </Route>
         </Switch>
-      </AppShell>
-    </Suspense>
+      </Suspense>
+    </AppShell>
   );
 }
