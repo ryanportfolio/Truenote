@@ -6,6 +6,7 @@ import type { CurrentUser, UserRole } from "@/types/api";
 
 interface SidebarProps {
   user: CurrentUser;
+  onNavigateIntent: (path: string) => void;
 }
 
 /**
@@ -27,7 +28,7 @@ const NAV: ReadonlyArray<{
   { href: "/admin/programs", label: "Programs", icon: Building2, minRole: "super_user" }
 ];
 
-export function Sidebar({ user }: SidebarProps): JSX.Element {
+export function Sidebar({ user, onNavigateIntent }: SidebarProps): JSX.Element {
   const [pathname] = useLocation();
   const items = NAV.filter((item) => hasAtLeastRole(user, item.minRole));
   return (
@@ -43,6 +44,8 @@ export function Sidebar({ user }: SidebarProps): JSX.Element {
               <Link
                 href={href}
                 title={label}
+                onPointerEnter={() => onNavigateIntent(href)}
+                onFocus={() => onNavigateIntent(href)}
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "sidebar-link flex items-center justify-center gap-2.5 px-2 py-2.5 text-base md:justify-start md:px-3",

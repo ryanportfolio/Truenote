@@ -1,4 +1,12 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useState,
+  type ComponentProps,
+  type ComponentType
+} from "react";
 import { Link, Route, Switch, Redirect } from "wouter";
 import { SearchX } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
@@ -15,9 +23,41 @@ import {
  * promise. The active route starts downloading beside /api/me instead of
  * waiting for auth to finish and creating a second network waterfall.
  */
-function once<T>(load: () => Promise<T>): () => Promise<T> {
+interface OnceLoader<T> {
+  (): Promise<T>;
+  peek: () => T | undefined;
+}
+
+function once<T>(load: () => Promise<T>): OnceLoader<T> {
   let pending: Promise<T> | null = null;
-  return () => (pending ??= load());
+  let resolved: T | undefined;
+  const loadOnce = (() =>
+    (pending ??= load().then((value) => {
+      resolved = value;
+      return value;
+    }))) as OnceLoader<T>;
+  loadOnce.peek = () => resolved;
+  return loadOnce;
+}
+
+/**
+ * React.lazy suspends for one microtask even when its import promise already
+ * resolved before the first render. That single frame is enough to reveal the
+ * top-level loading fallback during route changes. Render the cached module
+ * directly after an intent preload so navigation never enters Suspense.
+ */
+function preloadable<T extends ComponentType<any>>(
+  load: OnceLoader<{ default: T }>
+): ComponentType<ComponentProps<T>> {
+  const LazyComponent = lazy(load);
+  return function PreloadedComponent(props: ComponentProps<T>): JSX.Element {
+    const loaded = load.peek();
+    if (loaded) {
+      const Component = loaded.default;
+      return <Component {...props} />;
+    }
+    return <LazyComponent {...props} />;
+  };
 }
 
 const loadChatPage = once(() =>
@@ -69,47 +109,43 @@ const loadResetPasswordPage = once(() =>
   }))
 );
 
-const ChatPage = lazy(loadChatPage);
-const KnowledgeBasePage = lazy(loadKnowledgeBasePage);
-const KbDocumentPage = lazy(loadKbDocumentPage);
-const AdminPage = lazy(loadAdminPage);
-const AdminGapsPage = lazy(loadAdminGapsPage);
-const AdminProgramsPage = lazy(loadAdminProgramsPage);
-const AdminUsersPage = lazy(loadAdminUsersPage);
-const LoginPage = lazy(loadLoginPage);
-const ChangePasswordPage = lazy(loadChangePasswordPage);
-const ForgotPasswordPage = lazy(loadForgotPasswordPage);
-const ResetPasswordPage = lazy(loadResetPasswordPage);
+const ChatPage = preloadable(loadChatPage);
+const KnowledgeBasePage = preloadable(loadKnowledgeBasePage);
+const KbDocumentPage = preloadable(loadKbDocumentPage);
+const AdminPage = preloadable(loadAdminPage);
+const AdminGapsPage = preloadable(loadAdminGapsPage);
+const AdminProgramsPage = preloadable(loadAdminProgramsPage);
+const AdminUsersPage = preloadable(loadAdminUsersPage);
+const LoginPage = preloadable(loadLoginPage);
+const ChangePasswordPage = preloadable(loadChangePasswordPage);
+const ForgotPasswordPage = preloadable(loadForgotPasswordPage);
+const ResetPasswordPage = preloadable(loadResetPasswordPage);
+
+export function preloadRoute(path: string): Promise<unknown> {
+  const [pathname = "/"] = path.split(/[?#]/);
+  if (pathname === "/" || pathname === "/login") {
+    // Demo access lands on Chat. Fetch it in parallel with login UI so the
+    // blue button never creates a post-auth chunk waterfall.
+    return Promise.all([loadLoginPage(), loadChatPage()]);
+  }
+  if (pathname === "/chat") return loadChatPage();
+  if (pathname === "/kb") return loadKnowledgeBasePage();
+  if (pathname.startsWith("/kb/")) return loadKbDocumentPage();
+  if (pathname === "/admin/documents") return loadAdminPage();
+  if (pathname === "/admin/gaps" || pathname === "/admin/insights") {
+    return loadAdminGapsPage();
+  }
+  if (pathname === "/admin/programs") return loadAdminProgramsPage();
+  if (pathname === "/admin/users") return loadAdminUsersPage();
+  if (pathname === "/forgot-password") return loadForgotPasswordPage();
+  if (pathname === "/reset-password") return loadResetPasswordPage();
+  if (pathname === "/change-password") return loadChangePasswordPage();
+  return Promise.resolve();
+}
 
 function preloadCurrentRoute(): void {
   if (typeof window === "undefined") return;
-  const path = window.location.pathname;
-  if (path === "/" || path === "/login") {
-    void loadLoginPage();
-    // Demo access lands on Chat. Fetch it in parallel with login UI so the
-    // blue button never creates a post-auth chunk waterfall.
-    void loadChatPage();
-  } else if (path === "/chat") {
-    void loadChatPage();
-  } else if (path === "/kb") {
-    void loadKnowledgeBasePage();
-  } else if (path.startsWith("/kb/")) {
-    void loadKbDocumentPage();
-  } else if (path === "/admin/documents") {
-    void loadAdminPage();
-  } else if (path === "/admin/gaps" || path === "/admin/insights") {
-    void loadAdminGapsPage();
-  } else if (path === "/admin/programs") {
-    void loadAdminProgramsPage();
-  } else if (path === "/admin/users") {
-    void loadAdminUsersPage();
-  } else if (path === "/forgot-password") {
-    void loadForgotPasswordPage();
-  } else if (path === "/reset-password") {
-    void loadResetPasswordPage();
-  } else if (path === "/change-password") {
-    void loadChangePasswordPage();
-  }
+  void preloadRoute(window.location.pathname);
 }
 
 preloadCurrentRoute();
@@ -346,7 +382,11 @@ export function App(): JSX.Element {
 
   return (
     <Suspense fallback={<AppBoot />}>
-      <AppShell user={auth.user} onLogout={handleLogout}>
+      <AppShell
+        user={auth.user}
+        onLogout={handleLogout}
+        onNavigateIntent={(path) => void preloadRoute(path)}
+      >
         <Switch>
         <Route path="/" component={() => <Redirect to="/chat" />} />
         <Route path="/chat">
