@@ -20,8 +20,8 @@ const NAV: ReadonlyArray<{
   icon: typeof FileText;
   minRole: UserRole;
 }> = [
-  { href: "/chat", label: "Chat", icon: MessageSquare, minRole: "csr" },
-  { href: "/kb", label: "Knowledge base", icon: BookOpen, minRole: "csr" },
+  { href: "/chat", label: "Ask", icon: MessageSquare, minRole: "csr" },
+  { href: "/kb", label: "Sources", icon: BookOpen, minRole: "csr" },
   { href: "/admin/documents", label: "Documents", icon: FileText, minRole: "manager" },
   { href: "/admin/gaps", label: "Content gaps", icon: Flag, minRole: "manager" },
   { href: "/admin/users", label: "Users", icon: Users, minRole: "manager" },

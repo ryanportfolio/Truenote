@@ -30,7 +30,7 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
       <article className="answer-surface motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-240 motion-safe:ease-out-quart">
         <div className="answer-kicker">
           <span className="answer-signal" aria-hidden />
-          Cited answer
+          Answer
         </div>
         <AnswerMarkdown
           answer={result.answer}
@@ -44,7 +44,7 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
           <div className="receipt-strip motion-safe:animate-receipt-in">
             <span className="receipt-count">{result.sources.length}</span>
             <p>
-              Grounded excerpt{result.sources.length === 1 ? "" : "s"} ·{" "}
+              Source passage{result.sources.length === 1 ? "" : "s"} ·{" "}
               <ReceiptTitles sources={result.sources} />
             </p>
           </div>
@@ -217,12 +217,12 @@ function RefusalView({
     <article className="answer-surface refusal-surface motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-240 motion-safe:ease-out-quart">
       <div className="flex items-center gap-2">
         <span className="rounded-full bg-warning/20 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-warning-foreground">
-          Not in knowledge base
+          Not found in these documents
         </span>
       </div>
       <p className="mt-2 text-sm leading-relaxed">{result.answer}</p>
       <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-        Try rephrasing with the exact term the docs use (plan name, form number, fee name).
+        Search for the plan, form, or fee name used in the document.
       </p>
       <footer className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
         {result.queryLogId ? (
@@ -233,7 +233,7 @@ function RefusalView({
             className="btn-whisper gap-1.5 px-2.5 py-1 text-xs"
           >
             <Flag className="h-3.5 w-3.5" aria-hidden />
-            {flagged ? "Flagged. Admins will review this gap." : "Flag as missing content"}
+            {flagged ? "Marked as missing" : "Mark as missing"}
           </button>
         ) : (
           <span aria-hidden />

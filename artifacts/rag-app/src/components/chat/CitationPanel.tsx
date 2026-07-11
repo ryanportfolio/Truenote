@@ -36,7 +36,7 @@ export function CitationPanel({ source, onClose, showDebug }: CitationPanelProps
     >
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
         <div className="flex flex-col">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground">Source</span>
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">Source passage</span>
           <span className="text-sm font-medium">{source.doc_title}</span>
           {showDebug ? (
             <span className="text-xs text-muted-foreground">chunk_id: {source.chunk_id}</span>

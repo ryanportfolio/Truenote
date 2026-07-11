@@ -157,10 +157,8 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
         <h1 className="font-display text-3xl font-semibold tracking-tight">Users</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {user.role === "super_user"
-            ? "Create and manage users across all programs. Use the program picker in the header to filter the list."
-            : user.role === "senior_manager"
-              ? "Create and manage CSRs and managers in your program."
-              : "Create and manage CSRs in your program."}
+            ? "Manage people across programs. Choose a program above to narrow this list."
+            : "Manage the people who use this program."}
         </p>
       </header>
 
@@ -251,9 +249,8 @@ function CredentialBanner({
             Temporary password for <span className="font-mono">{email}</span>
           </p>
           <p className="text-xs text-muted-foreground">
-            Share this with the user through a trusted channel. They&apos;ll be
-            required to change it at first login. This is shown once — copy it
-            now.
+            Copy this password now. It will not be shown again. Share it through
+            a trusted channel.
           </p>
           <code className="block break-all rounded-md bg-card px-2 py-1 font-mono text-sm">
             {password}
@@ -469,8 +466,7 @@ function CreateUserForm({
         ) : null}
       </div>
       <p className="text-xs text-muted-foreground">
-        A temporary password is generated and shown once on the next screen.
-        The user will be required to change it at first login.
+        They will set a new password at first sign-in.
       </p>
       {error ? (
         <p

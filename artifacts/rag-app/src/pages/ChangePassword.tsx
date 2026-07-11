@@ -84,8 +84,8 @@ export function ChangePasswordPage({
           </h1>
           <p className="text-sm text-muted-foreground">
             {user.mustResetPassword
-              ? `First-time sign-in — please choose a new password (at least ${minLength} characters).`
-              : `Pick something at least ${minLength} characters.`}
+              ? `First sign-in. Choose a new password with at least ${minLength} characters.`
+              : `Choose a password with at least ${minLength} characters.`}
           </p>
         </header>
 

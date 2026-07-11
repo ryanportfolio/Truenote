@@ -73,9 +73,7 @@ function AdminProgramsInner({ user }: AdminProgramsPageProps): JSX.Element {
       <header>
         <h1 className="font-display text-3xl font-semibold tracking-tight">Programs</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          A program is a unit of knowledge scope. Documents, queries, and users
-          belong to a program. Creating a program here lets you upload SOPs and
-          assign managers to it next.
+          A program keeps its documents and users separate from every other program.
         </p>
       </header>
 
@@ -190,11 +188,7 @@ interface ProgramsListProps {
 function ProgramsList({ items }: ProgramsListProps): JSX.Element {
   if (items.length === 0) {
     return (
-      <EmptyState
-        icon={Building2}
-        title="No programs yet"
-        hint="Create one above — documents, users, and queries all scope to a program."
-      />
+      <EmptyState icon={Building2} title="No programs yet" />
     );
   }
   return (
