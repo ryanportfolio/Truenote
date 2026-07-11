@@ -486,7 +486,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span className="hidden text-xs text-muted-foreground sm:inline">
               <kbd className="kbd">Enter</kbd> to ask · <kbd className="kbd">Shift</kbd>+
-              <kbd className="kbd">Enter</kbd> for a new line · <kbd className="kbd">/</kbd> to focus
+              <kbd className="kbd">Enter</kbd> for a new line
             </span>
             <div className="flex items-center gap-2">
               {busy ? (
