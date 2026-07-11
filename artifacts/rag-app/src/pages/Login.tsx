@@ -239,7 +239,7 @@ export function LoginPage({
           * (camelCase fetchPriority warns and gets dropped); the spread
           * sidesteps the React 18 type defs that lack it. */}
         <img
-          src="/visuals/luminous-archive.png"
+          src="/visuals/luminous-archive.webp"
           alt=""
           aria-hidden
           className="archive-image"
