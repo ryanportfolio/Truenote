@@ -269,9 +269,11 @@ export interface ModelRoutingOption {
 }
 
 export interface ModelRoutingConfig {
-  selectedId: string;
+  /** Ordered approved-route ids; index 0 is the primary. */
+  order: string[];
+  /** The same routes as objects, in fallback order (index 0 = primary). */
+  routes: ModelRoutingOption[];
   persistenceReady: boolean;
-  options: ModelRoutingOption[];
   fallback: {
     label: string;
     model: string;

@@ -521,14 +521,14 @@ export async function getModelRouting(): Promise<ModelRoutingConfig> {
 }
 
 export async function updateModelRouting(
-  selectedId: string
+  order: string[]
 ): Promise<ModelRoutingConfig> {
   const response = await fetch(
     "/api/admin/model-routing",
     withDefaults({
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ selectedId })
+      body: JSON.stringify({ order })
     })
   );
   return asJson<ModelRoutingConfig>(response);
