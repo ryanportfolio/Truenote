@@ -327,14 +327,18 @@ CREATE TABLE IF NOT EXISTS app_settings (
 INSERT INTO app_settings (key, value)
 VALUES (
   'primary_generation_route',
-  '{"selectedId":"gpt-5.6-luna-openai"}'::jsonb
+  '{"order":["gpt-5.6-luna-openai","gpt-5.4-nano-azure-nitro","nemotron-3-super-digitalocean-nitro","nemotron-3-ultra-together-nitro"]}'::jsonb
 )
 ON CONFLICT (key) DO NOTHING;
 ```
 
+The `value` is the ordered fallback chain (index 0 = primary). The legacy
+single-id shape (`{"selectedId":"gpt-5.6-luna-openai"}`) is still read-compatible,
+so an app_settings row seeded before ordered chains keeps working.
+
 After applying, restart `api-server`. Until this table exists, answer
-generation safely uses GPT-5.6 Luna on OpenAI at low reasoning, but the
-super-user Model routing page cannot persist changes.
+generation safely uses the default order (GPT-5.6 Luna primary, low reasoning),
+but the super-user Model routing page cannot persist changes.
 
 ---
 
