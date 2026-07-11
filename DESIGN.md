@@ -214,6 +214,14 @@ The visual metaphor is evidence gathering into a trustworthy core. Physical pape
 
 Authenticated task surfaces remain calm. Depth concentrates around the answer, receipt, composer, active navigation, and state transitions.
 
+### Performance tier (lite mode)
+
+The GPU budget is split deliberately: logged-out auth pages may spend freely on the brand moment (BrandField has its own quality governor); logged-in surfaces must stay cheap on any hardware. A site-wide tier (`auto`/`full`/`lite`) enforces this:
+
+- `public/perf-tier.js` resolves the tier before first paint (stored preference, session latch, cheap device heuristic; viewports ≤834px always lite).
+- `lib/perfTier.ts` owns the store; `components/PerfAutoDetect.tsx` samples real FPS on logged-in surfaces only — three consecutive 1s windows under 35fps latch the session to lite, one-way.
+- The CSS kill-switch (`html[data-perf-tier="lite"]`, end of `index.css`) drops the `.app-main` gradient/dot-grid scroll repaint, freezes the empty-state drift and retrieval ring orbits, and converts the retrieval-core pulse to opacity-only. Functional feedback motion (skeleton, one-shot entrances) and every auth-page effect stay untouched.
+
 ## Token consumer contract
 
 Components consume `oklch(var(--token) / <alpha-value>)` via `tailwind.config.ts`. Variable names are stable; only values change. Adding a token is a deliberate conversation (`--success` was added by the design pass, C5). `shadow-card` / `shadow-panel` are the only shadow utilities — `shadow-sm`/`shadow-2xl` are drift.

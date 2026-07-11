@@ -1188,3 +1188,42 @@
     align-items: start;
   }
 }
+
+/* Lite performance mode — html[data-perf-tier="lite"], resolved pre-paint
+ * by /perf-tier.js and at runtime by the logged-in FPS sampler
+ * (PerfAutoDetect + src/lib/perfTier.ts). Kills the per-scroll-frame
+ * paint work and the always-running decorative animations on IN-APP
+ * surfaces only. The logged-out auth pages keep their full brand moment
+ * on purpose (BrandField has its own quality governor), and functional
+ * feedback motion (skeleton pulse, one-shot card entrances) stays. */
+html[data-perf-tier="lite"] .app-main {
+  /* The three-layer radial gradient + 18px dot grid repaint on every
+   * scrolled frame of this scroll container — the single biggest GPU
+   * spend while logged in. Flat paper in lite. */
+  background-image: none;
+}
+
+html[data-perf-tier="lite"] .empty-state-sheet {
+  /* Ambient infinite drift on the empty-state evidence sheets. */
+  animation: none;
+}
+
+html[data-perf-tier="lite"] .retrieval-ring-one,
+html[data-perf-tier="lite"] .retrieval-ring-two {
+  /* Wait-state stays legible via the core pulse below; the orbiting
+   * rings freeze into a static emblem. */
+  animation: none;
+}
+
+html[data-perf-tier="lite"] .retrieval-core {
+  /* The full-tier pulse animates box-shadow (paint-heavy every frame).
+   * Same rhythm, opacity-only. */
+  animation: retrieval-core-lite 1.7s ease-in-out infinite;
+  box-shadow: none;
+}
+
+@keyframes retrieval-core-lite {
+  50% {
+    opacity: 0.45;
+  }
+}

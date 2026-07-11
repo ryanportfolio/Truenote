@@ -1,12 +1,21 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Link } from "wouter";
 import { Check, Copy, Flag, ThumbsDown, ThumbsUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { answerForClipboard } from "@/lib/citation-rendering";
 import { submitFeedback, flagMissingContent } from "@/lib/api";
 import type { AskResponse } from "@/types/api";
-import { AnswerMarkdown } from "./AnswerMarkdown";
 import { CitationPanel } from "./CitationPanel";
+
+// react-markdown + remark-gfm are the heaviest libraries in the app and
+// only matter once an answer exists. Lazy so the entry chunk (login +
+// chat shell) stays lean; the chunk fetch races the multi-second ask
+// round-trip, so in practice the renderer is warm before the first
+// answer arrives. Fallback shows the raw answer text — same words,
+// unstyled, citation markers visible — for the rare cold-cache flash.
+const AnswerMarkdown = lazy(() =>
+  import("./AnswerMarkdown").then((m) => ({ default: m.AnswerMarkdown }))
+);
 
 interface AnswerViewProps {
   result: AskResponse;
@@ -32,11 +41,17 @@ export function AnswerView({ result, showDebug }: AnswerViewProps): JSX.Element 
           <span className="answer-signal" aria-hidden />
           Cited answer
         </div>
-        <AnswerMarkdown
-          answer={result.answer}
-          sources={result.sources}
-          onChipClick={setOpenChunkId}
-        />
+        <Suspense
+          fallback={
+            <div className="whitespace-pre-wrap text-sm leading-relaxed">{result.answer}</div>
+          }
+        >
+          <AnswerMarkdown
+            answer={result.answer}
+            sources={result.sources}
+            onChipClick={setOpenChunkId}
+          />
+        </Suspense>
         {result.sources.length > 0 ? (
           // The receipt strip: "show the receipt" (PRODUCT.md) made literal.
           // The merged receipt timing makes the grounding print a beat after

@@ -10,6 +10,10 @@
     <meta name="theme-color" content="#E8E6DE" />
     <title>Truenote</title>
     <meta name="description" content="Cited knowledge answers for call-center reps" />
+    <!-- Pre-paint performance-tier resolution (data-perf-tier attribute).
+         Synchronous on purpose: the CSS lite kill-switch must agree with
+         the first painted frame. Tiny, instant property reads only. -->
+    <script src="/perf-tier.js"></script>
   </head>
   <body class="min-h-screen bg-background text-foreground antialiased">
     <div id="root"></div>

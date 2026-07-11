@@ -1,18 +1,48 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link, Route, Switch, Redirect } from "wouter";
 import { SearchX } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/EmptyState";
 import { ChatPage } from "@/pages/Chat";
-import { KnowledgeBasePage, KbDocumentPage } from "@/pages/KnowledgeBase";
-import { AdminPage } from "@/pages/Admin";
-import { AdminGapsPage } from "@/pages/AdminGaps";
-import { AdminProgramsPage } from "@/pages/AdminPrograms";
-import { AdminUsersPage } from "@/pages/AdminUsers";
 import { LoginPage } from "@/pages/Login";
 import { ChangePasswordPage } from "@/pages/ChangePassword";
 import { ForgotPasswordPage } from "@/pages/ForgotPassword";
 import { ResetPasswordPage } from "@/pages/ResetPassword";
+
+// Route-level code splitting for everything off the critical path. Chat is
+// the default landing and stays in the entry chunk; the KB reader (which
+// carries react-markdown/remark-gfm for full documents) and the four admin
+// pages load on first navigation. Each lazy() pair from the same module
+// shares one fetch.
+const KnowledgeBasePage = lazy(() =>
+  import("@/pages/KnowledgeBase").then((m) => ({ default: m.KnowledgeBasePage }))
+);
+const KbDocumentPage = lazy(() =>
+  import("@/pages/KnowledgeBase").then((m) => ({ default: m.KbDocumentPage }))
+);
+const AdminPage = lazy(() =>
+  import("@/pages/Admin").then((m) => ({ default: m.AdminPage }))
+);
+const AdminGapsPage = lazy(() =>
+  import("@/pages/AdminGaps").then((m) => ({ default: m.AdminGapsPage }))
+);
+const AdminProgramsPage = lazy(() =>
+  import("@/pages/AdminPrograms").then((m) => ({ default: m.AdminProgramsPage }))
+);
+const AdminUsersPage = lazy(() =>
+  import("@/pages/AdminUsers").then((m) => ({ default: m.AdminUsersPage }))
+);
+
+/** Quiet skeleton while a lazy route chunk fetches (typically <100ms warm). */
+function PageFallback(): JSX.Element {
+  return (
+    <div className="mx-auto flex max-w-4xl flex-col gap-4 px-6 py-8" role="status">
+      <div className="skeleton h-8 w-56" />
+      <div className="skeleton h-40 w-full" />
+      <span className="sr-only">Loading…</span>
+    </div>
+  );
+}
 import { fetchMe, SESSION_EXPIRED_EVENT } from "@/lib/api";
 import type { CurrentUser } from "@/types/api";
 import {
@@ -251,6 +281,7 @@ export function App(): JSX.Element {
 
   return (
     <AppShell user={auth.user} onLogout={handleLogout}>
+      <Suspense fallback={<PageFallback />}>
       <Switch>
         <Route path="/" component={() => <Redirect to="/chat" />} />
         <Route path="/chat">
@@ -299,6 +330,7 @@ export function App(): JSX.Element {
           </div>
         </Route>
       </Switch>
+      </Suspense>
     </AppShell>
   );
 }
