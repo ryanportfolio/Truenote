@@ -337,6 +337,13 @@ export interface CreateUserResponse {
   tempPassword?: string;
 }
 
+export interface BulkCreateUsersResponse {
+  created: UserListItem[];
+  skippedEmails: string[];
+  temporaryPassword: string;
+  forcedPasswordReset: true;
+}
+
 export interface UpdateUserRequest {
   name?: string;
   role?: UserRole;

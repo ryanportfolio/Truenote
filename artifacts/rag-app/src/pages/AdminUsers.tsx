@@ -6,8 +6,9 @@ import {
   type ChangeEvent,
   type FormEvent
 } from "react";
-import { Users } from "lucide-react";
+import { FileUp, Users } from "lucide-react";
 import {
+  bulkCreateUsers,
   createUser,
   listPrograms,
   listUsers,
@@ -17,7 +18,9 @@ import {
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
+import { parseUserCsv } from "@/lib/userCsv";
 import type {
+  BulkCreateUsersResponse,
   CreateUserRequest,
   CurrentUser,
   Program,
@@ -151,6 +154,11 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
     );
   }
 
+  function handleBulkImported(): void {
+    setLoading(true);
+    void refresh();
+  }
+
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
       <header>
@@ -175,6 +183,8 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
         programs={programs}
         onCreated={handleCreated}
       />
+
+      <BulkUserImport onImported={handleBulkImported} />
 
       {error ? (
         <p
@@ -207,6 +217,152 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
         />
       )}
     </div>
+  );
+}
+
+interface BulkUserImportProps {
+  onImported: () => void;
+}
+
+function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
+  const [fileName, setFileName] = useState("");
+  const [emails, setEmails] = useState<string[]>([]);
+  const [invalidRows, setInvalidRows] = useState<number[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<BulkCreateUsersResponse | null>(null);
+
+  async function selectFile(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = event.target.files?.[0];
+    setError(null);
+    setResult(null);
+    setEmails([]);
+    setInvalidRows([]);
+    setFileName(file?.name ?? "");
+    if (!file) return;
+    if (file.size > 1_000_000) {
+      setError("CSV must be 1 MB or smaller");
+      return;
+    }
+    try {
+      const parsed = parseUserCsv(await file.text());
+      setEmails(parsed.emails);
+      setInvalidRows(parsed.invalidRows);
+      if (parsed.invalidRows.length > 0) {
+        setError(
+          `Fix invalid email row${parsed.invalidRows.length === 1 ? "" : "s"}: ${parsed.invalidRows.slice(0, 10).join(", ")}`
+        );
+      } else if (parsed.emails.length === 0) {
+        setError("CSV does not contain any email addresses");
+      } else if (parsed.emails.length > 100) {
+        setError("CSV can contain at most 100 unique emails");
+      }
+    } catch {
+      setError("Could not read this CSV file");
+    }
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (
+      emails.length === 0 ||
+      emails.length > 100 ||
+      invalidRows.length > 0
+    ) {
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    setResult(null);
+    try {
+      const response = await bulkCreateUsers(emails);
+      setResult(response);
+      onImported();
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Failed to import users"
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={(event) => void submit(event)}
+      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5 shadow-card"
+    >
+      <div>
+        <h2 className="text-sm font-semibold">Import CSR emails</h2>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          Upload one email per row, or a CSV with an email column. Users join
+          the current program with temporary password{" "}
+          <code>Truenote213</code> and must replace it at first login.
+        </p>
+      </div>
+
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium">CSV file</span>
+        <input
+          type="file"
+          accept=".csv,text/csv"
+          onChange={(event) => void selectFile(event)}
+          disabled={submitting}
+          className="cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:cursor-pointer file:rounded-full file:border file:border-border file:bg-secondary file:px-3 file:py-1 file:text-xs file:font-medium hover:file:border-foreground/30"
+        />
+      </label>
+
+      {fileName && emails.length > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {fileName}: {emails.length} unique email{emails.length === 1 ? "" : "s"}
+        </p>
+      ) : null}
+
+      {error ? (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      ) : null}
+
+      {result ? (
+        <div
+          role="status"
+          className="rounded-md border border-warning/40 bg-warning/10 px-3 py-3 text-sm text-warning-foreground"
+        >
+          <p className="font-medium">
+            Added {result.created.length} user
+            {result.created.length === 1 ? "" : "s"}
+            {result.skippedEmails.length > 0
+              ? `; skipped ${result.skippedEmails.length} existing email${result.skippedEmails.length === 1 ? "" : "s"}`
+              : ""}
+            .
+          </p>
+          <p className="mt-1">
+            Temporary password: <code>{result.temporaryPassword}</code>. Every
+            imported user must change it after signing in.
+          </p>
+        </div>
+      ) : null}
+
+      <div className="flex justify-end">
+        <button
+          type="submit"
+          disabled={
+            submitting ||
+            emails.length === 0 ||
+            emails.length > 100 ||
+            invalidRows.length > 0
+          }
+          className="btn-whisper gap-2 px-4 py-2 text-sm"
+        >
+          <FileUp className="h-4 w-4" aria-hidden />
+          {submitting ? "Adding users…" : "Add CSV users"}
+        </button>
+      </div>
+    </form>
   );
 }
 

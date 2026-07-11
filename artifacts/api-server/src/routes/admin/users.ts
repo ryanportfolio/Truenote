@@ -18,6 +18,13 @@ import {
 } from "../../lib/auth/current-user.js";
 import { resolveEffectiveProgramId } from "../../lib/auth/effective-program.js";
 import { getMinPasswordLength } from "../../lib/config.js";
+import {
+  BULK_USER_TEMP_PASSWORD,
+  BulkUserEmailsSchema,
+  bulkUserValues,
+  nameFromEmail,
+  normalizeBulkEmails
+} from "../../lib/auth/bulk-users.js";
 
 // Read once at module load — same convention as routes/auth.ts so the
 // admin-supplied-password floor stays in lockstep with change-password.
@@ -311,6 +318,102 @@ usersRouter.post("/", async (req, res, next) => {
       }
       throw err;
     }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/admin/users/bulk — create CSR accounts from CSV-derived emails.
+ *
+ * The frontend parses the file, but the server revalidates every address,
+ * fixes the role to CSR, and resolves the target program from the actor's
+ * effective scope. Existing emails are skipped without modifying them.
+ * Each account gets its own Argon2 salt even though the reviewed temporary
+ * plaintext is shared, and every account is forced through password reset.
+ */
+usersRouter.post("/bulk", async (req, res, next) => {
+  try {
+    const actor = authedUser(req);
+    const parsed = BulkUserEmailsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const message = parsed.error.issues[0]?.message ?? "Invalid CSV emails";
+      res.status(400).json({ error: message });
+      return;
+    }
+    if (BULK_USER_TEMP_PASSWORD.length < MIN_PASSWORD_LENGTH) {
+      res.status(409).json({
+        error: `The bulk temporary password is shorter than MIN_PASSWORD_LENGTH (${MIN_PASSWORD_LENGTH})`
+      });
+      return;
+    }
+
+    const programId = await resolveEffectiveProgramId(actor, req);
+    if (programId === null) {
+      res.status(400).json({
+        error: "Select a program before importing users"
+      });
+      return;
+    }
+    if (!canAssignRole(actor, "csr", programId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const emails = normalizeBulkEmails(parsed.data.emails);
+    // Sequential hashing intentionally bounds memory. Each Argon2 operation
+    // uses ~19 MiB; Promise.all over a 100-row import could exhaust a small
+    // Replit instance even though it appears faster locally.
+    const candidates: Array<{
+      email: string;
+      name: string;
+      passwordHash: string;
+    }> = [];
+    for (const email of emails) {
+      candidates.push({
+        email,
+        name: nameFromEmail(email),
+        passwordHash: await hashPassword(BULK_USER_TEMP_PASSWORD)
+      });
+    }
+
+    const created: UserListItem[] = [];
+    const skippedEmails: string[] = [];
+    await db.transaction(async (tx) => {
+      for (const candidate of candidates) {
+        const inserted = await tx
+          .insert(users)
+          .values(bulkUserValues({
+            email: candidate.email,
+            passwordHash: candidate.passwordHash,
+            programId,
+            name: candidate.name,
+            createdBy: actor.id
+          }))
+          .onConflictDoNothing({ target: users.email })
+          .returning({
+            id: users.id,
+            email: users.email,
+            name: users.name,
+            role: users.role,
+            programId: users.programId,
+            isActive: users.isActive,
+            mustResetPassword: users.mustResetPassword,
+            lastLoginAt: users.lastLoginAt,
+            createdAt: users.createdAt
+          });
+        const row = inserted[0];
+        if (row) created.push(toListItem(row));
+        else skippedEmails.push(candidate.email);
+      }
+    });
+
+    res.status(created.length > 0 ? 201 : 200).json({
+      created,
+      skippedEmails,
+      temporaryPassword: BULK_USER_TEMP_PASSWORD,
+      forcedPasswordReset: true
+    });
   } catch (err) {
     next(err);
   }
