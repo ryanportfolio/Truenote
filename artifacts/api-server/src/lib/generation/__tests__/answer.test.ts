@@ -65,7 +65,7 @@ const answer: AnswerPayload = {
 };
 
 describe("generateAnswer provider fallback", () => {
-  it("uses Nemotron through OpenRouter as the primary answer model", async () => {
+  it("uses Nemotron Super Nitro on DigitalOcean as the primary answer model", async () => {
     const primaryRequests: CapturedRequest[] = [];
     const fallbackRequests: CapturedRequest[] = [];
 
@@ -79,9 +79,10 @@ describe("generateAnswer provider fallback", () => {
 
     expect(primaryRequests).toEqual([
       expect.objectContaining({
-        model: "nvidia/nemotron-3-ultra-550b-a55b",
+        model: "nvidia/nemotron-3-super-120b-a12b:nitro",
         reasoning_effort: "medium",
         provider: {
+          only: ["digitalocean"],
           zdr: true,
           data_collection: "deny",
           require_parameters: true,
@@ -107,7 +108,9 @@ describe("generateAnswer provider fallback", () => {
       }
     );
 
-    expect(primaryRequests[0]?.model).toBe("nvidia/nemotron-3-ultra-550b-a55b");
+    expect(primaryRequests[0]?.model).toBe(
+      "nvidia/nemotron-3-super-120b-a12b:nitro"
+    );
     expect(fallbackRequests).toEqual([
       expect.objectContaining({
         model: "gpt-5.6-luna",
