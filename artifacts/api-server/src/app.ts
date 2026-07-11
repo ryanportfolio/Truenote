@@ -41,7 +41,10 @@ export function createApp(): Express {
         return next();
       }
 
-      res.type(originalPath);
+      // res.type() treats any string containing "/" as a literal MIME type.
+      // Passing the absolute path therefore emitted an invalid Content-Type
+      // like "/home/runner/.../index.js", which browsers refuse for modules.
+      res.type(path.extname(originalPath));
       res.setHeader("Content-Encoding", suffix === ".br" ? "br" : "gzip");
       res.vary("Accept-Encoding");
       res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
