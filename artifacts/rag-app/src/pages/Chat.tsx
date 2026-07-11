@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useRef,
   useState,
@@ -17,11 +19,22 @@ import {
   type CurrentUser,
   type SessionListItem
 } from "@/types/api";
-import { AnswerView } from "@/components/chat/AnswerView";
 import {
   getSelectedProgramId,
   SELECTED_PROGRAM_CHANGED_EVENT
 } from "@/lib/selectedProgram";
+
+let answerViewPromise: Promise<{
+  default: typeof import("@/components/chat/AnswerView")["AnswerView"];
+}> | null = null;
+
+function loadAnswerView() {
+  return (answerViewPromise ??= import("@/components/chat/AnswerView").then(
+    (module) => ({ default: module.AnswerView })
+  ));
+}
+
+const AnswerView = lazy(loadAnswerView);
 
 interface ChatPageProps {
   user: CurrentUser;
@@ -41,6 +54,26 @@ const STAGE_LABEL: Record<AskStage, string> = {
   generating: "Writing the answer…"
 };
 
+function RetrievalState({ stage }: { stage: AskStage | null }): JSX.Element {
+  return (
+    <div className="retrieval-state">
+      <p className="retrieval-label" role="status" aria-live="polite">
+        {stage ? STAGE_LABEL[stage] : "Sending…"}
+      </p>
+      <div aria-hidden className="retrieval-instrument">
+        <span className="retrieval-ring retrieval-ring-one" />
+        <span className="retrieval-ring retrieval-ring-two" />
+        <span className="retrieval-core" />
+        <div className="retrieval-lines">
+          <i />
+          <i />
+          <i />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Recent completed exchanges → rewrite context. The server re-caps everything. */
 const MAX_HISTORY_SENT = 3;
 
@@ -53,20 +86,10 @@ function historyFrom(exchanges: Exchange[]): AskHistoryTurn[] {
 
 // First-run teaching examples. Clicking prefills the textarea (never
 // auto-submits) so the CSR sees the register questions are asked in.
-// The grounded three map directly onto the demo seed content
-// (scripts/src/seed.ts: Cancellation Policy v1, Refund Procedure v1) so
-// a first click lands a cited answer instead of an accidental refusal.
-// The last is deliberately outside the KB: refusing instead of guessing
-// is as much the product as the answers are, and the chip labels itself
-// so the refusal reads as a feature, not a failure.
-const EXAMPLE_QUESTIONS: readonly { question: string; note?: string }[] = [
-  { question: "What's the cancellation fee on the Basic plan?" },
-  { question: "How long does a refund take to post to the original card?" },
-  { question: "Who must approve a courtesy refund?" },
-  {
-    question: "What's the warranty period on replacement hardware?",
-    note: "Not in the KB. Watch it refuse instead of guessing."
-  }
+const EXAMPLE_QUESTIONS = [
+  "What's the cancellation fee on the Basic plan?",
+  "How do I process a refund for a returned device?",
+  "What ID does a caller need to verify their account?"
 ] as const;
 
 export function ChatPage({ user }: ChatPageProps): JSX.Element {
@@ -143,6 +166,10 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
   }, []);
 
   async function ask(trimmed: string): Promise<void> {
+    // Answer rendering carries the Markdown parser. Retrieval is much slower
+    // than this chunk fetch, so start it with the request instead of charging
+    // empty-chat startup for code it cannot use yet.
+    void loadAnswerView();
     const id = nextId.current;
     nextId.current += 1;
     setBusy(true);
@@ -232,6 +259,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
   // surface in the manager debug footer, which tolerates the defaults).
   async function openSession(item: SessionListItem): Promise<void> {
     if (busy) return;
+    void loadAnswerView();
     setLoadingSessionId(item.id);
     setHistoryError(null);
     try {
@@ -382,7 +410,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             title="One question. A traceable answer."
             hint="Begin with a policy, fee, process, or exact term from the call."
           >
-            {EXAMPLE_QUESTIONS.map(({ question: q, note }) => (
+            {EXAMPLE_QUESTIONS.map((q) => (
               <button
                 key={q}
                 type="button"
@@ -393,7 +421,6 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
                 className="example-question"
               >
                 {q}
-                {note ? <span className="example-question-note">{note}</span> : null}
               </button>
             ))}
           </EmptyState>
@@ -408,7 +435,9 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
                   <p>{exchange.question}</p>
                 </div>
                 {exchange.result ? (
-                  <AnswerView result={exchange.result} showDebug={showDebug} />
+                  <Suspense fallback={<RetrievalState stage={stage} />}>
+                    <AnswerView result={exchange.result} showDebug={showDebug} />
+                  </Suspense>
                 ) : exchange.error ? (
                   <div className="flex items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
                     <span>{exchange.error}</span>
@@ -422,25 +451,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
                     </button>
                   </div>
                 ) : (
-                  <div className="retrieval-state">
-                    <p
-                      className="retrieval-label"
-                      role="status"
-                      aria-live="polite"
-                    >
-                      {stage ? STAGE_LABEL[stage] : "Sending…"}
-                    </p>
-                    <div aria-hidden className="retrieval-instrument">
-                      <span className="retrieval-ring retrieval-ring-one" />
-                      <span className="retrieval-ring retrieval-ring-two" />
-                      <span className="retrieval-core" />
-                      <div className="retrieval-lines">
-                        <i />
-                        <i />
-                        <i />
-                      </div>
-                    </div>
-                  </div>
+                  <RetrievalState stage={stage} />
                 )}
               </li>
             ))}

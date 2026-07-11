@@ -3,52 +3,157 @@ import { Link, Route, Switch, Redirect } from "wouter";
 import { SearchX } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/EmptyState";
-import { ChatPage } from "@/pages/Chat";
-import { LoginPage } from "@/pages/Login";
-import { ChangePasswordPage } from "@/pages/ChangePassword";
-import { ForgotPasswordPage } from "@/pages/ForgotPassword";
-import { ResetPasswordPage } from "@/pages/ResetPassword";
-
-// Route-level code splitting for everything off the critical path. Chat is
-// the default landing and stays in the entry chunk; the KB reader (which
-// carries react-markdown/remark-gfm for full documents) and the four admin
-// pages load on first navigation. Each lazy() pair from the same module
-// shares one fetch.
-const KnowledgeBasePage = lazy(() =>
-  import("@/pages/KnowledgeBase").then((m) => ({ default: m.KnowledgeBasePage }))
-);
-const KbDocumentPage = lazy(() =>
-  import("@/pages/KnowledgeBase").then((m) => ({ default: m.KbDocumentPage }))
-);
-const AdminPage = lazy(() =>
-  import("@/pages/Admin").then((m) => ({ default: m.AdminPage }))
-);
-const AdminGapsPage = lazy(() =>
-  import("@/pages/AdminGaps").then((m) => ({ default: m.AdminGapsPage }))
-);
-const AdminProgramsPage = lazy(() =>
-  import("@/pages/AdminPrograms").then((m) => ({ default: m.AdminProgramsPage }))
-);
-const AdminUsersPage = lazy(() =>
-  import("@/pages/AdminUsers").then((m) => ({ default: m.AdminUsersPage }))
-);
-
-/** Quiet skeleton while a lazy route chunk fetches (typically <100ms warm). */
-function PageFallback(): JSX.Element {
-  return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4 px-6 py-8" role="status">
-      <div className="skeleton h-8 w-56" />
-      <div className="skeleton h-40 w-full" />
-      <span className="sr-only">Loading…</span>
-    </div>
-  );
-}
 import { fetchMe, SESSION_EXPIRED_EVENT } from "@/lib/api";
 import type { CurrentUser } from "@/types/api";
 import {
   clearSelectedProgram,
   getSelectedProgramId
 } from "@/lib/selectedProgram";
+
+/**
+ * Memoize dynamic imports so route preloads and React.lazy share the same
+ * promise. The active route starts downloading beside /api/me instead of
+ * waiting for auth to finish and creating a second network waterfall.
+ */
+function once<T>(load: () => Promise<T>): () => Promise<T> {
+  let pending: Promise<T> | null = null;
+  return () => (pending ??= load());
+}
+
+const loadChatPage = once(() =>
+  import("@/pages/Chat").then((module) => ({ default: module.ChatPage }))
+);
+const loadKnowledgeBasePage = once(() =>
+  import("@/pages/KnowledgeBaseList").then((module) => {
+    // Start route data beside /api/me. The page validates the captured
+    // program-selection owner before consuming this speculative response.
+    module.preloadKnowledgeBaseDocuments();
+    return { default: module.KnowledgeBasePage };
+  })
+);
+const loadKbDocumentPage = once(() =>
+  import("@/pages/KnowledgeBaseDocument").then((module) => ({
+    default: module.KbDocumentPage
+  }))
+);
+const loadAdminPage = once(() =>
+  import("@/pages/Admin").then((module) => ({ default: module.AdminPage }))
+);
+const loadAdminGapsPage = once(() =>
+  import("@/pages/AdminGaps").then((module) => ({ default: module.AdminGapsPage }))
+);
+const loadAdminProgramsPage = once(() =>
+  import("@/pages/AdminPrograms").then((module) => ({
+    default: module.AdminProgramsPage
+  }))
+);
+const loadAdminUsersPage = once(() =>
+  import("@/pages/AdminUsers").then((module) => ({ default: module.AdminUsersPage }))
+);
+const loadLoginPage = once(() =>
+  import("@/pages/Login").then((module) => ({ default: module.LoginPage }))
+);
+const loadChangePasswordPage = once(() =>
+  import("@/pages/ChangePassword").then((module) => ({
+    default: module.ChangePasswordPage
+  }))
+);
+const loadForgotPasswordPage = once(() =>
+  import("@/pages/ForgotPassword").then((module) => ({
+    default: module.ForgotPasswordPage
+  }))
+);
+const loadResetPasswordPage = once(() =>
+  import("@/pages/ResetPassword").then((module) => ({
+    default: module.ResetPasswordPage
+  }))
+);
+
+const ChatPage = lazy(loadChatPage);
+const KnowledgeBasePage = lazy(loadKnowledgeBasePage);
+const KbDocumentPage = lazy(loadKbDocumentPage);
+const AdminPage = lazy(loadAdminPage);
+const AdminGapsPage = lazy(loadAdminGapsPage);
+const AdminProgramsPage = lazy(loadAdminProgramsPage);
+const AdminUsersPage = lazy(loadAdminUsersPage);
+const LoginPage = lazy(loadLoginPage);
+const ChangePasswordPage = lazy(loadChangePasswordPage);
+const ForgotPasswordPage = lazy(loadForgotPasswordPage);
+const ResetPasswordPage = lazy(loadResetPasswordPage);
+
+function preloadCurrentRoute(): void {
+  if (typeof window === "undefined") return;
+  const path = window.location.pathname;
+  if (path === "/" || path === "/login") {
+    void loadLoginPage();
+    // Demo access lands on Chat. Fetch it in parallel with login UI so the
+    // blue button never creates a post-auth chunk waterfall.
+    void loadChatPage();
+  } else if (path === "/chat") {
+    void loadChatPage();
+  } else if (path === "/kb") {
+    void loadKnowledgeBasePage();
+  } else if (path.startsWith("/kb/")) {
+    void loadKbDocumentPage();
+  } else if (path === "/admin/documents") {
+    void loadAdminPage();
+  } else if (path === "/admin/gaps" || path === "/admin/insights") {
+    void loadAdminGapsPage();
+  } else if (path === "/admin/programs") {
+    void loadAdminProgramsPage();
+  } else if (path === "/admin/users") {
+    void loadAdminUsersPage();
+  } else if (path === "/forgot-password") {
+    void loadForgotPasswordPage();
+  } else if (path === "/reset-password") {
+    void loadResetPasswordPage();
+  } else if (path === "/change-password") {
+    void loadChangePasswordPage();
+  }
+}
+
+preloadCurrentRoute();
+
+function AppBoot(): JSX.Element {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div
+        role="status"
+        className="flex items-center gap-3 motion-safe:animate-skeleton motion-safe:[animation-delay:1.05s]"
+      >
+        <svg viewBox="0 0 32 32" className="h-8 w-8 shrink-0" aria-hidden>
+          <path
+            d="M16 2c10 0 14 4 14 14s-4 14-14 14S2 26 2 16 6 2 16 2z"
+            pathLength={1}
+            strokeDasharray={1}
+            className="fill-none stroke-foreground [stroke-width:1.5] motion-safe:animate-mark-draw"
+          />
+          <g className="motion-safe:animate-mark-ink">
+            <path
+              d="M16 2c10 0 14 4 14 14s-4 14-14 14S2 26 2 16 6 2 16 2z"
+              className="fill-foreground"
+            />
+            <text
+              x="16"
+              y="22"
+              textAnchor="middle"
+              fontFamily="Georgia, serif"
+              fontSize="18"
+              fontWeight="600"
+              className="fill-background"
+            >
+              T
+            </text>
+          </g>
+        </svg>
+        <span className="font-display text-2xl font-semibold tracking-tight motion-safe:animate-mark-ink">
+          Truenote
+        </span>
+        <span className="sr-only">Loading…</span>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Drop the picker's stored program selection if it belongs to a
@@ -198,51 +303,7 @@ export function App(): JSX.Element {
   }, []);
 
   if (auth.status === "loading") {
-    // Boot state: the brand mark draws itself in — superellipse strokes
-    // on (pathLength dash), ink fill and wordmark fade up under it —
-    // then the whole lockup breathes with the skeleton pulse until the
-    // session probe lands. Reduced motion: static lockup, no draw, no
-    // pulse. role=status keeps it announced either way.
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        {/* Breathing starts only after the draw-in completes (1.05s) so
-          * the two animations never fight over opacity. */}
-        <div
-          role="status"
-          className="flex items-center gap-3 motion-safe:animate-skeleton motion-safe:[animation-delay:1.05s]"
-        >
-          <svg viewBox="0 0 32 32" className="h-8 w-8 shrink-0" aria-hidden>
-            <path
-              d="M16 2c10 0 14 4 14 14s-4 14-14 14S2 26 2 16 6 2 16 2z"
-              pathLength={1}
-              strokeDasharray={1}
-              className="fill-none stroke-foreground [stroke-width:1.5] motion-safe:animate-mark-draw"
-            />
-            <g className="motion-safe:animate-mark-ink">
-              <path
-                d="M16 2c10 0 14 4 14 14s-4 14-14 14S2 26 2 16 6 2 16 2z"
-                className="fill-foreground"
-              />
-              <text
-                x="16"
-                y="22"
-                textAnchor="middle"
-                fontFamily="Georgia, serif"
-                fontSize="18"
-                fontWeight="600"
-                className="fill-background"
-              >
-                T
-              </text>
-            </g>
-          </svg>
-          <span className="font-display text-2xl font-semibold tracking-tight motion-safe:animate-mark-ink">
-            Truenote
-          </span>
-          <span className="sr-only">Loading…</span>
-        </div>
-      </div>
-    );
+    return <AppBoot />;
   }
 
   if (auth.status === "unauthenticated") {
@@ -253,42 +314,46 @@ export function App(): JSX.Element {
     // without an explicit router setup.
     const redirectTo = auth.redirectTo;
     return (
-      <Switch>
-        <Route path="/forgot-password">
-          <ForgotPasswordPage />
-        </Route>
-        <Route path="/reset-password">
-          <ResetPasswordPage onAuthenticated={handleAuthenticated} />
-        </Route>
-        <Route>
-          <LoginPage
-            onAuthenticated={handleAuthenticated}
-            redirectTo={redirectTo}
-          />
-        </Route>
-      </Switch>
+      <Suspense fallback={<AppBoot />}>
+        <Switch>
+          <Route path="/forgot-password">
+            <ForgotPasswordPage />
+          </Route>
+          <Route path="/reset-password">
+            <ResetPasswordPage onAuthenticated={handleAuthenticated} />
+          </Route>
+          <Route>
+            <LoginPage
+              onAuthenticated={handleAuthenticated}
+              redirectTo={redirectTo}
+            />
+          </Route>
+        </Switch>
+      </Suspense>
     );
   }
 
   if (auth.status === "must-reset") {
     return (
-      <ChangePasswordPage
-        user={auth.user}
-        onPasswordChanged={handlePasswordChanged}
-      />
+      <Suspense fallback={<AppBoot />}>
+        <ChangePasswordPage
+          user={auth.user}
+          onPasswordChanged={handlePasswordChanged}
+        />
+      </Suspense>
     );
   }
 
   return (
-    <AppShell user={auth.user} onLogout={handleLogout}>
-      <Suspense fallback={<PageFallback />}>
-      <Switch>
+    <Suspense fallback={<AppBoot />}>
+      <AppShell user={auth.user} onLogout={handleLogout}>
+        <Switch>
         <Route path="/" component={() => <Redirect to="/chat" />} />
         <Route path="/chat">
           <ChatPage user={auth.user} />
         </Route>
         <Route path="/kb">
-          <KnowledgeBasePage />
+          <KnowledgeBasePage user={auth.user} />
         </Route>
         <Route path="/kb/:documentId">
           {(params) => <KbDocumentPage documentId={params.documentId} />}
@@ -329,8 +394,8 @@ export function App(): JSX.Element {
             </EmptyState>
           </div>
         </Route>
-      </Switch>
-      </Suspense>
-    </AppShell>
+        </Switch>
+      </AppShell>
+    </Suspense>
   );
 }

@@ -73,5 +73,10 @@ export function getSelectedProgramIdRaw(): string | null {
   return readStored()?.programId ?? null;
 }
 
+/** Owner snapshot for safely validating speculative, pre-auth API requests. */
+export function getSelectedProgramOwnerIdRaw(): string | null {
+  return readStored()?.userId ?? null;
+}
+
 /** Same-tab cross-component notification when the selection changes. */
 export const SELECTED_PROGRAM_CHANGED_EVENT = "kbase:selected-program-changed";
