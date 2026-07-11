@@ -86,12 +86,13 @@ const ADMIN_TITLES: Record<string, string> = {
   "/admin/documents": "Documents",
   "/admin/gaps": "Content gaps",
   "/admin/insights": "Content gaps",
+  "/admin/model-routing": "Model routing",
   "/admin/programs": "Programs",
   "/admin/users": "Users"
 };
 
 function AdminRouteBoot({ path }: { path: string }): JSX.Element {
-  const compact = path === "/admin/programs";
+  const compact = path === "/admin/programs" || path === "/admin/model-routing";
   return (
     <div
       className={`mx-auto flex flex-col gap-6 px-6 py-8 ${

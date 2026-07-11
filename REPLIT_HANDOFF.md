@@ -311,6 +311,33 @@ CREATE INDEX IF NOT EXISTS document_versions_source_url_idx
 
 ---
 
+## B6. Replit Agent DDL prompt — model routing settings
+
+Ask the Replit agent to run this against the dev database. Idempotent;
+safe to re-run.
+
+```sql
+CREATE TABLE IF NOT EXISTS app_settings (
+  key         TEXT PRIMARY KEY,
+  value       JSONB NOT NULL,
+  updated_by  UUID REFERENCES users(id) ON DELETE SET NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO app_settings (key, value)
+VALUES (
+  'primary_generation_route',
+  '{"selectedId":"gpt-5.4-nano-azure-nitro"}'::jsonb
+)
+ON CONFLICT (key) DO NOTHING;
+```
+
+After applying, restart `api-server`. Until this table exists, answer
+generation safely uses GPT-5.4 Nano Nitro on Azure, but the super-user
+Model routing page cannot persist changes.
+
+---
+
 ## C. Replit Secrets checklist
 
 Set these in Replit Secrets (Tools → Secrets). The app reads them via
@@ -319,7 +346,7 @@ Set these in Replit Secrets (Tools → Secrets). The app reads them via
 | Secret | How to obtain |
 |---|---|
 | `DATABASE_URL` | Replit's database tab (Neon-backed Postgres). Must be the same DB the DDL above ran against. |
-| `OPENROUTER_API_KEY` | openrouter.ai → API keys. Used for primary answers with `nvidia/nemotron-3-super-120b-a12b:nitro`, pinned to DigitalOcean; assign the key to the ZDR guardrail shown in OpenRouter. Requests also enforce ZDR explicitly. |
+| `OPENROUTER_API_KEY` | openrouter.ai → API keys. Used by the approved primary routes selected on the super-user Model routing page; assign the key to the ZDR guardrail shown in OpenRouter. Requests also enforce ZDR explicitly. |
 | `OPENAI_API_KEY` | platform.openai.com → API keys. Used for embeddings (`text-embedding-3-small`), vision/utility calls, and backup answer generation (`gpt-5.6-luna` with low reasoning). OpenRouter's ZDR guardrail does not cover this direct fallback; configure required retention controls on the OpenAI organization too. |
 | `MISTRAL_API_KEY` | console.mistral.ai → API keys. Used for `mistral-ocr-latest`. |
 | `COHERE_API_KEY` | dashboard.cohere.com → API keys. Trial key works for Phase 1. Used for `rerank-english-v3.0`. |

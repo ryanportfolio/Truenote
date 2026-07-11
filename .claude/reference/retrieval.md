@@ -18,8 +18,8 @@ question
        no  → refuse, return "not in knowledge base"
        yes → neighbor expansion (ordinal ±1 of top RETRIEVAL_NEIGHBOR_ANCHORS
              anchors, same active version; unscored context, never gated)
-           → OpenRouter Nemotron 3 Super Nitro on DigitalOcean
-             (medium reasoning) call with
+           → OpenRouter approved primary route selected by a super user
+             (medium reasoning) with
              citation contract + ZDR
              (request/schema/citation failure → direct OpenAI
               gpt-5.6-luna backup at low reasoning)
@@ -77,7 +77,7 @@ QUESTION: {question}
 
 Use strict structured outputs (`response_format: { type: 'json_schema', ... }`) through the OpenAI-compatible client — do NOT rely on prompt-only JSON. The model will occasionally drift if you only ask in prose.
 
-OpenRouter requests use `nvidia/nemotron-3-super-120b-a12b:nitro`, pin DigitalOcean with `provider.only=["digitalocean"]`, explicitly set `reasoning_effort: "medium"`, and enforce `provider.zdr=true`, `data_collection="deny"`, and `require_parameters=true` in addition to the API key's ZDR guardrail. OpenRouter provider retries are disabled (`allow_fallbacks=false`) so a DigitalOcean endpoint failure returns immediately to the app. Any Nemotron request error, schema/parse failure, empty answer, unknown source, or missing inline citation then retries through direct OpenAI `gpt-5.6-luna` with `reasoning_effort: "low"`. A valid grounded refusal does not retry. The direct path is outside OpenRouter's guardrail, so any required retention controls must also be enabled on the OpenAI organization.
+The global primary route is selected from a server-owned allowlist on `/admin/model-routing`: GPT-5.4 Nano Nitro on Azure (default), Nemotron 3 Super Nitro on DigitalOcean, or Nemotron 3 Ultra Nitro on Together. The saved setting lives in `app_settings`; missing DDL degrades safely to the default. Every OpenRouter request pins the selected provider with `provider.only`, explicitly sets `reasoning_effort: "medium"`, and enforces `provider.zdr=true`, `data_collection="deny"`, `require_parameters=true`, and `allow_fallbacks=false`. Any primary request error, schema/parse failure, empty answer, unknown source, or missing inline citation retries through direct OpenAI `gpt-5.6-luna` with `reasoning_effort: "low"`. A valid grounded refusal does not retry. The direct path is outside OpenRouter's guardrail, so any required retention controls must also be enabled on the OpenAI organization.
 
 ## UI contract
 

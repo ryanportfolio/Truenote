@@ -132,7 +132,7 @@ Cohere table language: **horizontal rules only**. Header = 12px uppercase muted 
 
 Admin tables: card chrome (`rounded-lg border bg-card shadow-card`) lives on an `overflow-x-auto` **wrapper div**, never on the `<table>` (`overflow-hidden` on a table clips instead of scrolling). Tables carry a `min-w` floor (36–44rem) so narrow viewports scroll. Rows take a `hover:bg-muted/40` wash — a scanning aid, invisible at rest.
 
-Numbers in tables (and the debug telemetry row) set `tabular-nums` so columns don't wobble. Timestamps render relative ("2 hours ago") via the `RelativeTime` component — a `<time>` with the absolute string in `title`/`dateTime`; raw `toLocaleString()` in a list is drift.
+Numbers in tables set `tabular-nums` so columns don't wobble. Timestamps render relative ("2 hours ago") via the `RelativeTime` component — a `<time>` with the absolute string in `title`/`dateTime`; raw `toLocaleString()` in a list is drift.
 
 ## Selects
 
