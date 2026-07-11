@@ -18,7 +18,9 @@ question
        no  → refuse, return "not in knowledge base"
        yes → neighbor expansion (ordinal ±1 of top RETRIEVAL_NEIGHBOR_ANCHORS
              anchors, same active version; unscored context, never gated)
-           → LLM call with citation contract
+           → OpenRouter Nemotron 3 Ultra call with citation contract + ZDR
+             (request/schema/citation failure → direct OpenAI
+              gpt-5.6-luna backup at low reasoning)
   → render answer + citation chips
   → log to query_log
 ```
@@ -71,7 +73,9 @@ EXCERPTS:
 QUESTION: {question}
 ```
 
-Use OpenAI structured outputs (`response_format: { type: 'json_schema', ... }`) — do NOT rely on prompt-only JSON. The model will occasionally drift if you only ask in prose.
+Use strict structured outputs (`response_format: { type: 'json_schema', ... }`) through the OpenAI-compatible client — do NOT rely on prompt-only JSON. The model will occasionally drift if you only ask in prose.
+
+OpenRouter requests enforce `provider.zdr=true`, `data_collection="deny"`, and `require_parameters=true` in addition to the API key's ZDR guardrail. OpenRouter provider retries are disabled (`allow_fallbacks=false`) so an endpoint failure returns immediately to the app. Any Nemotron request error, schema/parse failure, empty answer, unknown source, or missing inline citation then retries through direct OpenAI `gpt-5.6-luna` with `reasoning_effort: "low"`. A valid grounded refusal does not retry. The direct path is outside OpenRouter's guardrail, so any required retention controls must also be enabled on the OpenAI organization.
 
 ## UI contract
 

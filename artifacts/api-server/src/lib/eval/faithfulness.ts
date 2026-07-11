@@ -16,8 +16,8 @@ import { formatExcerpts } from "../generation/answer.js";
  * One structured-output call does extract + judge together — at eval-set
  * scale (~50-200 questions) the two-call variant buys nothing but latency.
  *
- * Same model as generation (gpt-4o): the judge must be at least as strong
- * as the writer or it rubber-stamps hallucinations.
+ * Kept on direct OpenAI gpt-4o so the judge is operationally independent of
+ * the OpenRouter answer path and still runs if the primary provider is down.
  */
 const JUDGE_MODEL = "gpt-4o";
 

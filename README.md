@@ -86,7 +86,7 @@ Every change touching ingestion, retrieval, or generation runs the suite. Exit c
 | Parsing | Mistral OCR |
 | Embeddings | OpenAI `text-embedding-3-small` |
 | Reranking | Cohere Rerank |
-| Generation | OpenAI GPT-4o with structured outputs |
+| Generation | NVIDIA Nemotron 3 Ultra via OpenRouter, with OpenAI GPT-5.6 Luna low-reasoning fallback |
 | Hosting | Replit (object storage, secrets, deploys) |
 
 ## Repository layout
@@ -115,7 +115,7 @@ pnpm -r run test          # unit tests
 pnpm dev                  # frontend + API (see .env.example for ports)
 ```
 
-You'll need API keys for OpenAI (embeddings + generation), Mistral (OCR), and Cohere (reranking). `.env.example` documents every variable, including the Replit-specific port arrangement.
+You'll need API keys for OpenRouter (primary answers), OpenAI (embeddings, vision, utility calls, and backup answers), Mistral (OCR), and Cohere (reranking). `.env.example` documents every variable, including the Replit-specific port arrangement.
 
 ## Design
 
