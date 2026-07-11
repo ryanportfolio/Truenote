@@ -517,54 +517,6 @@ usersRouter.post("/bulk", async (req, res, next) => {
   }
 });
 
-/**
- * Loader for PATCH / reset-password. Returns the target row narrowed to
- * the actor's scope. Always returns 404 (not 403) on out-of-scope ids to
- * avoid leaking existence — same convention the documents routes use.
- */
-async function loadManageableTarget(
-  actor: ReturnType<typeof authedUser>,
-  id: string
-): Promise<{
-  id: string;
-  email: string;
-  name: string;
-  role: UserRole;
-  programId: string | null;
-  isActive: boolean;
-  mustResetPassword: boolean;
-  lastLoginAt: Date | null;
-  createdAt: Date;
-} | null> {
-  const rows = await db
-    .select({
-      id: users.id,
-      email: users.email,
-      name: users.name,
-      role: users.role,
-      programId: users.programId,
-      isActive: users.isActive,
-      mustResetPassword: users.mustResetPassword,
-      lastLoginAt: users.lastLoginAt,
-      createdAt: users.createdAt
-    })
-    .from(users)
-    .where(eq(users.id, id))
-    .limit(1);
-  const row = rows[0];
-  if (!row) return null;
-  if (
-    !canManageUser(actor, {
-      id: row.id,
-      role: row.role,
-      programId: row.programId
-    })
-  ) {
-    return null;
-  }
-  return row;
-}
-
 const PatchBody = z
   .object({
     name: z
@@ -794,6 +746,17 @@ usersRouter.patch("/:id", async (req, res, next) => {
  *
  * Sets must_reset_password=true unconditionally so the user is bounced
  * to the change-password page on first login with the temp credential.
+ *
+ * Atomicity: the scope re-check + password/flag UPDATE + session revoke ALL
+ * run inside one transaction with `SELECT ... FOR UPDATE` on the target row,
+ * mirroring PATCH/DELETE. A plain pre-tx load (the old shape) left a TOCTOU
+ * window — widened by the deliberately slow Argon2 hash — in which a
+ * concurrent promote/reassign by a higher admin could move the target out of
+ * the actor's scope after the check but before the write, letting the stale
+ * reset land on a now-unmanageable account and hand the actor its temp
+ * password (account takeover). Re-checking canManageUser on the locked row
+ * closes it. The Argon2 hash runs BEFORE the tx so the row lock is never held
+ * across it.
  */
 usersRouter.post("/:id/reset-password", async (req, res, next) => {
   try {
@@ -803,28 +766,61 @@ usersRouter.post("/:id/reset-password", async (req, res, next) => {
       res.status(400).json({ error: "Invalid user id" });
       return;
     }
-    const target = await loadManageableTarget(actor, id);
-    if (!target) {
-      res.status(404).json({ error: "Not found" });
-      return;
-    }
 
+    // Hash BEFORE the transaction — never hold the row lock across the slow
+    // Argon2 work. The hash isn't bound to any target until the in-tx
+    // re-check below approves it; if the re-check fails the tx rolls back and
+    // nothing is written.
     const tempPassword = generateTempPassword();
     const passwordHash = await hashPassword(tempPassword);
 
-    // Atomic: update password + force-reset flag + revoke every existing
-    // session. If we ran them as separate writes, a transient DB failure
-    // between the password update and the session revoke would leave
-    // the OLD sessions valid against the NEW password — partially-
-    // applied resets are the kind of thing that erodes trust in the
-    // reset flow ("did it work or not?").
-    await db.transaction(async (tx) => {
+    type TxResult = { kind: "ok" } | { kind: "not-found" };
+    const txResult = await db.transaction(async (tx): Promise<TxResult> => {
+      // SELECT FOR UPDATE — locks the row so any concurrent PATCH/reset on
+      // the same user_id queues behind us, and re-reads the CURRENT
+      // role/program to authorize against (not a stale pre-tx snapshot).
+      const rows = await tx
+        .select({
+          id: users.id,
+          role: users.role,
+          programId: users.programId
+        })
+        .from(users)
+        .where(eq(users.id, id))
+        .for("update")
+        .limit(1);
+      const target = rows[0];
+      if (!target) return { kind: "not-found" };
+      // 404 (not 403) on out-of-scope ids — same existence-hiding
+      // convention as the documents routes.
+      if (
+        !canManageUser(actor, {
+          id: target.id,
+          role: target.role,
+          programId: target.programId
+        })
+      ) {
+        return { kind: "not-found" };
+      }
+
+      // Atomic: update password + force-reset flag + revoke every existing
+      // session. If we ran them as separate writes, a transient DB failure
+      // between the password update and the session revoke would leave
+      // the OLD sessions valid against the NEW password — partially-
+      // applied resets are the kind of thing that erodes trust in the
+      // reset flow ("did it work or not?").
       await tx
         .update(users)
         .set({ passwordHash, mustResetPassword: true })
         .where(eq(users.id, id));
       await tx.delete(sessions).where(eq(sessions.userId, id));
+      return { kind: "ok" };
     });
+
+    if (txResult.kind === "not-found") {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
 
     res.json({ tempPassword });
   } catch (err) {
@@ -877,7 +873,7 @@ usersRouter.delete("/:id", async (req, res, next) => {
       const target = rows[0];
       if (!target) return { kind: "not-found" };
       // 404 (not 403) on out-of-scope ids — same existence-hiding
-      // convention as loadManageableTarget and the documents routes.
+      // convention as the documents routes.
       if (
         !canManageUser(actor, {
           id: target.id,
