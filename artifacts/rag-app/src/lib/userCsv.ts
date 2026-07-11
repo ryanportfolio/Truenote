@@ -48,8 +48,13 @@ function csvRows(input: string): string[][] {
   return rows;
 }
 
-export function parseUserCsv(input: string): ParsedUserCsv {
-  const rows = csvRows(input.replace(/^\uFEFF/, ""));
+/**
+ * Pull the email column out of a parsed grid, whatever produced it (CSV
+ * text or a spreadsheet reader). Detects a named email header, else falls
+ * back to the first column; dedupes case-insensitively; reports 1-based
+ * source-row numbers for cells that aren't valid emails.
+ */
+export function extractUserEmails(rows: string[][]): ParsedUserCsv {
   if (rows.length === 0) return { emails: [], invalidRows: [] };
 
   const first = rows[0] ?? [];
@@ -77,5 +82,24 @@ export function parseUserCsv(input: string): ParsedUserCsv {
   }
 
   return { emails, invalidRows };
+}
+
+export function parseUserCsv(input: string): ParsedUserCsv {
+  return extractUserEmails(csvRows(input.replace(/^\uFEFF/, "")));
+}
+
+/**
+ * Normalize spreadsheet rows (mixed-type cells from an .xlsx reader \u2014
+ * strings, numbers, dates, or null for blanks) into the trimmed-string
+ * grid extractUserEmails expects, then extract. Kept here (not in the
+ * component) so it's unit-testable without the binary xlsx parser.
+ */
+export function parseUserXlsx(
+  rows: ReadonlyArray<ReadonlyArray<unknown>>
+): ParsedUserCsv {
+  const grid = rows.map((row) =>
+    row.map((cell) => (cell == null ? "" : String(cell)))
+  );
+  return extractUserEmails(grid);
 }
 
