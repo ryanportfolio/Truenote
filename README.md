@@ -86,7 +86,7 @@ Every change touching ingestion, retrieval, or generation runs the suite. Exit c
 | Parsing | Mistral OCR |
 | Embeddings | OpenAI `text-embedding-3-small` |
 | Reranking | Cohere Rerank |
-| Generation | Super-user-selected approved OpenRouter route (GPT-5.4 Nano/Azure default), with OpenAI GPT-5.6 Luna low-reasoning fallback |
+| Generation | Super-user-selected approved OpenRouter route (GPT-5.6 Luna/OpenAI low-reasoning default), with OpenAI GPT-5.6 Luna low-reasoning fallback |
 | Hosting | Replit (object storage, secrets, deploys) |
 
 ## Repository layout

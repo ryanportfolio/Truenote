@@ -264,7 +264,7 @@ export interface ModelRoutingOption {
   model: string;
   provider: string;
   providerLabel: string;
-  reasoningEffort: "medium";
+  reasoningEffort: "low" | "medium";
   description: string;
 }
 

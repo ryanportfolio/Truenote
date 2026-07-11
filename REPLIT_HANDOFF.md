@@ -327,14 +327,14 @@ CREATE TABLE IF NOT EXISTS app_settings (
 INSERT INTO app_settings (key, value)
 VALUES (
   'primary_generation_route',
-  '{"selectedId":"gpt-5.4-nano-azure-nitro"}'::jsonb
+  '{"selectedId":"gpt-5.6-luna-openai"}'::jsonb
 )
 ON CONFLICT (key) DO NOTHING;
 ```
 
 After applying, restart `api-server`. Until this table exists, answer
-generation safely uses GPT-5.4 Nano Nitro on Azure, but the super-user
-Model routing page cannot persist changes.
+generation safely uses GPT-5.6 Luna on OpenAI at low reasoning, but the
+super-user Model routing page cannot persist changes.
 
 ---
 

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "../db-client.js";
 
 export const ApprovedModelRouteIdSchema = z.enum([
+  "gpt-5.6-luna-openai",
   "gpt-5.4-nano-azure-nitro",
   "nemotron-3-super-digitalocean-nitro",
   "nemotron-3-ultra-together-nitro"
@@ -16,11 +17,20 @@ export interface ApprovedModelRoute {
   model: string;
   provider: string;
   providerLabel: string;
-  reasoningEffort: "medium";
+  reasoningEffort: "low" | "medium";
   description: string;
 }
 
 export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
+  {
+    id: "gpt-5.6-luna-openai",
+    label: "GPT-5.6 Luna",
+    model: "openai/gpt-5.6-luna",
+    provider: "openai",
+    providerLabel: "OpenAI",
+    reasoningEffort: "low",
+    description: "Primary route: fast, grounded answers at low reasoning."
+  },
   {
     id: "gpt-5.4-nano-azure-nitro",
     label: "GPT-5.4 Nano",
