@@ -260,8 +260,8 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
         // Load the xlsx parser only when an Excel file is actually
         // chosen — it ships as its own async chunk, so the CSV path and
         // non-admin bundles never pay for it.
-        const { default: readXlsxFile } = await import("read-excel-file");
-        parsed = parseUserXlsx(await readXlsxFile(file));
+        const { default: readXlsxFile } = await import("read-excel-file/browser");
+        parsed = parseUserXlsx((await readXlsxFile(file)) as unknown as ReadonlyArray<ReadonlyArray<unknown>>);
       } else {
         parsed = parseUserCsv(await file.text());
       }
