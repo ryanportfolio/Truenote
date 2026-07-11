@@ -464,11 +464,22 @@ function CreateUserForm({
     return [];
   }, [actor.role]);
 
+  // Default to Manager when the actor can assign it (super_user and
+  // senior_manager actors) rather than the top of the list — for a
+  // super_user that would be the high-privilege super_user role, a poor
+  // default for a destructive-if-wrong choice. Managers can only assign
+  // csr, so they fall through to it.
+  const defaultRole = useMemo<UserRole>(
+    () =>
+      assignableRoles.includes("manager")
+        ? "manager"
+        : assignableRoles[0] ?? "csr",
+    [assignableRoles]
+  );
+
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<UserRole>(
-    assignableRoles[0] ?? "csr"
-  );
+  const [role, setRole] = useState<UserRole>(defaultRole);
   // For super_user actors: programId starts unset for non-super_user
   // roles (forces a deliberate pick); for super_user role it's locked
   // to null. For other actors it's locked to actor.programId.
@@ -506,6 +517,16 @@ function CreateUserForm({
       setError("Select a program for this user");
       return;
     }
+    // Super user is the highest privilege tier — full access to every
+    // program and user. Make an admin stop and confirm before minting one,
+    // so it's never a slip of the role dropdown.
+    if (role === "super_user") {
+      const confirmed = window.confirm(
+        `Are you sure you want to add a SUPER USER?\n\n` +
+          `Super users have full access to every program and every user across the entire system — the highest level of access there is.`
+      );
+      if (!confirmed) return;
+    }
     setSubmitting(true);
     try {
       const payload: CreateUserRequest = {
@@ -518,7 +539,7 @@ function CreateUserForm({
       onCreated(response.item, response.tempPassword);
       setEmail("");
       setName("");
-      setRole(assignableRoles[0] ?? "csr");
+      setRole(defaultRole);
       setProgramId("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create user");
