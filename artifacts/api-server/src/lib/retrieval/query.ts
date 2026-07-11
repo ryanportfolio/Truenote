@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db-client.js";
 import { OpenAIEmbedder, type Embedder } from "../ingestion/embedder.js";
-import { rerankWithCohere } from "./rerank.js";
+import { elapsedMs } from "../observability/pipeline-timing.js";
+import { getRerankModel, rerankWithCohere } from "./rerank.js";
 
 const DEFAULT_RERANK_THRESHOLD = 0.3;
 const DEFAULT_TOP_K = 8;
@@ -64,7 +65,31 @@ export interface RetrievalResult {
   refused: boolean;
   topScore: number | null;
   threshold: number;
+  timing: RetrievalTiming;
   trace?: RetrievalTrace;
+}
+
+export interface RetrievalTiming {
+  totalMs: number;
+  stages: {
+    embedding: number;
+    vectorSearch: number;
+    keywordSearch: number;
+    trigramSearch: number;
+    candidateMerge: number;
+    rerank: number;
+    neighborFetch: number;
+    neighborMerge: number;
+  };
+  counts: {
+    vectorCandidates: number;
+    keywordCandidates: number;
+    mergedCandidates: number;
+    rankedChunks: number;
+    contextChunks: number;
+  };
+  trigramFallback: boolean;
+  rerankModel: string;
 }
 
 export interface RetrievalDeps {
@@ -316,6 +341,32 @@ export async function retrieve(
   input: RetrievalInput,
   deps: RetrievalDeps = {}
 ): Promise<RetrievalResult> {
+  const timingStartedAt = performance.now();
+  const timingStages: RetrievalTiming["stages"] = {
+    embedding: 0,
+    vectorSearch: 0,
+    keywordSearch: 0,
+    trigramSearch: 0,
+    candidateMerge: 0,
+    rerank: 0,
+    neighborFetch: 0,
+    neighborMerge: 0
+  };
+  const timingCounts: RetrievalTiming["counts"] = {
+    vectorCandidates: 0,
+    keywordCandidates: 0,
+    mergedCandidates: 0,
+    rankedChunks: 0,
+    contextChunks: 0
+  };
+  let timingTrigramFallback = false;
+  const finishTiming = (): RetrievalTiming => ({
+    totalMs: elapsedMs(timingStartedAt),
+    stages: timingStages,
+    counts: timingCounts,
+    trigramFallback: timingTrigramFallback,
+    rerankModel: getRerankModel()
+  });
   const runtime = getRetrievalRuntimeConfig();
   const threshold = runtime.threshold;
   const topK = input.topK ?? runtime.topK;
@@ -335,12 +386,16 @@ export async function retrieve(
       refused: true,
       topScore: null,
       threshold,
+      timing: finishTiming(),
       ...(input.withTrace ? { trace: emptyTrace() } : {})
     };
   }
 
   const embedder = deps.embedder ?? new OpenAIEmbedder();
-  const embeddings = await embedder.embed([trimmed]);
+  const embeddingStartedAt = performance.now();
+  const embeddings = await embedder.embed([trimmed]).finally(() => {
+    timingStages.embedding = elapsedMs(embeddingStartedAt);
+  });
   const embedding = embeddings[0];
   if (!embedding) {
     return {
@@ -348,40 +403,67 @@ export async function retrieve(
       refused: true,
       topScore: null,
       threshold,
+      timing: finishTiming(),
       ...(input.withTrace ? { trace: emptyTrace() } : {})
     };
   }
 
-  const [vectorRows, bm25Initial] = await Promise.all([
-    vectorSearch(input.programId, embedding, candidateK),
-    bm25Search(input.programId, trimmed, candidateK)
-  ]);
+  const vectorPromise = (async () => {
+    const startedAt = performance.now();
+    try {
+      return await vectorSearch(input.programId, embedding, candidateK);
+    } finally {
+      timingStages.vectorSearch = elapsedMs(startedAt);
+    }
+  })();
+  const keywordPromise = (async () => {
+    const startedAt = performance.now();
+    try {
+      return await bm25Search(input.programId, trimmed, candidateK);
+    } finally {
+      timingStages.keywordSearch = elapsedMs(startedAt);
+    }
+  })();
+  const [vectorRows, bm25Initial] = await Promise.all([vectorPromise, keywordPromise]);
+  timingCounts.vectorCandidates = vectorRows.length;
 
   // Zero-hit fallback: tsquery found nothing keyword-shaped, so try trigram
   // similarity (typos, SKU codes). Vector candidates are unaffected either way.
   let bm25Rows = bm25Initial;
   let trigramFallback = false;
   if (bm25Rows.length === 0) {
-    bm25Rows = await trigramSearch(input.programId, trimmed, candidateK);
+    const trigramStartedAt = performance.now();
+    bm25Rows = await trigramSearch(input.programId, trimmed, candidateK).finally(() => {
+      timingStages.trigramSearch = elapsedMs(trigramStartedAt);
+    });
     trigramFallback = bm25Rows.length > 0;
   }
+  timingTrigramFallback = trigramFallback;
+  timingCounts.keywordCandidates = bm25Rows.length;
 
+  const mergeStartedAt = performance.now();
   const candidates = mergeCandidates(vectorRows, bm25Rows);
+  timingStages.candidateMerge = elapsedMs(mergeStartedAt);
+  timingCounts.mergedCandidates = candidates.length;
   if (candidates.length === 0) {
     return {
       chunks: [],
       refused: true,
       topScore: null,
       threshold,
+      timing: finishTiming(),
       ...(input.withTrace ? { trace: emptyTrace(trigramFallback) } : {})
     };
   }
 
   deps.onRerankStart?.();
+  const rerankStartedAt = performance.now();
   const reranked = await rerankWithCohere({
     question: trimmed,
     documents: candidates.map((c) => c.content),
     topN: topK
+  }).finally(() => {
+    timingStages.rerank = elapsedMs(rerankStartedAt);
   });
 
   const byId = new Map(candidates.map((c) => [c.id, c]));
@@ -401,6 +483,7 @@ export async function retrieve(
       relevanceScore: r.relevance_score
     });
   }
+  timingCounts.rankedChunks = ranked.length;
 
   const topScore = ranked[0]?.relevanceScore ?? null;
   const refused = topScore === null || topScore < threshold;
@@ -428,16 +511,23 @@ export async function retrieve(
       }))
       .filter((a): a is { documentVersionId: string; ordinal: number } => a.ordinal !== null);
     if (anchors.length > 0) {
-      const neighborRows = await fetchNeighborRows(input.programId, anchors);
+      const neighborFetchStartedAt = performance.now();
+      const neighborRows = await fetchNeighborRows(input.programId, anchors).finally(() => {
+        timingStages.neighborFetch = elapsedMs(neighborFetchStartedAt);
+      });
+      const neighborMergeStartedAt = performance.now();
       chunks = expandWithNeighbors(ranked, neighborAnchors, neighborRows);
+      timingStages.neighborMerge = elapsedMs(neighborMergeStartedAt);
     }
   }
+  timingCounts.contextChunks = chunks.length;
 
   return {
     chunks,
     refused,
     topScore,
     threshold,
+    timing: finishTiming(),
     ...(trace ? { trace } : {})
   };
 }

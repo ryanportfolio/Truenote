@@ -3,6 +3,11 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import type { RetrievalChunk } from "../retrieval/query.js";
 import {
+  elapsedMs,
+  type ProviderAttemptOutcome,
+  type ProviderAttemptTiming
+} from "../observability/pipeline-timing.js";
+import {
   FALLBACK_MODEL,
   getActiveModelChain,
   type ApprovedModelRoute
@@ -111,6 +116,7 @@ export interface GenerateAnswerResult {
   payload: AnswerPayload;
   llmCalled: boolean;
   generationPath: "retrieval-refusal" | "primary" | "fallback" | "fallback-failed";
+  providerAttempts: ProviderAttemptTiming[];
 }
 
 export interface GenerateAnswerDeps {
@@ -204,7 +210,8 @@ export async function generateAnswer(
     return {
       payload: cannedRefusal(),
       llmCalled: false,
-      generationPath: "retrieval-refusal"
+      generationPath: "retrieval-refusal",
+      providerAttempts: []
     };
   }
 
@@ -224,7 +231,10 @@ export async function generateAnswer(
 
   let payload: AnswerPayload | null = null;
   let generationPath: GenerateAnswerResult["generationPath"] = "primary";
+  const providerAttempts: ProviderAttemptTiming[] = [];
   for (const [index, route] of chain.entries()) {
+    const attemptStartedAt = performance.now();
+    let outcome: ProviderAttemptOutcome = "error";
     try {
       const routePayload = await callGenerationModel(
         client,
@@ -236,26 +246,43 @@ export async function generateAnswer(
           reasoningEffort: route.reasoningEffort
         }
       );
-      if (!routePayload) throw new Error(`route ${route.id} returned no parsed answer`);
+      if (!routePayload) {
+        outcome = "invalid";
+        throw new Error(`route ${route.id} returned no parsed answer`);
+      }
       // normalizeAnswer returns the canned refusal (non-null) for a valid
       // refusal, so a refusal short-circuits the chain here; it returns null
       // only for an empty/uncited/unknown-citation answer, which cascades.
       const normalized = normalizeAnswer(routePayload, input.chunks);
-      if (!normalized) throw new Error(`route ${route.id} returned an invalid or uncited answer`);
+      if (!normalized) {
+        outcome = "invalid";
+        throw new Error(`route ${route.id} returned an invalid or uncited answer`);
+      }
       payload = normalized;
       generationPath = index === 0 ? "primary" : "fallback";
+      outcome = "success";
       break;
     } catch (err) {
       console.warn(
         `[generation] route ${route.id} failed; trying next in chain:`,
         err instanceof Error ? err.message : err
       );
+    } finally {
+      providerAttempts.push({
+        routeId: route.id,
+        provider: route.provider,
+        model: route.model,
+        durationMs: elapsedMs(attemptStartedAt),
+        outcome
+      });
     }
   }
 
   if (!payload) {
     // The whole OpenRouter chain errored. Last resort: direct OpenAI, which
     // survives an OpenRouter-wide outage because it does not use OpenRouter.
+    const fallbackStartedAt = performance.now();
+    let fallbackOutcome: ProviderAttemptOutcome = "error";
     try {
       const fallbackClient = deps.fallbackClient ?? getFallbackClient();
       const fallbackPayload = await callGenerationModel(
@@ -266,13 +293,26 @@ export async function generateAnswer(
         { reasoningEffort: FALLBACK_MODEL.reasoningEffort }
       );
       payload = fallbackPayload ? normalizeAnswer(fallbackPayload, input.chunks) : null;
-      if (payload) generationPath = "fallback";
+      if (payload) {
+        generationPath = "fallback";
+        fallbackOutcome = "success";
+      } else {
+        fallbackOutcome = "invalid";
+      }
     } catch (err) {
       console.warn(
         "[generation] direct OpenAI backup failed:",
         err instanceof Error ? err.message : err
       );
       payload = null;
+    } finally {
+      providerAttempts.push({
+        routeId: "direct-openai-fallback",
+        provider: "openai-direct",
+        model: FALLBACK_MODEL.model,
+        durationMs: elapsedMs(fallbackStartedAt),
+        outcome: fallbackOutcome
+      });
     }
   }
 
@@ -281,11 +321,12 @@ export async function generateAnswer(
     return {
       payload: cannedRefusal(),
       llmCalled: true,
-      generationPath: "fallback-failed"
+      generationPath: "fallback-failed",
+      providerAttempts
     };
   }
 
-  return { payload, llmCalled: true, generationPath };
+  return { payload, llmCalled: true, generationPath, providerAttempts };
 }
 
 /**

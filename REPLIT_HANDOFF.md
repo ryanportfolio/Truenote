@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS query_log (
   cited_chunk_ids UUID[],
   refused BOOLEAN DEFAULT false,
   latency_ms INT,
+  timing_breakdown JSONB,
   feedback INT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -446,6 +447,25 @@ keeps question editing available, and disables runs without crashing the app.
 Evaluation rows also act as a durable queue outbox: worker startup, a one-minute
 worker reconciliation loop, and run-list reads re-send queued run UUIDs with a
 time-windowed singleton key after an API insert/send crash.
+
+---
+
+## B9. Replit Agent DDL prompt — pipeline timing
+
+Ask the Replit Agent to run this against the dev database. It is idempotent
+and safe to re-run.
+
+```sql
+ALTER TABLE query_log
+  ADD COLUMN IF NOT EXISTS timing_breakdown JSONB;
+```
+
+The API writes versioned end-to-end, retrieval sub-stage, finalization, and
+provider-attempt timings for new asks. Until this column exists, asking remains
+available and the super-user Pipeline timing page shows a setup-required state.
+Apply the DDL to the development database, restart the api-server, verify new
+asks appear under `/admin/observability`, then republish so Replit promotes the
+schema difference.
 
 ---
 

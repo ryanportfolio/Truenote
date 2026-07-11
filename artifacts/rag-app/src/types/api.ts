@@ -596,3 +596,78 @@ export interface QueryLogItem {
 export interface QueryLogListResponse {
   items: QueryLogItem[];
 }
+
+/** Super-user live pipeline observability shapes. */
+export type PipelineStageGroup = "request" | "retrieval" | "finalization";
+
+export interface PipelineStageStat {
+  key: string;
+  label: string;
+  group: PipelineStageGroup;
+  samples: number;
+  meanMs: number;
+  p50Ms: number;
+  p95Ms: number;
+}
+
+export interface ProviderAttemptTiming {
+  routeId: string;
+  provider: string;
+  model: string;
+  durationMs: number;
+  outcome: "success" | "invalid" | "error";
+}
+
+export interface PipelineTimingBreakdown {
+  version: 1;
+  totalMs: number;
+  stages: Record<string, number>;
+  counts: {
+    vectorCandidates: number;
+    keywordCandidates: number;
+    mergedCandidates: number;
+    rankedChunks: number;
+    contextChunks: number;
+  };
+  context: {
+    rewriteCalled: boolean;
+    trigramFallback: boolean;
+    generationPath: "retrieval-refusal" | "primary" | "fallback" | "fallback-failed";
+    rerankModel: string;
+  };
+  providerAttempts: ProviderAttemptTiming[];
+}
+
+export interface ProviderTimingStat {
+  routeId: string;
+  provider: string;
+  model: string;
+  attempts: number;
+  successes: number;
+  successRatePct: number;
+  p50Ms: number;
+  p95Ms: number;
+}
+
+export interface ObservabilityResponse {
+  storageReady: boolean;
+  windowHours: number;
+  sampleCount: number;
+  sampleTruncated: boolean;
+  summary: {
+    meanMs: number;
+    p50Ms: number;
+    p95Ms: number;
+    refusalRatePct: number;
+  };
+  stages: PipelineStageStat[];
+  providers: ProviderTimingStat[];
+  recent: Array<{
+    id: string;
+    question: string;
+    programName: string;
+    refused: boolean;
+    createdAt: string | null;
+    timing: PipelineTimingBreakdown;
+  }>;
+}
