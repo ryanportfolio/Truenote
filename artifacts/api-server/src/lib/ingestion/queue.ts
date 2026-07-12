@@ -4,6 +4,7 @@ import {
   getBoss,
   stopBoss
 } from "../jobs/boss.js";
+import { recordAppError } from "../observability/error-log.js";
 
 export const INGEST_DOCUMENT_VERSION_QUEUE = "ingest-document-version";
 
@@ -50,7 +51,24 @@ export async function startIngestionWorker(): Promise<void> {
     async (jobs) => {
       const list = Array.isArray(jobs) ? jobs : [jobs];
       for (const job of list) {
-        await runIngestion({ documentVersionId: job.data.documentVersionId });
+        try {
+          await runIngestion({ documentVersionId: job.data.documentVersionId });
+        } catch (error) {
+          console.error(
+            `[ingestion-worker] version ${job.data.documentVersionId} failed:`,
+            error
+          );
+          void recordAppError({
+            source: "ingestion",
+            operation: "document-version-job",
+            error,
+            context: {
+              documentVersionId: job.data.documentVersionId,
+              jobId: "id" in job ? job.id : null
+            }
+          });
+          throw error;
+        }
       }
     }
   );

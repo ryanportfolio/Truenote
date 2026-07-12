@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { attachCurrentUser } from "./middleware/current-user.js";
 import { registerRoutes } from "./routes/index.js";
+import { recordAppError } from "./lib/observability/error-log.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -110,8 +111,24 @@ export function createApp(): Express {
   // sometimes connection strings via Drizzle pool errors) and any other
   // raw `err.message` value can leak schema or credential details. Full
   // detail still goes to the server log for operator diagnosis.
-  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
     console.error("[api-server] error:", err);
+    const incomingRequestId = req.headers["x-request-id"];
+    void recordAppError({
+      source: "api",
+      operation: "unhandled-request",
+      error: err,
+      correlationId:
+        typeof incomingRequestId === "string" ? incomingRequestId : null,
+      method: req.method,
+      path: req.path,
+      userId: req.user?.id,
+      programId: req.user?.programId,
+      context: {
+        contentType: req.headers["content-type"] ?? null,
+        responseHeadersSent: res.headersSent
+      }
+    });
     const message =
       process.env.NODE_ENV === "production"
         ? "Internal server error"

@@ -16,6 +16,7 @@ import {
 import { canAccessProgram } from "../lib/auth/current-user.js";
 import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
 import { purgeCitationSnapshotsForDocument } from "../lib/citations.js";
+import { recordAppError } from "../lib/observability/error-log.js";
 
 export const documentsRouter = Router();
 
@@ -425,6 +426,14 @@ documentsRouter.delete("/:id", async (req, res, next) => {
           `[documents] citation snapshot purge failed for document ${id}:`,
           err instanceof Error ? err.message : err
         );
+        void recordAppError({
+          severity: "warning",
+          source: "documents",
+          operation: "purge-citation-snapshots",
+          error: err,
+          programId,
+          context: { documentId: id }
+        });
       }
 
       const storage = getObjectStorage();
@@ -447,6 +456,14 @@ documentsRouter.delete("/:id", async (req, res, next) => {
             `[documents] blob cleanup failed for ${sourceUrl}:`,
             err instanceof Error ? err.message : err
           );
+          void recordAppError({
+            severity: "warning",
+            source: "storage",
+            operation: "delete-unreferenced-blob",
+            error: err,
+            programId,
+            context: { documentId: id }
+          });
         }
       }
     })();

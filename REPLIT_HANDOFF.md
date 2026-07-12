@@ -469,6 +469,53 @@ schema difference.
 
 ---
 
+## B10. Replit Agent DDL prompt — durable error diagnostics
+
+Ask the Replit Agent to run this against the dev database. It is idempotent
+and safe to re-run.
+
+```sql
+CREATE TABLE IF NOT EXISTS error_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  severity TEXT NOT NULL CHECK (severity IN ('warning','error','fatal')),
+  source TEXT NOT NULL,
+  operation TEXT NOT NULL,
+  message TEXT NOT NULL,
+  name TEXT,
+  stack TEXT,
+  code TEXT,
+  status INT,
+  provider TEXT,
+  model TEXT,
+  route_id TEXT,
+  request_id TEXT,
+  correlation_id TEXT,
+  method TEXT,
+  path TEXT,
+  user_id TEXT,
+  program_id UUID,
+  query_log_id UUID,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS error_log_occurred_idx
+  ON error_log (occurred_at DESC);
+CREATE INDEX IF NOT EXISTS error_log_source_occurred_idx
+  ON error_log (source, occurred_at DESC);
+```
+
+The API and worker persist redacted provider, request, ingestion, evaluation,
+maintenance, and process-level diagnostics for the super-user Errors page.
+Provider status, code, request id, response body, stack, and model-routing
+context remain copyable; authorization headers, cookies, API keys, database
+credentials, passwords, and token fields are replaced with `[REDACTED]` before
+the database write. Apply the DDL to the development database, restart both the
+api-server and worker, reproduce a Mercury request, verify the failure under
+`/admin/errors`, then republish so Replit promotes the schema difference.
+
+---
+
 ## C. Replit Secrets checklist
 
 Set these in Replit Secrets (Tools → Secrets). The app reads them via

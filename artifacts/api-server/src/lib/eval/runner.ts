@@ -12,6 +12,7 @@ import {
 } from "../generation/answer.js";
 import type { ApprovedModelRoute } from "../generation/model-routing.js";
 import { judgeFaithfulness } from "./faithfulness.js";
+import { recordAppError } from "../observability/error-log.js";
 
 /**
  * Eval harness.
@@ -464,6 +465,14 @@ async function evaluateOne(
           `[eval] faithfulness judge failed for question ${q.id}:`,
           err instanceof Error ? err.message : err
         );
+        void recordAppError({
+          severity: "warning",
+          source: "evaluation",
+          operation: "faithfulness-judge",
+          error: err,
+          programId: q.programId,
+          context: { questionId: q.id }
+        });
       }
     }
 

@@ -4,8 +4,13 @@ import { bootstrapSuperUser } from "./lib/auth/bootstrap.js";
 import { bootstrapDemoAccounts } from "./lib/auth/bootstrap-demo.js";
 import { purgeExpiredSessions } from "./lib/auth/sessions.js";
 import { purgeExpiredResetTokens } from "./lib/auth/password-reset.js";
+import {
+  installProcessErrorLogging,
+  recordAppError
+} from "./lib/observability/error-log.js";
 
 const PORT = Number(process.env.API_PORT) || 5000;
+installProcessErrorLogging("api-server");
 
 async function main(): Promise<void> {
   // Production guard: refuse to boot without APP_BASE_URL. The reset-
@@ -33,6 +38,11 @@ async function main(): Promise<void> {
     await bootstrapSuperUser();
   } catch (err) {
     console.error("[api-server] bootstrap failed:", err);
+    void recordAppError({
+      source: "startup",
+      operation: "bootstrap-super-user",
+      error: err
+    });
   }
 
   // Demo accounts for the pre-filled login (DEMO_LOGIN_ACCOUNTS). Same
@@ -41,6 +51,11 @@ async function main(): Promise<void> {
     await bootstrapDemoAccounts();
   } catch (err) {
     console.error("[api-server] demo-account bootstrap failed:", err);
+    void recordAppError({
+      source: "startup",
+      operation: "bootstrap-demo-accounts",
+      error: err
+    });
   }
 
   const app = createApp();
@@ -65,6 +80,12 @@ async function main(): Promise<void> {
           "[auth] purgeExpiredSessions failed:",
           err instanceof Error ? err.message : err
         );
+        void recordAppError({
+          severity: "warning",
+          source: "maintenance",
+          operation: "purge-expired-sessions",
+          error: err
+        });
       });
     purgeExpiredResetTokens()
       .then((n) => {
@@ -75,6 +96,12 @@ async function main(): Promise<void> {
           "[auth] purgeExpiredResetTokens failed:",
           err instanceof Error ? err.message : err
         );
+        void recordAppError({
+          severity: "warning",
+          source: "maintenance",
+          operation: "purge-expired-reset-tokens",
+          error: err
+        });
       });
   }, PURGE_INTERVAL_MS);
   purgeTimer.unref();
@@ -94,5 +121,13 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   console.error("[api-server] fatal:", err);
-  process.exit(1);
+  void Promise.race([
+    recordAppError({
+      severity: "fatal",
+      source: "startup",
+      operation: "api-server-main",
+      error: err
+    }),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1_000))
+  ]).finally(() => process.exit(1));
 });

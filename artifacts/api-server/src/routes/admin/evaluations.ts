@@ -28,6 +28,7 @@ import {
   setEvalRunBaseline,
   type EvalRunListItem
 } from "../../lib/eval/persistence.js";
+import { recordAppError } from "../../lib/observability/error-log.js";
 
 export const evaluationsRouter = Router();
 
@@ -367,6 +368,13 @@ evaluationsRouter.get("/runs", async (req, res, next) => {
           "[evaluations] queued-run reconciliation failed:",
           error instanceof Error ? error.message : error
         );
+        void recordAppError({
+          severity: "warning",
+          source: "evaluation",
+          operation: "request-reconciliation",
+          error,
+          programId
+        });
       });
       const items = await listEvalRuns(programId, parsed.data.limit);
       res.json({ persistenceReady: true, items });
@@ -452,6 +460,13 @@ evaluationsRouter.post("/runs", async (req, res, next) => {
         `[evaluations] failed to enqueue run ${item.id}:`,
         error instanceof Error ? error.message : error
       );
+      void recordAppError({
+        source: "evaluation",
+        operation: "enqueue-run",
+        error,
+        programId,
+        context: { runId: item.id }
+      });
       res.status(202).json({
         item,
         warning: "Evaluation is queued; worker handoff will retry automatically.",

@@ -26,6 +26,7 @@ The product is trust and speed, not chat features. Three rules define it:
 - **Content gaps** — refused questions and flagged answers aggregate into a review queue with 7/30/90-day windows. "Fill this gap" jumps straight to the upload form with the question prefilled as the title.
 - **Programs and users** — program-scoped content, role-based access (CSR → manager → super user), session auth with password reset and rate limiting.
 - **Pipeline telemetry** — managers and above see confidence, rerank scores, latency, and the rewritten query under each answer.
+- **Super-user diagnostics** — provider, API, ingestion, evaluation, maintenance, and process failures land in a redacted Errors console with one-click per-error and filtered bulk JSON handoff.
 
 ## How retrieval works
 
