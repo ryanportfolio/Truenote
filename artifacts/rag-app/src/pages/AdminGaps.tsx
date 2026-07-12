@@ -236,16 +236,16 @@ function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
                     query.
                   </p>
                 ) : (
-                  <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
-                    <table className="w-full min-w-[40rem] text-sm">
+                  <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
+                    <table className="w-full text-sm">
                       <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 font-medium">Question</th>
                           <th className="px-3 py-2 text-right font-medium">Asked</th>
-                          <th className="px-3 py-2 text-right font-medium">Refused</th>
+                          <th className="hidden px-3 py-2 text-right font-medium md:table-cell">Refused</th>
                           <th className="px-3 py-2 text-right font-medium">Flagged</th>
-                          <th className="px-3 py-2 text-right font-medium">Thumbs down</th>
-                          <th className="px-3 py-2 font-medium">Last asked</th>
+                          <th className="hidden px-3 py-2 text-right font-medium md:table-cell">Thumbs down</th>
+                          <th className="hidden px-3 py-2 font-medium sm:table-cell">Last asked</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -253,11 +253,14 @@ function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
                           <tr key={item.question} className="border-t border-border align-top">
                             <td className="max-w-md px-3 py-2 font-medium">
                               <span className="line-clamp-2">{item.question}</span>
+                              <span className="mt-1 block text-xs font-normal text-muted-foreground md:hidden">
+                                Refused {item.refusedCount} · Thumbs down {item.negativeCount} · {new Date(item.lastAskedAt).toLocaleDateString()}
+                              </span>
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                               {item.askCount}
                             </td>
-                            <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                            <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground md:table-cell">
                               {item.refusedCount}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
@@ -269,10 +272,10 @@ function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
                                 <span className="text-muted-foreground">0</span>
                               )}
                             </td>
-                            <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                            <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground md:table-cell">
                               {item.negativeCount}
                             </td>
-                            <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
+                            <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground sm:table-cell">
                               {new Date(item.lastAskedAt).toLocaleDateString()}
                             </td>
                           </tr>
@@ -357,14 +360,14 @@ function QueryTable({ items }: { items: QueryLogItem[] }): JSX.Element {
   // Latency is operator data, safe to show unconditionally here — the
   // whole page is manager+ (CSRs never reach this table).
   return (
-    <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
-    <table className="w-full min-w-[44rem] text-sm tabular-nums">
+    <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
+    <table className="w-full text-sm tabular-nums">
       <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
         <tr>
           <th className="px-3 py-2 font-medium">Question</th>
-          <th className="px-3 py-2 font-medium">Asked</th>
-          <th className="px-3 py-2 font-medium">Signals</th>
-          <th className="px-3 py-2 text-right font-medium">Latency</th>
+          <th className="hidden px-3 py-2 font-medium sm:table-cell">Asked</th>
+          <th className="hidden px-3 py-2 font-medium sm:table-cell">Signals</th>
+          <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Latency</th>
           <th className="px-3 py-2">
             <span className="sr-only">Actions</span>
           </th>
@@ -378,14 +381,21 @@ function QueryTable({ items }: { items: QueryLogItem[] }): JSX.Element {
           >
             <td className="max-w-md px-3 py-2">
               <span className="line-clamp-2">{item.question}</span>
+              <span className="mt-1 block text-xs text-muted-foreground sm:hidden">
+                {item.createdAt ? <RelativeTime iso={item.createdAt} /> : "Time unavailable"}
+                {item.latencyMs !== null ? ` · ${item.latencyMs} ms` : ""}
+              </span>
+              <div className="mt-1 sm:hidden">
+                <SignalBadges item={item} />
+              </div>
             </td>
-            <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
+            <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground sm:table-cell">
               {item.createdAt ? <RelativeTime iso={item.createdAt} /> : "—"}
             </td>
-            <td className="px-3 py-2">
+            <td className="hidden px-3 py-2 sm:table-cell">
               <SignalBadges item={item} />
             </td>
-            <td className="whitespace-nowrap px-3 py-2 text-right text-muted-foreground">
+            <td className="hidden whitespace-nowrap px-3 py-2 text-right text-muted-foreground sm:table-cell">
               {item.latencyMs !== null ? `${item.latencyMs} ms` : "—"}
             </td>
             <td className="whitespace-nowrap px-3 py-2 text-right">

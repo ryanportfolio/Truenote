@@ -648,15 +648,15 @@ function RunsPanel({
         <h2 id="run-history-heading" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Run history
         </h2>
-        <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
-          <table className="w-full min-w-[48rem] text-sm">
+        <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
+          <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">Started / queued</th>
                 <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 text-right font-medium">Pass</th>
-                <th className="px-3 py-2 text-right font-medium">Citation</th>
-                <th className="px-3 py-2 text-right font-medium">Progress</th>
+                <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Pass</th>
+                <th className="hidden px-3 py-2 text-right font-medium md:table-cell">Citation</th>
+                <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Progress</th>
                 <th className="px-3 py-2"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
@@ -674,21 +674,29 @@ function RunsPanel({
                     </button>
                     {!run.startedAt ? <span className="ml-1 text-xs text-muted-foreground">queued</span> : null}
                     {run.questionId ? <span className="ml-2 text-xs text-muted-foreground">single</span> : null}
+                    <span className="mt-1 block text-xs text-muted-foreground md:hidden">
+                      Citation {formatPct(run.summary?.citationAccuracyPct ?? null)}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground sm:hidden">
+                      Pass {formatPct(evalPassRate(run.summary))} · {run.completedQuestions}/{run.questionCount}
+                    </span>
                   </td>
                   <td className="px-3 py-2"><RunStatus run={run} compact /></td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatPct(evalPassRate(run.summary))}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatPct(run.summary?.citationAccuracyPct ?? null)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                  <td className="hidden px-3 py-2 text-right tabular-nums sm:table-cell">{formatPct(evalPassRate(run.summary))}</td>
+                  <td className="hidden px-3 py-2 text-right tabular-nums md:table-cell">{formatPct(run.summary?.citationAccuracyPct ?? null)}</td>
+                  <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground sm:table-cell">
                     {run.completedQuestions}/{run.questionCount}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right">
                     {run.isBaseline ? (
                       <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
-                        <Star className="h-3.5 w-3.5" aria-hidden /> Baseline
+                        <Star className="h-3.5 w-3.5" aria-hidden />
+                        <span className="hidden sm:inline">Baseline</span>
                       </span>
                     ) : run.status === "completed" ? (
-                      <button type="button" className="btn-whisper gap-1.5 px-2.5 py-1 text-xs" onClick={() => void onBaseline(run)}>
-                        <Star className="h-3.5 w-3.5" aria-hidden /> Set baseline
+                      <button type="button" className="btn-whisper gap-1.5 px-2.5 py-1 text-xs" aria-label="Set as baseline" onClick={() => void onBaseline(run)}>
+                        <Star className="h-3.5 w-3.5" aria-hidden />
+                        <span className="hidden sm:inline">Set baseline</span>
                       </button>
                     ) : null}
                   </td>
@@ -929,13 +937,13 @@ function QuestionsPanel({
       ) : items.length === 0 ? (
         <EmptyState icon={FlaskConical} title="No evaluation questions" hint="Add one answerable question and one expected refusal to start a useful suite." />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
-          <table className="w-full min-w-[52rem] text-sm">
+        <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
+          <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">Question</th>
-                <th className="px-3 py-2 font-medium">Expected</th>
-                <th className="px-3 py-2 font-medium">Source</th>
+                <th className="hidden px-3 py-2 font-medium sm:table-cell">Expected</th>
+                <th className="hidden px-3 py-2 font-medium md:table-cell">Source</th>
                 <th className="px-3 py-2"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
@@ -945,11 +953,17 @@ function QuestionsPanel({
                   <td className="max-w-lg px-3 py-2">
                     <span className="font-medium">{item.question}</span>
                     {item.notes ? <span className="mt-1 block line-clamp-1 text-xs text-muted-foreground">{item.notes}</span> : null}
+                    <span className={cn("mt-1 inline-flex w-fit rounded-full px-2 py-0.5 text-xs font-medium sm:hidden", item.kind === "in-kb" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground")}>
+                      {item.kind === "in-kb" ? "Answer" : "Refuse"}
+                    </span>
+                    <span className="mt-1 block line-clamp-1 text-xs text-muted-foreground md:hidden">
+                      {item.expectedDocTitle ?? (item.expectedAnswerContains.length > 0 ? `${item.expectedAnswerContains.length} expected phrase${item.expectedAnswerContains.length === 1 ? "" : "s"}` : "No source constraint")}
+                    </span>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2">
+                  <td className="hidden whitespace-nowrap px-3 py-2 sm:table-cell">
                     <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", item.kind === "in-kb" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground")}>{item.kind === "in-kb" ? "Answer" : "Refuse"}</span>
                   </td>
-                  <td className="max-w-xs px-3 py-2 text-muted-foreground">
+                  <td className="hidden max-w-xs px-3 py-2 text-muted-foreground md:table-cell">
                     {item.expectedDocTitle ?? (item.expectedAnswerContains.length > 0 ? `${item.expectedAnswerContains.length} phrase${item.expectedAnswerContains.length === 1 ? "" : "s"}` : "—")}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right">

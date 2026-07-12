@@ -131,7 +131,7 @@ Two variants plus an icon recipe. All pills, all share the focus-ring spec, all 
 
 Cohere table language: **horizontal rules only**. Header = 12px uppercase muted + weight, **no fill**, no vertical cell borders. Markdown tables in answers: `th` = `border-b`, `td` = `border-t`, `border-collapse`.
 
-Admin tables: card chrome (`rounded-lg border bg-card shadow-card`) lives on an `overflow-x-auto` **wrapper div**, never on the `<table>` (`overflow-hidden` on a table clips instead of scrolling). Tables carry a `min-w` floor (36–44rem) so narrow viewports scroll. Rows take a `hover:bg-muted/40` wash — a scanning aid, invisible at rest.
+Admin tables: card chrome (`rounded-lg border bg-card shadow-card`) lives on an `overflow-hidden` wrapper. Avoid horizontal scroll for product-owned tables: secondary columns hide at narrow breakpoints and their useful context folds into the primary cell. Preserve local `overflow-x-auto` only for irreducible user-authored tables and code blocks. Rows take a `hover:bg-muted/40` wash, a scanning aid invisible at rest.
 
 Numbers in tables set `tabular-nums` so columns don't wobble. Timestamps render relative ("2 hours ago") via the `RelativeTime` component — a `<time>` with the absolute string in `title`/`dateTime`; raw `toLocaleString()` in a list is drift.
 

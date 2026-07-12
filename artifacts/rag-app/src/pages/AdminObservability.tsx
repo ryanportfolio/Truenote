@@ -267,25 +267,30 @@ function StageTable({
     <section>
       <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
       <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-      <div className="mt-3 overflow-x-auto rounded-lg border border-border bg-card shadow-card">
-        <table className="min-w-[32rem] w-full text-sm">
+      <div className="mt-3 overflow-hidden rounded-lg border border-border bg-card shadow-card">
+        <table className="w-full text-sm">
           <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="px-3 py-2 font-medium">Stage</th>
-              <th className="px-3 py-2 text-right font-medium">Mean</th>
+              <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Mean</th>
               <th className="px-3 py-2 text-right font-medium">p50</th>
               <th className="px-3 py-2 text-right font-medium">p95</th>
-              <th className="px-3 py-2 text-right font-medium">Samples</th>
+              <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Samples</th>
             </tr>
           </thead>
           <tbody>
             {stages.map((stage) => (
               <tr key={stage.key} className="border-t border-border hover:bg-muted/40">
-                <td className="px-3 py-2 font-medium">{stage.label}</td>
-                <TimingCell value={stage.meanMs} />
+                <td className="px-3 py-2 font-medium">
+                  {stage.label}
+                  <span className="mt-0.5 block text-xs font-normal text-muted-foreground sm:hidden">
+                    Mean {formatDuration(stage.meanMs)} · {stage.samples} samples
+                  </span>
+                </td>
+                <TimingCell value={stage.meanMs} className="hidden sm:table-cell" />
                 <TimingCell value={stage.p50Ms} />
                 <TimingCell value={stage.p95Ms} />
-                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground sm:table-cell">
                   {stage.samples}
                 </td>
               </tr>
@@ -304,19 +309,19 @@ function ProviderTable({ data }: { data: ObservabilityResponse }): JSX.Element {
       <p className="mt-1 text-sm text-muted-foreground">
         Every attempted model route, including failed fallbacks.
       </p>
-      <div className="mt-3 overflow-x-auto rounded-lg border border-border bg-card shadow-card">
+      <div className="mt-3 overflow-hidden rounded-lg border border-border bg-card shadow-card">
         {data.providers.length === 0 ? (
           <p className="px-4 py-5 text-sm text-muted-foreground">
             No generation calls in this window. Retrieval refusals skip providers.
           </p>
         ) : (
-          <table className="min-w-[28rem] w-full text-sm">
+          <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">Route</th>
                 <th className="px-3 py-2 text-right font-medium">Success</th>
                 <th className="px-3 py-2 text-right font-medium">p50</th>
-                <th className="px-3 py-2 text-right font-medium">p95</th>
+                <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">p95</th>
               </tr>
             </thead>
             <tbody>
@@ -327,13 +332,16 @@ function ProviderTable({ data }: { data: ObservabilityResponse }): JSX.Element {
                     <span className="block max-w-[15rem] truncate font-mono text-xs text-muted-foreground" title={provider.model}>
                       {provider.model}
                     </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground sm:hidden">
+                      p95 {formatDuration(provider.p95Ms)}
+                    </span>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {provider.successRatePct.toFixed(1)}%
                     <span className="block text-xs text-muted-foreground">{provider.attempts} attempts</span>
                   </td>
                   <TimingCell value={provider.p50Ms} />
-                  <TimingCell value={provider.p95Ms} />
+                  <TimingCell value={provider.p95Ms} className="hidden sm:table-cell" />
                 </tr>
               ))}
             </tbody>
@@ -353,40 +361,42 @@ function RecentRequests({ data }: { data: ObservabilityResponse }): JSX.Element 
           Slow-path evidence at request level. Open provider and retrieval tables above for aggregates.
         </p>
       </div>
-      <div className="mt-3 overflow-x-auto rounded-lg border border-border bg-card shadow-card">
-        <table className="min-w-[64rem] w-full text-sm">
-          <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 font-medium">Ask</th>
-              <th className="px-3 py-2 font-medium">Program</th>
-              <th className="px-3 py-2 font-medium">Path</th>
-              <th className="px-3 py-2 text-right font-medium">Total</th>
-              <th className="px-3 py-2 text-right font-medium">Retrieval</th>
-              <th className="px-3 py-2 text-right font-medium">Rerank</th>
-              <th className="px-3 py-2 text-right font-medium">Generation</th>
-              <th className="px-3 py-2 text-right font-medium">Finalize</th>
-            </tr>
-          </thead>
-          <tbody>
+      <div className="mt-3 overflow-hidden rounded-lg border border-border bg-card shadow-card">
+        {data.recent.length === 0 ? (
+          <p className="px-4 py-5 text-sm text-muted-foreground">
+            No recent asks in this window.
+          </p>
+        ) : (
+          <ul className="divide-y divide-border">
             {data.recent.map((item) => (
-              <tr key={item.id} className="border-t border-border align-top hover:bg-muted/40">
-                <td className="max-w-sm px-3 py-2">
-                  <span className="block truncate font-medium" title={item.question}>{item.question}</span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
+              <li
+                key={item.id}
+                className="grid gap-3 px-4 py-3 transition-colors duration-100 ease-out hover:bg-muted/40 lg:grid-cols-[minmax(12rem,1.15fr)_minmax(24rem,1fr)] lg:items-center"
+              >
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <p className="line-clamp-2 min-w-0 font-medium" title={item.question}>
+                      {item.question}
+                    </p>
+                    <PathBadge timing={item.timing} refused={item.refused} />
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {item.programName}
+                    <span aria-hidden> · </span>
                     {item.createdAt ? <RelativeTime iso={item.createdAt} /> : "Time unavailable"}
-                  </span>
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{item.programName}</td>
-                <td className="px-3 py-2"><PathBadge timing={item.timing} refused={item.refused} /></td>
-                <TimingCell value={item.timing.totalMs} emphasized />
-                <TimingCell value={stageValue(item.timing, "retrieval")} />
-                <TimingCell value={stageValue(item.timing, "rerank")} />
-                <TimingCell value={stageValue(item.timing, "generation")} />
-                <TimingCell value={stageValue(item.timing, "finalization")} />
-              </tr>
+                  </p>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-5">
+                  <RequestTimingMetric label="Total" value={item.timing.totalMs} emphasized />
+                  <RequestTimingMetric label="Retrieval" value={stageValue(item.timing, "retrieval")} />
+                  <RequestTimingMetric label="Rerank" value={stageValue(item.timing, "rerank")} />
+                  <RequestTimingMetric label="Generation" value={stageValue(item.timing, "generation")} />
+                  <RequestTimingMetric label="Finalize" value={stageValue(item.timing, "finalization")} />
+                </dl>
+              </li>
             ))}
-          </tbody>
-        </table>
+          </ul>
+        )}
       </div>
     </section>
   );
@@ -425,15 +435,38 @@ function PathBadge({
 
 function TimingCell({
   value,
+  emphasized = false,
+  className
+}: {
+  value: number;
+  emphasized?: boolean;
+  className?: string;
+}): JSX.Element {
+  return (
+    <td className={cn("whitespace-nowrap px-3 py-2 text-right tabular-nums", emphasized ? "font-medium" : "text-muted-foreground", className)}>
+      {formatDuration(value)}
+    </td>
+  );
+}
+
+function RequestTimingMetric({
+  label,
+  value,
   emphasized = false
 }: {
+  label: string;
   value: number;
   emphasized?: boolean;
 }): JSX.Element {
   return (
-    <td className={cn("whitespace-nowrap px-3 py-2 text-right tabular-nums", emphasized ? "font-medium" : "text-muted-foreground")}>
-      {formatDuration(value)}
-    </td>
+    <div className="min-w-0">
+      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd className={cn("mt-0.5 tabular-nums", emphasized ? "font-medium" : "text-muted-foreground")}>
+        {formatDuration(value)}
+      </dd>
+    </div>
   );
 }
 

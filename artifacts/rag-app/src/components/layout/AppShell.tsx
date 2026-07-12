@@ -27,7 +27,9 @@ export function AppShell({
         />
         <div className="relative flex flex-1 overflow-hidden">
           <Sidebar user={user} onNavigateIntent={onNavigateIntent} />
-          <main className="app-main flex-1 overflow-auto">{children}</main>
+          <main className="app-main min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+            {children}
+          </main>
         </div>
       </div>
     </ConfirmProvider>
