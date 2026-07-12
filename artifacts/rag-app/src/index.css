@@ -1412,7 +1412,7 @@
   }
 
   .archive-visual {
-    min-height: 10.5rem;
+    display: none;
   }
 
   .auth-panel-inner {
