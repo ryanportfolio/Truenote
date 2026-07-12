@@ -23,15 +23,19 @@ LICENSE/NOTICE files in the skill folder.
 | `verification-before-completion` | obra/superpowers | MIT (in folder) | Stock |
 | `writing-plans` | obra/superpowers | MIT (in folder) | Stock |
 | `writing-skills` | obra/superpowers | MIT (in folder) | Stock |
-| `impeccable` | Paul Bakaus's impeccable, itself based on [Anthropic frontend-design](https://github.com/anthropics/skills/tree/main/skills/frontend-design) | Apache 2.0 (LICENSE + NOTICE.md in folder) | Stock; see NOTICE.md for upstream's own delta list |
 | `caveman` | Community token-compression pattern (viral skill, author attribution unclear) | Reimplemented here | Intensity tiers (lite/full/ultra), output budget, auto-clarity carve-outs, persistence rules |
 | `humanizer` | Community "humanizer" de-AI-writing pattern | Reimplemented here | patterns.md tell catalog; voice-matching; review-only mode |
 
 ## Homegrown (this repo)
 
-`addskill`, `applying-best-practices`, `conflict`, `enhance-prompt`,
+`addskill`, `applying-best-practices`, `conflict`, `design-truenote-ui`, `enhance-prompt`,
 `handoff-audit`, `impartial-review`, `init-project`, `lab`, `learning`,
 `merge`, `optimize-context`, `pr`, `recall`, `safe-ship`, `sync-starter`,
 `why`.
 
 Homegrown skills are MIT, same as the repo (see the root `LICENSE`).
+
+`design-truenote-ui` replaces the former third-party `impeccable` bundle with
+an original, repo-specific synthesis. Its `NOTICE.md` records the public design
+skills reviewed; no upstream scripts, datasets, templates, or catalogs are
+vendored.

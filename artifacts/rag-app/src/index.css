@@ -244,13 +244,6 @@
   .kb-highlight-color-button[aria-pressed="true"] {
     box-shadow: 0 0 0 2px oklch(var(--card)), 0 0 0 4px oklch(var(--foreground) / 0.72);
   }
-  [data-keyboard-highlight-mode="true"] [data-kb-highlight-block] {
-    border-radius: 0.25rem;
-  }
-  [data-keyboard-highlight-mode="true"] [data-kb-highlight-block]:focus {
-    outline: 2px solid oklch(var(--ring));
-    outline-offset: 3px;
-  }
   @media (prefers-reduced-motion: reduce) {
     .kb-highlight-color-button {
       transition: none;
