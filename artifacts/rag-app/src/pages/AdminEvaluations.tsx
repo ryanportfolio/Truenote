@@ -771,6 +771,18 @@ function SummaryMetrics({
           <p className="sm:col-span-2">
             Failure stage · retrieval {summary.inKbFailuresByStage.retrieval} · rerank {summary.inKbFailuresByStage.rerank} · threshold {summary.inKbFailuresByStage.threshold} · generation {summary.inKbFailuresByStage.generation} · unattributed {summary.inKbFailuresByStage.unattributed}
           </p>
+          {summary.splits && summary.splits.protected.total > 0 ? (
+            <p className="sm:col-span-2">
+              Held-out split · protected{" "}
+              <span className="font-medium text-foreground tabular-nums">
+                {summary.splits.protected.passed}/{summary.splits.protected.total} ({formatPct(summary.splits.protected.passRatePct)})
+              </span>{" "}
+              · open{" "}
+              <span className="font-medium text-foreground tabular-nums">
+                {summary.splits.open.passed}/{summary.splits.open.total} ({formatPct(summary.splits.open.passRatePct)})
+              </span>
+            </p>
+          ) : null}
         </div>
       ) : null}
     </>

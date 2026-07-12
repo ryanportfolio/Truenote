@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
+import { getDeadlineConfig } from "../deadlines.js";
 import { recordAppError } from "../observability/error-log.js";
 
 /**
@@ -76,15 +77,22 @@ export async function nameSession(
     const context = input.answer
       ? `QUESTION: ${question.slice(0, MAX_FIELD_CHARS)}\n\nANSWER: ${input.answer.slice(0, MAX_FIELD_CHARS)}`
       : `QUESTION: ${question.slice(0, MAX_FIELD_CHARS)}`;
-    const completion = await client.beta.chat.completions.parse({
-      model: NAME_MODEL,
-      temperature: 0,
-      messages: [
-        { role: "system", content: NAME_SYSTEM_PROMPT },
-        { role: "user", content: context }
-      ],
-      response_format: zodResponseFormat(SessionNameSchema, "session_name")
-    });
+    const { nameSession: deadline } = getDeadlineConfig();
+    const completion = await client.beta.chat.completions.parse(
+      {
+        model: NAME_MODEL,
+        temperature: 0,
+        messages: [
+          { role: "system", content: NAME_SYSTEM_PROMPT },
+          { role: "user", content: context }
+        ],
+        response_format: zodResponseFormat(SessionNameSchema, "session_name")
+      },
+      {
+        timeout: deadline.timeoutMs,
+        maxRetries: deadline.maxRetries
+      }
+    );
     const title = completion.choices[0]?.message.parsed?.title?.trim();
     if (!title) return fallbackTitle(question);
     // Guard against a chatty model blowing the column cap.

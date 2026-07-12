@@ -3,6 +3,7 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import type { RetrievalChunk } from "../retrieval/query.js";
 import { formatExcerpts } from "../generation/answer.js";
+import { getDeadlineConfig } from "../deadlines.js";
 
 /**
  * Claim-level faithfulness judge (Cohere RAG-eval methodology, 2026-07).
@@ -83,15 +84,22 @@ export async function judgeFaithfulness(
   const client = deps.client ?? getClient();
   const userPrompt = `EXCERPTS:\n${formatExcerpts(input.chunks)}\n\nANSWER:\n${input.answer}`;
 
-  const completion = await client.beta.chat.completions.parse({
-    model: JUDGE_MODEL,
-    temperature: 0,
-    messages: [
-      { role: "system", content: JUDGE_SYSTEM_PROMPT },
-      { role: "user", content: userPrompt }
-    ],
-    response_format: zodResponseFormat(FaithfulnessSchema, "faithfulness")
-  });
+  const { faithfulness } = getDeadlineConfig();
+  const completion = await client.beta.chat.completions.parse(
+    {
+      model: JUDGE_MODEL,
+      temperature: 0,
+      messages: [
+        { role: "system", content: JUDGE_SYSTEM_PROMPT },
+        { role: "user", content: userPrompt }
+      ],
+      response_format: zodResponseFormat(FaithfulnessSchema, "faithfulness")
+    },
+    {
+      timeout: faithfulness.timeoutMs,
+      maxRetries: faithfulness.maxRetries
+    }
+  );
 
   const parsed = completion.choices[0]?.message.parsed;
   if (!parsed) {

@@ -1,9 +1,11 @@
 import OpenAI from "openai";
 import type { RetrievalChunk } from "../retrieval/query.js";
+import { getDeadlineConfig, isAbortError } from "../deadlines.js";
 import {
   elapsedMs,
   type ProviderAttemptOutcome,
-  type ProviderAttemptTiming
+  type ProviderAttemptTiming,
+  type ProviderTokenUsage
 } from "../observability/pipeline-timing.js";
 import { recordAppError } from "../observability/error-log.js";
 import {
@@ -117,6 +119,8 @@ export interface GenerateAnswerInput {
   chunks: RetrievalChunk[];
   /** When retrieval returned refused=true, skip the LLM call entirely. */
   refusedByRetrieval?: boolean;
+  /** Cancels in-flight generation and halts the route chain (client disconnect or overall ask deadline). */
+  signal?: AbortSignal;
   /** Request identity for durable operator diagnostics. Never includes prompts or excerpts. */
   diagnostics?: {
     correlationId?: string;
@@ -150,8 +154,13 @@ async function callGenerationModel(
   options: {
     openRouterProvider: string;
     reasoningEffort: "none" | "low" | "medium";
+    /** Per-attempt bounds. A slow provider hits this and the chain advances to the next route. */
+    timeoutMs: number;
+    maxRetries: number;
+    /** Cancels this attempt AND (via isAbortError in the caller) halts the whole chain. */
+    signal?: AbortSignal;
   }
-): Promise<string | null> {
+): Promise<{ text: string | null; usage: ProviderTokenUsage | null }> {
   const request = {
     model,
     ...(options.reasoningEffort === "none"
@@ -166,25 +175,52 @@ async function callGenerationModel(
   // Every generation call stays inside OpenRouter's per-request ZDR boundary.
   // A provider without a matching ZDR endpoint is rejected before receiving
   // the prompt; there is deliberately no direct-provider escape hatch.
-  const completion = await client.chat.completions.create({
-    ...request,
-    provider: {
-      only: [options.openRouterProvider],
-      zdr: true,
-      data_collection: "deny",
-      allow_fallbacks: false
+  const completion = await client.chat.completions.create(
+    {
+      ...request,
+      provider: {
+        only: [options.openRouterProvider],
+        zdr: true,
+        data_collection: "deny",
+        allow_fallbacks: false
+      }
+    } as typeof request & {
+      provider: {
+        only: string[];
+        zdr: boolean;
+        data_collection: "deny";
+        allow_fallbacks: boolean;
+      };
+    },
+    {
+      timeout: options.timeoutMs,
+      maxRetries: options.maxRetries,
+      signal: options.signal
     }
-  } as typeof request & {
-    provider: {
-      only: string[];
-      zdr: boolean;
-      data_collection: "deny";
-      allow_fallbacks: boolean;
-    };
-  });
+  );
 
   const text = completion.choices[0]?.message.content?.trim();
-  return text ? text : null;
+  return { text: text ? text : null, usage: readTokenUsage(completion.usage) };
+}
+
+/** Map an OpenAI/OpenRouter usage block to our camelCase counts. Null when absent. */
+function readTokenUsage(usage: unknown): ProviderTokenUsage | null {
+  if (typeof usage !== "object" || usage === null) return null;
+  const raw = usage as {
+    prompt_tokens?: unknown;
+    completion_tokens?: unknown;
+    total_tokens?: unknown;
+  };
+  const count = (value: unknown): number | undefined =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+  const out: ProviderTokenUsage = {};
+  const prompt = count(raw.prompt_tokens);
+  const completion = count(raw.completion_tokens);
+  const total = count(raw.total_tokens);
+  if (prompt !== undefined) out.promptTokens = prompt;
+  if (completion !== undefined) out.completionTokens = completion;
+  if (total !== undefined) out.totalTokens = total;
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 /**
@@ -297,24 +333,37 @@ export async function generateAnswer(
     ? [deps.primaryRoute]
     : deps.routeChain ?? (await getActiveModelChain());
 
+  const generationDeadline = getDeadlineConfig().generation;
   let payload: AnswerPayload | null = null;
   let generationPath: GenerateAnswerResult["generationPath"] = "primary";
   const providerAttempts: ProviderAttemptTiming[] = [];
   for (const [index, route] of chain.entries()) {
+    // A cancellation (client disconnect or overall ask deadline) between routes
+    // stops the walk immediately — do not spend another provider call on a
+    // request nobody is waiting for.
+    if (input.signal?.aborted) break;
     const attemptStartedAt = performance.now();
     let outcome: ProviderAttemptOutcome = "error";
     let validationFailure: AnswerValidationFailure | null = null;
+    let attemptTokens: ProviderTokenUsage | undefined;
     try {
-      const routeText = await callGenerationModel(
+      const routeResult = await callGenerationModel(
         client,
         route.model,
         systemPrompt,
         userPrompt,
         {
           openRouterProvider: route.provider,
-          reasoningEffort: route.reasoningEffort
+          reasoningEffort: route.reasoningEffort,
+          timeoutMs: generationDeadline.timeoutMs,
+          maxRetries: generationDeadline.maxRetries,
+          signal: input.signal
         }
       );
+      // Record usage even when the answer later fails validation — a rejected
+      // answer still cost tokens, and cost telemetry must reflect that.
+      attemptTokens = routeResult.usage ?? undefined;
+      const routeText = routeResult.text;
       if (!routeText) {
         outcome = "invalid";
         throw new Error(`route ${route.id} returned no text answer`);
@@ -334,6 +383,10 @@ export async function generateAnswer(
       outcome = "success";
       break;
     } catch (err) {
+      // A cancelled request is not a route failure to fall through — halt the
+      // whole chain so the caller can fail closed. The finally block below
+      // still records this attempt's timing.
+      if (isAbortError(err) || input.signal?.aborted) throw err;
       console.warn(
         `[generation] route ${route.id} failed; trying next in chain:`,
         err instanceof Error ? err.message : err
@@ -364,7 +417,8 @@ export async function generateAnswer(
         provider: route.provider,
         model: route.model,
         durationMs: elapsedMs(attemptStartedAt),
-        outcome
+        outcome,
+        ...(attemptTokens ? { tokens: attemptTokens } : {})
       });
     }
   }

@@ -307,7 +307,8 @@ function ProviderTable({ data }: { data: ObservabilityResponse }): JSX.Element {
     <section>
       <h2 className="text-xl font-semibold tracking-tight">Generation routes</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Every attempted model route, including failed fallbacks.
+        Every attempted model route, including failed fallbacks. Tokens are
+        provider-reported counts; map them to cost in your provider console.
       </p>
       <div className="mt-3 overflow-hidden rounded-lg border border-border bg-card shadow-card">
         {data.providers.length === 0 ? (
@@ -320,6 +321,7 @@ function ProviderTable({ data }: { data: ObservabilityResponse }): JSX.Element {
               <tr>
                 <th className="px-3 py-2 font-medium">Route</th>
                 <th className="px-3 py-2 text-right font-medium">Success</th>
+                <th className="px-3 py-2 text-right font-medium">Tokens</th>
                 <th className="px-3 py-2 text-right font-medium">p50</th>
                 <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">p95</th>
               </tr>
@@ -339,6 +341,18 @@ function ProviderTable({ data }: { data: ObservabilityResponse }): JSX.Element {
                   <td className="px-3 py-2 text-right tabular-nums">
                     {provider.successRatePct.toFixed(1)}%
                     <span className="block text-xs text-muted-foreground">{provider.attempts} attempts</span>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {provider.tokenSamples === 0 ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <>
+                        {formatTokens(provider.meanTotalTokens)}
+                        <span className="block text-xs text-muted-foreground">
+                          {formatTokens(provider.totalTokens)} total
+                        </span>
+                      </>
+                    )}
                   </td>
                   <TimingCell value={provider.p50Ms} />
                   <TimingCell value={provider.p95Ms} className="hidden sm:table-cell" />
@@ -517,6 +531,11 @@ function stageValue(timing: PipelineTimingBreakdown, key: string): number {
 function formatDuration(ms: number): string {
   if (ms < 1_000) return `${ms} ms`;
   return `${(ms / 1_000).toFixed(ms < 10_000 ? 2 : 1)} s`;
+}
+
+function formatTokens(count: number): string {
+  if (count < 1_000) return String(count);
+  return `${(count / 1_000).toFixed(count < 10_000 ? 1 : 0)}k`;
 }
 
 function windowLabel(hours: number): string {

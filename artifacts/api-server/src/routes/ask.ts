@@ -9,8 +9,10 @@ import {
   queryLog
 } from "@workspace/db/schema";
 import { retrieve } from "../lib/retrieval/query.js";
-import { generateAnswer } from "../lib/generation/answer.js";
+import { generateAnswer, REFUSAL_TEXT } from "../lib/generation/answer.js";
 import { rewriteFollowUp, type HistoryTurn } from "../lib/generation/rewrite.js";
+import { getDeadlineConfig, isAbortError } from "../lib/deadlines.js";
+import { startAskDeadline } from "../lib/ask-deadline.js";
 import { nameSession } from "../lib/generation/name-session.js";
 import { getRerankModel } from "../lib/retrieval/rerank.js";
 import {
@@ -246,7 +248,8 @@ async function runAsk(
     startedAt: performance.now(),
     stages: {},
     correlationId: randomUUID()
-  }
+  },
+  signal?: AbortSignal
 ): Promise<AskResponse> {
   const stages = { ...timingSeed.stages };
 
@@ -331,6 +334,7 @@ async function runAsk(
   const rewrite = await rewriteFollowUp({
     question,
     history,
+    signal,
     diagnostics: {
       correlationId: timingSeed.correlationId,
       userId: user.id,
@@ -344,7 +348,7 @@ async function runAsk(
   onStage?.("searching");
   const retrieval = await retrieve(
     { programId, question: searchQuestion },
-    { onRerankStart: () => onStage?.("reranking") }
+    { onRerankStart: () => onStage?.("reranking"), signal }
   );
   stages.retrieval = retrieval.timing.totalMs;
   Object.assign(stages, retrieval.timing.stages);
@@ -356,6 +360,7 @@ async function runAsk(
     question: searchQuestion,
     chunks: retrieval.chunks,
     refusedByRetrieval: retrieval.refused,
+    signal,
     diagnostics: {
       correlationId: timingSeed.correlationId,
       userId: user.id,
@@ -466,10 +471,33 @@ async function touchSession(sessionId: string): Promise<void> {
     .where(eq(chatSessions.id, sessionId));
 }
 
+/**
+ * Fail-closed response when the overall ask deadline is exceeded. Same shape as
+ * a normal refusal (never a partial answer), with no queryLogId — the pipeline
+ * was cancelled before it finished, so nothing durable was written.
+ */
+function deadlineRefusal(startedAt: number, sessionId: string | null): AskResponse {
+  return {
+    queryLogId: null,
+    sessionId,
+    answer: REFUSAL_TEXT,
+    sources: [],
+    refused: true,
+    confidence: "low",
+    retrievedChunks: [],
+    latencyMs: elapsedMs(startedAt),
+    topScore: null,
+    rewrittenQuestion: null
+  };
+}
+
 askRouter.post("/ask", async (req, res, next) => {
+  const requestStartedAt = performance.now();
+  const correlationId = randomUUID();
+  const deadline = startAskDeadline(res, getDeadlineConfig().askDeadlineMs);
+  let sessionId: string | null = null;
+  let programId: string | null = null;
   try {
-    const requestStartedAt = performance.now();
-    const correlationId = randomUUID();
     const parsed = AskBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid request body" });
@@ -478,11 +506,11 @@ askRouter.post("/ask", async (req, res, next) => {
     const question = parsed.data.question.trim();
     const user = authedUser(req);
     const programScopeStartedAt = performance.now();
-    const programId = await resolveAskProgram(req, res);
+    programId = await resolveAskProgram(req, res);
     if (programId === null) return;
     const programScopeMs = elapsedMs(programScopeStartedAt);
     const sessionResolutionStartedAt = performance.now();
-    const sessionId = await resolveOrCreateSession(user, programId, parsed.data.sessionId);
+    sessionId = await resolveOrCreateSession(user, programId, parsed.data.sessionId);
     const sessionResolutionMs = elapsedMs(sessionResolutionStartedAt);
 
     res.json(await runAsk(
@@ -496,10 +524,31 @@ askRouter.post("/ask", async (req, res, next) => {
         startedAt: requestStartedAt,
         stages: { programScope: programScopeMs, sessionResolution: sessionResolutionMs },
         correlationId
-      }
+      },
+      deadline.signal
     ));
   } catch (err) {
+    // Overall deadline tripped: fail closed with the canned refusal rather than
+    // a partial answer or a 500. Client already gone (disconnect): nothing to
+    // send. Anything else: the central error handler.
+    if (deadline.deadlineExceeded()) {
+      void recordAppError({
+        severity: "warning",
+        source: "api",
+        operation: "ask-deadline-exceeded",
+        error: err,
+        correlationId,
+        method: req.method,
+        path: req.path,
+        programId
+      });
+      if (!res.headersSent) res.json(deadlineRefusal(requestStartedAt, sessionId));
+      return;
+    }
+    if (isAbortError(err)) return;
     next(err);
+  } finally {
+    deadline.cleanup();
   }
 });
 
@@ -511,9 +560,10 @@ askRouter.post("/ask", async (req, res, next) => {
  * callers.
  */
 askRouter.post("/ask/stream", async (req, res, next) => {
+  const requestStartedAt = performance.now();
+  const correlationId = randomUUID();
+  const deadline = startAskDeadline(res, getDeadlineConfig().askDeadlineMs);
   try {
-    const requestStartedAt = performance.now();
-    const correlationId = randomUUID();
     const parsed = AskBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid request body" });
@@ -555,39 +605,61 @@ askRouter.post("/ask/stream", async (req, res, next) => {
           startedAt: requestStartedAt,
           stages: { programScope: programScopeMs, sessionResolution: sessionResolutionMs },
           correlationId
-        }
+        },
+        deadline.signal
       );
       send({ type: "result", result });
     } catch (err) {
-      // Headers are already sent, so the central error handler can't run.
-      // Mirror its production redaction: raw err.message (Postgres schema/
-      // constraint text, provider detail, sometimes connection strings via
-      // pool errors) must not reach the client in production — send a
-      // generic string there and keep full detail in the server log for
-      // operators. In dev, surface the real message for debugging.
-      console.error("[ask] stream pipeline error:", err);
-      void recordAppError({
-        source: "api",
-        operation: "ask-stream-pipeline",
-        error: err,
-        correlationId,
-        method: req.method,
-        path: req.path,
-        userId: user.id,
-        programId
-      });
-      const message =
-        process.env.NODE_ENV === "production"
-          ? "Failed to answer"
-          : err instanceof Error
-            ? err.message
-            : "Failed to answer";
-      send({ type: "error", message });
+      // Overall deadline tripped: fail closed with the canned refusal as a
+      // normal result event, never a partial answer.
+      if (deadline.deadlineExceeded()) {
+        void recordAppError({
+          severity: "warning",
+          source: "api",
+          operation: "ask-stream-deadline-exceeded",
+          error: err,
+          correlationId,
+          method: req.method,
+          path: req.path,
+          userId: user.id,
+          programId
+        });
+        send({ type: "result", result: deadlineRefusal(requestStartedAt, sessionId) });
+      } else if (isAbortError(err)) {
+        // Client disconnected mid-stream; the socket is gone, nothing to send.
+      } else {
+        // Headers are already sent, so the central error handler can't run.
+        // Mirror its production redaction: raw err.message (Postgres schema/
+        // constraint text, provider detail, sometimes connection strings via
+        // pool errors) must not reach the client in production — send a
+        // generic string there and keep full detail in the server log for
+        // operators. In dev, surface the real message for debugging.
+        console.error("[ask] stream pipeline error:", err);
+        void recordAppError({
+          source: "api",
+          operation: "ask-stream-pipeline",
+          error: err,
+          correlationId,
+          method: req.method,
+          path: req.path,
+          userId: user.id,
+          programId
+        });
+        const message =
+          process.env.NODE_ENV === "production"
+            ? "Failed to answer"
+            : err instanceof Error
+              ? err.message
+              : "Failed to answer";
+        send({ type: "error", message });
+      }
     } finally {
       res.end();
     }
   } catch (err) {
     next(err);
+  } finally {
+    deadline.cleanup();
   }
 });
 

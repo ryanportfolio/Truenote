@@ -360,12 +360,25 @@ export interface EvalQuestionResult {
   unsupportedClaims: string[];
   faithfulnessJudgeFailed: boolean;
   error: string | null;
+  /** Absent on runs recorded before protected questions existed. */
+  isProtected?: boolean;
+}
+
+export interface EvalSplitStat {
+  total: number;
+  passed: number;
+  passRatePct: number | null;
 }
 
 export interface EvalSummary {
   totalQuestions: number;
   passed: number;
   failed: number;
+  /** Held-out (protected) vs tunable (open) pass rates. Absent on older runs. */
+  splits?: {
+    protected: EvalSplitStat;
+    open: EvalSplitStat;
+  };
   inKbTotal: number;
   inKbPassed: number;
   outOfKbTotal: number;
@@ -605,12 +618,19 @@ export interface PipelineStageStat {
   p95Ms: number;
 }
 
+export interface ProviderTokenUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
 export interface ProviderAttemptTiming {
   routeId: string;
   provider: string;
   model: string;
   durationMs: number;
   outcome: "success" | "invalid" | "error";
+  tokens?: ProviderTokenUsage;
 }
 
 export interface PipelineTimingBreakdown {
@@ -642,6 +662,11 @@ export interface ProviderTimingStat {
   successRatePct: number;
   p50Ms: number;
   p95Ms: number;
+  tokenSamples: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  totalTokens: number;
+  meanTotalTokens: number;
 }
 
 export interface ObservabilityResponse {
