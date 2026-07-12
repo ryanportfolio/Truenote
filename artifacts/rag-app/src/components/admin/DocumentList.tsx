@@ -81,16 +81,14 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
           {deleteError}
         </p>
       ) : null}
-      {/* Cohere table language: header carried by type + rule, not fill;
-        * rows separated by horizontal hairlines only. The wrapper owns the
-        * card chrome so narrow viewports scroll the table instead of
-        * crushing it. */}
-      <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
-      <table className="w-full min-w-[36rem] text-sm tabular-nums">
+      {/* Header carried by type + rule, not fill. Secondary metadata folds
+        * into the title cell on narrow screens instead of forcing a scrollbar. */}
+      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
+      <table className="w-full text-sm tabular-nums">
         <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="px-3 py-2 font-medium">Title</th>
-            <th className="px-3 py-2 font-medium">Uploaded</th>
+            <th className="hidden px-3 py-2 font-medium sm:table-cell">Uploaded</th>
             <th className="px-3 py-2 font-medium">Status</th>
             <th className="px-3 py-2 text-right font-medium">Actions</th>
           </tr>
@@ -103,15 +101,20 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
                 key={item.documentId}
                 className="border-t border-border transition-colors duration-100 ease-out hover:bg-muted/40"
               >
-                <td className="px-3 py-2 font-medium">{item.title}</td>
-                <td className="px-3 py-2 text-muted-foreground">
+                <td className="min-w-0 px-3 py-2 font-medium">
+                  <span className="line-clamp-2">{item.title}</span>
+                  <span className="mt-1 block text-xs font-normal text-muted-foreground sm:hidden">
+                    {item.uploadedAt ? <RelativeTime iso={item.uploadedAt} /> : "Upload time unavailable"}
+                  </span>
+                </td>
+                <td className="hidden px-3 py-2 text-muted-foreground sm:table-cell">
                   {item.uploadedAt ? <RelativeTime iso={item.uploadedAt} /> : "—"}
                 </td>
                 <td className="px-3 py-2">
                   <StatusPill status={item.parseStatus} />
                 </td>
                 <td className="px-3 py-2 text-right">
-                  <div className="flex justify-end gap-2">
+                  <div className="flex flex-wrap justify-end gap-2">
                     {item.versionId && item.parseStatus === "ready" ? (
                       <button
                         onClick={() => setPreviewVersionId(item.versionId)}

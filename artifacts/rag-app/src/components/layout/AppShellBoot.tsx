@@ -197,7 +197,7 @@ export function AppShellBoot({ path }: { path: string }): JSX.Element {
             ))}
           </ul>
         </nav>
-        <main className="app-main flex-1 overflow-auto">
+        <main className="app-main min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
           <RouteBoot path={path} />
         </main>
       </div>
