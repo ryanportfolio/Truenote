@@ -290,7 +290,7 @@ export interface ModelRoutingOption {
   model: string;
   provider: string;
   providerLabel: string;
-  reasoningEffort: "low" | "medium";
+  reasoningEffort: "none" | "low" | "medium";
   description: string;
 }
 
@@ -300,12 +300,6 @@ export interface ModelRoutingConfig {
   /** The same routes as objects, in fallback order (index 0 = primary). */
   routes: ModelRoutingOption[];
   persistenceReady: boolean;
-  fallback: {
-    label: string;
-    model: string;
-    providerLabel: string;
-    reasoningEffort: "low";
-  };
 }
 
 /** Super-user evaluation-center shapes. Mirrors /api/admin/evaluations. */
@@ -418,7 +412,8 @@ export interface EvalRunConfiguration {
     model: string;
     providerLabel: string;
   }>;
-  fallback: {
+  /** Legacy direct backup snapshot; absent on ZDR-only runs. */
+  fallback?: {
     label: string;
     model: string;
     providerLabel: string;

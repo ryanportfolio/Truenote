@@ -4,11 +4,11 @@ import { db } from "../db-client.js";
 import { recordAppError } from "../observability/error-log.js";
 
 export const ApprovedModelRouteIdSchema = z.enum([
-  "gpt-5.6-luna-openai",
   "gpt-5.4-nano-azure-nitro",
   "nemotron-3-super-digitalocean-nitro",
   "nemotron-3-ultra-together-nitro",
-  "mercury-2-inception"
+  "mercury-2-inception",
+  "granite-4.1-8b-wandb"
 ]);
 
 export type ApprovedModelRouteId = z.infer<typeof ApprovedModelRouteIdSchema>;
@@ -19,19 +19,19 @@ export interface ApprovedModelRoute {
   model: string;
   provider: string;
   providerLabel: string;
-  reasoningEffort: "low" | "medium";
+  reasoningEffort: "none" | "low" | "medium";
   description: string;
 }
 
 export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
   {
-    id: "gpt-5.6-luna-openai",
-    label: "GPT-5.6 Luna",
-    model: "openai/gpt-5.6-luna",
-    provider: "openai",
-    providerLabel: "OpenAI",
-    reasoningEffort: "low",
-    description: "Primary route: fast, grounded answers at low reasoning."
+    id: "nemotron-3-super-digitalocean-nitro",
+    label: "Nemotron 3 Super",
+    model: "nvidia/nemotron-3-super-120b-a12b:nitro",
+    provider: "digitalocean",
+    providerLabel: "DigitalOcean",
+    reasoningEffort: "medium",
+    description: "Default ZDR route for grounded answers."
   },
   {
     id: "gpt-5.4-nano-azure-nitro",
@@ -40,16 +40,7 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     provider: "azure",
     providerLabel: "Azure",
     reasoningEffort: "medium",
-    description: "Fast, economical default for grounded answers."
-  },
-  {
-    id: "nemotron-3-super-digitalocean-nitro",
-    label: "Nemotron 3 Super",
-    model: "nvidia/nemotron-3-super-120b-a12b:nitro",
-    provider: "digitalocean",
-    providerLabel: "DigitalOcean",
-    reasoningEffort: "medium",
-    description: "Efficient open reasoning model for routine RAG workloads."
+    description: "Fast, economical route for grounded answers."
   },
   {
     id: "nemotron-3-ultra-together-nitro",
@@ -68,16 +59,19 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     providerLabel: "Inception",
     reasoningEffort: "low",
     description: "Ultra-fast diffusion model for low-latency grounded answers."
+  },
+  {
+    id: "granite-4.1-8b-wandb",
+    label: "Granite 4.1 8B",
+    model: "ibm-granite/granite-4.1-8b",
+    provider: "wandb",
+    providerLabel: "Weights & Biases",
+    reasoningEffort: "none",
+    description: "Compact enterprise RAG model on WandB's ZDR endpoint."
   }
 ];
 
 export const DEFAULT_MODEL_ROUTE = APPROVED_MODEL_ROUTES[0]!;
-export const FALLBACK_MODEL = {
-  label: "GPT-5.6 Luna",
-  model: "gpt-5.6-luna",
-  providerLabel: "OpenAI",
-  reasoningEffort: "low" as const
-};
 
 const SETTING_KEY = "primary_generation_route";
 const CACHE_TTL_MS = 30_000;
@@ -94,8 +88,8 @@ const StoredSelectionSchema = z.object({
   selectedId: ApprovedModelRouteIdSchema
 });
 
-/** Default chain when nothing is persisted: the approved routes in listed
- *  order (GPT-5.6 Luna primary). */
+/** Default chain when nothing is persisted: the approved ZDR routes in listed
+ *  order (Nemotron 3 Super primary). */
 export const DEFAULT_MODEL_ROUTE_ORDER: readonly ApprovedModelRouteId[] =
   APPROVED_MODEL_ROUTES.map((route) => route.id);
 
@@ -183,7 +177,7 @@ export function isMissingModelSettingsTable(error: unknown): boolean {
 
 /**
  * Read the global primary route. Missing DDL never breaks answer generation:
- * the approved GPT-5.6 Luna/OpenAI default remains active until storage lands.
+ * the approved Nemotron 3 Super default remains active until storage lands.
  */
 export async function getModelRoutingState(): Promise<ModelRoutingState> {
   const now = Date.now();

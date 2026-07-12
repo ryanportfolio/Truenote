@@ -1,6 +1,4 @@
 import OpenAI from "openai";
-import { zodResponseFormat } from "openai/helpers/zod";
-import { z } from "zod";
 import type { RetrievalChunk } from "../retrieval/query.js";
 import {
   elapsedMs,
@@ -9,32 +7,24 @@ import {
 } from "../observability/pipeline-timing.js";
 import { recordAppError } from "../observability/error-log.js";
 import {
-  FALLBACK_MODEL,
   getActiveModelChain,
   type ApprovedModelRoute
 } from "./model-routing.js";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
-export const SourceSchema = z.object({
-  chunk_id: z.string(),
-  doc_title: z.string(),
-  excerpt: z.string()
-});
+export interface Source {
+  chunk_id: string;
+  doc_title: string;
+  excerpt: string;
+}
 
-export const ModelAnswerSchema = z.object({
-  answer: z.string(),
-  refused: z.boolean(),
-  confidence: z.enum(["high", "medium", "low"])
-});
-
-export const AnswerSchema = ModelAnswerSchema.extend({
-  sources: z.array(SourceSchema)
-});
-
-export type Source = z.infer<typeof SourceSchema>;
-export type ModelAnswerPayload = z.infer<typeof ModelAnswerSchema>;
-export type AnswerPayload = z.infer<typeof AnswerSchema>;
+export interface AnswerPayload {
+  answer: string;
+  sources: Source[];
+  refused: boolean;
+  confidence: "high" | "medium" | "low";
+}
 
 export type AnswerValidationFailureReason =
   | "empty_answer"
@@ -47,7 +37,7 @@ export interface AnswerValidationFailure {
   recognizedCitationIds: string[];
   unknownCitationIds: string[];
   availableChunkIds: string[];
-  returnedPayload: ModelAnswerPayload;
+  returnedText: string;
 }
 
 export type AnswerValidationResult =
@@ -59,16 +49,13 @@ export const REFUSAL_TEXT =
   "I couldn't find this in the knowledge base. Please escalate or check the source documents directly.";
 
 /**
- * Rules 1–6 of the system prompt from .claude/reference/retrieval.md →
+ * Rules 1–7 of the system prompt from .claude/reference/retrieval.md →
  * Generation contract. Do not paraphrase the rule text — the wording is part
  * of the product contract and is tested against eval questions in Phase 2.
  *
- * Two pieces from the reference document live elsewhere:
- *   - the JSON schema block (response shape) is enforced by
- *     zodResponseFormat(ModelAnswerSchema) below, not via prose instruction.
- *   - the EXCERPTS and QUESTION blocks are the user message, built by
- *     buildUserPrompt(). Keeping them out of the system prompt lets the
- *     system prompt cache across requests with different excerpts.
+ * The EXCERPTS and QUESTION blocks are the user message, built by
+ * buildUserPrompt(). Keeping them out of the system prompt lets the prompt
+ * cache across requests with different excerpts.
  */
 export function buildSystemPrompt(programName: string): string {
   return [
@@ -76,15 +63,17 @@ export function buildSystemPrompt(programName: string): string {
     "",
     "RULES (non-negotiable):",
     "1. ONLY use the EXCERPTS below. Do not use outside knowledge.",
-    '2. If the answer is not fully supported by the excerpts, set "refused": true',
-    `   and answer: "${REFUSAL_TEXT}"`,
+    "2. If the answer is not fully supported by the excerpts, return exactly:",
+    `   "${REFUSAL_TEXT}"`,
     "3. Never invent fees, dates, names, policy numbers, or procedures.",
     "4. Cite every factual claim inline using [chunk_id].",
     "5. Prefer the most recent document version when excerpts conflict.",
     "6. Format the answer as GitHub-flavored Markdown. Use numbered steps for",
     "   procedures, bullet lists for options, and **bold** for key values",
     "   (fees, dates, deadlines). Use a table only to compare options. Never",
-    "   use headings, code blocks, images, links, or task lists."
+    "   use headings, code blocks, images, links, or task lists.",
+    "7. Return only the final Markdown answer or the exact refusal text.",
+    "   Never return JSON, metadata, analysis, or a separate sources list."
   ].join("\n");
 }
 
@@ -121,12 +110,6 @@ function getPrimaryClient(): OpenAI {
   return _primaryClient;
 }
 
-let _fallbackClient: OpenAI | null = null;
-function getFallbackClient(): OpenAI {
-  if (!_fallbackClient) _fallbackClient = new OpenAI();
-  return _fallbackClient;
-}
-
 export interface GenerateAnswerInput {
   programName: string;
   question: string;
@@ -151,8 +134,6 @@ export interface GenerateAnswerResult {
 export interface GenerateAnswerDeps {
   /** Primary generation client. Defaults to OpenRouter. */
   client?: OpenAI;
-  /** Backup generation client. Defaults to OpenAI. */
-  fallbackClient?: OpenAI;
   /** Ordered approved-route chain override for tests (index 0 = primary).
    *  Production reads the persisted global order. */
   routeChain?: ApprovedModelRoute[];
@@ -166,63 +147,61 @@ async function callGenerationModel(
   systemPrompt: string,
   userPrompt: string,
   options: {
-    openRouterProvider?: string;
-    reasoningEffort?: "low" | "medium";
-  } = {}
-): Promise<ModelAnswerPayload | null> {
+    openRouterProvider: string;
+    reasoningEffort: "none" | "low" | "medium";
+  }
+): Promise<string | null> {
   const request = {
     model,
-    ...(options.reasoningEffort
-      ? { reasoning_effort: options.reasoningEffort }
-      : { temperature: 0 }),
+    ...(options.reasoningEffort === "none"
+      ? { temperature: 0 }
+      : { reasoning_effort: options.reasoningEffort }),
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
-    ],
-    response_format: zodResponseFormat(ModelAnswerSchema, "answer")
+    ]
   } satisfies OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
 
-  // Keep privacy + schema guarantees in the request itself, even though the
-  // OpenRouter API key is also assigned to a matching account guardrail.
-  const completion = options.openRouterProvider
-    ? await client.beta.chat.completions.parse({
-        ...request,
-        provider: {
-          only: [options.openRouterProvider],
-          zdr: true,
-          data_collection: "deny",
-          require_parameters: true,
-          allow_fallbacks: false
-        }
-      } as typeof request & {
-        provider: {
-          only: string[];
-          zdr: boolean;
-          data_collection: "deny";
-          require_parameters: boolean;
-          allow_fallbacks: boolean;
-        };
-      })
-    : await client.beta.chat.completions.parse(request);
+  // Every generation call stays inside OpenRouter's per-request ZDR boundary.
+  // A provider without a matching ZDR endpoint is rejected before receiving
+  // the prompt; there is deliberately no direct-provider escape hatch.
+  const completion = await client.chat.completions.create({
+    ...request,
+    provider: {
+      only: [options.openRouterProvider],
+      zdr: true,
+      data_collection: "deny",
+      allow_fallbacks: false
+    }
+  } as typeof request & {
+    provider: {
+      only: string[];
+      zdr: boolean;
+      data_collection: "deny";
+      allow_fallbacks: boolean;
+    };
+  });
 
-  return completion.choices[0]?.message.parsed ?? null;
+  const text = completion.choices[0]?.message.content?.trim();
+  return text ? text : null;
 }
 
 /**
  * Build source metadata solely from inline citations and retrieved ground
  * truth. The model does not emit a duplicate sources array. A rejected primary
- * answer is a provider failure for routing purposes and must be retried through
- * the backup model.
+ * answer is a provider failure for routing purposes and advances to the next
+ * approved ZDR route.
  */
 export function validateGeneratedAnswer(
-  payload: ModelAnswerPayload,
+  returnedText: string,
   chunks: RetrievalChunk[]
 ): AnswerValidationResult {
-  if (payload.refused) return { payload: cannedRefusal(), failure: null };
+  const answer = returnedText.trim();
+  if (answer === REFUSAL_TEXT) return { payload: cannedRefusal(), failure: null };
 
   const availableChunkIds = chunks.map((chunk) => chunk.id);
   const availableIds = new Set(availableChunkIds);
-  const inlineCitationIds = extractInlineCitationIds(payload.answer);
+  const inlineCitationIds = extractInlineCitationIds(answer);
   const recognizedCitationIds = inlineCitationIds.filter((id) => availableIds.has(id));
   const unknownCitationIds = inlineCitationIds.filter((id) => !availableIds.has(id));
   const failureBase = {
@@ -230,10 +209,10 @@ export function validateGeneratedAnswer(
     recognizedCitationIds,
     unknownCitationIds,
     availableChunkIds,
-    returnedPayload: payload
+    returnedText
   };
 
-  if (payload.answer.trim().length === 0) {
+  if (answer.length === 0) {
     return { payload: null, failure: { reason: "empty_answer", ...failureBase } };
   }
   if (inlineCitationIds.length === 0) {
@@ -250,7 +229,12 @@ export function validateGeneratedAnswer(
   }
 
   return {
-    payload: { ...payload, sources: buildSources(recognizedCitationIds, chunks) },
+    payload: {
+      answer,
+      sources: buildSources(recognizedCitationIds, chunks),
+      refused: false,
+      confidence: "medium"
+    },
     failure: null
   };
 }
@@ -283,12 +267,10 @@ export async function generateAnswer(
   const systemPrompt = buildSystemPrompt(input.programName);
   const userPrompt = buildUserPrompt(input.question, input.chunks);
 
-  // OpenRouter is OpenAI-compatible, so every approved route in the chain and
-  // the direct OpenAI backup share the same strict Zod-derived JSON schema.
-  // The admin-ordered chain is walked in order (index 0 = primary): any thrown
-  // request, invalid structured response, empty answer, or invalid/missing
-  // citation is a model error and advances to the next route. A valid grounded
-  // refusal is NOT an error — it ends the walk and is returned as-is.
+  // Walk the admin-ordered ZDR-only OpenRouter chain. Any request error, empty
+  // answer, or invalid/missing citation advances to the next route. A valid
+  // refusal ends the walk. Exhaustion returns a defensive refusal; it never
+  // escapes to a direct provider whose retention policy is not enforced here.
   const client = deps.client ?? getPrimaryClient();
   const chain = deps.primaryRoute
     ? [deps.primaryRoute]
@@ -302,7 +284,7 @@ export async function generateAnswer(
     let outcome: ProviderAttemptOutcome = "error";
     let validationFailure: AnswerValidationFailure | null = null;
     try {
-      const routePayload = await callGenerationModel(
+      const routeText = await callGenerationModel(
         client,
         route.model,
         systemPrompt,
@@ -312,13 +294,13 @@ export async function generateAnswer(
           reasoningEffort: route.reasoningEffort
         }
       );
-      if (!routePayload) {
+      if (!routeText) {
         outcome = "invalid";
-        throw new Error(`route ${route.id} returned no parsed answer`);
+        throw new Error(`route ${route.id} returned no text answer`);
       }
       // A valid refusal short-circuits the chain. Validation failures cascade
       // and carry exact diagnostics for the super-user error log.
-      const validation = validateGeneratedAnswer(routePayload, input.chunks);
+      const validation = validateGeneratedAnswer(routeText, input.chunks);
       validationFailure = validation.failure;
       if (!validation.payload) {
         outcome = "invalid";
@@ -367,85 +349,7 @@ export async function generateAnswer(
   }
 
   if (!payload) {
-    // The whole OpenRouter chain errored. Last resort: direct OpenAI, which
-    // survives an OpenRouter-wide outage because it does not use OpenRouter.
-    const fallbackStartedAt = performance.now();
-    let fallbackOutcome: ProviderAttemptOutcome = "error";
-    let fallbackValidation: AnswerValidationResult | null = null;
-    try {
-      const fallbackClient = deps.fallbackClient ?? getFallbackClient();
-      const fallbackPayload = await callGenerationModel(
-        fallbackClient,
-        FALLBACK_MODEL.model,
-        systemPrompt,
-        userPrompt,
-        { reasoningEffort: FALLBACK_MODEL.reasoningEffort }
-      );
-      fallbackValidation = fallbackPayload
-        ? validateGeneratedAnswer(fallbackPayload, input.chunks)
-        : null;
-      payload = fallbackValidation?.payload ?? null;
-      if (payload) {
-        generationPath = "fallback";
-        fallbackOutcome = "success";
-      } else {
-        fallbackOutcome = "invalid";
-        void recordAppError({
-          severity: "error",
-          source: "generation",
-          operation: "direct-openai-fallback-validation",
-          error: new Error(
-            fallbackValidation?.failure
-              ? `direct OpenAI fallback failed answer validation: ${fallbackValidation.failure.reason}`
-              : "direct OpenAI fallback returned no parsed answer"
-          ),
-          provider: "openai-direct",
-          model: FALLBACK_MODEL.model,
-          routeId: "direct-openai-fallback",
-          correlationId: input.diagnostics?.correlationId,
-          userId: input.diagnostics?.userId,
-          programId: input.diagnostics?.programId,
-          context: {
-            outcome: fallbackOutcome,
-            chunkCount: input.chunks.length,
-            ...(fallbackValidation?.failure
-              ? { validation: fallbackValidation.failure }
-              : {})
-          }
-        });
-      }
-    } catch (err) {
-      console.warn(
-        "[generation] direct OpenAI backup failed:",
-        err instanceof Error ? err.message : err
-      );
-      void recordAppError({
-        severity: "error",
-        source: "generation",
-        operation: "direct-openai-fallback",
-        error: err,
-        provider: "openai-direct",
-        model: FALLBACK_MODEL.model,
-        routeId: "direct-openai-fallback",
-        correlationId: input.diagnostics?.correlationId,
-        userId: input.diagnostics?.userId,
-        programId: input.diagnostics?.programId,
-        context: { outcome: fallbackOutcome, chunkCount: input.chunks.length }
-      });
-      payload = null;
-    } finally {
-      providerAttempts.push({
-        routeId: "direct-openai-fallback",
-        provider: "openai-direct",
-        model: FALLBACK_MODEL.model,
-        durationMs: elapsedMs(fallbackStartedAt),
-        outcome: fallbackOutcome
-      });
-    }
-  }
-
-  if (!payload) {
-    // Every route and the backup failed to satisfy the schema — defensive refusal.
+    // Every ZDR-approved route failed validation — defensive refusal.
     return {
       payload: cannedRefusal(),
       llmCalled: true,

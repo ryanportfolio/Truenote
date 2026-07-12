@@ -26,7 +26,8 @@ export interface EvalRunConfiguration {
     model: string;
     providerLabel: string;
   }>;
-  fallback: {
+  /** Legacy direct backup snapshot; absent on ZDR-only runs. */
+  fallback?: {
     label: string;
     model: string;
     providerLabel: string;

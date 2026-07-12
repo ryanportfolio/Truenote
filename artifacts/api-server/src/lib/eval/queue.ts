@@ -1,7 +1,4 @@
-import {
-  FALLBACK_MODEL,
-  getModelRoutingState
-} from "../generation/model-routing.js";
+import { getModelRoutingState } from "../generation/model-routing.js";
 import { ensureQueue, getBoss } from "../jobs/boss.js";
 import { getRerankModel } from "../retrieval/rerank.js";
 import { getRetrievalRuntimeConfig } from "../retrieval/query.js";
@@ -61,11 +58,6 @@ async function captureConfiguration(judge: boolean) {
         model: route.model,
         providerLabel: route.providerLabel
       })),
-      fallback: {
-        label: FALLBACK_MODEL.label,
-        model: FALLBACK_MODEL.model,
-        providerLabel: FALLBACK_MODEL.providerLabel
-      },
       retrieval: {
         topK: retrieval.topK,
         candidateK: retrieval.candidateK,

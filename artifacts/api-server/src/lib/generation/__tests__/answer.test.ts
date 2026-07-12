@@ -1,15 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import type OpenAI from "openai";
-import type { ModelAnswerPayload } from "../answer.js";
-import { generateAnswer, validateGeneratedAnswer } from "../answer.js";
+import { REFUSAL_TEXT, generateAnswer, validateGeneratedAnswer } from "../answer.js";
 import { APPROVED_MODEL_ROUTES, DEFAULT_MODEL_ROUTE } from "../model-routing.js";
 
-// GPT-5.4 Nano — the second approved route, used to exercise chain cascade.
 const NANO_ROUTE = APPROVED_MODEL_ROUTES.find(
   (route) => route.id === "gpt-5.4-nano-azure-nitro"
 )!;
 const MERCURY_ROUTE = APPROVED_MODEL_ROUTES.find(
   (route) => route.id === "mercury-2-inception"
+)!;
+const GRANITE_ROUTE = APPROVED_MODEL_ROUTES.find(
+  (route) => route.id === "granite-4.1-8b-wandb"
 )!;
 
 interface CapturedRequest {
@@ -20,52 +21,31 @@ interface CapturedRequest {
   response_format?: unknown;
 }
 
-function stubClient(parsed: ModelAnswerPayload | null, requests: CapturedRequest[]): OpenAI {
+function stubClient(text: string | null, requests: CapturedRequest[]): OpenAI {
   return {
-    beta: {
-      chat: {
-        completions: {
-          parse: async (request: CapturedRequest) => {
-            requests.push(request);
-            return { choices: [{ message: { parsed } }] };
-          }
+    chat: {
+      completions: {
+        create: async (request: CapturedRequest) => {
+          requests.push(request);
+          return { choices: [{ message: { content: text } }] };
         }
       }
     }
   } as unknown as OpenAI;
 }
 
-function throwingClient(requests: CapturedRequest[]): OpenAI {
-  return {
-    beta: {
-      chat: {
-        completions: {
-          parse: async (request: CapturedRequest) => {
-            requests.push(request);
-            throw new Error("model unavailable");
-          }
-        }
-      }
-    }
-  } as unknown as OpenAI;
-}
-
-/** Client whose per-request behavior is keyed by model id: a ModelAnswerPayload to
- *  return it parsed, "throw" to simulate a request error, null for no parse. */
 function routingClient(
-  behaviors: Record<string, ModelAnswerPayload | "throw" | null>,
+  behaviors: Record<string, string | "throw" | null>,
   requests: CapturedRequest[]
 ): OpenAI {
   return {
-    beta: {
-      chat: {
-        completions: {
-          parse: async (request: CapturedRequest) => {
-            requests.push(request);
-            const behavior = behaviors[request.model];
-            if (behavior === "throw") throw new Error("model unavailable");
-            return { choices: [{ message: { parsed: behavior ?? null } }] };
-          }
+    chat: {
+      completions: {
+        create: async (request: CapturedRequest) => {
+          requests.push(request);
+          const behavior = behaviors[request.model];
+          if (behavior === "throw") throw new Error("model unavailable");
+          return { choices: [{ message: { content: behavior ?? null } }] };
         }
       }
     }
@@ -86,31 +66,31 @@ const chunks = [
   }
 ];
 
-const answer: ModelAnswerPayload = {
-  answer: "The cancellation fee is **$25** [chunk-1].",
-  refused: false,
-  confidence: "high"
-};
+const answer = "The cancellation fee is **$25** [chunk-1].";
 
 describe("validateGeneratedAnswer", () => {
   it("builds source metadata from retrieved chunks and inline citations", () => {
     const result = validateGeneratedAnswer(answer, chunks);
 
     expect(result.failure).toBeNull();
-    expect(result.payload?.sources).toEqual([
-      {
-        chunk_id: "chunk-1",
-        doc_title: "Cancellation Policy",
-        excerpt: "The cancellation fee is $25."
-      }
-    ]);
+    expect(result.payload).toEqual({
+      answer,
+      sources: [
+        {
+          chunk_id: "chunk-1",
+          doc_title: "Cancellation Policy",
+          excerpt: "The cancellation fee is $25."
+        }
+      ],
+      refused: false,
+      confidence: "medium"
+    });
   });
 
   it("reports the exact missing-citation validation reason", () => {
-    const returnedPayload = { ...answer, answer: "The cancellation fee is **$25**." };
-    const result = validateGeneratedAnswer(returnedPayload, chunks);
+    const returnedText = "The cancellation fee is **$25**.";
 
-    expect(result).toEqual({
+    expect(validateGeneratedAnswer(returnedText, chunks)).toEqual({
       payload: null,
       failure: {
         reason: "missing_inline_citation",
@@ -118,269 +98,200 @@ describe("validateGeneratedAnswer", () => {
         recognizedCitationIds: [],
         unknownCitationIds: [],
         availableChunkIds: ["chunk-1"],
-        returnedPayload
+        returnedText
       }
     });
   });
 
   it("reports every recognized and unknown inline citation id", () => {
-    const returnedPayload = {
-      ...answer,
-      answer: "The fee is $25 [chunk-1], effective now [invented-chunk]."
-    };
-    const result = validateGeneratedAnswer(returnedPayload, chunks);
+    const returnedText =
+      "The fee is $25 [chunk-1], effective now [invented-chunk].";
 
-    expect(result.failure).toEqual({
+    expect(validateGeneratedAnswer(returnedText, chunks).failure).toEqual({
       reason: "unknown_citation_ids",
       inlineCitationIds: ["chunk-1", "invented-chunk"],
       recognizedCitationIds: ["chunk-1"],
       unknownCitationIds: ["invented-chunk"],
       availableChunkIds: ["chunk-1"],
-      returnedPayload
+      returnedText
     });
   });
 
   it("reports an empty answer before citation problems", () => {
-    const returnedPayload = { ...answer, answer: "  " };
-    const result = validateGeneratedAnswer(returnedPayload, chunks);
+    const result = validateGeneratedAnswer("  ", chunks);
 
     expect(result.failure?.reason).toBe("empty_answer");
-    expect(result.failure?.returnedPayload).toEqual(returnedPayload);
+    expect(result.failure?.returnedText).toBe("  ");
+  });
+
+  it("accepts the exact refusal text without citations", () => {
+    expect(validateGeneratedAnswer(`  ${REFUSAL_TEXT}  `, chunks).payload).toEqual(
+      expect.objectContaining({ refused: true, sources: [] })
+    );
   });
 });
 
-describe("generateAnswer provider fallback", () => {
-  it("uses the selected approved OpenRouter route", async () => {
-    const primaryRequests: CapturedRequest[] = [];
-    const fallbackRequests: CapturedRequest[] = [];
+describe("generateAnswer ZDR route fallback", () => {
+  it("uses plain text on the default ZDR-only OpenRouter route", async () => {
+    const requests: CapturedRequest[] = [];
 
     const result = await generateAnswer(
       { programName: "Test", question: "What is the fee?", chunks },
-      {
-        client: stubClient(answer, primaryRequests),
-        fallbackClient: stubClient(answer, fallbackRequests),
-        routeChain: [DEFAULT_MODEL_ROUTE]
-      }
+      { client: stubClient(answer, requests), routeChain: [DEFAULT_MODEL_ROUTE] }
     );
 
-    expect(primaryRequests).toEqual([
+    expect(requests).toEqual([
       expect.objectContaining({
-        model: "openai/gpt-5.6-luna",
-        reasoning_effort: "low",
+        model: "nvidia/nemotron-3-super-120b-a12b:nitro",
+        reasoning_effort: "medium",
         provider: {
-          only: ["openai"],
+          only: ["digitalocean"],
           zdr: true,
           data_collection: "deny",
-          require_parameters: true,
           allow_fallbacks: false
         }
       })
     ]);
-    expect(primaryRequests[0]?.temperature).toBeUndefined();
-    expect(JSON.stringify(primaryRequests[0]?.response_format)).not.toContain("sources");
-    expect(fallbackRequests).toEqual([]);
+    expect(requests[0]?.response_format).toBeUndefined();
     expect(result.payload.refused).toBe(false);
     expect(result.generationPath).toBe("primary");
   });
 
-  it("retries with OpenAI GPT-5.6 Luna at low reasoning when the primary request throws", async () => {
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const primaryRequests: CapturedRequest[] = [];
-    const fallbackRequests: CapturedRequest[] = [];
+  it("routes Mercury 2 through Inception with ZDR and low reasoning", async () => {
+    const requests: CapturedRequest[] = [];
 
-    const result = await generateAnswer(
+    await generateAnswer(
       { programName: "Test", question: "What is the fee?", chunks },
-      {
-        client: throwingClient(primaryRequests),
-        fallbackClient: stubClient(answer, fallbackRequests),
-        routeChain: [DEFAULT_MODEL_ROUTE]
-      }
+      { client: stubClient(answer, requests), routeChain: [MERCURY_ROUTE] }
     );
 
-    expect(primaryRequests[0]?.model).toBe("openai/gpt-5.6-luna");
-    expect(fallbackRequests).toEqual([
+    expect(requests[0]).toEqual(
       expect.objectContaining({
-        model: "gpt-5.6-luna",
-        reasoning_effort: "low"
+        model: "inception/mercury-2",
+        reasoning_effort: "low",
+        provider: expect.objectContaining({ only: ["inception"], zdr: true })
       })
-    ]);
-    expect(fallbackRequests[0]?.provider).toBeUndefined();
-    expect(fallbackRequests[0]?.temperature).toBeUndefined();
-    expect(result.payload.refused).toBe(false);
-    expect(result.generationPath).toBe("fallback");
-    warning.mockRestore();
+    );
   });
 
-  it("routes Mercury 2 through Inception with low reasoning", async () => {
+  it("routes Granite 4.1 8B only to its live WandB ZDR endpoint", async () => {
+    const requests: CapturedRequest[] = [];
+
+    await generateAnswer(
+      { programName: "Test", question: "What is the fee?", chunks },
+      { client: stubClient(answer, requests), routeChain: [GRANITE_ROUTE] }
+    );
+
+    expect(requests[0]).toEqual(
+      expect.objectContaining({
+        model: "ibm-granite/granite-4.1-8b",
+        temperature: 0,
+        provider: expect.objectContaining({ only: ["wandb"], zdr: true })
+      })
+    );
+    expect(requests[0]?.reasoning_effort).toBeUndefined();
+  });
+
+  it("cascades to the next ZDR route when a request throws", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const requests: CapturedRequest[] = [];
 
     const result = await generateAnswer(
       { programName: "Test", question: "What is the fee?", chunks },
       {
-        client: stubClient(answer, requests),
-        routeChain: [MERCURY_ROUTE]
+        client: routingClient(
+          { "openai/gpt-5.4-nano:nitro": "throw", "inception/mercury-2": answer },
+          requests
+        ),
+        routeChain: [NANO_ROUTE, MERCURY_ROUTE]
       }
     );
 
-    expect(requests).toEqual([
-      expect.objectContaining({
-        model: "inception/mercury-2",
-        reasoning_effort: "low",
-        provider: expect.objectContaining({ only: ["inception"] })
-      })
+    expect(requests.map((request) => request.model)).toEqual([
+      "openai/gpt-5.4-nano:nitro",
+      "inception/mercury-2"
     ]);
-    expect(result.generationPath).toBe("primary");
-  });
-
-  it("retries with OpenAI when the primary response is not parseable", async () => {
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const fallbackRequests: CapturedRequest[] = [];
-
-    await generateAnswer(
-      { programName: "Test", question: "What is the fee?", chunks },
-      {
-        client: stubClient(null, []),
-        fallbackClient: stubClient(answer, fallbackRequests),
-        routeChain: [DEFAULT_MODEL_ROUTE]
-      }
-    );
-
-    expect(fallbackRequests[0]?.model).toBe("gpt-5.6-luna");
+    expect(result.generationPath).toBe("fallback");
+    expect(result.providerAttempts).toHaveLength(2);
     warning.mockRestore();
   });
 
-  it("retries when the primary answer cites an unknown chunk", async () => {
+  it("cascades when a route returns no text", async () => {
     const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const fallbackRequests: CapturedRequest[] = [];
-    const invalidAnswer: ModelAnswerPayload = {
-      ...answer,
-      answer: "The cancellation fee is **$25** [unknown-chunk]."
-    };
-
-    const result = await generateAnswer(
-      { programName: "Test", question: "What is the fee?", chunks },
-      {
-        client: stubClient(invalidAnswer, []),
-        fallbackClient: stubClient(answer, fallbackRequests),
-        routeChain: [DEFAULT_MODEL_ROUTE]
-      }
-    );
-
-    expect(fallbackRequests[0]?.model).toBe("gpt-5.6-luna");
-    expect(result.payload.refused).toBe(false);
-    warning.mockRestore();
-  });
-
-  it("retries when the primary answer omits an inline citation", async () => {
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const fallbackRequests: CapturedRequest[] = [];
-
-    await generateAnswer(
-      { programName: "Test", question: "What is the fee?", chunks },
-      {
-        client: stubClient({ ...answer, answer: "The cancellation fee is **$25**." }, []),
-        fallbackClient: stubClient(answer, fallbackRequests),
-        routeChain: [DEFAULT_MODEL_ROUTE]
-      }
-    );
-
-    expect(fallbackRequests[0]?.model).toBe("gpt-5.6-luna");
-    warning.mockRestore();
-  });
-
-  it("keeps a valid primary refusal without calling the backup", async () => {
-    const fallbackRequests: CapturedRequest[] = [];
-    const refusal: ModelAnswerPayload = {
-      answer: "I couldn't find this in the knowledge base.",
-      refused: true,
-      confidence: "low"
-    };
-
-    const result = await generateAnswer(
-      { programName: "Test", question: "What is the fee?", chunks },
-      {
-        client: stubClient(refusal, []),
-        fallbackClient: stubClient(answer, fallbackRequests),
-        routeChain: [DEFAULT_MODEL_ROUTE]
-      }
-    );
-
-    expect(fallbackRequests).toEqual([]);
-    expect(result.payload.refused).toBe(true);
-    expect(result.generationPath).toBe("primary");
-  });
-
-  it("records a failed fallback and returns a safe refusal", async () => {
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const result = await generateAnswer(
-      { programName: "Test", question: "What is the fee?", chunks },
-      {
-        client: throwingClient([]),
-        fallbackClient: throwingClient([]),
-        primaryRoute: DEFAULT_MODEL_ROUTE
-      }
-    );
-
-    expect(result.payload.refused).toBe(true);
-    expect(result.generationPath).toBe("fallback-failed");
-    warning.mockRestore();
-  });
-
-  it("cascades to the next route in the chain when a route errors", async () => {
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const primaryRequests: CapturedRequest[] = [];
-    const fallbackRequests: CapturedRequest[] = [];
-
     const result = await generateAnswer(
       { programName: "Test", question: "What is the fee?", chunks },
       {
         client: routingClient(
-          { "openai/gpt-5.4-nano:nitro": "throw", "openai/gpt-5.6-luna": answer },
-          primaryRequests
+          { "openai/gpt-5.4-nano:nitro": null, "inception/mercury-2": answer },
+          []
         ),
-        fallbackClient: stubClient(answer, fallbackRequests),
-        routeChain: [NANO_ROUTE, DEFAULT_MODEL_ROUTE]
+        routeChain: [NANO_ROUTE, MERCURY_ROUTE]
       }
     );
 
-    expect(primaryRequests.map((request) => request.model)).toEqual([
-      "openai/gpt-5.4-nano:nitro",
-      "openai/gpt-5.6-luna"
-    ]);
-    // Second route in the chain answered — the direct OpenAI backup is untouched.
-    expect(fallbackRequests).toEqual([]);
-    expect(result.payload.refused).toBe(false);
     expect(result.generationPath).toBe("fallback");
     warning.mockRestore();
   });
 
-  it("stops at the first valid refusal without cascading or calling the backup", async () => {
-    const primaryRequests: CapturedRequest[] = [];
-    const fallbackRequests: CapturedRequest[] = [];
-    const refusal: ModelAnswerPayload = {
-      answer: "I couldn't find this in the knowledge base.",
-      refused: true,
-      confidence: "low"
-    };
+  it("cascades when a route cites an unknown chunk", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const result = await generateAnswer(
+      { programName: "Test", question: "What is the fee?", chunks },
+      {
+        client: routingClient(
+          {
+            "openai/gpt-5.4-nano:nitro": "The fee is $25 [unknown].",
+            "inception/mercury-2": answer
+          },
+          []
+        ),
+        routeChain: [NANO_ROUTE, MERCURY_ROUTE]
+      }
+    );
+
+    expect(result.generationPath).toBe("fallback");
+    warning.mockRestore();
+  });
+
+  it("keeps a valid refusal without cascading", async () => {
+    const requests: CapturedRequest[] = [];
 
     const result = await generateAnswer(
       { programName: "Test", question: "What is the fee?", chunks },
       {
         client: routingClient(
-          { "openai/gpt-5.4-nano:nitro": refusal, "openai/gpt-5.6-luna": answer },
-          primaryRequests
+          { "openai/gpt-5.4-nano:nitro": REFUSAL_TEXT, "inception/mercury-2": answer },
+          requests
         ),
-        fallbackClient: stubClient(answer, fallbackRequests),
-        routeChain: [NANO_ROUTE, DEFAULT_MODEL_ROUTE]
+        routeChain: [NANO_ROUTE, MERCURY_ROUTE]
       }
     );
 
-    // A grounded refusal is success: only the first route is tried.
-    expect(primaryRequests.map((request) => request.model)).toEqual([
-      "openai/gpt-5.4-nano:nitro"
-    ]);
-    expect(fallbackRequests).toEqual([]);
+    expect(requests).toHaveLength(1);
     expect(result.payload.refused).toBe(true);
     expect(result.generationPath).toBe("primary");
+  });
+
+  it("returns a safe refusal without any direct-provider escape hatch", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const requests: CapturedRequest[] = [];
+
+    const result = await generateAnswer(
+      { programName: "Test", question: "What is the fee?", chunks },
+      {
+        client: routingClient(
+          { "openai/gpt-5.4-nano:nitro": "throw", "inception/mercury-2": "throw" },
+          requests
+        ),
+        routeChain: [NANO_ROUTE, MERCURY_ROUTE]
+      }
+    );
+
+    expect(requests).toHaveLength(2);
+    expect(result.providerAttempts.every((attempt) => attempt.provider !== "openai-direct"))
+      .toBe(true);
+    expect(result.payload.refused).toBe(true);
+    expect(result.generationPath).toBe("fallback-failed");
+    warning.mockRestore();
   });
 });

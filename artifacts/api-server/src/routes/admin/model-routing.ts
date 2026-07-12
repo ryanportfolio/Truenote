@@ -9,7 +9,6 @@ import {
 } from "../../middleware/current-user.js";
 import {
   ApprovedModelRouteIdSchema,
-  FALLBACK_MODEL,
   getModelRoutingState,
   isMissingModelSettingsTable,
   saveModelRouteOrder,
@@ -33,8 +32,7 @@ function responseFor(state: ModelRoutingState) {
   return {
     order: state.routes.map((route) => route.id),
     routes: state.routes,
-    persistenceReady: state.persistenceReady,
-    fallback: FALLBACK_MODEL
+    persistenceReady: state.persistenceReady
   };
 }
 
