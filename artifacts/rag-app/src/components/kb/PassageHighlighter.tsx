@@ -10,7 +10,7 @@ import {
   type ReactNode
 } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Highlighter, Keyboard, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Highlighter, Trash2, X } from "lucide-react";
 import {
   createKbHighlight,
   deleteKbHighlight,
@@ -84,20 +84,6 @@ function textNodeSpans(root: HTMLElement): TextNodeSpan[] {
     current = walker.nextNode();
   }
   return spans;
-}
-
-function highlightableBlocks(root: HTMLElement): HTMLElement[] {
-  const candidates = Array.from(
-    root.querySelectorAll<HTMLElement>("h2, h3, h4, h5, p, li, pre, th, td")
-  );
-  // Keep the deepest readable block so list items containing paragraphs do
-  // not create two keyboard stops for the same passage.
-  return candidates.filter(
-    (candidate) =>
-      !candidates.some(
-        (other) => other !== candidate && candidate.contains(other)
-      )
-  );
 }
 
 function boundaryAt(
@@ -251,7 +237,6 @@ export function PassageHighlighter({
   const contentRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const listToggleRef = useRef<HTMLButtonElement>(null);
-  const keyboardModeButtonRef = useRef<HTMLButtonElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const focusToolbarRef = useRef(false);
@@ -263,7 +248,6 @@ export function PassageHighlighter({
   const [selectedColor, setSelectedColor] = useState<KbHighlightColor>("yellow");
   const [pending, setPending] = useState(false);
   const [listOpen, setListOpen] = useState(false);
-  const [keyboardMode, setKeyboardMode] = useState(false);
   const [canWriteHighlights, setCanWriteHighlights] = useState(false);
   const [displaySupported, setDisplaySupported] = useState(true);
   const [notice, setNotice] = useState<{
@@ -289,7 +273,6 @@ export function PassageHighlighter({
     setHighlights([]);
     setToolbar(null);
     setListOpen(false);
-    setKeyboardMode(false);
     setCanWriteHighlights(false);
     setDisplaySupported(true);
     setNotice(null);
@@ -331,7 +314,6 @@ export function PassageHighlighter({
     const rendered = renderHighlights(root, renderable);
     setDisplaySupported(rendered.supported);
     if (!rendered.supported) {
-      setKeyboardMode(false);
       setNotice({
         kind: "error",
         text: "This browser cannot display saved highlights. Reading still works."
@@ -434,45 +416,6 @@ export function PassageHighlighter({
   }, [captureSelection]);
 
   useEffect(() => {
-    const root = contentRef.current;
-    if (!root || !keyboardMode || loadState !== "ready") return;
-    const blocks = highlightableBlocks(root);
-    for (const block of blocks) {
-      block.dataset.kbHighlightBlock = "true";
-      block.tabIndex = 0;
-    }
-    requestAnimationFrame(() => blocks[0]?.focus());
-    return () => {
-      for (const block of blocks) {
-        delete block.dataset.kbHighlightBlock;
-        block.removeAttribute("tabindex");
-      }
-    };
-  }, [documentVersionId, keyboardMode, loadState]);
-
-  const toggleKeyboardMode = () => {
-    if (
-      loadState !== "ready" ||
-      !canWriteHighlights ||
-      !displaySupported ||
-      pending
-    ) {
-      return;
-    }
-    const next = !keyboardMode;
-    setKeyboardMode(next);
-    setNotice({
-      kind: "status",
-      text: next
-        ? "Keyboard highlight mode on. Tab to a passage, then press Enter."
-        : "Keyboard highlight mode off."
-    });
-    if (!next) {
-      requestAnimationFrame(() => keyboardModeButtonRef.current?.focus());
-    }
-  };
-
-  useEffect(() => {
     if (!toolbar) return;
     if (focusToolbarRef.current) {
       focusToolbarRef.current = false;
@@ -529,31 +472,6 @@ export function PassageHighlighter({
 
   const handleContentKeyUp = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.shiftKey) captureSelection(true);
-  };
-
-  const handleContentKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape" && keyboardMode && !toolbar && !pending) {
-      event.preventDefault();
-      setKeyboardMode(false);
-      setNotice({ kind: "status", text: "Keyboard highlight mode off." });
-      requestAnimationFrame(() => keyboardModeButtonRef.current?.focus());
-      return;
-    }
-    const block = (event.target as Element).closest<HTMLElement>(
-      "[data-kb-highlight-block]"
-    );
-    if (
-      !keyboardMode ||
-      !block ||
-      event.target !== block ||
-      (event.key !== "Enter" && event.key.toLowerCase() !== "h")
-    ) {
-      return;
-    }
-    event.preventDefault();
-    const range = document.createRange();
-    range.selectNodeContents(block);
-    openCreateForRange(range, true, block);
   };
 
   const saveHighlight = async () => {
@@ -655,24 +573,9 @@ export function PassageHighlighter({
                 ? "This browser cannot display saved highlights."
                 : !canWriteHighlights
                   ? "Highlights are read-only for this account."
-                  : keyboardMode
-                    ? "Keyboard mode: Tab to a passage, then press Enter."
-                    : "Select a passage to save a personal highlight."}
+                  : "Select a passage to save a personal highlight."}
         </p>
         <div className="flex items-center gap-2">
-          {loadState === "ready" && canWriteHighlights && displaySupported ? (
-            <button
-              ref={keyboardModeButtonRef}
-              type="button"
-              className="btn-whisper gap-1.5 px-3 py-1 text-xs"
-              aria-pressed={keyboardMode}
-              disabled={pending}
-              onClick={toggleKeyboardMode}
-            >
-              <Keyboard className="h-3.5 w-3.5" aria-hidden />
-              Keyboard
-            </button>
-          ) : null}
           {highlights.length > 0 ? (
             <button
               ref={listToggleRef}
@@ -770,10 +673,8 @@ export function PassageHighlighter({
       <div
         ref={contentRef}
         tabIndex={-1}
-        data-keyboard-highlight-mode={keyboardMode ? "true" : "false"}
         onClick={handleContentClick}
         onKeyUp={handleContentKeyUp}
-        onKeyDown={handleContentKeyDown}
       >
         {children}
       </div>
