@@ -37,12 +37,26 @@ export const PIPELINE_STAGE_DEFINITIONS: readonly PipelineStageDefinition[] = [
 
 export type ProviderAttemptOutcome = "success" | "invalid" | "error";
 
+/**
+ * Token usage for one provider attempt, when the provider reports it. Counts
+ * only — no prices. Prices change and vary by contract, so cost-in-dollars is
+ * computed by the operator from these counts, never hardcoded here. Absent when
+ * the attempt failed before a usage block came back.
+ */
+export interface ProviderTokenUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
 export interface ProviderAttemptTiming {
   routeId: string;
   provider: string;
   model: string;
   durationMs: number;
   outcome: ProviderAttemptOutcome;
+  /** Present when the provider returned a usage block for this attempt. */
+  tokens?: ProviderTokenUsage;
 }
 
 export interface PipelineTimingCounts {
@@ -85,6 +99,13 @@ export interface ProviderTimingStat {
   successRatePct: number;
   p50Ms: number;
   p95Ms: number;
+  /** How many of the attempts reported token usage. */
+  tokenSamples: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  totalTokens: number;
+  /** Mean total tokens per token-reporting attempt (0 when none reported). */
+  meanTotalTokens: number;
 }
 
 export function elapsedMs(startedAt: number): number {
@@ -101,6 +122,20 @@ function objectValue(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+/** Validate a persisted token-usage block, keeping only finite non-negative counts. */
+function normalizeTokenUsage(value: unknown): ProviderTokenUsage | null {
+  const root = objectValue(value);
+  if (!root) return null;
+  const promptTokens = finiteNonNegative(root.promptTokens);
+  const completionTokens = finiteNonNegative(root.completionTokens);
+  const totalTokens = finiteNonNegative(root.totalTokens);
+  const usage: ProviderTokenUsage = {};
+  if (promptTokens !== null) usage.promptTokens = promptTokens;
+  if (completionTokens !== null) usage.completionTokens = completionTokens;
+  if (totalTokens !== null) usage.totalTokens = totalTokens;
+  return Object.keys(usage).length > 0 ? usage : null;
 }
 
 /** Validate persisted JSONB before exposing it through the operator API. */
@@ -165,12 +200,14 @@ export function normalizePipelineTiming(value: unknown): PipelineTimingBreakdown
       ) {
         continue;
       }
+      const tokens = normalizeTokenUsage(attempt.tokens);
       providerAttempts.push({
         routeId: attempt.routeId,
         provider: attempt.provider,
         model: attempt.model,
         durationMs,
-        outcome
+        outcome,
+        ...(tokens ? { tokens } : {})
       });
     }
   }
@@ -240,6 +277,19 @@ export function summarizeProviderTimings(
       if (!first) return null;
       const durations = attempts.map((attempt) => attempt.durationMs);
       const successes = attempts.filter((attempt) => attempt.outcome === "success").length;
+      let tokenSamples = 0;
+      let totalPromptTokens = 0;
+      let totalCompletionTokens = 0;
+      let totalTokens = 0;
+      for (const attempt of attempts) {
+        if (!attempt.tokens) continue;
+        tokenSamples += 1;
+        totalPromptTokens += attempt.tokens.promptTokens ?? 0;
+        totalCompletionTokens += attempt.tokens.completionTokens ?? 0;
+        totalTokens +=
+          attempt.tokens.totalTokens ??
+          (attempt.tokens.promptTokens ?? 0) + (attempt.tokens.completionTokens ?? 0);
+      }
       return {
         routeId: first.routeId,
         provider: first.provider,
@@ -248,7 +298,12 @@ export function summarizeProviderTimings(
         successes,
         successRatePct: Math.round((successes / attempts.length) * 1000) / 10,
         p50Ms: percentile(durations, 50),
-        p95Ms: percentile(durations, 95)
+        p95Ms: percentile(durations, 95),
+        tokenSamples,
+        totalPromptTokens,
+        totalCompletionTokens,
+        totalTokens,
+        meanTotalTokens: tokenSamples > 0 ? Math.round(totalTokens / tokenSamples) : 0
       } satisfies ProviderTimingStat;
     })
     .filter((value): value is ProviderTimingStat => value !== null)

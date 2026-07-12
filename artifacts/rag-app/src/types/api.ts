@@ -605,12 +605,19 @@ export interface PipelineStageStat {
   p95Ms: number;
 }
 
+export interface ProviderTokenUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
 export interface ProviderAttemptTiming {
   routeId: string;
   provider: string;
   model: string;
   durationMs: number;
   outcome: "success" | "invalid" | "error";
+  tokens?: ProviderTokenUsage;
 }
 
 export interface PipelineTimingBreakdown {
@@ -642,6 +649,11 @@ export interface ProviderTimingStat {
   successRatePct: number;
   p50Ms: number;
   p95Ms: number;
+  tokenSamples: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  totalTokens: number;
+  meanTotalTokens: number;
 }
 
 export interface ObservabilityResponse {

@@ -426,6 +426,39 @@ describe("generateAnswer cancellation + bounds", () => {
     expect(requests).toHaveLength(1);
   });
 
+  it("captures provider-reported token usage into the attempt telemetry", async () => {
+    const usageClient = {
+      chat: {
+        completions: {
+          create: async () => ({
+            choices: [{ message: { content: answer } }],
+            usage: { prompt_tokens: 1234, completion_tokens: 56, total_tokens: 1290 }
+          })
+        }
+      }
+    } as unknown as OpenAI;
+
+    const result = await generateAnswer(
+      { programName: "Test", question: "What is the fee?", chunks },
+      { client: usageClient, routeChain: [DEFAULT_MODEL_ROUTE] }
+    );
+
+    expect(result.providerAttempts[0]?.tokens).toEqual({
+      promptTokens: 1234,
+      completionTokens: 56,
+      totalTokens: 1290
+    });
+  });
+
+  it("omits tokens when the provider returns no usage block", async () => {
+    const requests: CapturedRequest[] = [];
+    const result = await generateAnswer(
+      { programName: "Test", question: "What is the fee?", chunks },
+      { client: stubClient(answer, requests), routeChain: [DEFAULT_MODEL_ROUTE] }
+    );
+    expect(result.providerAttempts[0]?.tokens).toBeUndefined();
+  });
+
   it("does not call any route when the signal is already aborted", async () => {
     const requests: CapturedRequest[] = [];
     const controller = new AbortController();

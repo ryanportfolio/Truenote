@@ -4,7 +4,8 @@ import { getDeadlineConfig, isAbortError } from "../deadlines.js";
 import {
   elapsedMs,
   type ProviderAttemptOutcome,
-  type ProviderAttemptTiming
+  type ProviderAttemptTiming,
+  type ProviderTokenUsage
 } from "../observability/pipeline-timing.js";
 import { recordAppError } from "../observability/error-log.js";
 import {
@@ -159,7 +160,7 @@ async function callGenerationModel(
     /** Cancels this attempt AND (via isAbortError in the caller) halts the whole chain. */
     signal?: AbortSignal;
   }
-): Promise<string | null> {
+): Promise<{ text: string | null; usage: ProviderTokenUsage | null }> {
   const request = {
     model,
     ...(options.reasoningEffort === "none"
@@ -199,7 +200,27 @@ async function callGenerationModel(
   );
 
   const text = completion.choices[0]?.message.content?.trim();
-  return text ? text : null;
+  return { text: text ? text : null, usage: readTokenUsage(completion.usage) };
+}
+
+/** Map an OpenAI/OpenRouter usage block to our camelCase counts. Null when absent. */
+function readTokenUsage(usage: unknown): ProviderTokenUsage | null {
+  if (typeof usage !== "object" || usage === null) return null;
+  const raw = usage as {
+    prompt_tokens?: unknown;
+    completion_tokens?: unknown;
+    total_tokens?: unknown;
+  };
+  const count = (value: unknown): number | undefined =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+  const out: ProviderTokenUsage = {};
+  const prompt = count(raw.prompt_tokens);
+  const completion = count(raw.completion_tokens);
+  const total = count(raw.total_tokens);
+  if (prompt !== undefined) out.promptTokens = prompt;
+  if (completion !== undefined) out.completionTokens = completion;
+  if (total !== undefined) out.totalTokens = total;
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 /**
@@ -324,8 +345,9 @@ export async function generateAnswer(
     const attemptStartedAt = performance.now();
     let outcome: ProviderAttemptOutcome = "error";
     let validationFailure: AnswerValidationFailure | null = null;
+    let attemptTokens: ProviderTokenUsage | undefined;
     try {
-      const routeText = await callGenerationModel(
+      const routeResult = await callGenerationModel(
         client,
         route.model,
         systemPrompt,
@@ -338,6 +360,10 @@ export async function generateAnswer(
           signal: input.signal
         }
       );
+      // Record usage even when the answer later fails validation — a rejected
+      // answer still cost tokens, and cost telemetry must reflect that.
+      attemptTokens = routeResult.usage ?? undefined;
+      const routeText = routeResult.text;
       if (!routeText) {
         outcome = "invalid";
         throw new Error(`route ${route.id} returned no text answer`);
@@ -391,7 +417,8 @@ export async function generateAnswer(
         provider: route.provider,
         model: route.model,
         durationMs: elapsedMs(attemptStartedAt),
-        outcome
+        outcome,
+        ...(attemptTokens ? { tokens: attemptTokens } : {})
       });
     }
   }
