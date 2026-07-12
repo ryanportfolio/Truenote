@@ -22,15 +22,37 @@ export const SourceSchema = z.object({
   excerpt: z.string()
 });
 
-export const AnswerSchema = z.object({
+export const ModelAnswerSchema = z.object({
   answer: z.string(),
-  sources: z.array(SourceSchema),
   refused: z.boolean(),
   confidence: z.enum(["high", "medium", "low"])
 });
 
+export const AnswerSchema = ModelAnswerSchema.extend({
+  sources: z.array(SourceSchema)
+});
+
 export type Source = z.infer<typeof SourceSchema>;
+export type ModelAnswerPayload = z.infer<typeof ModelAnswerSchema>;
 export type AnswerPayload = z.infer<typeof AnswerSchema>;
+
+export type AnswerValidationFailureReason =
+  | "empty_answer"
+  | "missing_inline_citation"
+  | "unknown_citation_ids";
+
+export interface AnswerValidationFailure {
+  reason: AnswerValidationFailureReason;
+  inlineCitationIds: string[];
+  recognizedCitationIds: string[];
+  unknownCitationIds: string[];
+  availableChunkIds: string[];
+  returnedPayload: ModelAnswerPayload;
+}
+
+export type AnswerValidationResult =
+  | { payload: AnswerPayload; failure: null }
+  | { payload: null; failure: AnswerValidationFailure };
 
 /** Canned refusal copy, matching the system prompt verbatim. */
 export const REFUSAL_TEXT =
@@ -43,7 +65,7 @@ export const REFUSAL_TEXT =
  *
  * Two pieces from the reference document live elsewhere:
  *   - the JSON schema block (response shape) is enforced by
- *     zodResponseFormat(AnswerSchema) below, not via prose instruction.
+ *     zodResponseFormat(ModelAnswerSchema) below, not via prose instruction.
  *   - the EXCERPTS and QUESTION blocks are the user message, built by
  *     buildUserPrompt(). Keeping them out of the system prompt lets the
  *     system prompt cache across requests with different excerpts.
@@ -147,7 +169,7 @@ async function callGenerationModel(
     openRouterProvider?: string;
     reasoningEffort?: "low" | "medium";
   } = {}
-): Promise<AnswerPayload | null> {
+): Promise<ModelAnswerPayload | null> {
   const request = {
     model,
     ...(options.reasoningEffort
@@ -157,7 +179,7 @@ async function callGenerationModel(
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
     ],
-    response_format: zodResponseFormat(AnswerSchema, "answer")
+    response_format: zodResponseFormat(ModelAnswerSchema, "answer")
   } satisfies OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
 
   // Keep privacy + schema guarantees in the request itself, even though the
@@ -187,26 +209,62 @@ async function callGenerationModel(
 }
 
 /**
- * Replace model-authored source metadata with retrieved ground truth, then
- * reject any non-refusal answer that is empty, uncited, or cites only chunks
- * the model never received. A rejected primary answer is a provider failure
- * for routing purposes and must be retried through the backup model.
+ * Build source metadata solely from inline citations and retrieved ground
+ * truth. The model does not emit a duplicate sources array. A rejected primary
+ * answer is a provider failure for routing purposes and must be retried through
+ * the backup model.
  */
-function normalizeAnswer(
-  payload: AnswerPayload,
+export function validateGeneratedAnswer(
+  payload: ModelAnswerPayload,
   chunks: RetrievalChunk[]
-): AnswerPayload | null {
-  if (payload.refused) return cannedRefusal();
+): AnswerValidationResult {
+  if (payload.refused) return { payload: cannedRefusal(), failure: null };
 
-  const sources = validateSources(payload.sources, chunks);
-  const hasInlineCitation = sources.some((source) =>
-    payload.answer.includes(`[${source.chunk_id}]`)
-  );
-  if (payload.answer.trim().length === 0 || sources.length === 0 || !hasInlineCitation) {
-    return null;
+  const availableChunkIds = chunks.map((chunk) => chunk.id);
+  const availableIds = new Set(availableChunkIds);
+  const inlineCitationIds = extractInlineCitationIds(payload.answer);
+  const recognizedCitationIds = inlineCitationIds.filter((id) => availableIds.has(id));
+  const unknownCitationIds = inlineCitationIds.filter((id) => !availableIds.has(id));
+  const failureBase = {
+    inlineCitationIds,
+    recognizedCitationIds,
+    unknownCitationIds,
+    availableChunkIds,
+    returnedPayload: payload
+  };
+
+  if (payload.answer.trim().length === 0) {
+    return { payload: null, failure: { reason: "empty_answer", ...failureBase } };
+  }
+  if (inlineCitationIds.length === 0) {
+    return {
+      payload: null,
+      failure: { reason: "missing_inline_citation", ...failureBase }
+    };
+  }
+  if (unknownCitationIds.length > 0) {
+    return {
+      payload: null,
+      failure: { reason: "unknown_citation_ids", ...failureBase }
+    };
   }
 
-  return { ...payload, sources };
+  return {
+    payload: { ...payload, sources: buildSources(recognizedCitationIds, chunks) },
+    failure: null
+  };
+}
+
+function extractInlineCitationIds(answer: string): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const match of answer.matchAll(/\[([^\[\]\r\n]+)\]/g)) {
+    const id = match[1]?.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
 }
 
 export async function generateAnswer(
@@ -242,6 +300,7 @@ export async function generateAnswer(
   for (const [index, route] of chain.entries()) {
     const attemptStartedAt = performance.now();
     let outcome: ProviderAttemptOutcome = "error";
+    let validationFailure: AnswerValidationFailure | null = null;
     try {
       const routePayload = await callGenerationModel(
         client,
@@ -257,15 +316,17 @@ export async function generateAnswer(
         outcome = "invalid";
         throw new Error(`route ${route.id} returned no parsed answer`);
       }
-      // normalizeAnswer returns the canned refusal (non-null) for a valid
-      // refusal, so a refusal short-circuits the chain here; it returns null
-      // only for an empty/uncited/unknown-citation answer, which cascades.
-      const normalized = normalizeAnswer(routePayload, input.chunks);
-      if (!normalized) {
+      // A valid refusal short-circuits the chain. Validation failures cascade
+      // and carry exact diagnostics for the super-user error log.
+      const validation = validateGeneratedAnswer(routePayload, input.chunks);
+      validationFailure = validation.failure;
+      if (!validation.payload) {
         outcome = "invalid";
-        throw new Error(`route ${route.id} returned an invalid or uncited answer`);
+        throw new Error(
+          `route ${route.id} failed answer validation: ${validation.failure.reason}`
+        );
       }
-      payload = normalized;
+      payload = validation.payload;
       generationPath = index === 0 ? "primary" : "fallback";
       outcome = "success";
       break;
@@ -290,7 +351,8 @@ export async function generateAnswer(
           chainLength: chain.length,
           reasoningEffort: route.reasoningEffort,
           outcome,
-          chunkCount: input.chunks.length
+          chunkCount: input.chunks.length,
+          ...(validationFailure ? { validation: validationFailure } : {})
         }
       });
     } finally {
@@ -309,6 +371,7 @@ export async function generateAnswer(
     // survives an OpenRouter-wide outage because it does not use OpenRouter.
     const fallbackStartedAt = performance.now();
     let fallbackOutcome: ProviderAttemptOutcome = "error";
+    let fallbackValidation: AnswerValidationResult | null = null;
     try {
       const fallbackClient = deps.fallbackClient ?? getFallbackClient();
       const fallbackPayload = await callGenerationModel(
@@ -318,7 +381,10 @@ export async function generateAnswer(
         userPrompt,
         { reasoningEffort: FALLBACK_MODEL.reasoningEffort }
       );
-      payload = fallbackPayload ? normalizeAnswer(fallbackPayload, input.chunks) : null;
+      fallbackValidation = fallbackPayload
+        ? validateGeneratedAnswer(fallbackPayload, input.chunks)
+        : null;
+      payload = fallbackValidation?.payload ?? null;
       if (payload) {
         generationPath = "fallback";
         fallbackOutcome = "success";
@@ -329,8 +395,8 @@ export async function generateAnswer(
           source: "generation",
           operation: "direct-openai-fallback-validation",
           error: new Error(
-            fallbackPayload
-              ? "direct OpenAI fallback returned an invalid or uncited answer"
+            fallbackValidation?.failure
+              ? `direct OpenAI fallback failed answer validation: ${fallbackValidation.failure.reason}`
               : "direct OpenAI fallback returned no parsed answer"
           ),
           provider: "openai-direct",
@@ -339,7 +405,13 @@ export async function generateAnswer(
           correlationId: input.diagnostics?.correlationId,
           userId: input.diagnostics?.userId,
           programId: input.diagnostics?.programId,
-          context: { outcome: fallbackOutcome, chunkCount: input.chunks.length }
+          context: {
+            outcome: fallbackOutcome,
+            chunkCount: input.chunks.length,
+            ...(fallbackValidation?.failure
+              ? { validation: fallbackValidation.failure }
+              : {})
+          }
         });
       }
     } catch (err) {
@@ -385,25 +457,16 @@ export async function generateAnswer(
   return { payload, llmCalled: true, generationPath, providerAttempts };
 }
 
-/**
- * Validate the LLM's claimed sources against the actual retrieved chunks.
- * For each LLM source with a chunk_id we recognize, emit a source whose
- * doc_title and excerpt come from the retrieved chunk — never from the LLM.
- * Unknown chunk_ids are dropped (which may collapse the answer to refusal
- * upstream).
- */
-function validateSources(
-  llmSources: Source[],
+/** Build citation cards in first-appearance order from retrieved ground truth. */
+function buildSources(
+  citationIds: string[],
   retrievedChunks: RetrievalChunk[]
 ): Source[] {
   const byId = new Map(retrievedChunks.map((c) => [c.id, c]));
-  const seen = new Set<string>();
   const out: Source[] = [];
-  for (const s of llmSources) {
-    const chunk = byId.get(s.chunk_id);
+  for (const citationId of citationIds) {
+    const chunk = byId.get(citationId);
     if (!chunk) continue;
-    if (seen.has(chunk.id)) continue;
-    seen.add(chunk.id);
     out.push({
       chunk_id: chunk.id,
       doc_title: chunk.docTitle ?? "Untitled",
