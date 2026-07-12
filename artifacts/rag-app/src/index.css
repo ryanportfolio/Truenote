@@ -1366,7 +1366,7 @@
   }
 
   .archive-visual {
-    min-height: 31vh;
+    display: none;
   }
 
   .archive-image {
@@ -1402,10 +1402,6 @@
 
   .auth-title {
     font-size: 2.4rem;
-  }
-
-  .archive-visual {
-    display: none;
   }
 
   .auth-panel-inner {
