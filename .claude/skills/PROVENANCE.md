@@ -11,7 +11,7 @@ LICENSE/NOTICE files in the skill folder.
 
 | Skill | Upstream | License | Our deltas |
 |---|---|---|---|
-| `brainstorming` | [obra/superpowers](https://github.com/obra/superpowers) (Jesse Vincent) | MIT (in folder) | Visual companion + spec reviewer prompt added |
+| `brainstorming` | [obra/superpowers](https://github.com/obra/superpowers) (Jesse Vincent) | MIT (in folder) | Two-lane scope calibration, authorization-safe artifacts, optional visual companion |
 | `dispatching-parallel-agents` | obra/superpowers | MIT (in folder) | Stock |
 | `executing-plans` | obra/superpowers | MIT (in folder) | Stock |
 | `finishing-a-development-branch` | obra/superpowers | MIT (in folder) | Stock |
