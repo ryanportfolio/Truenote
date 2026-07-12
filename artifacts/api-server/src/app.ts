@@ -99,6 +99,14 @@ export function createApp(): Express {
   // In production the Vite dev server is not running, so the api-server
   // serves the pre-built frontend from rag-app/dist and handles SPA routing.
   if (process.env.NODE_ENV === "production") {
+    // The static middleware intentionally disables directory indexes so SPA
+    // routes can reach the fallback below. Serve the standalone About deck
+    // explicitly or /about/ would incorrectly receive the login SPA.
+    app.get("/about/", (_req: Request, res: Response) => {
+      res.setHeader("Cache-Control", "no-cache");
+      res.sendFile(path.join(dist, "about", "index.html"));
+    });
+
     app.get("*", (req: Request, res: Response) => {
       // HTML must revalidate so a new deploy can point at its new hashed
       // assets immediately. The assets themselves remain immutable above.
