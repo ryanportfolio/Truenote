@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../lib/db-client.js";
@@ -18,6 +19,7 @@ import {
   type PipelineTimingBreakdown
 } from "../lib/observability/pipeline-timing.js";
 import { savePipelineTiming } from "../lib/observability/pipeline-timing-store.js";
+import { recordAppError } from "../lib/observability/error-log.js";
 import {
   authedUser,
   requireAuth,
@@ -117,6 +119,7 @@ export interface AskResponse {
 interface AskTimingSeed {
   startedAt: number;
   stages: Record<string, number>;
+  correlationId: string;
 }
 
 /**
@@ -160,7 +163,12 @@ async function resolveOrCreateSession(
  * added latency mid-call). The `title IS NULL` guard makes it fire once —
  * later exchanges skip it, and a concurrent namer can't clobber a title.
  */
-function scheduleSessionNaming(sessionId: string, question: string, answer: string): void {
+function scheduleSessionNaming(
+  sessionId: string,
+  question: string,
+  answer: string,
+  diagnostics: { correlationId: string; userId: string; programId: string }
+): void {
   void (async () => {
     try {
       const rows = await db
@@ -169,7 +177,7 @@ function scheduleSessionNaming(sessionId: string, question: string, answer: stri
         .where(eq(chatSessions.id, sessionId))
         .limit(1);
       if (rows[0]?.title != null) return;
-      const title = await nameSession({ question, answer });
+      const title = await nameSession({ question, answer, diagnostics });
       await db
         .update(chatSessions)
         .set({ title })
@@ -179,6 +187,16 @@ function scheduleSessionNaming(sessionId: string, question: string, answer: stri
         "[ask] session auto-name failed:",
         err instanceof Error ? err.message : err
       );
+      void recordAppError({
+        severity: "warning",
+        source: "generation",
+        operation: "session-auto-name",
+        error: err,
+        correlationId: diagnostics.correlationId,
+        userId: diagnostics.userId,
+        programId: diagnostics.programId,
+        context: { sessionId }
+      });
     }
   })();
 }
@@ -224,7 +242,11 @@ async function runAsk(
   sessionId: string,
   history: HistoryTurn[],
   onStage?: (stage: AskStage) => void,
-  timingSeed: AskTimingSeed = { startedAt: performance.now(), stages: {} }
+  timingSeed: AskTimingSeed = {
+    startedAt: performance.now(),
+    stages: {},
+    correlationId: randomUUID()
+  }
 ): Promise<AskResponse> {
   const stages = { ...timingSeed.stages };
 
@@ -306,7 +328,15 @@ async function runAsk(
   // response for operator debugging.
   if (history.length > 0) onStage?.("rewriting");
   const rewriteStartedAt = performance.now();
-  const rewrite = await rewriteFollowUp({ question, history });
+  const rewrite = await rewriteFollowUp({
+    question,
+    history,
+    diagnostics: {
+      correlationId: timingSeed.correlationId,
+      userId: user.id,
+      programId
+    }
+  });
   stages.rewrite = elapsedMs(rewriteStartedAt);
   const searchQuestion = rewrite.standaloneQuestion;
   const rewrittenQuestion = searchQuestion !== question ? searchQuestion : null;
@@ -325,7 +355,12 @@ async function runAsk(
     programName,
     question: searchQuestion,
     chunks: retrieval.chunks,
-    refusedByRetrieval: retrieval.refused
+    refusedByRetrieval: retrieval.refused,
+    diagnostics: {
+      correlationId: timingSeed.correlationId,
+      userId: user.id,
+      programId
+    }
   });
   stages.generation = elapsedMs(generationStartedAt);
 
@@ -383,7 +418,11 @@ async function runAsk(
   await touchSession(sessionId);
   stages.sessionTouch = elapsedMs(sessionTouchStartedAt);
   // Name the session from its first real exchange (no-op if already named).
-  scheduleSessionNaming(sessionId, question, generation.payload.answer);
+  scheduleSessionNaming(sessionId, question, generation.payload.answer, {
+    correlationId: timingSeed.correlationId,
+    userId: user.id,
+    programId
+  });
   stages.finalization = elapsedMs(finalizationStartedAt);
 
   const timing: PipelineTimingBreakdown = {
@@ -430,6 +469,7 @@ async function touchSession(sessionId: string): Promise<void> {
 askRouter.post("/ask", async (req, res, next) => {
   try {
     const requestStartedAt = performance.now();
+    const correlationId = randomUUID();
     const parsed = AskBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid request body" });
@@ -454,7 +494,8 @@ askRouter.post("/ask", async (req, res, next) => {
       undefined,
       {
         startedAt: requestStartedAt,
-        stages: { programScope: programScopeMs, sessionResolution: sessionResolutionMs }
+        stages: { programScope: programScopeMs, sessionResolution: sessionResolutionMs },
+        correlationId
       }
     ));
   } catch (err) {
@@ -472,6 +513,7 @@ askRouter.post("/ask", async (req, res, next) => {
 askRouter.post("/ask/stream", async (req, res, next) => {
   try {
     const requestStartedAt = performance.now();
+    const correlationId = randomUUID();
     const parsed = AskBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid request body" });
@@ -511,7 +553,8 @@ askRouter.post("/ask/stream", async (req, res, next) => {
         (stage) => send({ type: "stage", stage }),
         {
           startedAt: requestStartedAt,
-          stages: { programScope: programScopeMs, sessionResolution: sessionResolutionMs }
+          stages: { programScope: programScopeMs, sessionResolution: sessionResolutionMs },
+          correlationId
         }
       );
       send({ type: "result", result });
@@ -523,6 +566,16 @@ askRouter.post("/ask/stream", async (req, res, next) => {
       // generic string there and keep full detail in the server log for
       // operators. In dev, surface the real message for debugging.
       console.error("[ask] stream pipeline error:", err);
+      void recordAppError({
+        source: "api",
+        operation: "ask-stream-pipeline",
+        error: err,
+        correlationId,
+        method: req.method,
+        path: req.path,
+        userId: user.id,
+        programId
+      });
       const message =
         process.env.NODE_ENV === "production"
           ? "Failed to answer"

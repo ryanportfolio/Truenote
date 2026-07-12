@@ -15,6 +15,8 @@ import type {
   EvalRunDetailResponse,
   EvalRunListItem,
   EvalRunListResponse,
+  ErrorLogResponse,
+  ErrorLogSeverity,
   SaveEvalQuestionRequest,
   KbDocumentListResponse,
   KbDocumentResponse,
@@ -567,6 +569,27 @@ export async function getObservability(
     withDefaults()
   );
   return asJson<ObservabilityResponse>(response);
+}
+
+export async function listErrors(input: {
+  hours: number;
+  limit?: number;
+  offset?: number;
+  severity?: ErrorLogSeverity | "all";
+  source?: string;
+}): Promise<ErrorLogResponse> {
+  const params = new URLSearchParams({
+    hours: String(input.hours),
+    limit: String(input.limit ?? 100),
+    offset: String(input.offset ?? 0),
+    severity: input.severity ?? "all"
+  });
+  if (input.source) params.set("source", input.source);
+  const response = await fetch(
+    `/api/admin/errors?${params.toString()}`,
+    withDefaults()
+  );
+  return asJson<ErrorLogResponse>(response);
 }
 
 /**

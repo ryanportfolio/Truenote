@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db-client.js";
+import { recordAppError } from "../observability/error-log.js";
 
 export const ApprovedModelRouteIdSchema = z.enum([
   "gpt-5.6-luna-openai",
@@ -207,6 +208,12 @@ export async function getModelRoutingState(): Promise<ModelRoutingState> {
         "[model-routing] failed to read setting; using approved default:",
         error instanceof Error ? error.message : error
       );
+      void recordAppError({
+        severity: "warning",
+        source: "configuration",
+        operation: "read-model-routing",
+        error
+      });
     }
     state = {
       routes: resolveModelRouteOrder(DEFAULT_MODEL_ROUTE_ORDER),

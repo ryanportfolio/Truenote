@@ -5,6 +5,7 @@ import type { Source } from "./generation/answer.js";
 import { stripContextHeader } from "./ingestion/contextual.js";
 import { canonicalChunkContent } from "./parsing/chunker.js";
 import type { RetrievalChunk } from "./retrieval/query.js";
+import { recordAppError } from "./observability/error-log.js";
 
 const CitationMetadataSchema = z
   .object({
@@ -252,6 +253,12 @@ export function isMissingCitationSnapshotsColumn(error: unknown): boolean {
 
 function warning(scope: string, error: unknown): void {
   console.warn(scope, error instanceof Error ? error.message : error);
+  void recordAppError({
+    severity: "warning",
+    source: "citations",
+    operation: scope,
+    error
+  });
 }
 
 /**

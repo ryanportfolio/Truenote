@@ -103,6 +103,11 @@ const loadAdminObservabilityPage = once(() =>
     default: module.AdminObservabilityPage
   }))
 );
+const loadAdminErrorsPage = once(() =>
+  import("@/pages/AdminErrors").then((module) => ({
+    default: module.AdminErrorsPage
+  }))
+);
 const loadAdminEvaluationsPage = once(() =>
   import("@/pages/AdminEvaluations").then((module) => ({
     default: module.AdminEvaluationsPage
@@ -138,6 +143,7 @@ const AdminGapsPage = preloadable(loadAdminGapsPage);
 const AdminProgramsPage = preloadable(loadAdminProgramsPage);
 const AdminModelRoutingPage = preloadable(loadAdminModelRoutingPage);
 const AdminObservabilityPage = preloadable(loadAdminObservabilityPage);
+const AdminErrorsPage = preloadable(loadAdminErrorsPage);
 const AdminEvaluationsPage = preloadable(loadAdminEvaluationsPage);
 const AdminUsersPage = preloadable(loadAdminUsersPage);
 const LoginPage = preloadable(loadLoginPage);
@@ -163,6 +169,7 @@ export function preloadRoute(path: string): Promise<unknown> {
   if (pathname === "/admin/programs") return loadAdminProgramsPage();
   if (pathname === "/admin/model-routing") return loadAdminModelRoutingPage();
   if (pathname === "/admin/observability") return loadAdminObservabilityPage();
+  if (pathname === "/admin/errors") return loadAdminErrorsPage();
   if (pathname === "/admin/evaluations") return loadAdminEvaluationsPage();
   if (pathname === "/admin/users") return loadAdminUsersPage();
   if (pathname === "/forgot-password") return loadForgotPasswordPage();
@@ -457,6 +464,9 @@ export function App(): JSX.Element {
         </Route>
         <Route path="/admin/observability">
           <AdminObservabilityPage user={auth.user} />
+        </Route>
+        <Route path="/admin/errors">
+          <AdminErrorsPage user={auth.user} />
         </Route>
         <Route path="/admin/evaluations">
           <AdminEvaluationsPage user={auth.user} />

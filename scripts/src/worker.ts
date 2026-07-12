@@ -14,6 +14,12 @@ import {
   stopBoss
 } from "../../artifacts/api-server/src/lib/ingestion/queue.js";
 import { startEvaluationWorker } from "../../artifacts/api-server/src/lib/eval/queue.js";
+import {
+  installProcessErrorLogging,
+  recordAppError
+} from "../../artifacts/api-server/src/lib/observability/error-log.js";
+
+installProcessErrorLogging("worker");
 
 async function closePoolWithDeadline(timeoutMs = 5_000): Promise<void> {
   let timer: NodeJS.Timeout | undefined;
@@ -54,5 +60,13 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   console.error("[worker] fatal:", err);
-  process.exit(1);
+  void Promise.race([
+    recordAppError({
+      severity: "fatal",
+      source: "worker",
+      operation: "worker-main",
+      error: err
+    }),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1_000))
+  ]).finally(() => process.exit(1));
 });

@@ -34,6 +34,7 @@ import {
 } from "../../lib/email/sender.js";
 import { resolveAppBaseUrl } from "../../lib/email/links.js";
 import { renderInviteEmail } from "../../lib/email/templates.js";
+import { recordAppError } from "../../lib/observability/error-log.js";
 
 // Read once at module load — same convention as routes/auth.ts so the
 // admin-supplied-password floor stays in lockstep with change-password.
@@ -462,6 +463,7 @@ usersRouter.post("/bulk", async (req, res, next) => {
     // forgot-password. A per-user token/send failure is logged, not fatal:
     // that user recovers via the standard forgot-password flow.
     const invites: Array<{
+      userId: string;
       email: string;
       name: string;
       setupUrl: string;
@@ -474,12 +476,18 @@ usersRouter.post("/bulk", async (req, res, next) => {
           INVITE_TOKEN_DURATION_MS
         );
         const setupUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
-        invites.push({ email: row.email, name: row.name, setupUrl, expiresAt });
+        invites.push({ userId: row.id, email: row.email, name: row.name, setupUrl, expiresAt });
       } catch (err) {
         console.warn(
           `[admin] bulk import: failed to mint invite token for ${row.email}:`,
           err instanceof Error ? err.message : err
         );
+        void recordAppError({
+          source: "auth",
+          operation: "bulk-invite-token",
+          error: err,
+          userId: row.id
+        });
       }
     }
 
@@ -508,6 +516,12 @@ usersRouter.post("/bulk", async (req, res, next) => {
               `[admin] bulk import: invite email to ${invite.email} failed:`,
               err instanceof Error ? err.message : err
             );
+            void recordAppError({
+              source: "email",
+              operation: "bulk-invite-send",
+              error: err,
+              userId: invite.userId
+            });
           }
         }
       })();

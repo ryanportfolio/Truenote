@@ -15,6 +15,7 @@ import {
   updateEvalRunProgress,
   type EvalRunConfiguration
 } from "./persistence.js";
+import { recordAppError } from "../observability/error-log.js";
 import { evalQuestionSetHash, runEval } from "./runner.js";
 
 export const RUN_EVALUATION_QUEUE = "run-evaluation";
@@ -115,6 +116,13 @@ async function reconcileQueuedEvalRunsSafely(): Promise<void> {
       "[eval-worker] queued-run reconciliation failed:",
       error instanceof Error ? error.message : error
     );
+    void recordAppError({
+      severity: "warning",
+      source: "evaluation",
+      operation: "queued-run-reconciliation",
+      error,
+      context: {}
+    });
   }
 }
 
@@ -192,6 +200,19 @@ export async function executeEvalRun(
       `[eval-worker] run ${run.id} failed:`,
       error instanceof Error ? error.message : error
     );
+    void recordAppError({
+      source: "evaluation",
+      operation: "evaluation-run",
+      error,
+      programId: run.programId,
+      context: {
+        runId: run.id,
+        brokerJobId,
+        brokerRetry,
+        questionId: run.questionId,
+        judge: run.judge
+      }
+    });
     try {
       await failEvalRun(run.id, error, run.leaseToken);
     } catch (persistError) {
@@ -199,6 +220,14 @@ export async function executeEvalRun(
         `[eval-worker] could not persist failure for ${run.id}:`,
         persistError instanceof Error ? persistError.message : persistError
       );
+      void recordAppError({
+        severity: "fatal",
+        source: "evaluation",
+        operation: "persist-evaluation-failure",
+        error: persistError,
+        programId: run.programId,
+        context: { runId: run.id, brokerJobId }
+      });
       // The broker must retain retry responsibility when durable terminal
       // state could not be written. Swallowing this strands `running` rows.
       throw persistError;

@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
+import { recordAppError } from "../observability/error-log.js";
 
 /**
  * Conversation-aware query rewriting (multi-turn RAG, 2026-07).
@@ -39,6 +40,11 @@ export interface HistoryTurn {
 export interface RewriteInput {
   question: string;
   history: HistoryTurn[];
+  diagnostics?: {
+    correlationId?: string;
+    userId?: string;
+    programId?: string;
+  };
 }
 
 export interface RewriteResult {
@@ -112,6 +118,18 @@ export async function rewriteFollowUp(
       "[rewrite] follow-up rewrite failed; using the original question:",
       err instanceof Error ? err.message : err
     );
+    void recordAppError({
+      severity: "warning",
+      source: "generation",
+      operation: "follow-up-rewrite",
+      error: err,
+      provider: "openai-direct",
+      model: REWRITE_MODEL,
+      correlationId: input.diagnostics?.correlationId,
+      userId: input.diagnostics?.userId,
+      programId: input.diagnostics?.programId,
+      context: { historyTurns: input.history.length }
+    });
     return { standaloneQuestion: question, llmCalled: false };
   }
 }

@@ -33,6 +33,7 @@ import { isDemoEmail } from "../lib/auth/demo-accounts.js";
 import { getMinPasswordLength } from "../lib/config.js";
 import { getEmailSender } from "../lib/email/sender.js";
 import { resolveAppBaseUrl } from "../lib/email/links.js";
+import { recordAppError } from "../lib/observability/error-log.js";
 import { renderResetEmail } from "../lib/email/templates.js";
 
 export const authRouter = Router();
@@ -210,6 +211,13 @@ authRouter.post("/login", async (req, res, next) => {
           "[auth] lastLoginAt update failed:",
           err instanceof Error ? err.message : err
         );
+        void recordAppError({
+          severity: "warning",
+          source: "auth",
+          operation: "last-login-update",
+          error: err,
+          userId: row.id
+        });
       });
 
     res.json({
@@ -428,6 +436,12 @@ authRouter.post("/forgot-password", async (req, res, next) => {
             "[auth] forgot-password: APP_BASE_URL not set in production; " +
               "refusing to send a reset email with a header-derived URL"
           );
+          void recordAppError({
+            severity: "error",
+            source: "configuration",
+            operation: "forgot-password-base-url",
+            error: new Error("APP_BASE_URL is not set in production")
+          });
           return;
         }
         const rows = await db
@@ -457,6 +471,12 @@ authRouter.post("/forgot-password", async (req, res, next) => {
           "[auth] forgot-password background send failed:",
           err instanceof Error ? err.message : err
         );
+        void recordAppError({
+          severity: "error",
+          source: "email",
+          operation: "forgot-password-send",
+          error: err
+        });
       }
     })();
   } catch (err) {

@@ -82,6 +82,32 @@ CREATE TABLE query_log (
 );
 CREATE INDEX query_log_session_idx ON query_log (session_id);
 
+CREATE TABLE error_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  severity TEXT NOT NULL CHECK (severity IN ('warning','error','fatal')),
+  source TEXT NOT NULL,
+  operation TEXT NOT NULL,
+  message TEXT NOT NULL,
+  name TEXT,
+  stack TEXT,
+  code TEXT,
+  status INT,
+  provider TEXT,
+  model TEXT,
+  route_id TEXT,
+  request_id TEXT,
+  correlation_id TEXT,
+  method TEXT,
+  path TEXT,
+  user_id TEXT,
+  program_id UUID,
+  query_log_id UUID,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX error_log_occurred_idx ON error_log (occurred_at DESC);
+CREATE INDEX error_log_source_occurred_idx ON error_log (source, occurred_at DESC);
+
 CREATE TABLE eval_questions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   program_id UUID,
@@ -189,6 +215,7 @@ CREATE UNIQUE INDEX eval_runs_program_baseline_uidx ON eval_runs (program_id)
 - **`chat_sessions` groups a CSR's `query_log` rows into a named conversation.** `query_log.session_id` is nullable with `ON DELETE SET NULL` — deleting a session must never drop ops/gap analytics rows. Sessions are scoped by `(user_id, program_id)`; the ask pipeline honors a client-supplied session id only when both match, so a leaked id can't stitch one user's ask into another's conversation or cross program scope. `title` is auto-generated (gpt-4o-mini) from the opening exchange, detached from the response path, guarded by `title IS NULL` so it fires once.
 - **`query_log.citation_snapshots` freezes source receipts.** New answers best-effort persist the ordered document id, document-version id/number, clean excerpt, and raw parsed-Markdown offsets after logging. History prefers this snapshot over live chunks, so a re-ingest cannot silently rewrite an old answer's evidence. Missing DDL degrades to legacy live-chunk reconstruction; it never fails an ask.
 - **`query_log.timing_breakdown` is versioned best-effort telemetry.** New asks persist end-to-end, retrieval sub-stage, finalization, and provider-attempt timings as JSONB for the super-user `/admin/observability` surface. Missing DDL never fails an ask; the dashboard shows setup-required and `latency_ms` continues to update.
+- **`error_log` stores redacted operator diagnostics, not raw secrets.** Provider/API/worker failures retain exact status, code, request id, message, stack, provider response, and structured context after recursive credential redaction. Writes are best-effort so a missing table or database outage never replaces the original failure; the super-user `/admin/errors` API is the only read surface.
 - **`eval_runs` is the durable job + report boundary.** At most one queued/running row exists per program; the shared pg-boss worker consumes evaluation jobs sequentially. The row is also the queue outbox: its UUID is a time-windowed pg-boss singleton key and queued rows are reconciled after insert/send crashes. `configuration` privately retains the immutable question snapshot and current lease token (both stripped from list responses), while the public configuration records effective model/retrieval settings; every worker write is lease-fenced. `report` freezes per-question results. Only completed rows may be baselines; cancellation fences work by moving an active row to `failed` with an explicit cancellation reason.
 - **`users.email` is normalized to lowercase at the application layer**, stored as plain `TEXT`. Every write and lookup calls `.toLowerCase()` before touching the DB. The original Phase 2A design used `citext` for case-insensitive comparison, but the `citext` extension isn't available in all managed Postgres environments (specifically: Replit's production publish flow does not run `CREATE EXTENSION`, only DDL diff). The app-layer normalization preserves the case-insensitive contract without the extension dependency. **Detection rule:** any new code path that writes or compares `users.email` MUST lowercase first — otherwise duplicate accounts can be created (`Alice@foo.com` vs `alice@foo.com`) and logins will silently mismatch.
 - **Bulk CSV user import creates CSR accounts only.** Emails are normalized and deduplicated, existing accounts are skipped without mutation, and the effective program is enforced server-side. Each new user is stored with a separately salted hash of an *unguessable random throwaway* password (never revealed to anyone) and `must_reset_password=true`, then emailed a one-time invite link (a `password_reset_tokens` row with the 7-day `INVITE_TOKEN_DURATION_MS` lifetime) to set their own password via the existing `/reset-password` page. No plaintext password is returned to the admin. The bulk route refuses up-front (creating nothing) if delivery is unconfigured in production (`APP_BASE_URL` unset, or `RESEND_API_KEY`/`RESEND_FROM_EMAIL` unset), so it never mints accounts no one can reach. Single-user create + admin password-reset still return a one-time temp password in-response (shown once in the admin UI) — only bulk uses the invite-email path.

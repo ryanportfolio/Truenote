@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
+import { recordAppError } from "../observability/error-log.js";
 
 /**
  * Auto-name a chat session from its opening exchange.
@@ -29,6 +30,11 @@ export interface NameSessionInput {
   question: string;
   /** The answer to the opening question, for subject context. Optional. */
   answer?: string;
+  diagnostics?: {
+    correlationId?: string;
+    userId?: string;
+    programId?: string;
+  };
 }
 
 export interface NameSessionDeps {
@@ -88,6 +94,17 @@ export async function nameSession(
       "[name-session] auto-name failed; using the question as the title:",
       err instanceof Error ? err.message : err
     );
+    void recordAppError({
+      severity: "warning",
+      source: "generation",
+      operation: "session-name-model",
+      error: err,
+      provider: "openai-direct",
+      model: NAME_MODEL,
+      correlationId: input.diagnostics?.correlationId,
+      userId: input.diagnostics?.userId,
+      programId: input.diagnostics?.programId
+    });
     return fallbackTitle(question);
   }
 }

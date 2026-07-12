@@ -671,3 +671,39 @@ export interface ObservabilityResponse {
     timing: PipelineTimingBreakdown;
   }>;
 }
+
+export type ErrorLogSeverity = "warning" | "error" | "fatal";
+
+export interface ErrorLogItem {
+  id: string;
+  occurredAt: string;
+  severity: ErrorLogSeverity;
+  source: string;
+  operation: string;
+  message: string;
+  name: string | null;
+  stack: string | null;
+  code: string | null;
+  status: number | null;
+  provider: string | null;
+  model: string | null;
+  routeId: string | null;
+  requestId: string | null;
+  correlationId: string | null;
+  method: string | null;
+  path: string | null;
+  userId: string | null;
+  programId: string | null;
+  queryLogId: string | null;
+  details: unknown;
+}
+
+export interface ErrorLogResponse {
+  storageReady: boolean;
+  windowHours: number;
+  total: number;
+  hasMore: boolean;
+  counts: Record<ErrorLogSeverity, number>;
+  sources: string[];
+  items: ErrorLogItem[];
+}

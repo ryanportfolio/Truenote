@@ -18,6 +18,7 @@ import {
   OpenAIImageDescriber,
   type ImageDescriber
 } from "./image-describer.js";
+import { recordAppError } from "../observability/error-log.js";
 
 export interface RunIngestionInput {
   documentVersionId: string;
@@ -310,6 +311,20 @@ async function runClaimedIngestion(
             `[ingestion] vision describe failed for page ${pageIndex} image ${image.id ?? "?"}:`,
             err instanceof Error ? err.message : err
           );
+          void recordAppError({
+            severity: "warning",
+            source: "ingestion",
+            operation: "vision-image-description",
+            error: err,
+            provider: "openai-direct",
+            model: "gpt-4o",
+            programId: doc.programId,
+            context: {
+              documentVersionId: versionId,
+              pageIndex,
+              imageId: image.id ?? null
+            }
+          });
         }
       }
     }

@@ -7,6 +7,7 @@ import {
   type ProviderAttemptOutcome,
   type ProviderAttemptTiming
 } from "../observability/pipeline-timing.js";
+import { recordAppError } from "../observability/error-log.js";
 import {
   FALLBACK_MODEL,
   getActiveModelChain,
@@ -110,6 +111,12 @@ export interface GenerateAnswerInput {
   chunks: RetrievalChunk[];
   /** When retrieval returned refused=true, skip the LLM call entirely. */
   refusedByRetrieval?: boolean;
+  /** Request identity for durable operator diagnostics. Never includes prompts or excerpts. */
+  diagnostics?: {
+    correlationId?: string;
+    userId?: string;
+    programId?: string;
+  };
 }
 
 export interface GenerateAnswerResult {
@@ -267,6 +274,25 @@ export async function generateAnswer(
         `[generation] route ${route.id} failed; trying next in chain:`,
         err instanceof Error ? err.message : err
       );
+      void recordAppError({
+        severity: "warning",
+        source: "generation",
+        operation: "openrouter-route-attempt",
+        error: err,
+        provider: route.provider,
+        model: route.model,
+        routeId: route.id,
+        correlationId: input.diagnostics?.correlationId,
+        userId: input.diagnostics?.userId,
+        programId: input.diagnostics?.programId,
+        context: {
+          attempt: index + 1,
+          chainLength: chain.length,
+          reasoningEffort: route.reasoningEffort,
+          outcome,
+          chunkCount: input.chunks.length
+        }
+      });
     } finally {
       providerAttempts.push({
         routeId: route.id,
@@ -298,12 +324,42 @@ export async function generateAnswer(
         fallbackOutcome = "success";
       } else {
         fallbackOutcome = "invalid";
+        void recordAppError({
+          severity: "error",
+          source: "generation",
+          operation: "direct-openai-fallback-validation",
+          error: new Error(
+            fallbackPayload
+              ? "direct OpenAI fallback returned an invalid or uncited answer"
+              : "direct OpenAI fallback returned no parsed answer"
+          ),
+          provider: "openai-direct",
+          model: FALLBACK_MODEL.model,
+          routeId: "direct-openai-fallback",
+          correlationId: input.diagnostics?.correlationId,
+          userId: input.diagnostics?.userId,
+          programId: input.diagnostics?.programId,
+          context: { outcome: fallbackOutcome, chunkCount: input.chunks.length }
+        });
       }
     } catch (err) {
       console.warn(
         "[generation] direct OpenAI backup failed:",
         err instanceof Error ? err.message : err
       );
+      void recordAppError({
+        severity: "error",
+        source: "generation",
+        operation: "direct-openai-fallback",
+        error: err,
+        provider: "openai-direct",
+        model: FALLBACK_MODEL.model,
+        routeId: "direct-openai-fallback",
+        correlationId: input.diagnostics?.correlationId,
+        userId: input.diagnostics?.userId,
+        programId: input.diagnostics?.programId,
+        context: { outcome: fallbackOutcome, chunkCount: input.chunks.length }
+      });
       payload = null;
     } finally {
       providerAttempts.push({
