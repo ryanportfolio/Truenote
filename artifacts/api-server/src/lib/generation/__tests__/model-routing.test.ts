@@ -8,22 +8,22 @@ import {
 } from "../model-routing.js";
 
 describe("approved model routing", () => {
-  it("defaults to GPT-5.6 Luna on OpenAI via OpenRouter at low reasoning", () => {
+  it("defaults to Nemotron 3 Super on a ZDR-capable route", () => {
     expect(DEFAULT_MODEL_ROUTE).toMatchObject({
-      id: "gpt-5.6-luna-openai",
-      model: "openai/gpt-5.6-luna",
-      provider: "openai",
-      reasoningEffort: "low"
+      id: "nemotron-3-super-digitalocean-nitro",
+      model: "nvidia/nemotron-3-super-120b-a12b:nitro",
+      provider: "digitalocean",
+      reasoningEffort: "medium"
     });
   });
 
   it("contains only the reviewed routes, primary first", () => {
     expect(APPROVED_MODEL_ROUTES.map((route) => route.id)).toEqual([
-      "gpt-5.6-luna-openai",
-      "gpt-5.4-nano-azure-nitro",
       "nemotron-3-super-digitalocean-nitro",
+      "gpt-5.4-nano-azure-nitro",
       "nemotron-3-ultra-together-nitro",
-      "mercury-2-inception"
+      "mercury-2-inception",
+      "granite-4.1-8b-wandb"
     ]);
   });
 
@@ -35,6 +35,14 @@ describe("approved model routing", () => {
     });
   });
 
+  it("pins Granite 4.1 8B to WandB without unsupported reasoning controls", () => {
+    expect(findApprovedModelRoute("granite-4.1-8b-wandb")).toMatchObject({
+      model: "ibm-granite/granite-4.1-8b",
+      provider: "wandb",
+      reasoningEffort: "none"
+    });
+  });
+
   it("rejects arbitrary model ids by resolving to the approved default", () => {
     expect(findApprovedModelRoute("unapproved")).toBeUndefined();
     expect(resolveApprovedModelRoute("unapproved")).toBe(DEFAULT_MODEL_ROUTE);
@@ -42,17 +50,17 @@ describe("approved model routing", () => {
 });
 
 describe("resolveModelRouteOrder", () => {
-  it("honors the stored order, then appends any missing approved routes", () => {
+  it("honors stored approved routes and drops the removed non-ZDR Luna route", () => {
     const chain = resolveModelRouteOrder([
-      "nemotron-3-super-digitalocean-nitro",
+      "mercury-2-inception",
       "gpt-5.6-luna-openai"
     ]);
     expect(chain.map((route) => route.id)).toEqual([
+      "mercury-2-inception",
       "nemotron-3-super-digitalocean-nitro",
-      "gpt-5.6-luna-openai",
       "gpt-5.4-nano-azure-nitro",
       "nemotron-3-ultra-together-nitro",
-      "mercury-2-inception"
+      "granite-4.1-8b-wandb"
     ]);
   });
 
@@ -64,10 +72,10 @@ describe("resolveModelRouteOrder", () => {
     ]);
     expect(chain.map((route) => route.id)).toEqual([
       "gpt-5.4-nano-azure-nitro",
-      "gpt-5.6-luna-openai",
       "nemotron-3-super-digitalocean-nitro",
       "nemotron-3-ultra-together-nitro",
-      "mercury-2-inception"
+      "mercury-2-inception",
+      "granite-4.1-8b-wandb"
     ]);
   });
 

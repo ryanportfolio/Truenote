@@ -20,8 +20,7 @@ question
              anchors, same active version; unscored context, never gated)
            → OpenRouter approved route chain ordered by a super user
              with route-specific reasoning, citation contract, and ZDR
-             (request/schema/citation failure → next route; exhausted chain
-              → direct OpenAI gpt-5.6-luna backup at low reasoning)
+             (request/citation failure → next route; exhausted chain → refuse)
   → render answer + citation chips
   → log to query_log
 ```
@@ -49,8 +48,8 @@ You are a customer service knowledge assistant for {program_name}.
 
 RULES (non-negotiable):
 1. ONLY use the EXCERPTS below. Do not use outside knowledge.
-2. If the answer is not fully supported by the excerpts, set "refused": true
-   and answer: "I couldn't find this in the knowledge base. Please escalate
+2. If the answer is not fully supported by the excerpts, return exactly:
+   "I couldn't find this in the knowledge base. Please escalate
    or check the source documents directly."
 3. Never invent fees, dates, names, policy numbers, or procedures.
 4. Cite every factual claim inline using [chunk_id].
@@ -59,13 +58,8 @@ RULES (non-negotiable):
    procedures, bullet lists for options, and **bold** for key values
    (fees, dates, deadlines). Use a table only to compare options. Never
    use headings, code blocks, images, links, or task lists.
-
-Respond as JSON only:
-{
-  "answer": "string with [chunk_id] citations inline",
-  "refused": boolean,
-  "confidence": "high" | "medium" | "low"
-}
+7. Return only the final Markdown answer or the exact refusal text.
+   Never return JSON, metadata, analysis, or a separate sources list.
 
 EXCERPTS:
 {retrieved_chunks_with_ids}
@@ -73,11 +67,9 @@ EXCERPTS:
 QUESTION: {question}
 ```
 
-Use strict structured outputs (`response_format: { type: 'json_schema', ... }`) through the OpenAI-compatible client — do NOT rely on prompt-only JSON. The model will occasionally drift if you only ask in prose.
+The model emits plain text and citation IDs only inline. The server extracts those IDs, rejects missing or unknown IDs, recognizes only the exact refusal copy, and builds source metadata from retrieved chunks. There is no model-authored JSON or sources array.
 
-The model emits citation IDs only inline. The server extracts those IDs, rejects missing or unknown IDs, and builds source metadata from the retrieved chunks. Do not ask the model for a duplicate `sources` array: two model-authored citation representations can disagree without adding any grounding guarantee.
-
-The approved routes form a server-owned allowlist that a super user orders into a fallback chain on `/admin/model-routing`: GPT-5.6 Luna on OpenAI at low reasoning (default primary), GPT-5.4 Nano Nitro on Azure, Nemotron 3 Super Nitro on DigitalOcean, Nemotron 3 Ultra Nitro on Together, and Mercury 2 on Inception at low reasoning. The order (an array of approved ids) lives in `app_settings`; a missing/legacy/invalid value degrades safely to the listed default order, and any approved route absent from a stored order is appended as a tail fallback so the chain is never empty. Each OpenRouter request pins that route's provider with `provider.only`, sets `reasoning_effort` to the route's own effort (`"low"` for Luna and Mercury 2, `"medium"` for the others), and enforces `provider.zdr=true`, `data_collection="deny"`, `require_parameters=true`, and `allow_fallbacks=false`. Generation walks the chain in order: any request error, schema/parse failure, empty answer, unknown inline citation ID, or missing inline citation advances to the next route. A valid grounded refusal is success and ends the walk; it never cascades. If the whole chain errors, one final attempt runs through direct OpenAI `gpt-5.6-luna` at `reasoning_effort: "low"` (outside OpenRouter, so it survives an OpenRouter-wide outage); any required retention controls must therefore also be enabled on the OpenAI organization.
+The approved routes form a server-owned allowlist that a super user orders into a fallback chain on `/admin/model-routing`: Nemotron 3 Super Nitro on DigitalOcean (default primary), GPT-5.4 Nano Nitro on Azure, Nemotron 3 Ultra Nitro on Together, Mercury 2 on Inception at low reasoning, and Granite 4.1 8B on WandB. The order lives in `app_settings`; unknown or removed ids are dropped and missing approved routes appended. Every request pins one provider and enforces `provider.zdr=true`, `data_collection="deny"`, and `allow_fallbacks=false`. OpenRouter rejects a route before prompt delivery when no matching ZDR endpoint exists. Generation advances on request, empty-answer, or citation failure. Chain exhaustion returns the safe refusal. There is deliberately no direct-provider backup that can bypass OpenRouter's per-request ZDR enforcement.
 
 ## UI contract
 

@@ -600,7 +600,9 @@ function RunsPanel({
               {(selectedRun.configuration.routeChain ?? [selectedRun.configuration.generation])
                 .map((route) => route.label)
                 .join(" → ")}
-              {" → "}{selectedRun.configuration.fallback.label} direct backup · top {selectedRun.configuration.retrieval.topK}
+              {selectedRun.configuration.fallback
+                ? ` → ${selectedRun.configuration.fallback.label} legacy direct backup`
+                : " · ZDR-only routes"}{" · top "}{selectedRun.configuration.retrieval.topK}
               {" · "}threshold {selectedRun.configuration.retrieval.threshold}
               {selectedRun.judge ? " · faithfulness judge on" : ""}
             </p>
@@ -1078,9 +1080,9 @@ function formatGenerationPath(
     case "primary":
       return "configured primary";
     case "fallback":
-      return "direct OpenAI fallback";
+      return "later ZDR route";
     case "fallback-failed":
-      return "both routes failed; safe refusal";
+      return "all ZDR routes failed; safe refusal";
     default:
       return "not run";
   }

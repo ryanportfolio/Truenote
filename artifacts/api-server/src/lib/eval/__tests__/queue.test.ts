@@ -32,11 +32,6 @@ vi.mock("../runner.js", () => ({
 }));
 
 vi.mock("../../generation/model-routing.js", () => ({
-  FALLBACK_MODEL: {
-    label: "Fallback",
-    model: "fallback-model",
-    providerLabel: "OpenAI"
-  },
   getModelRoutingState: vi.fn().mockResolvedValue({
     routes: [
       {
