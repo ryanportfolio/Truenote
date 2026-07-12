@@ -233,15 +233,20 @@ export function LoginPage({
                 {submitting ? "Signing in…" : "Sign in"}
               </button>
 
-              {emailResetAvailable ? (
-                <Link href="/forgot-password" className="auth-forgot">
-                  Forgot password?
-                </Link>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Contact an admin to reset your password.
-                </p>
-              )}
+              <div className="auth-secondary-links">
+                {emailResetAvailable ? (
+                  <Link href="/forgot-password" className="auth-forgot">
+                    Forgot password?
+                  </Link>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Contact an admin to reset your password.
+                  </p>
+                )}
+                <a href="/about/" className="auth-about">
+                  About Truenote
+                </a>
+              </div>
             </div>
           </form>
 

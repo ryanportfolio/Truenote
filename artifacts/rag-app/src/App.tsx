@@ -18,6 +18,7 @@ import {
 import { EmptyState } from "@/components/EmptyState";
 import { fetchMe, SESSION_EXPIRED_EVENT } from "@/lib/api";
 import { defaultLandingPath } from "@/lib/landing";
+import { pageTitleForPath } from "@/lib/pageMetadata";
 import type { CurrentUser } from "@/types/api";
 import {
   clearSelectedProgram,
@@ -303,6 +304,10 @@ function captureRedirectTarget(): string | null {
 export function App(): JSX.Element {
   const [currentPath] = useLocation();
   const [auth, setAuth] = useState<AuthState>({ status: "loading" });
+
+  useEffect(() => {
+    document.title = pageTitleForPath(currentPath);
+  }, [currentPath]);
 
   // Initial session probe on mount. fetchMe() returns null on 401 instead
   // of throwing, so we can deterministically distinguish "not logged in"

@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>About Truenote | Inspectable, Source-Backed Answers</title>
+    <meta name="description" content="See how Truenote turns approved documents into source-backed customer service answers, visible refusals, and inspectable controls." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://truenote.org/about/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Truenote" />
+    <meta property="og:title" content="About Truenote | Inspectable, Source-Backed Answers" />
+    <meta property="og:description" content="Scroll through Truenote's workflow, source receipts, refusal boundary, access controls, and operational model." />
+    <meta property="og:url" content="https://truenote.org/about/" />
+    <meta property="og:image" content="https://truenote.org/about/assets/luminous-archive.webp" />
+    <meta property="og:image:type" content="image/webp" />
+    <meta property="og:image:alt" content="The Truenote luminous archive, with layered documents gathering around an evidence core" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="About Truenote | Inspectable, Source-Backed Answers" />
+    <meta name="twitter:description" content="Scroll through Truenote's workflow, source receipts, refusal boundary, access controls, and operational model." />
+    <meta name="twitter:image" content="https://truenote.org/about/assets/luminous-archive.webp" />
+    <meta name="twitter:image:alt" content="The Truenote luminous archive, with layered documents gathering around an evidence core" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="about-home" href="/">Sign in to Truenote</a>
+    <canvas id="atmosphere" aria-hidden="true"></canvas>
+    <main class="deck" aria-live="polite">
+      <section class="slide workflow-cost active" data-title="Judge the system" data-theme="paper">
+        <div class="slide-pad">
+          <p class="index">01 / REVIEW THE SYSTEM</p>
+          <h1>Judge the system by what you can inspect</h1>
+          <div class="cost-path" aria-label="Evidence available for reviewing Truenote">
+            <article class="fragment"><span>01</span><strong>Working behavior</strong><p>See a supported answer, its source passage, and a visible refusal</p></article>
+            <i aria-hidden="true"></i>
+            <article class="fragment"><span>02</span><strong>Reviewable controls</strong><p>Inspect the document boundary, access checks, and model settings</p></article>
+            <i aria-hidden="true"></i>
+            <article class="fragment"><span>03</span><strong>Full source access</strong><p>Review, test, and change the system without waiting on a vendor queue</p></article>
+          </div>
+          <div class="consequence fragment"><span>THE STANDARD</span><p>Behavior, tests, and source code carry the argument</p></div>
+        </div>
+        <aside class="speaker-note">Do not ask the audience to trust the builder; show the working behavior, controls, tests, and source</aside>
+      </section>
+
+      <section class="slide new-workflow" data-title="The Truenote workflow" data-theme="light">
+        <div class="evidence-art depth" data-depth="10" aria-hidden="true"></div>
+        <div class="slide-pad">
+          <p class="index">02 / HOW IT WORKS</p>
+          <h2>Ask the question<br />Open the source</h2>
+          <div class="orbit-flow" aria-label="Truenote interaction flow">
+            <article class="fragment"><span>1</span><strong>Choose documents</strong><small>The boundary is explicit</small></article>
+            <article class="fragment"><span>2</span><strong>Ask the question</strong><small>Use the customer’s words</small></article>
+            <article class="fragment"><span>3</span><strong>See the outcome</strong><small>A supported answer, or a visible gap</small></article>
+            <article class="fragment"><span>4</span><strong>Open the source</strong><small>Read the passage behind it</small></article>
+          </div>
+        </div>
+        <aside class="speaker-note">This is the whole user promise; do not name the architecture before showing the behavior</aside>
+      </section>
+
+      <section class="slide product-definition" data-title="What Truenote is" data-theme="night">
+        <div class="definition-field depth" data-depth="10" aria-hidden="true"></div>
+        <div class="slide-pad definition-layout">
+          <div class="definition-copy">
+            <p class="index">03 / WHAT TRUENOTE IS</p>
+            <h2>Uploaded documents define what Truenote can answer</h2>
+            <p class="lead compact">Retrieval-augmented knowledge assistant with layered search, enforced citations, and controlled model fallbacks</p>
+          </div>
+          <div class="definition-flow" aria-label="How managers and representatives use Truenote">
+            <article class="definition-role fragment">
+              <span>MANAGER</span>
+              <strong>Sets the document boundary</strong>
+              <p>Uploads approved SOPs, PDFs, screenshots, DOCX, Markdown, and text</p>
+            </article>
+            <div class="definition-core fragment" aria-label="Truenote retrieves supporting passages">
+              <i aria-hidden="true"></i>
+              <span>TRUENOTE</span>
+              <strong>Finds the supporting passage</strong>
+              <p>Only returns a cited answer</p>
+            </div>
+            <article class="definition-role fragment">
+              <span>CSR</span>
+              <strong>Answer is fully sourced</strong>
+              <p>Can open the cited passage and save personal highlights</p>
+            </article>
+          </div>
+          <div class="production-surface fragment">
+            <header><span>PRODUCTION SURFACE</span><b>Source repository available for review</b></header>
+            <div class="production-stack" aria-label="Truenote production architecture">
+              <span><b>INTERFACE</b>React SPA</span>
+              <span><b>API</b>Express</span>
+              <span><b>SEARCH</b>Postgres + pgvector</span>
+              <span><b>FILES</b>Replit Object Storage</span>
+              <span><b>INGESTION</b>pg-boss workers</span>
+              <span><b>MODEL ROUTES</b>ZDR-compliant AI services</span>
+            </div>
+          </div>
+        </div>
+        <aside class="speaker-note">Managers choose the documents; Truenote searches only inside that set and attaches the source passage to a supported answer; the lower rail names the production components and the source can be reviewed directly</aside>
+      </section>
+
+      <section class="slide proof" data-title="Show the receipt" data-theme="paper">
+        <div class="slide-pad split split-38">
+          <div class="copy-block">
+            <p class="index">04 / THE SOURCE PASSAGE</p>
+            <h2>The answer carries its receipt</h2>
+            <p class="lead">A rep can answer, then open the exact passage without leaving the moment</p>
+          </div>
+          <div class="product-window depth" data-depth="8">
+            <header><div class="mini-brand"><i></i>Truenote</div></header>
+            <div class="product-body">
+              <div class="answer-pane">
+                <small>REP ASKS</small>
+                <p class="question">What is the cancellation fee for the Basic plan?</p>
+                <div class="answer-card fragment">
+                  <em>ANSWER FROM DOCUMENTS</em>
+                  <p>The standard cancellation fee for the Basic plan is <strong>$5</strong><sup>1</sup></p>
+                  <button type="button" tabindex="-1"><span>1</span> Cancellation Policy v1</button>
+                </div>
+              </div>
+              <aside class="source-pane fragment">
+                <div class="source-top"><span>SOURCE PASSAGE</span><b>×</b></div>
+                <h3>Cancellation Policy v1</h3>
+                <p>Standard Fees</p>
+                <pre>Plan          Cancellation Fee
+Basic         $5
+Pro           $10
+Enterprise    $25</pre>
+              </aside>
+            </div>
+          </div>
+        </div>
+        <aside class="speaker-note">The example comes from scripts/src/seed.ts; the source card is the proof, not decoration</aside>
+      </section>
+
+      <section class="slide refusal" data-title="Refusal is a feature" data-theme="light">
+        <div class="refusal-art depth" data-depth="12" aria-hidden="true"></div>
+        <div class="slide-pad right-copy">
+          <p class="index">05 / THE STOP</p>
+          <h2>When the documents stop, Truenote stops</h2>
+          <div class="refusal-card fragment">
+            <span>NOT FOUND IN THESE DOCUMENTS</span>
+            <p>What is the reinstatement fee for the Premium plan?</p>
+            <strong>The rep sees a boundary instead of a plausible guess</strong>
+          </div>
+        </div>
+        <aside class="speaker-note">Do not apologize for refusal; it is a successful safety outcome</aside>
+      </section>
+
+      <section class="slide document-boundary boundary-stop" data-title="The document and answer boundary" data-theme="paper">
+        <div class="slide-pad">
+          <p class="index">DOCUMENT + ANSWER BOUNDARY</p>
+          <h2>Only the approved documents can support an answer</h2>
+          <div class="boundary-stop-layout">
+            <div class="boundary-steps" aria-label="How approved documents become answer evidence">
+              <article class="fragment"><span>01</span><strong>Approved documents selected</strong><p>SOPs, PDFs, screenshots, DOCX, Markdown, and text</p></article>
+              <article class="fragment"><span>02</span><strong>Search stays inside that set</strong><p>Vector and keyword search use only the selected documents</p></article>
+              <article class="fragment"><span>03</span><strong>A strong passage is required</strong><p>Weak document matches do not reach the answer model</p></article>
+              <article class="fragment"><span>04</span><strong>The source must be known</strong><p>Every returned source ID must resolve to a selected document</p></article>
+            </div>
+            <div class="boundary-stop-checks" aria-label="Checks that stop an unsupported answer">
+              <header><span>ANSWER CHECKS</span><strong>Both must pass</strong></header>
+              <article class="fragment"><span>WEAK DOCUMENT MATCH</span><strong>The answer model is not called</strong><b>REFUSE</b></article>
+              <article class="fragment"><span>MISSING OR UNKNOWN SOURCE</span><strong>The response is discarded</strong><b>REJECT</b></article>
+            </div>
+          </div>
+          <div class="boundary-consequence fragment"><b>DESIGNED OUTCOME</b><span>Unsupported questions become visible gaps, not plausible answers</span></div>
+        </div>
+        <aside class="speaker-note">The presentation follows one program; the useful controls are the selected document set and the checks before and after answer generation</aside>
+      </section>
+
+      <section class="slide access-proof" data-title="Access is enforced" data-theme="ink">
+        <div class="slide-pad">
+          <p class="index">ACCESS CONTROLS</p>
+          <h2>Access is checked on every request</h2>
+          <div class="access-layers">
+            <article class="fragment"><span>ROLE</span><strong>Administrative actions require the appropriate role</strong><p>Uploads, user administration, and reviews are not available to every account</p></article>
+            <article class="fragment"><span>REQUEST</span><strong>Every protected request is checked again on the server</strong><p>Browser controls cannot widen document access</p></article>
+            <article class="fragment"><span>SESSION</span><strong>Database records store a hash of the session token</strong><p>The plaintext token is not stored with the session record</p></article>
+            <article class="fragment"><span>COOKIE</span><strong>Authentication cookies are protected from browser scripts</strong><p>They use httpOnly, sameSite, and secure-in-production settings</p></article>
+          </div>
+          <div class="access-rule fragment"><span>REVIEWABLE</span><b>Each control is visible in source and testable through the application</b></div>
+        </div>
+        <aside class="speaker-note">These are narrow code-supported claims, not a claim of certification or enterprise readiness</aside>
+      </section>
+
+      <section class="slide answer-model" data-title="Granite and the answer route" data-theme="night">
+        <div class="model-art depth" data-depth="8" aria-hidden="true"></div>
+        <div class="slide-pad model-stage">
+          <div class="model-copy">
+            <p class="index">ANSWER MODEL</p>
+            <h2>Control comes before model choice</h2>
+            <div class="model-identity fragment">
+              <span>PRIMARY ANSWER MODEL</span>
+              <strong>IBM Granite 4.1 8B</strong>
+            </div>
+            <div class="model-capabilities" aria-label="Granite capabilities used by Truenote">
+              <article class="fragment"><span>WORK</span><strong>RAG · structured output · extraction · classification</strong></article>
+              <article class="fragment"><span>CONTEXT</span><strong>131K-token window · 12 languages</strong></article>
+              <article class="fragment"><span>CONTROL</span><strong>Published weights · Apache 2.0 license</strong></article>
+            </div>
+          </div>
+
+          <div class="route-instrument fragment" aria-label="Answer route controls and observed provider performance">
+            <div class="route-locks">
+              <span><i></i><b>ZDR required</b></span>
+              <span><i></i><b>Training use denied</b></span>
+              <span><i></i><b>Silent fallback off</b></span>
+            </div>
+            <div class="route-snapshot">
+              <header><span>ROUTE SNAPSHOT</span><small>CAPTURED 11 JUL 2026</small></header>
+              <div class="telemetry-row">
+                <span><b>LATENCY</b><strong>0.11s</strong></span>
+                <span><b>THROUGHPUT</b><strong>113 tps</strong></span>
+                <span class="uptime-reading"><b>UPTIME</b><strong><i></i>100.00%</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <p class="model-source">Model facts: <a href="https://huggingface.co/ibm-granite/granite-4.1-8b" target="_blank" rel="noreferrer">IBM model card</a> · Route policy: <a href="https://openrouter.ai/docs/guides/features/zdr" target="_blank" rel="noreferrer">OpenRouter ZDR</a></p>
+        </div>
+        <aside class="speaker-note">The model receives selected passages, not the document library; each answer request requires a ZDR-capable route, denies provider data collection, and disables silent provider fallback; the telemetry is a dated observation, not a promise</aside>
+      </section>
+
+      <section class="slide source-control" data-title="Operational control" data-theme="paper">
+        <div class="slide-pad source-control-layout">
+          <div class="source-control-copy">
+            <p class="index">OPERATIONAL CONTROL</p>
+            <h2>Control stays with the team doing the work</h2>
+          </div>
+          <div class="operational-control-stack">
+            <div class="control-stage" aria-label="Actions available to an authorized manager">
+              <div class="control-operator fragment">
+                <i aria-hidden="true"></i>
+                <span>PERMISSIONED MANAGER</span>
+                <strong>Training, operations, or program leadership</strong>
+                <p>Role and program boundaries stay enforced</p>
+              </div>
+              <div class="control-actions">
+                <article class="fragment">
+                  <span>USERS</span>
+                  <div><strong>Add one CSR or import a list</strong><p>Accounts are created directly inside the program</p></div>
+                </article>
+                <article class="fragment">
+                  <span>DOCUMENTS</span>
+                  <div><strong>Upload the approved source</strong><p>Ingestion starts without a vendor handoff</p></div>
+                </article>
+              </div>
+              <div class="control-no-queue fragment"><span>NO THIRD-PARTY TICKET</span><strong>Routine changes start with the team that owns the work</strong></div>
+            </div>
+            <div class="source-advantage fragment"><b>DEEPER CONTROL</b><span>Inspect, change, and retest source and controls</span></div>
+          </div>
+        </div>
+        <aside class="speaker-note">A manager can create CSR accounts and administer documents inside their program; senior managers can also manage manager accounts; document processing is asynchronous, so the control is direct initiation without a vendor queue</aside>
+      </section>
+
+      <!-- Repeatable evaluation and client diligence remain available in ./appendix.html. -->
+    </main>
+
+    <aside class="overview-panel" id="overviewPanel" aria-hidden="true">
+      <header><span>SLIDE MAP</span><strong>Truenote validation deck</strong><small>Choose a slide · Esc closes</small></header>
+      <div class="overview-grid" id="overviewGrid"></div>
+    </aside>
+
+
+    <script src="./deck.js"></script>
+  </body>
+</html>
