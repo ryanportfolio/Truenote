@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { RetrievalChunk } from "../retrieval/query.js";
+import { getDeadlineConfig, isAbortError } from "../deadlines.js";
 import {
   elapsedMs,
   type ProviderAttemptOutcome,
@@ -117,6 +118,8 @@ export interface GenerateAnswerInput {
   chunks: RetrievalChunk[];
   /** When retrieval returned refused=true, skip the LLM call entirely. */
   refusedByRetrieval?: boolean;
+  /** Cancels in-flight generation and halts the route chain (client disconnect or overall ask deadline). */
+  signal?: AbortSignal;
   /** Request identity for durable operator diagnostics. Never includes prompts or excerpts. */
   diagnostics?: {
     correlationId?: string;
@@ -150,6 +153,11 @@ async function callGenerationModel(
   options: {
     openRouterProvider: string;
     reasoningEffort: "none" | "low" | "medium";
+    /** Per-attempt bounds. A slow provider hits this and the chain advances to the next route. */
+    timeoutMs: number;
+    maxRetries: number;
+    /** Cancels this attempt AND (via isAbortError in the caller) halts the whole chain. */
+    signal?: AbortSignal;
   }
 ): Promise<string | null> {
   const request = {
@@ -166,22 +174,29 @@ async function callGenerationModel(
   // Every generation call stays inside OpenRouter's per-request ZDR boundary.
   // A provider without a matching ZDR endpoint is rejected before receiving
   // the prompt; there is deliberately no direct-provider escape hatch.
-  const completion = await client.chat.completions.create({
-    ...request,
-    provider: {
-      only: [options.openRouterProvider],
-      zdr: true,
-      data_collection: "deny",
-      allow_fallbacks: false
+  const completion = await client.chat.completions.create(
+    {
+      ...request,
+      provider: {
+        only: [options.openRouterProvider],
+        zdr: true,
+        data_collection: "deny",
+        allow_fallbacks: false
+      }
+    } as typeof request & {
+      provider: {
+        only: string[];
+        zdr: boolean;
+        data_collection: "deny";
+        allow_fallbacks: boolean;
+      };
+    },
+    {
+      timeout: options.timeoutMs,
+      maxRetries: options.maxRetries,
+      signal: options.signal
     }
-  } as typeof request & {
-    provider: {
-      only: string[];
-      zdr: boolean;
-      data_collection: "deny";
-      allow_fallbacks: boolean;
-    };
-  });
+  );
 
   const text = completion.choices[0]?.message.content?.trim();
   return text ? text : null;
@@ -297,10 +312,15 @@ export async function generateAnswer(
     ? [deps.primaryRoute]
     : deps.routeChain ?? (await getActiveModelChain());
 
+  const generationDeadline = getDeadlineConfig().generation;
   let payload: AnswerPayload | null = null;
   let generationPath: GenerateAnswerResult["generationPath"] = "primary";
   const providerAttempts: ProviderAttemptTiming[] = [];
   for (const [index, route] of chain.entries()) {
+    // A cancellation (client disconnect or overall ask deadline) between routes
+    // stops the walk immediately — do not spend another provider call on a
+    // request nobody is waiting for.
+    if (input.signal?.aborted) break;
     const attemptStartedAt = performance.now();
     let outcome: ProviderAttemptOutcome = "error";
     let validationFailure: AnswerValidationFailure | null = null;
@@ -312,7 +332,10 @@ export async function generateAnswer(
         userPrompt,
         {
           openRouterProvider: route.provider,
-          reasoningEffort: route.reasoningEffort
+          reasoningEffort: route.reasoningEffort,
+          timeoutMs: generationDeadline.timeoutMs,
+          maxRetries: generationDeadline.maxRetries,
+          signal: input.signal
         }
       );
       if (!routeText) {
@@ -334,6 +357,10 @@ export async function generateAnswer(
       outcome = "success";
       break;
     } catch (err) {
+      // A cancelled request is not a route failure to fall through — halt the
+      // whole chain so the caller can fail closed. The finally block below
+      // still records this attempt's timing.
+      if (isAbortError(err) || input.signal?.aborted) throw err;
       console.warn(
         `[generation] route ${route.id} failed; trying next in chain:`,
         err instanceof Error ? err.message : err

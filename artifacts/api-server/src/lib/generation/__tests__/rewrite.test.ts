@@ -28,6 +28,44 @@ function throwingClient(): OpenAI {
   } as unknown as OpenAI;
 }
 
+/** Rejects as if the AbortSignal fired mid-request. */
+function abortingClient(): OpenAI {
+  return {
+    beta: {
+      chat: {
+        completions: {
+          parse: async () => {
+            const error = new Error("Request was aborted.");
+            error.name = "APIUserAbortError";
+            throw error;
+          }
+        }
+      }
+    }
+  } as unknown as OpenAI;
+}
+
+interface CapturedOptions {
+  timeout?: number;
+  maxRetries?: number;
+  signal?: AbortSignal;
+}
+
+function optionsCapturingClient(options: CapturedOptions[]): OpenAI {
+  return {
+    beta: {
+      chat: {
+        completions: {
+          parse: async (_body: unknown, requestOptions: CapturedOptions) => {
+            options.push(requestOptions);
+            return { choices: [{ message: { parsed: { standalone_question: "x" } } }] };
+          }
+        }
+      }
+    }
+  } as unknown as OpenAI;
+}
+
 describe("rewriteFollowUp", () => {
   it("passes through on the first turn without calling the LLM", async () => {
     // No client injected: a call attempt would throw on missing API key,
@@ -68,6 +106,39 @@ describe("rewriteFollowUp", () => {
       { client: throwingClient() }
     );
     expect(result).toEqual({ standaloneQuestion: "what about premium?", llmCalled: false });
+  });
+
+  it("rethrows an abort instead of failing open to the raw question", async () => {
+    // A cancelled request must halt the pipeline, not silently continue to
+    // retrieval after the caller has already given up.
+    await expect(
+      rewriteFollowUp(
+        {
+          question: "what about premium?",
+          history: [{ question: "q", answer: "a" }],
+          signal: new AbortController().signal
+        },
+        { client: abortingClient() }
+      )
+    ).rejects.toThrow();
+  });
+
+  it("passes a bounded timeout, retry cap, and the abort signal to the model call", async () => {
+    const options: CapturedOptions[] = [];
+    const controller = new AbortController();
+
+    await rewriteFollowUp(
+      {
+        question: "what about premium?",
+        history: [{ question: "q", answer: "a" }],
+        signal: controller.signal
+      },
+      { client: optionsCapturingClient(options) }
+    );
+
+    expect(options[0]?.timeout).toBeGreaterThan(0);
+    expect(options[0]?.maxRetries).toBeGreaterThanOrEqual(0);
+    expect(options[0]?.signal).toBe(controller.signal);
   });
 });
 

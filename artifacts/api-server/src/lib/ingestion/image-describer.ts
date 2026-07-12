@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { getDeadlineConfig } from "../deadlines.js";
 
 /**
  * Vision-based image describer.
@@ -50,25 +51,32 @@ export class OpenAIImageDescriber implements ImageDescriber {
    */
   async describe(imageBase64: string, mimeType: string): Promise<string> {
     const dataUri = `data:${mimeType};base64,${imageBase64}`;
-    const response = await this.client.chat.completions.create({
-      model: VISION_MODEL,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: VISION_PROMPT },
-            // detail:"low" is enough for our use case (KB image
-            // descriptions, not detailed visual reasoning) and ~3x
-            // cheaper than the default detail level.
-            {
-              type: "image_url",
-              image_url: { url: dataUri, detail: "low" }
-            }
-          ]
-        }
-      ],
-      max_tokens: 250
-    });
+    const { imageDescribe } = getDeadlineConfig();
+    const response = await this.client.chat.completions.create(
+      {
+        model: VISION_MODEL,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: VISION_PROMPT },
+              // detail:"low" is enough for our use case (KB image
+              // descriptions, not detailed visual reasoning) and ~3x
+              // cheaper than the default detail level.
+              {
+                type: "image_url",
+                image_url: { url: dataUri, detail: "low" }
+              }
+            ]
+          }
+        ],
+        max_tokens: 250
+      },
+      {
+        timeout: imageDescribe.timeoutMs,
+        maxRetries: imageDescribe.maxRetries
+      }
+    );
     return response.choices[0]?.message?.content?.trim() ?? "";
   }
 }

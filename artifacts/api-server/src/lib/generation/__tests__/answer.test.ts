@@ -7,6 +7,7 @@ import {
   validateGeneratedAnswer
 } from "../answer.js";
 import { APPROVED_MODEL_ROUTES, DEFAULT_MODEL_ROUTE } from "../model-routing.js";
+import { getDeadlineConfig } from "../../deadlines.js";
 
 const NANO_ROUTE = APPROVED_MODEL_ROUTES.find(
   (route) => route.id === "gpt-5.4-nano-azure-nitro"
@@ -340,5 +341,108 @@ describe("generateAnswer ZDR route fallback", () => {
     expect(result.payload.refused).toBe(true);
     expect(result.generationPath).toBe("fallback-failed");
     warning.mockRestore();
+  });
+});
+
+interface CapturedOptions {
+  timeout?: number;
+  maxRetries?: number;
+  signal?: AbortSignal;
+}
+
+function optionsCapturingClient(text: string | null, options: CapturedOptions[]): OpenAI {
+  return {
+    chat: {
+      completions: {
+        create: async (_request: unknown, requestOptions: CapturedOptions) => {
+          options.push(requestOptions);
+          return { choices: [{ message: { content: text } }] };
+        }
+      }
+    }
+  } as unknown as OpenAI;
+}
+
+/** A client that rejects as if the AbortSignal fired mid-request. */
+function abortingClient(requests: CapturedRequest[]): OpenAI {
+  return {
+    chat: {
+      completions: {
+        create: async (request: CapturedRequest) => {
+          requests.push(request);
+          const error = new Error("Request was aborted.");
+          error.name = "APIUserAbortError";
+          throw error;
+        }
+      }
+    }
+  } as unknown as OpenAI;
+}
+
+describe("generateAnswer cancellation + bounds", () => {
+  it("passes a bounded per-request timeout and retry cap to every route call", async () => {
+    const options: CapturedOptions[] = [];
+
+    await generateAnswer(
+      { programName: "Test", question: "What is the fee?", chunks },
+      { client: optionsCapturingClient(answer, options), routeChain: [DEFAULT_MODEL_ROUTE] }
+    );
+
+    const generationDeadline = getDeadlineConfig().generation;
+    expect(options[0]?.timeout).toBe(generationDeadline.timeoutMs);
+    expect(options[0]?.maxRetries).toBe(generationDeadline.maxRetries);
+    expect(options[0]?.timeout).toBeGreaterThan(0);
+  });
+
+  it("forwards the abort signal to the provider call", async () => {
+    const options: CapturedOptions[] = [];
+    const controller = new AbortController();
+
+    await generateAnswer(
+      { programName: "Test", question: "What is the fee?", chunks, signal: controller.signal },
+      { client: optionsCapturingClient(answer, options), routeChain: [DEFAULT_MODEL_ROUTE] }
+    );
+
+    expect(options[0]?.signal).toBe(controller.signal);
+  });
+
+  it("halts the whole chain on abort instead of cascading to the next route", async () => {
+    const requests: CapturedRequest[] = [];
+    const controller = new AbortController();
+
+    await expect(
+      generateAnswer(
+        {
+          programName: "Test",
+          question: "What is the fee?",
+          chunks,
+          signal: controller.signal
+        },
+        { client: abortingClient(requests), routeChain: [NANO_ROUTE, MERCURY_ROUTE] }
+      )
+    ).rejects.toThrow();
+
+    // The abort stops the walk after the first attempt — no fallback spend.
+    expect(requests).toHaveLength(1);
+  });
+
+  it("does not call any route when the signal is already aborted", async () => {
+    const requests: CapturedRequest[] = [];
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await generateAnswer(
+      {
+        programName: "Test",
+        question: "What is the fee?",
+        chunks,
+        signal: controller.signal
+      },
+      { client: stubClient(answer, requests), routeChain: [NANO_ROUTE, MERCURY_ROUTE] }
+    );
+
+    expect(requests).toHaveLength(0);
+    expect(result.payload.refused).toBe(true);
+    expect(result.generationPath).toBe("fallback-failed");
   });
 });

@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
+import { getDeadlineConfig, isAbortError } from "../deadlines.js";
 import { recordAppError } from "../observability/error-log.js";
 
 /**
@@ -40,6 +41,8 @@ export interface HistoryTurn {
 export interface RewriteInput {
   question: string;
   history: HistoryTurn[];
+  /** Cancels the in-flight rewrite (client disconnect or overall ask deadline). */
+  signal?: AbortSignal;
   diagnostics?: {
     correlationId?: string;
     userId?: string;
@@ -96,24 +99,36 @@ export async function rewriteFollowUp(
 
   try {
     const client = deps.client ?? getClient();
-    const completion = await client.beta.chat.completions.parse({
-      model: REWRITE_MODEL,
-      temperature: 0,
-      messages: [
-        { role: "system", content: REWRITE_SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: `CONVERSATION:\n${formatHistory(input.history)}\n\nFOLLOW-UP: ${question}`
-        }
-      ],
-      response_format: zodResponseFormat(RewriteSchema, "rewrite")
-    });
+    const { rewrite } = getDeadlineConfig();
+    const completion = await client.beta.chat.completions.parse(
+      {
+        model: REWRITE_MODEL,
+        temperature: 0,
+        messages: [
+          { role: "system", content: REWRITE_SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: `CONVERSATION:\n${formatHistory(input.history)}\n\nFOLLOW-UP: ${question}`
+          }
+        ],
+        response_format: zodResponseFormat(RewriteSchema, "rewrite")
+      },
+      {
+        timeout: rewrite.timeoutMs,
+        maxRetries: rewrite.maxRetries,
+        signal: input.signal
+      }
+    );
     const rewritten = completion.choices[0]?.message.parsed?.standalone_question?.trim();
     if (!rewritten) {
       return { standaloneQuestion: question, llmCalled: true };
     }
     return { standaloneQuestion: rewritten, llmCalled: true };
   } catch (err) {
+    // A cancelled request (client disconnect or overall ask deadline) is not a
+    // rewrite failure to swallow — halt the pipeline instead of continuing to
+    // retrieval with the raw question after the caller has already given up.
+    if (isAbortError(err)) throw err;
     console.warn(
       "[rewrite] follow-up rewrite failed; using the original question:",
       err instanceof Error ? err.message : err

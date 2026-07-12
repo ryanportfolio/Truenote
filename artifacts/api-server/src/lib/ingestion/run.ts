@@ -1,5 +1,6 @@
 import { and, eq, isNull, ne, or } from "drizzle-orm";
 import { db, withPgAdvisoryLock } from "../db-client.js";
+import { getDeadlineConfig } from "../deadlines.js";
 import { chunks, documents, documentVersions, type ChunkMetadata } from "@workspace/db/schema";
 import { sha256Hex } from "../parsing/hash.js";
 import {
@@ -331,7 +332,12 @@ async function runClaimedIngestion(
 
     // 9. Embed (text chunks + image-description chunks together so
     //    we get one batched OpenAI call when feasible).
-    const embedder = deps.embedder ?? new OpenAIEmbedder();
+    const embedder =
+      deps.embedder ??
+      new OpenAIEmbedder({
+        timeoutMs: getDeadlineConfig().ingestionEmbedding.timeoutMs,
+        maxRetries: getDeadlineConfig().ingestionEmbedding.maxRetries
+      });
     const allInputs = [
       ...semanticChunks.map((c) => c.content),
       ...imageDescriptions.map((d) => d.content)

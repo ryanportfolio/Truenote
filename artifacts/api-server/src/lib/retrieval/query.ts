@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db-client.js";
+import { getDeadlineConfig } from "../deadlines.js";
 import { OpenAIEmbedder, type Embedder } from "../ingestion/embedder.js";
 import { elapsedMs } from "../observability/pipeline-timing.js";
 import { getRerankModel, rerankWithCohere } from "./rerank.js";
@@ -96,6 +97,8 @@ export interface RetrievalDeps {
   embedder?: Embedder;
   /** Called just before the Cohere rerank pass. Lets callers surface an honest pipeline stage to a waiting user. */
   onRerankStart?: () => void;
+  /** Cancels in-flight embedding and rerank calls (client disconnect or overall ask deadline). */
+  signal?: AbortSignal;
 }
 
 interface CandidateRow {
@@ -391,11 +394,19 @@ export async function retrieve(
     };
   }
 
-  const embedder = deps.embedder ?? new OpenAIEmbedder();
+  const queryEmbeddingDeadline = getDeadlineConfig().queryEmbedding;
+  const embedder =
+    deps.embedder ??
+    new OpenAIEmbedder({
+      timeoutMs: queryEmbeddingDeadline.timeoutMs,
+      maxRetries: queryEmbeddingDeadline.maxRetries
+    });
   const embeddingStartedAt = performance.now();
-  const embeddings = await embedder.embed([trimmed]).finally(() => {
-    timingStages.embedding = elapsedMs(embeddingStartedAt);
-  });
+  const embeddings = await embedder
+    .embed([trimmed], { signal: deps.signal })
+    .finally(() => {
+      timingStages.embedding = elapsedMs(embeddingStartedAt);
+    });
   const embedding = embeddings[0];
   if (!embedding) {
     return {
@@ -461,7 +472,8 @@ export async function retrieve(
   const reranked = await rerankWithCohere({
     question: trimmed,
     documents: candidates.map((c) => c.content),
-    topN: topK
+    topN: topK,
+    signal: deps.signal
   }).finally(() => {
     timingStages.rerank = elapsedMs(rerankStartedAt);
   });

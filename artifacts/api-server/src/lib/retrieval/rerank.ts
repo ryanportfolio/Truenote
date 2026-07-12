@@ -1,4 +1,5 @@
 import { CohereClient } from "cohere-ai";
+import { getDeadlineConfig } from "../deadlines.js";
 
 let _cohere: CohereClient | null = null;
 
@@ -14,6 +15,8 @@ export interface RerankInput {
   question: string;
   documents: string[];
   topN?: number;
+  /** Cancels the in-flight rerank (client disconnect or overall ask deadline). */
+  signal?: AbortSignal;
 }
 
 export interface RerankResultItem {
@@ -44,12 +47,20 @@ export async function rerankWithCohere(input: RerankInput): Promise<RerankResult
   if (input.documents.length === 0) return { results: [] };
   const c = client();
   const top = Math.min(input.topN ?? 8, input.documents.length);
-  const response = await c.rerank({
-    model: getRerankModel(),
-    query: input.question,
-    documents: input.documents,
-    topN: top
-  });
+  const { rerank } = getDeadlineConfig();
+  const response = await c.rerank(
+    {
+      model: getRerankModel(),
+      query: input.question,
+      documents: input.documents,
+      topN: top
+    },
+    {
+      timeoutInSeconds: rerank.timeoutMs / 1000,
+      maxRetries: rerank.maxRetries,
+      abortSignal: input.signal
+    }
+  );
   return {
     results: response.results.map((r) => ({
       index: r.index,
