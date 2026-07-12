@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type OpenAI from "openai";
-import { REFUSAL_TEXT, generateAnswer, validateGeneratedAnswer } from "../answer.js";
+import {
+  REFUSAL_TEXT,
+  formatExcerpts,
+  generateAnswer,
+  validateGeneratedAnswer
+} from "../answer.js";
 import { APPROVED_MODEL_ROUTES, DEFAULT_MODEL_ROUTE } from "../model-routing.js";
 
 const NANO_ROUTE = APPROVED_MODEL_ROUTES.find(
@@ -69,6 +74,26 @@ const chunks = [
 const answer = "The cancellation fee is **$25** [chunk-1].";
 
 describe("validateGeneratedAnswer", () => {
+  it("gives models short source aliases instead of UUIDs", () => {
+    expect(formatExcerpts(chunks)).toContain("SOURCE [S1]");
+    expect(formatExcerpts(chunks)).not.toContain("SOURCE [chunk-1]");
+  });
+
+  it("maps a short source alias back to the retrieved chunk id", () => {
+    const result = validateGeneratedAnswer("The fee is $25 [S1].", chunks);
+
+    expect(result.failure).toBeNull();
+    expect(result.payload?.answer).toBe("The fee is $25 [chunk-1].");
+    expect(result.payload?.sources[0]?.chunk_id).toBe("chunk-1");
+  });
+
+  it("rejects an out-of-range source alias", () => {
+    const result = validateGeneratedAnswer("The fee is $25 [S99].", chunks);
+
+    expect(result.failure?.reason).toBe("unknown_citation_ids");
+    expect(result.failure?.unknownCitationIds).toEqual(["S99"]);
+  });
+
   it("builds source metadata from retrieved chunks and inline citations", () => {
     const result = validateGeneratedAnswer(answer, chunks);
 
@@ -105,7 +130,7 @@ describe("validateGeneratedAnswer", () => {
 
   it("reports every recognized and unknown inline citation id", () => {
     const returnedText =
-      "The fee is $25 [chunk-1], effective now [invented-chunk].";
+      "The fee is $25 [chunk-1], effective now [chunk_id:invented-chunk].";
 
     expect(validateGeneratedAnswer(returnedText, chunks).failure).toEqual({
       reason: "unknown_citation_ids",
@@ -115,6 +140,28 @@ describe("validateGeneratedAnswer", () => {
       availableChunkIds: ["chunk-1"],
       returnedText
     });
+  });
+
+  it("canonicalizes a copied chunk_id label around a recognized id", () => {
+    const result = validateGeneratedAnswer(
+      "Refunds arrive in 5-7 days [chunk_id:chunk-1].",
+      chunks
+    );
+
+    expect(result.failure).toBeNull();
+    expect(result.payload?.answer).toBe("Refunds arrive in 5-7 days [chunk-1].");
+    expect(result.payload?.sources[0]?.chunk_id).toBe("chunk-1");
+  });
+
+  it("canonicalizes fullwidth citation brackets around a recognized id", () => {
+    const result = validateGeneratedAnswer(
+      "Refunds arrive in 5-7 days【chunk-1】.",
+      chunks
+    );
+
+    expect(result.failure).toBeNull();
+    expect(result.payload?.answer).toBe("Refunds arrive in 5-7 days[chunk-1].");
+    expect(result.payload?.sources[0]?.chunk_id).toBe("chunk-1");
   });
 
   it("reports an empty answer before citation problems", () => {

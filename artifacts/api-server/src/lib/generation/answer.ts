@@ -66,7 +66,8 @@ export function buildSystemPrompt(programName: string): string {
     "2. If the answer is not fully supported by the excerpts, return exactly:",
     `   "${REFUSAL_TEXT}"`,
     "3. Never invent fees, dates, names, policy numbers, or procedures.",
-    "4. Cite every factual claim inline using [chunk_id].",
+    "4. Cite every factual claim by copying its short SOURCE token exactly.",
+    "   Use forms like [S1] or [S2]; never copy or invent a UUID.",
     "5. Prefer the most recent document version when excerpts conflict.",
     "6. Format the answer as GitHub-flavored Markdown. Use numbered steps for",
     "   procedures, bullet lists for options, and **bold** for key values",
@@ -79,9 +80,9 @@ export function buildSystemPrompt(programName: string): string {
 
 export function formatExcerpts(chunks: RetrievalChunk[]): string {
   return chunks
-    .map((c) => {
+    .map((c, index) => {
       const title = c.docTitle ?? "Untitled";
-      return `[chunk_id: ${c.id}] (doc: ${title})\n${c.content}`;
+      return `SOURCE [S${index + 1}] (doc: ${title})\n${c.content}`;
     })
     .join("\n\n---\n\n");
 }
@@ -201,7 +202,10 @@ export function validateGeneratedAnswer(
 
   const availableChunkIds = chunks.map((chunk) => chunk.id);
   const availableIds = new Set(availableChunkIds);
-  const inlineCitationIds = extractInlineCitationIds(answer);
+  const { normalizedAnswer, inlineCitationIds } = normalizeInlineCitations(
+    answer,
+    chunks
+  );
   const recognizedCitationIds = inlineCitationIds.filter((id) => availableIds.has(id));
   const unknownCitationIds = inlineCitationIds.filter((id) => !availableIds.has(id));
   const failureBase = {
@@ -230,7 +234,7 @@ export function validateGeneratedAnswer(
 
   return {
     payload: {
-      answer,
+      answer: normalizedAnswer,
       sources: buildSources(recognizedCitationIds, chunks),
       refused: false,
       confidence: "medium"
@@ -239,16 +243,33 @@ export function validateGeneratedAnswer(
   };
 }
 
-function extractInlineCitationIds(answer: string): string[] {
+function normalizeInlineCitations(
+  answer: string,
+  chunks: RetrievalChunk[]
+): {
+  normalizedAnswer: string;
+  inlineCitationIds: string[];
+} {
   const ids: string[] = [];
   const seen = new Set<string>();
-  for (const match of answer.matchAll(/\[([^\[\]\r\n]+)\]/g)) {
-    const id = match[1]?.trim();
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    ids.push(id);
-  }
-  return ids;
+  const aliases = new Map<string, string>(
+    chunks.map((chunk, index) => [`s${index + 1}`, chunk.id])
+  );
+  const normalizedAnswer = answer.replace(
+    /\[([^\[\]\r\n]+)\]|【([^【】\r\n]+)】/g,
+    (original, squareContent: string | undefined, wideContent: string | undefined) => {
+      const raw = (squareContent ?? wideContent ?? "").trim();
+      const token = raw.replace(/^chunk_id\s*:\s*/i, "").trim();
+      if (!token) return original;
+      const resolvedId = aliases.get(token.toLowerCase()) ?? token;
+      if (!seen.has(resolvedId)) {
+        seen.add(resolvedId);
+        ids.push(resolvedId);
+      }
+      return `[${resolvedId}]`;
+    }
+  );
+  return { normalizedAnswer, inlineCitationIds: ids };
 }
 
 export async function generateAnswer(

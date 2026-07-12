@@ -52,7 +52,8 @@ RULES (non-negotiable):
    "I couldn't find this in the knowledge base. Please escalate
    or check the source documents directly."
 3. Never invent fees, dates, names, policy numbers, or procedures.
-4. Cite every factual claim inline using [chunk_id].
+4. Cite every factual claim by copying its short SOURCE token exactly.
+   Use forms like [S1] or [S2]; never copy or invent a UUID.
 5. Prefer the most recent document version when excerpts conflict.
 6. Format the answer as GitHub-flavored Markdown. Use numbered steps for
    procedures, bullet lists for options, and **bold** for key values
@@ -67,9 +68,11 @@ EXCERPTS:
 QUESTION: {question}
 ```
 
-The model emits plain text and citation IDs only inline. The server extracts those IDs, rejects missing or unknown IDs, recognizes only the exact refusal copy, and builds source metadata from retrieved chunks. There is no model-authored JSON or sources array.
+The model emits plain text and short source tokens only inline. Excerpts are numbered `SOURCE [S1]`, `SOURCE [S2]`, and so on; the server maps those aliases to retrieved chunk UUIDs and rewrites the answer to canonical `[uuid]` citations. Legacy direct UUIDs plus harmless `[chunk_id:uuid]` and `【uuid】` variants remain accepted when exact. Missing, out-of-range, or genuinely unknown IDs are rejected. There is no fuzzy UUID correction, model-authored JSON, or sources array.
 
 The approved routes form a server-owned allowlist that a super user orders into a fallback chain on `/admin/model-routing`: Nemotron 3 Super Nitro on DigitalOcean (default primary), GPT-5.4 Nano Nitro on Azure, Nemotron 3 Ultra Nitro on Together, Mercury 2 on Inception at low reasoning, and Granite 4.1 8B on WandB. The order lives in `app_settings`; unknown or removed ids are dropped and missing approved routes appended. Every request pins one provider and enforces `provider.zdr=true`, `data_collection="deny"`, and `allow_fallbacks=false`. OpenRouter rejects a route before prompt delivery when no matching ZDR endpoint exists. Generation advances on request, empty-answer, or citation failure. Chain exhaustion returns the safe refusal. There is deliberately no direct-provider backup that can bypass OpenRouter's per-request ZDR enforcement.
+
+Granite 4.1 8B is a standard instruct model, not a hybrid-thinking model. Its WandB OpenRouter endpoint does not expose `reasoning_effort`; the route omits that parameter and uses deterministic `temperature: 0`. There are no low, medium, or high thinking options for this model.
 
 ## UI contract
 
