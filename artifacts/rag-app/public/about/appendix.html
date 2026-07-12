@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex, follow" />
+    <link rel="canonical" href="https://truenote.org/about/" />
+    <title>Truenote | Technical Appendix</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <canvas id="atmosphere" aria-hidden="true"></canvas>
+    <main class="deck" aria-live="polite">
+      <section class="slide document-boundary boundary-stop active" data-title="The document and answer boundary" data-theme="paper">
+        <div class="slide-pad">
+          <p class="index">DOCUMENT + ANSWER BOUNDARY</p>
+          <h2>Only the approved documents can support an answer</h2>
+          <div class="boundary-stop-layout">
+            <div class="boundary-steps" aria-label="How approved documents become answer evidence">
+              <article class="fragment"><span>01</span><strong>Approved documents selected</strong><p>SOPs, PDFs, screenshots, DOCX, Markdown, and text</p></article>
+              <article class="fragment"><span>02</span><strong>Search stays inside that set</strong><p>Vector and keyword search use only the selected documents</p></article>
+              <article class="fragment"><span>03</span><strong>A strong passage is required</strong><p>Weak document matches do not reach the answer model</p></article>
+              <article class="fragment"><span>04</span><strong>The source must be known</strong><p>Every returned source ID must resolve to a selected document</p></article>
+            </div>
+            <div class="boundary-stop-checks" aria-label="Checks that stop an unsupported answer">
+              <header><span>ANSWER CHECKS</span><strong>Both must pass</strong></header>
+              <article class="fragment"><span>WEAK DOCUMENT MATCH</span><strong>The answer model is not called</strong><b>REFUSE</b></article>
+              <article class="fragment"><span>MISSING OR UNKNOWN SOURCE</span><strong>The response is discarded</strong><b>REJECT</b></article>
+            </div>
+          </div>
+          <div class="boundary-consequence fragment"><b>DESIGNED OUTCOME</b><span>Unsupported questions become visible gaps, not plausible answers</span></div>
+        </div>
+        <aside class="speaker-note">The presentation follows one program; the useful controls are the selected document set and the checks before and after answer generation</aside>
+      </section>
+
+      <section class="slide access-proof" data-title="Access is enforced" data-theme="ink">
+        <div class="slide-pad">
+          <p class="index">ACCESS CONTROLS</p>
+          <h2>Access is checked on every request</h2>
+          <div class="access-layers">
+            <article class="fragment"><span>ROLE</span><strong>Administrative actions require the appropriate role</strong><p>Uploads, user administration, and reviews are not available to every account</p></article>
+            <article class="fragment"><span>REQUEST</span><strong>Every protected request is checked again on the server</strong><p>Browser controls cannot widen document access</p></article>
+            <article class="fragment"><span>SESSION</span><strong>Database records store a hash of the session token</strong><p>The plaintext token is not stored with the session record</p></article>
+            <article class="fragment"><span>COOKIE</span><strong>Authentication cookies are protected from browser scripts</strong><p>They use httpOnly, sameSite, and secure-in-production settings</p></article>
+          </div>
+          <div class="access-rule fragment"><span>REVIEWABLE</span><b>Each control is visible in source and testable through the application</b></div>
+        </div>
+        <aside class="speaker-note">These are narrow code-supported claims, not a claim of certification or enterprise readiness</aside>
+      </section>
+
+      <section class="slide answer-model" data-title="Granite and the answer route" data-theme="night">
+        <div class="model-art depth" data-depth="8" aria-hidden="true"></div>
+        <div class="slide-pad model-stage">
+          <div class="model-copy">
+            <p class="index">ANSWER MODEL</p>
+            <h2>Control comes before model choice</h2>
+            <div class="model-identity fragment">
+              <span>PRIMARY ANSWER MODEL</span>
+              <strong>IBM Granite 4.1 8B</strong>
+            </div>
+            <div class="model-capabilities" aria-label="Granite capabilities used by Truenote">
+              <article class="fragment"><span>WORK</span><strong>RAG · structured output · extraction · classification</strong></article>
+              <article class="fragment"><span>CONTEXT</span><strong>131K-token window · 12 languages</strong></article>
+              <article class="fragment"><span>CONTROL</span><strong>Published weights · Apache 2.0 license</strong></article>
+            </div>
+          </div>
+
+          <div class="route-instrument fragment" aria-label="Answer route controls and observed provider performance">
+            <div class="route-locks">
+              <span><i></i><b>ZDR required</b></span>
+              <span><i></i><b>Training use denied</b></span>
+              <span><i></i><b>Silent fallback off</b></span>
+            </div>
+            <div class="route-snapshot">
+              <header><span>ROUTE SNAPSHOT</span><small>CAPTURED 11 JUL 2026</small></header>
+              <div class="telemetry-row">
+                <span><b>LATENCY</b><strong>0.11s</strong></span>
+                <span><b>THROUGHPUT</b><strong>113 tps</strong></span>
+                <span class="uptime-reading"><b>UPTIME</b><strong><i></i>100.00%</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <p class="model-source">Model facts: <a href="https://huggingface.co/ibm-granite/granite-4.1-8b" target="_blank" rel="noreferrer">IBM model card</a> · Route policy: <a href="https://openrouter.ai/docs/guides/features/zdr" target="_blank" rel="noreferrer">OpenRouter ZDR</a></p>
+        </div>
+        <aside class="speaker-note">The model receives selected passages, not the document library; each answer request requires a ZDR-capable route, denies provider data collection, and disables silent provider fallback; the telemetry is a dated observation, not a promise</aside>
+      </section>
+
+      <section class="slide source-control" data-title="Operational control" data-theme="paper">
+        <div class="slide-pad source-control-layout">
+          <div class="source-control-copy">
+            <p class="index">OPERATIONAL CONTROL</p>
+            <h2>Control stays with the team doing the work</h2>
+          </div>
+          <div class="operational-control-stack">
+            <div class="control-stage" aria-label="Actions available to an authorized manager">
+              <div class="control-operator fragment">
+                <i aria-hidden="true"></i>
+                <span>PERMISSIONED MANAGER</span>
+                <strong>Training, operations, or program leadership</strong>
+                <p>Role and program boundaries stay enforced</p>
+              </div>
+              <div class="control-actions">
+                <article class="fragment">
+                  <span>USERS</span>
+                  <div><strong>Add one CSR or import a list</strong><p>Accounts are created directly inside the program</p></div>
+                </article>
+                <article class="fragment">
+                  <span>DOCUMENTS</span>
+                  <div><strong>Upload the approved source</strong><p>Ingestion starts without a vendor handoff</p></div>
+                </article>
+              </div>
+              <div class="control-no-queue fragment"><span>NO THIRD-PARTY TICKET</span><strong>Routine changes start with the team that owns the work</strong></div>
+            </div>
+            <div class="source-advantage fragment"><b>DEEPER CONTROL</b><span>Inspect, change, and retest source and controls</span></div>
+          </div>
+        </div>
+        <aside class="speaker-note">A manager can create CSR accounts and administer documents inside their program; senior managers can also manage manager accounts; document processing is asynchronous, so the control is direct initiation without a vendor queue</aside>
+      </section>
+
+      <section class="slide eval-proof" data-title="Repeatable evaluation" data-theme="night">
+        <div class="slide-pad">
+          <p class="index">REPEATABLE EVALUATION</p>
+          <div class="eval-layout">
+            <div class="eval-copy">
+              <h2>Test the questions your team actually gets</h2>
+              <p class="lead">Use questions the team already receives, then run the same set after every material change</p>
+            </div>
+            <div class="eval-contract">
+              <article class="fragment"><span>DID IT ANSWER?</span><strong>Answer or refusal</strong></article>
+              <article class="fragment"><span>DID IT USE THE RIGHT DOCUMENT?</span><strong>Expected source</strong></article>
+              <article class="fragment"><span>DID IT ADD A CLAIM?</span><strong>Claim support</strong></article>
+              <article class="fragment"><span>WHERE DID A FAILURE OCCUR?</span><strong>Retrieve · rerank · threshold · generate</strong></article>
+              <article class="fragment"><span>WAS IT FAST ENOUGH?</span><strong>p50 and p95 latency</strong></article>
+            </div>
+          </div>
+          <div class="eval-rule fragment"><span>NO DEMO-SHAPED SCORE</span><b>No percentage enters the pitch until the company’s own question set is run</b></div>
+        </div>
+        <aside class="speaker-note">The harness supports expected documents, required content, expected refusals, failure-stage attribution, latency, and optional claim-level support checks</aside>
+      </section>
+
+      <section class="slide public-sector" data-title="Answer the client with evidence" data-theme="night">
+        <div class="slide-pad">
+          <p class="index">CLIENT DILIGENCE</p>
+          <h2>Answer the client’s questions with evidence</h2>
+          <div class="client-questions" role="table" aria-label="Public-sector questions and evidence">
+            <div class="client-question fragment" role="row"><strong role="cell">Which documents are allowed?</strong><span role="cell">Approved inventory and test corpus</span></div>
+            <div class="client-question fragment" role="row"><strong role="cell">Where are they stored and processed?</strong><span role="cell">Named services, data flow, retention settings</span></div>
+            <div class="client-question fragment" role="row"><strong role="cell">Which providers may receive excerpts?</strong><span role="cell">Approved route list and configuration evidence</span></div>
+            <div class="client-question fragment" role="row"><strong role="cell">Who can use the system?</strong><span role="cell">Role matrix and access-control tests</span></div>
+            <div class="client-question fragment" role="row"><strong role="cell">What would stop the evaluation?</strong><span role="cell">Agreed security, accessibility, and answer-quality conditions</span></div>
+          </div>
+          <p class="framework-line">Reference points, not assumed mandates: <a href="https://www.nist.gov/itl/ai-risk-management-framework" target="_blank" rel="noreferrer">NIST AI RMF</a> · <a href="https://csrc.nist.gov/projects/ssdf" target="_blank" rel="noreferrer">NIST SSDF</a> · <a href="https://www.fedramp.gov/docs/authority/scope/" target="_blank" rel="noreferrer">FedRAMP scope</a> · <a href="https://www.section508.gov/manage/laws-and-policies/" target="_blank" rel="noreferrer">Section 508</a></p>
+        </div>
+        <aside class="speaker-note">Keep framework names in the source line; the slide itself stays in buyer language: documents, services, providers, users, tests, and stop conditions</aside>
+      </section>
+    </main>
+
+    <aside class="overview-panel" id="overviewPanel" aria-hidden="true">
+      <header><span>APPENDIX MAP</span><strong>Truenote technical appendix</strong><small>Choose a slide · Esc closes</small></header>
+      <div class="overview-grid" id="overviewGrid"></div>
+    </aside>
+
+
+    <script src="./deck.js"></script>
+  </body>
+</html>

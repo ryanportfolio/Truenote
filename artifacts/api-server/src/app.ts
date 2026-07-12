@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { attachCurrentUser } from "./middleware/current-user.js";
 import { registerRoutes } from "./routes/index.js";
 import { recordAppError } from "./lib/observability/error-log.js";
+import { robotsHeaderForSpaPath } from "./lib/seo.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -98,10 +99,12 @@ export function createApp(): Express {
   // In production the Vite dev server is not running, so the api-server
   // serves the pre-built frontend from rag-app/dist and handles SPA routing.
   if (process.env.NODE_ENV === "production") {
-    app.get("*", (_req: Request, res: Response) => {
+    app.get("*", (req: Request, res: Response) => {
       // HTML must revalidate so a new deploy can point at its new hashed
       // assets immediately. The assets themselves remain immutable above.
       res.setHeader("Cache-Control", "no-cache");
+      const robotsHeader = robotsHeaderForSpaPath(req.path);
+      if (robotsHeader) res.setHeader("X-Robots-Tag", robotsHeader);
       res.sendFile(path.join(dist, "index.html"));
     });
   }
