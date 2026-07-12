@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type OpenAI from "openai";
-import type { AnswerPayload } from "../answer.js";
-import { generateAnswer } from "../answer.js";
+import type { ModelAnswerPayload } from "../answer.js";
+import { generateAnswer, validateGeneratedAnswer } from "../answer.js";
 import { APPROVED_MODEL_ROUTES, DEFAULT_MODEL_ROUTE } from "../model-routing.js";
 
 // GPT-5.4 Nano — the second approved route, used to exercise chain cascade.
@@ -17,9 +17,10 @@ interface CapturedRequest {
   provider?: unknown;
   reasoning_effort?: string;
   temperature?: number;
+  response_format?: unknown;
 }
 
-function stubClient(parsed: AnswerPayload | null, requests: CapturedRequest[]): OpenAI {
+function stubClient(parsed: ModelAnswerPayload | null, requests: CapturedRequest[]): OpenAI {
   return {
     beta: {
       chat: {
@@ -49,10 +50,10 @@ function throwingClient(requests: CapturedRequest[]): OpenAI {
   } as unknown as OpenAI;
 }
 
-/** Client whose per-request behavior is keyed by model id: an AnswerPayload to
+/** Client whose per-request behavior is keyed by model id: a ModelAnswerPayload to
  *  return it parsed, "throw" to simulate a request error, null for no parse. */
 function routingClient(
-  behaviors: Record<string, AnswerPayload | "throw" | null>,
+  behaviors: Record<string, ModelAnswerPayload | "throw" | null>,
   requests: CapturedRequest[]
 ): OpenAI {
   return {
@@ -85,18 +86,68 @@ const chunks = [
   }
 ];
 
-const answer: AnswerPayload = {
+const answer: ModelAnswerPayload = {
   answer: "The cancellation fee is **$25** [chunk-1].",
-  sources: [
-    {
-      chunk_id: "chunk-1",
-      doc_title: "Untrusted title",
-      excerpt: "Untrusted excerpt"
-    }
-  ],
   refused: false,
   confidence: "high"
 };
+
+describe("validateGeneratedAnswer", () => {
+  it("builds source metadata from retrieved chunks and inline citations", () => {
+    const result = validateGeneratedAnswer(answer, chunks);
+
+    expect(result.failure).toBeNull();
+    expect(result.payload?.sources).toEqual([
+      {
+        chunk_id: "chunk-1",
+        doc_title: "Cancellation Policy",
+        excerpt: "The cancellation fee is $25."
+      }
+    ]);
+  });
+
+  it("reports the exact missing-citation validation reason", () => {
+    const returnedPayload = { ...answer, answer: "The cancellation fee is **$25**." };
+    const result = validateGeneratedAnswer(returnedPayload, chunks);
+
+    expect(result).toEqual({
+      payload: null,
+      failure: {
+        reason: "missing_inline_citation",
+        inlineCitationIds: [],
+        recognizedCitationIds: [],
+        unknownCitationIds: [],
+        availableChunkIds: ["chunk-1"],
+        returnedPayload
+      }
+    });
+  });
+
+  it("reports every recognized and unknown inline citation id", () => {
+    const returnedPayload = {
+      ...answer,
+      answer: "The fee is $25 [chunk-1], effective now [invented-chunk]."
+    };
+    const result = validateGeneratedAnswer(returnedPayload, chunks);
+
+    expect(result.failure).toEqual({
+      reason: "unknown_citation_ids",
+      inlineCitationIds: ["chunk-1", "invented-chunk"],
+      recognizedCitationIds: ["chunk-1"],
+      unknownCitationIds: ["invented-chunk"],
+      availableChunkIds: ["chunk-1"],
+      returnedPayload
+    });
+  });
+
+  it("reports an empty answer before citation problems", () => {
+    const returnedPayload = { ...answer, answer: "  " };
+    const result = validateGeneratedAnswer(returnedPayload, chunks);
+
+    expect(result.failure?.reason).toBe("empty_answer");
+    expect(result.failure?.returnedPayload).toEqual(returnedPayload);
+  });
+});
 
 describe("generateAnswer provider fallback", () => {
   it("uses the selected approved OpenRouter route", async () => {
@@ -126,6 +177,7 @@ describe("generateAnswer provider fallback", () => {
       })
     ]);
     expect(primaryRequests[0]?.temperature).toBeUndefined();
+    expect(JSON.stringify(primaryRequests[0]?.response_format)).not.toContain("sources");
     expect(fallbackRequests).toEqual([]);
     expect(result.payload.refused).toBe(false);
     expect(result.generationPath).toBe("primary");
@@ -200,10 +252,9 @@ describe("generateAnswer provider fallback", () => {
   it("retries when the primary answer cites an unknown chunk", async () => {
     const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const fallbackRequests: CapturedRequest[] = [];
-    const invalidAnswer: AnswerPayload = {
+    const invalidAnswer: ModelAnswerPayload = {
       ...answer,
-      answer: "The cancellation fee is **$25** [unknown-chunk].",
-      sources: [{ chunk_id: "unknown-chunk", doc_title: "Made up", excerpt: "Made up" }]
+      answer: "The cancellation fee is **$25** [unknown-chunk]."
     };
 
     const result = await generateAnswer(
@@ -239,9 +290,8 @@ describe("generateAnswer provider fallback", () => {
 
   it("keeps a valid primary refusal without calling the backup", async () => {
     const fallbackRequests: CapturedRequest[] = [];
-    const refusal: AnswerPayload = {
+    const refusal: ModelAnswerPayload = {
       answer: "I couldn't find this in the knowledge base.",
-      sources: [],
       refused: true,
       confidence: "low"
     };
@@ -307,9 +357,8 @@ describe("generateAnswer provider fallback", () => {
   it("stops at the first valid refusal without cascading or calling the backup", async () => {
     const primaryRequests: CapturedRequest[] = [];
     const fallbackRequests: CapturedRequest[] = [];
-    const refusal: AnswerPayload = {
+    const refusal: ModelAnswerPayload = {
       answer: "I couldn't find this in the knowledge base.",
-      sources: [],
       refused: true,
       confidence: "low"
     };

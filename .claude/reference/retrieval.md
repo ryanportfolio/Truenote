@@ -63,7 +63,6 @@ RULES (non-negotiable):
 Respond as JSON only:
 {
   "answer": "string with [chunk_id] citations inline",
-  "sources": [{"chunk_id":"...", "doc_title":"...", "excerpt":"..."}],
   "refused": boolean,
   "confidence": "high" | "medium" | "low"
 }
@@ -76,11 +75,13 @@ QUESTION: {question}
 
 Use strict structured outputs (`response_format: { type: 'json_schema', ... }`) through the OpenAI-compatible client — do NOT rely on prompt-only JSON. The model will occasionally drift if you only ask in prose.
 
-The approved routes form a server-owned allowlist that a super user orders into a fallback chain on `/admin/model-routing`: GPT-5.6 Luna on OpenAI at low reasoning (default primary), GPT-5.4 Nano Nitro on Azure, Nemotron 3 Super Nitro on DigitalOcean, Nemotron 3 Ultra Nitro on Together, and Mercury 2 on Inception at low reasoning. The order (an array of approved ids) lives in `app_settings`; a missing/legacy/invalid value degrades safely to the listed default order, and any approved route absent from a stored order is appended as a tail fallback so the chain is never empty. Each OpenRouter request pins that route's provider with `provider.only`, sets `reasoning_effort` to the route's own effort (`"low"` for Luna and Mercury 2, `"medium"` for the others), and enforces `provider.zdr=true`, `data_collection="deny"`, `require_parameters=true`, and `allow_fallbacks=false`. Generation walks the chain in order: any request error, schema/parse failure, empty answer, unknown source, or missing inline citation advances to the next route. A valid grounded refusal is success and ends the walk; it never cascades. If the whole chain errors, one final attempt runs through direct OpenAI `gpt-5.6-luna` at `reasoning_effort: "low"` (outside OpenRouter, so it survives an OpenRouter-wide outage); any required retention controls must therefore also be enabled on the OpenAI organization.
+The model emits citation IDs only inline. The server extracts those IDs, rejects missing or unknown IDs, and builds source metadata from the retrieved chunks. Do not ask the model for a duplicate `sources` array: two model-authored citation representations can disagree without adding any grounding guarantee.
+
+The approved routes form a server-owned allowlist that a super user orders into a fallback chain on `/admin/model-routing`: GPT-5.6 Luna on OpenAI at low reasoning (default primary), GPT-5.4 Nano Nitro on Azure, Nemotron 3 Super Nitro on DigitalOcean, Nemotron 3 Ultra Nitro on Together, and Mercury 2 on Inception at low reasoning. The order (an array of approved ids) lives in `app_settings`; a missing/legacy/invalid value degrades safely to the listed default order, and any approved route absent from a stored order is appended as a tail fallback so the chain is never empty. Each OpenRouter request pins that route's provider with `provider.only`, sets `reasoning_effort` to the route's own effort (`"low"` for Luna and Mercury 2, `"medium"` for the others), and enforces `provider.zdr=true`, `data_collection="deny"`, `require_parameters=true`, and `allow_fallbacks=false`. Generation walks the chain in order: any request error, schema/parse failure, empty answer, unknown inline citation ID, or missing inline citation advances to the next route. A valid grounded refusal is success and ends the walk; it never cascades. If the whole chain errors, one final attempt runs through direct OpenAI `gpt-5.6-luna` at `reasoning_effort: "low"` (outside OpenRouter, so it survives an OpenRouter-wide outage); any required retention controls must therefore also be enabled on the OpenAI organization.
 
 ## UI contract
 
-- Every CSR answer renders citation chips. If the LLM returns zero sources, treat as a refusal regardless of the `refused` flag.
+- Every CSR answer renders citation chips. If the server derives zero sources from recognized inline citation IDs, treat the answer as invalid regardless of the `refused` flag.
 - Citation chip is clickable → opens a side panel with the clean source excerpt + an immutable deep link (`version`, query-log id, source position). The reader opens that READY historical version and marks the exact raw-Markdown span. Image-derived chunks keep a version-pinned receipt but may have no direct text span. Citation-target reads re-check query owner, program, source position, document, and version.
 - Refusal renders a clearly different visual state — not an error, but explicitly "not in KB."
 - Thumbs up/down writes to `query_log.feedback`. Low-feedback queries are the gold for KB improvement.
