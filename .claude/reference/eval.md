@@ -97,6 +97,44 @@ Exit code: non-zero if any question fails. Useful as a future CI gate.
 
 Citation matching uses stable `documents.id` from the already authorized retrieval rows, not chunk ids — chunk ids change on re-ingest, and a second post-generation lookup can race that change.
 
+## Protected (held-out) questions (2026-07-11)
+
+`eval_questions.is_protected` marks a held-out control set that is **never used
+to tune** thresholds, prompts, or models. A gap between the protected and open
+pass rates is evidence the pipeline was tuned to the questions it was measured
+on (overfitting). This is orthogonal to the durable **baseline** (`eval_runs.is_baseline`,
+pinned per program via `/admin/evaluations`) — the baseline detects "did the
+numbers move"; protected questions detect "did we cheat to move them."
+
+- The runner reports `summary.splits.protected` and `summary.splits.open`
+  (`{ total, passed, passRatePct }`) on every run; the admin Evaluation page
+  shows a "Held-out split" line once any protected question exists. Older runs
+  recorded before the column omit `splits`.
+- `is_protected` is read via a **tolerant raw query** (not the drizzle table),
+  so the column ships via raw DDL with no `shared/schema.ts` edit. Missing
+  column ⇒ every question is unprotected (pre-DDL deployments still run).
+- **Policy (enforced by review, not code):** never edit a protected question,
+  and never use it to tune. Investigate protected failures on the open set.
+  Aim for ~30–40% protected, weighted toward exact-value questions (fees,
+  dates, policy numbers) and out-of-KB refusal cases.
+
+Column DDL — Replit Agent, run once (idempotent):
+
+```sql
+ALTER TABLE eval_questions
+  ADD COLUMN IF NOT EXISTS is_protected boolean NOT NULL DEFAULT false;
+```
+
+Mark questions protected — raw SQL, owner-selected ids (there is no UI toggle yet):
+
+```sql
+UPDATE eval_questions SET is_protected = true WHERE id IN ('<uuid>', '<uuid>', ...);
+```
+
+To freeze a baseline: run the full suite, then pin the completed run in
+`/admin/evaluations`. Do NOT create a separate baseline file — the DB baseline
+already carries the config snapshot and question-set hash.
+
 ## Pitfalls
 
 - Eval questions written by the developer who built the system are biased toward what the system handles well. Have an ops person or actual CSR write half the set.

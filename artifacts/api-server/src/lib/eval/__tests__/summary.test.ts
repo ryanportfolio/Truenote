@@ -15,6 +15,7 @@ function result(
     expectedDocId: "document-1",
     expectedAnswerContains: ["$25"],
     notes: null,
+    isProtected: false,
     answer: "The fee is $25.",
     refused: false,
     topScore: 0.9,
@@ -64,5 +65,29 @@ describe("summarizeEvalResults", () => {
     expect(summary.failedFallbackCount).toBe(1);
     expect(summary.judgeFailures).toBe(1);
     expect(summary.judgedQuestions).toBe(1);
+  });
+
+  it("reports held-out (protected) and tunable (open) pass rates separately", () => {
+    const summary = summarizeEvalResults([
+      result({ questionId: "p1", isProtected: true, pass: true }),
+      result({ questionId: "p2", isProtected: true, pass: false }),
+      result({ questionId: "o1", isProtected: false, pass: true }),
+      result({ questionId: "o2", isProtected: false, pass: true }),
+      result({ questionId: "o3", isProtected: false, pass: false })
+    ]);
+
+    expect(summary.splits).toEqual({
+      protected: { total: 2, passed: 1, passRatePct: 50 },
+      open: { total: 3, passed: 2, passRatePct: (2 / 3) * 100 }
+    });
+  });
+
+  it("nulls a split's pass rate when it has no questions", () => {
+    const summary = summarizeEvalResults([
+      result({ questionId: "o1", isProtected: false, pass: true })
+    ]);
+
+    expect(summary.splits?.protected).toEqual({ total: 0, passed: 0, passRatePct: null });
+    expect(summary.splits?.open).toEqual({ total: 1, passed: 1, passRatePct: 100 });
   });
 });

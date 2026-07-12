@@ -3,6 +3,7 @@ import { db } from "../db-client.js";
 import { getDeadlineConfig } from "../deadlines.js";
 import { OpenAIEmbedder, type Embedder } from "../ingestion/embedder.js";
 import { elapsedMs } from "../observability/pipeline-timing.js";
+import { recordAppError } from "../observability/error-log.js";
 import { getRerankModel, rerankWithCohere } from "./rerank.js";
 
 const DEFAULT_RERANK_THRESHOLD = 0.3;
@@ -242,6 +243,28 @@ async function trigramSearch(
     LIMIT ${k}
   `);
   return result.rows as unknown as CandidateRow[];
+}
+
+/**
+ * Defense-in-depth program-scope filter, applied to the final chunk set before
+ * it leaves retrieval. Program scoping is a security boundary: every search
+ * query already filters `program_id` at the SQL stage, so in correct operation
+ * this drops nothing. It exists so a future edit that accidentally widens one
+ * of those queries fails CLOSED here (a CSR on Program A can never be served a
+ * Program B chunk) instead of leaking cross-tenant content. Pure and exported
+ * for tests. Callers record the drop as a security-relevant error.
+ */
+export function filterToProgramScope(
+  chunks: RetrievalChunk[],
+  programId: string
+): { kept: RetrievalChunk[]; dropped: RetrievalChunk[] } {
+  const kept: RetrievalChunk[] = [];
+  const dropped: RetrievalChunk[] = [];
+  for (const chunk of chunks) {
+    if (chunk.programId === programId) kept.push(chunk);
+    else dropped.push(chunk);
+  }
+  return { kept, dropped };
 }
 
 export function mergeCandidates(
@@ -532,6 +555,25 @@ export async function retrieve(
       timingStages.neighborMerge = elapsedMs(neighborMergeStartedAt);
     }
   }
+  // Defense in depth: every search query is already program-scoped in SQL, so
+  // this drops nothing in correct operation. If a future edit ever widens one
+  // of those filters, fail closed here rather than serve a cross-program chunk.
+  const scoped = filterToProgramScope(chunks, input.programId);
+  if (scoped.dropped.length > 0) {
+    void recordAppError({
+      severity: "error",
+      source: "retrieval",
+      operation: "program-scope-violation",
+      error: new Error("retrieval returned chunks outside the requested program"),
+      programId: input.programId,
+      context: {
+        droppedCount: scoped.dropped.length,
+        droppedChunkIds: scoped.dropped.slice(0, 20).map((c) => c.id),
+        foreignProgramIds: Array.from(new Set(scoped.dropped.map((c) => c.programId)))
+      }
+    });
+  }
+  chunks = scoped.kept;
   timingCounts.contextChunks = chunks.length;
 
   return {

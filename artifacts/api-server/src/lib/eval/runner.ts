@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "../db-client.js";
 import {
   evalQuestions,
@@ -109,6 +109,8 @@ export interface EvalQuestionResult {
   expectedDocId: string | null;
   expectedAnswerContains: string[];
   notes: string | null;
+  /** True when this is a held-out protected question (never tuned against). */
+  isProtected: boolean;
   // Outcome
   answer: string;
   refused: boolean;
@@ -146,10 +148,29 @@ export interface EvalQuestionResult {
   error: string | null;
 }
 
+/** Pass tally for one held-out/tunable split of the eval set. */
+export interface EvalSplitStat {
+  total: number;
+  passed: number;
+  /** Null when the split has no questions. */
+  passRatePct: number | null;
+}
+
 export interface EvalSummary {
   totalQuestions: number;
   passed: number;
   failed: number;
+  /**
+   * Pass rates split by held-out (protected) vs tunable (open) questions.
+   * Protected questions are the anti-overfitting control: never used to tune
+   * thresholds/prompts/models, so a gap between the two rates is evidence the
+   * pipeline was tuned to the questions it was measured on. Absent on runs
+   * recorded before protected questions existed (the column defaults false).
+   */
+  splits?: {
+    protected: EvalSplitStat;
+    open: EvalSplitStat;
+  };
   // By bucket
   inKbTotal: number;
   inKbPassed: number;
@@ -278,6 +299,8 @@ export interface EvalQuestionDefinition {
   expectedDocId: string | null;
   expectedAnswerContains: string[] | null;
   notes: string | null;
+  /** Held-out from tuning. Absent on snapshots queued before the column existed. */
+  isProtected: boolean;
 }
 
 /**
@@ -316,7 +339,61 @@ export async function loadEvalQuestions(
   if (opts.limit !== undefined && opts.limit > 0) {
     rows = rows.slice(0, opts.limit);
   }
-  return rows;
+  // is_protected is read via a tolerant raw query, NOT the drizzle table, so the
+  // column can be added by raw DDL (per the repo's schema protocol) without a
+  // shared/schema.ts edit. Missing column ⇒ every question is unprotected.
+  const protectedFlags = await loadProtectedFlags(rows.map((row) => row.id));
+  return rows.map((row) => ({
+    ...row,
+    isProtected: protectedFlags.get(row.id) ?? false
+  }));
+}
+
+/** PostgreSQL undefined_column (42703), including driver-wrapped errors. */
+function isMissingProtectedColumn(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current; depth += 1) {
+    if (
+      typeof current === "object" &&
+      current !== null &&
+      "code" in current &&
+      (current as { code?: unknown }).code === "42703"
+    ) {
+      return true;
+    }
+    current =
+      typeof current === "object" && current !== null && "cause" in current
+        ? (current as { cause?: unknown }).cause
+        : null;
+  }
+  return false;
+}
+
+/**
+ * Read eval_questions.is_protected for the given ids, tolerant of the column
+ * not existing yet (pre-DDL deployment) — that case returns an empty map so
+ * every question falls back to unprotected.
+ */
+async function loadProtectedFlags(ids: string[]): Promise<Map<string, boolean>> {
+  const out = new Map<string, boolean>();
+  if (ids.length === 0) return out;
+  try {
+    const idList = sql.join(
+      ids.map((id) => sql`${id}::uuid`),
+      sql`, `
+    );
+    const result = await db.execute(sql`
+      SELECT id::text AS id, is_protected
+      FROM eval_questions
+      WHERE id IN (${idList})
+    `);
+    for (const row of result.rows as Array<{ id: string; is_protected: unknown }>) {
+      out.set(row.id, row.is_protected === true);
+    }
+  } catch (error) {
+    if (!isMissingProtectedColumn(error)) throw error;
+  }
+  return out;
 }
 
 /**
@@ -343,6 +420,7 @@ async function evaluateOne(
       expectedDocId: q.expectedDocId,
       expectedAnswerContains: expectedPhrases,
       notes: q.notes,
+      isProtected: q.isProtected === true,
       answer: "",
       refused: false,
       topScore: null,
@@ -484,6 +562,7 @@ async function evaluateOne(
       expectedDocId: q.expectedDocId,
       expectedAnswerContains: expectedPhrases,
       notes: q.notes,
+      isProtected: q.isProtected === true,
       answer,
       refused,
       topScore: retrieval.topScore,
@@ -514,6 +593,7 @@ async function evaluateOne(
       expectedDocId: q.expectedDocId,
       expectedAnswerContains: expectedPhrases,
       notes: q.notes,
+      isProtected: q.isProtected === true,
       answer: "",
       refused: false,
       topScore: null,
@@ -538,10 +618,23 @@ async function evaluateOne(
   }
 }
 
+function splitStat(results: EvalQuestionResult[]): EvalSplitStat {
+  const passed = results.filter((r) => r.pass).length;
+  return {
+    total: results.length,
+    passed,
+    passRatePct: results.length === 0 ? null : (passed / results.length) * 100
+  };
+}
+
 export function summarizeEvalResults(results: EvalQuestionResult[]): EvalSummary {
   const passed = results.filter((r) => r.pass).length;
   const inKb = results.filter((r) => r.kind === "in-kb");
   const outOfKb = results.filter((r) => r.kind === "out-of-kb");
+  const splits = {
+    protected: splitStat(results.filter((r) => r.isProtected)),
+    open: splitStat(results.filter((r) => !r.isProtected))
+  };
 
   // Citation accuracy: among in-KB questions WITH an expected_doc_id,
   // what fraction got it right? Questions without expected_doc_id are
@@ -603,6 +696,7 @@ export function summarizeEvalResults(results: EvalQuestionResult[]): EvalSummary
     totalQuestions: results.length,
     passed,
     failed: results.length - passed,
+    splits,
     inKbTotal: inKb.length,
     inKbPassed: inKb.filter((r) => r.pass).length,
     outOfKbTotal: outOfKb.length,

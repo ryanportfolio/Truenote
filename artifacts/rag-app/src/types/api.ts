@@ -360,12 +360,25 @@ export interface EvalQuestionResult {
   unsupportedClaims: string[];
   faithfulnessJudgeFailed: boolean;
   error: string | null;
+  /** Absent on runs recorded before protected questions existed. */
+  isProtected?: boolean;
+}
+
+export interface EvalSplitStat {
+  total: number;
+  passed: number;
+  passRatePct: number | null;
 }
 
 export interface EvalSummary {
   totalQuestions: number;
   passed: number;
   failed: number;
+  /** Held-out (protected) vs tunable (open) pass rates. Absent on older runs. */
+  splits?: {
+    protected: EvalSplitStat;
+    open: EvalSplitStat;
+  };
   inKbTotal: number;
   inKbPassed: number;
   outOfKbTotal: number;
