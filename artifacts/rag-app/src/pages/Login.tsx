@@ -148,7 +148,7 @@ export function LoginPage({
               <fieldset className="auth-demo">
                 <legend>Choose your view</legend>
                 <div className="auth-demo-grid">
-                  {demoAccounts.map((account, index) => {
+                  {demoAccounts.map((account) => {
                     const selected = selectedDemo === account.email;
                     return (
                       <button
@@ -164,9 +164,6 @@ export function LoginPage({
                             : "auth-demo-role"
                         }
                       >
-                        <span className="auth-demo-role-number" aria-hidden>
-                          {String(index + 1).padStart(2, "0")}
-                        </span>
                         <span className="auth-demo-role-name">{account.label}</span>
                         <span className="auth-demo-role-promise">
                           {DEMO_ROLE_PROMISES[account.role]}
@@ -259,30 +256,54 @@ export function LoginPage({
           * (camelCase fetchPriority warns and gets dropped); the spread
           * sidesteps the React 18 type defs that lack it. */}
         <img
-          src="/visuals/luminous-archive.webp"
+          src="/visuals/luminous-archive-diagonal.webp"
           alt=""
           aria-hidden
           className="archive-image"
           {...{ fetchpriority: "high" }}
         />
-        <div className="archive-parallax archive-parallax-mid" aria-hidden>
-          <img
-            src="/visuals/luminous-archive.webp"
-            alt=""
-            className="archive-layer-image"
-          />
+
+        <div className="archive-plane archive-plane-rear" aria-hidden>
+          <div className="archive-plane-motion">
+            <img
+              src="/visuals/luminous-archive-diagonal.webp"
+              alt=""
+              className="archive-layer-image"
+            />
+          </div>
         </div>
-        <div className="archive-parallax archive-parallax-near" aria-hidden>
-          <img
-            src="/visuals/luminous-archive.webp"
-            alt=""
-            className="archive-layer-image"
-          />
+
+        <div className="archive-plane archive-plane-core" aria-hidden>
+          <div className="archive-plane-motion">
+            <img
+              src="/visuals/luminous-archive-diagonal.webp"
+              alt=""
+              className="archive-layer-image"
+            />
+            <span className="archive-tab-glint" />
+          </div>
         </div>
-        <div className="archive-light" aria-hidden />
-        <div className="archive-core-aura" aria-hidden />
-        <div className="archive-refraction" aria-hidden />
-        <div className="archive-caustic" aria-hidden />
+
+        <div className="archive-plane archive-plane-mineral" aria-hidden>
+          <div className="archive-plane-motion">
+            <img
+              src="/visuals/luminous-archive-diagonal.webp"
+              alt=""
+              className="archive-layer-image"
+            />
+            <span className="archive-refraction" />
+          </div>
+        </div>
+
+        <div className="archive-plane archive-plane-foreground" aria-hidden>
+          <div className="archive-plane-motion">
+            <img
+              src="/visuals/luminous-archive-diagonal.webp"
+              alt=""
+              className="archive-layer-image"
+            />
+          </div>
+        </div>
       </section>
     </main>
   );
