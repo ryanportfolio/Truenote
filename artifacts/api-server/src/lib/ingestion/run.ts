@@ -3,11 +3,7 @@ import { db, withPgAdvisoryLock } from "../db-client.js";
 import { getDeadlineConfig } from "../deadlines.js";
 import { chunks, documents, documentVersions, type ChunkMetadata } from "@workspace/db/schema";
 import { sha256Hex } from "../parsing/hash.js";
-import {
-  callMistralOcr,
-  type OcrResult,
-  type OcrPageImage
-} from "../parsing/mistral-ocr.js";
+import { callLandingParse } from "../parsing/landing-parse.js";
 import { docxToMarkdown } from "../parsing/docx.js";
 import { chunkMarkdown } from "../parsing/chunker.js";
 import { createTiktokenTokenizer } from "../parsing/tokenizer.js";
@@ -15,11 +11,6 @@ import { getObjectStorage } from "../storage/object-storage.js";
 import { buildContextHeader, prependContextHeader } from "./contextual.js";
 import { findCachedParsedMarkdown } from "./dedupe.js";
 import { OpenAIEmbedder, type Embedder } from "./embedder.js";
-import {
-  OpenAIImageDescriber,
-  type ImageDescriber
-} from "./image-describer.js";
-import { recordAppError } from "../observability/error-log.js";
 
 export interface RunIngestionInput {
   documentVersionId: string;
@@ -27,36 +18,17 @@ export interface RunIngestionInput {
 
 export interface RunIngestionDeps {
   embedder?: Embedder;
-  /**
-   * Optional override for tests / scripts. The default lazily creates
-   * an OpenAIImageDescriber inside the OCR branch — text-only paths
-   * (DOCX, markdown, dedupe-hit) never touch this dependency, so
-   * scripts that only ingest text files don't need to mock it out.
-   */
-  imageDescriber?: ImageDescriber;
 }
 
-const OCR_MIMES = new Set([
+// Document types routed to LandingAI ADE Parse v2. Parse returns markdown with
+// any figures/screenshots described inline, so there is no separate image stage.
+const PARSE_MIMES = new Set([
   "application/pdf",
   "image/png",
   "image/jpeg",
   "image/jpg",
   "image/webp"
 ]);
-
-/**
- * Cap on how many extracted images per document version we send to GPT-4o
- * vision. `detail:"low"` already fixes the per-image token cost, so the
- * only unbounded axis is COUNT: a single 20MB upload can pack thousands of
- * tiny image extracts, and an authenticated uploader (manager+) could use
- * that to run up vision spend or tie up an ingestion worker on one job.
- * 200 sits far above any realistic legitimate document (even a long
- * scanned manual is well under this) while bounding worst-case cost and
- * runtime per doc. Images beyond the cap are simply not enriched — the
- * document still ingests with all its text chunks plus the first 200
- * image descriptions.
- */
-const MAX_IMAGES_DESCRIBED_PER_VERSION = 200;
 
 const PASSTHROUGH_TEXT_MIMES = new Set([
   "text/markdown",
@@ -77,15 +49,14 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
  *   3. compute / persist SHA-256 if not already set
  *   4. dedupe: if another ready version has the same SHA-256, reuse its
  *      parsed_markdown (no OCR call)
- *   5. parse — Mistral OCR for PDFs and images; mammoth for DOCX (via
+ *   5. parse — LandingAI ADE Parse v2 for PDFs and images (figures described
+ *      inline in the returned markdown); mammoth for DOCX (via
  *      lib/parsing/docx.ts); passthrough for text/markdown
  *   6. persist parsed_markdown
  *   7. chunk via the structural chunker (target 500 tokens)
- *   8. image-describe → TODO Phase 1.5 (no-op for now; chunks with embedded
- *      image refs still flow through but are not enriched with descriptions)
- *   9. embed all chunks (batched 100/req)
- *  10. insert chunks rows with denormalized program_id
- *  11. activate version: set is_active=true, deactivate prior active versions
+ *   8. embed all chunks (batched 100/req)
+ *   9. insert chunks rows with denormalized program_id
+ *  10. activate version: set is_active=true, deactivate prior active versions
  *      of the same document_id, set documents.current_version_id
  *
  * On any error, parse_status is set to "failed" and the error rethrown.
@@ -194,25 +165,17 @@ async function runClaimedIngestion(
     // 4. Dedupe + 5. Parse.
     const mimeType = (version.mimeType ?? "application/pdf").toLowerCase();
     let parsedMarkdown: string | null = null;
-    // Holds the full OCR result (incl. per-page image extracts) for
-    // step 8 image-describe. Null when:
-    //   - the file took the dedupe path (no fresh OCR call)
-    //   - the file took the DOCX / text passthrough path (no images)
-    // Image enrichment is therefore only present on fresh OCR
-    // ingestions of PDFs / images — same scope as the original
-    // OCR call. Dedupe's main job is to skip the OCR cost on
-    // re-uploads; re-running image-describe on cached docs would
-    // defeat that purpose.
-    let ocrResult: OcrResult | null = null;
 
     const cached = await findCachedParsedMarkdown(fileSha256, versionId);
     if (cached) {
       parsedMarkdown = cached.parsedMarkdown;
-    } else if (OCR_MIMES.has(mimeType)) {
-      ocrResult = await callMistralOcr(fileBuffer, mimeType, {
-        includeImageBase64: true
+    } else if (PARSE_MIMES.has(mimeType)) {
+      const { documentParse } = getDeadlineConfig();
+      const parsed = await callLandingParse(fileBuffer, mimeType, {
+        timeoutMs: documentParse.timeoutMs,
+        maxRetries: documentParse.maxRetries
       });
-      parsedMarkdown = ocrResult.markdown;
+      parsedMarkdown = parsed.markdown;
     } else if (mimeType === DOCX_MIME) {
       parsedMarkdown = await docxToMarkdown(fileBuffer);
     } else if (PASSTHROUGH_TEXT_MIMES.has(mimeType)) {
@@ -245,144 +208,35 @@ async function runClaimedIngestion(
       };
     });
 
-    // 8. Image describe.
-    //
-    // For each base64 image returned by Mistral OCR, call gpt-4o
-    // vision and emit a separate chunk with metadata.has_image=true.
-    // Per-image failures are non-fatal — we lose enrichment for that
-    // one image but the rest of the document still ingests cleanly.
-    //
-    // Only OCR'd documents (PDF + image MIMEs) produce per-image
-    // data; the DOCX / text passthrough paths skip this step
-    // entirely. Dedupe also skips — see the ocrResult comment above.
-    interface ImageDescription {
-      content: string;
-      metadata: ChunkMetadata;
-    }
-    const imageDescriptions: ImageDescription[] = [];
-    if (ocrResult) {
-      const describer = deps.imageDescriber ?? new OpenAIImageDescriber();
-      // Flatten to the describable images (those carrying base64), then
-      // cap on COUNT — the real cost/DoS amplification axis (see
-      // MAX_IMAGES_DESCRIBED_PER_VERSION). Vision calls stay sequential
-      // to bound concurrent OpenAI load, same as before.
-      const describable: Array<{ pageIndex: number; image: OcrPageImage }> = [];
-      for (const page of ocrResult.pages) {
-        for (const image of page.images) {
-          if (image.image_base64) {
-            describable.push({ pageIndex: page.index, image });
-          }
-        }
-      }
-      if (describable.length > MAX_IMAGES_DESCRIBED_PER_VERSION) {
-        console.warn(
-          `[ingestion] version ${versionId}: ${describable.length} images exceed the ` +
-            `${MAX_IMAGES_DESCRIBED_PER_VERSION}-image describe cap; enriching the first ` +
-            `${MAX_IMAGES_DESCRIBED_PER_VERSION}, skipping ${describable.length - MAX_IMAGES_DESCRIBED_PER_VERSION}`
-        );
-      }
-      const capped = describable.slice(0, MAX_IMAGES_DESCRIBED_PER_VERSION);
-      for (const { pageIndex, image } of capped) {
-        // image_base64 is guaranteed present (filtered above), but re-read
-        // into a local so the type narrows for describe().
-        const imageBase64 = image.image_base64;
-        if (!imageBase64) continue;
-        try {
-          // Mistral returns PNG-encoded extracts; pass the MIME
-          // explicitly so a future encoding change surfaces here.
-          const description = await describer.describe(imageBase64, "image/png");
-          const trimmed = description.trim();
-          if (trimmed.length === 0) continue;
-          // Doc-title header (no heading path — OCR image extracts don't
-          // carry section position) so images retrieve by document name.
-          const imageHeader = buildContextHeader(doc.title);
-          imageDescriptions.push({
-            content: prependContextHeader(
-              imageHeader,
-              `[Image on page ${pageIndex + 1}]: ${trimmed}`
-            ),
-            metadata: {
-              has_image: true,
-              ...(imageHeader ? { context_header: imageHeader } : {}),
-              ...(image.id ? { image_url: image.id } : {})
-            }
-          });
-        } catch (err) {
-          console.warn(
-            `[ingestion] vision describe failed for page ${pageIndex} image ${image.id ?? "?"}:`,
-            err instanceof Error ? err.message : err
-          );
-          void recordAppError({
-            severity: "warning",
-            source: "ingestion",
-            operation: "vision-image-description",
-            error: err,
-            provider: "openai-direct",
-            model: "gpt-4o",
-            programId: doc.programId,
-            context: {
-              documentVersionId: versionId,
-              pageIndex,
-              imageId: image.id ?? null
-            }
-          });
-        }
-      }
-    }
-
-    // 9. Embed (text chunks + image-description chunks together so
-    //    we get one batched OpenAI call when feasible).
+    // 8. Embed all chunks (batched 100/req). Figures/screenshots are already
+    //    described inline in the parsed markdown by LandingAI Parse v2, so there
+    //    is no separate per-image describe stage — image content rides along as
+    //    ordinary text chunks.
     const embedder =
       deps.embedder ??
       new OpenAIEmbedder({
         timeoutMs: getDeadlineConfig().ingestionEmbedding.timeoutMs,
         maxRetries: getDeadlineConfig().ingestionEmbedding.maxRetries
       });
-    const allInputs = [
-      ...semanticChunks.map((c) => c.content),
-      ...imageDescriptions.map((d) => d.content)
-    ];
-    const embeddings = await embedder.embed(allInputs);
+    const embeddings = await embedder.embed(semanticChunks.map((c) => c.content));
 
-    // 10. Insert chunks. Image-description chunks land after text
-    //     chunks in ordinal order so the storage layout reflects the
-    //     "text first, image descriptions appended" mental model.
-    const chunkRows = [
-      ...semanticChunks.map((c, idx) => {
-        const embedding = embeddings[idx];
-        if (!embedding) {
-          throw new Error(`Missing embedding for chunk ${idx}`);
-        }
-        const metadata: ChunkMetadata = c.metadata;
-        return {
-          documentVersionId: versionId,
-          programId,
-          ordinal: c.ordinal,
-          content: c.content,
-          embedding,
-          metadata
-        };
-      }),
-      ...imageDescriptions.map((d, idx) => {
-        const slot = semanticChunks.length + idx;
-        const embedding = embeddings[slot];
-        if (!embedding) {
-          throw new Error(`Missing embedding for image chunk ${idx}`);
-        }
-        return {
-          documentVersionId: versionId,
-          programId,
-          // Continue numbering after the last text chunk so retrieval
-          // sort-by-ordinal returns image descriptions in a stable
-          // post-text position.
-          ordinal: semanticChunks.length + idx,
-          content: d.content,
-          embedding,
-          metadata: d.metadata
-        };
-      })
-    ];
-    // 10–11. Delete-then-insert chunks AND activate, all atomically. The
+    // 9. Insert chunks.
+    const chunkRows = semanticChunks.map((c, idx) => {
+      const embedding = embeddings[idx];
+      if (!embedding) {
+        throw new Error(`Missing embedding for chunk ${idx}`);
+      }
+      const metadata: ChunkMetadata = c.metadata;
+      return {
+        documentVersionId: versionId,
+        programId,
+        ordinal: c.ordinal,
+        content: c.content,
+        embedding,
+        metadata
+      };
+    });
+    // 9–10. Delete-then-insert chunks AND activate, all atomically. The
     // single transaction prevents three known footguns:
     //   (a) a window where the prior active version has been deactivated
     //       but the new one hasn't been activated yet — retrieval finds zero

@@ -525,8 +525,8 @@ Set these in Replit Secrets (Tools → Secrets). The app reads them via
 |---|---|
 | `DATABASE_URL` | Replit's database tab (Neon-backed Postgres). Must be the same DB the DDL above ran against. |
 | `OPENROUTER_API_KEY` | openrouter.ai → API keys. Used by the approved primary routes selected on the super-user Model routing page; assign the key to the ZDR guardrail shown in OpenRouter. Requests also enforce ZDR explicitly. |
-| `OPENAI_API_KEY` | platform.openai.com → API keys. Used for embeddings (`text-embedding-3-small`), vision/utility calls, and backup answer generation (`gpt-5.6-luna` with low reasoning). OpenRouter's ZDR guardrail does not cover this direct fallback; configure required retention controls on the OpenAI organization too. |
-| `MISTRAL_API_KEY` | console.mistral.ai → API keys. Used for `mistral-ocr-latest`. |
+| `OPENAI_API_KEY` | platform.openai.com → API keys. Used for embeddings (`text-embedding-3-small`), utility calls, and backup answer generation (`gpt-5.6-luna` with low reasoning). OpenRouter's ZDR guardrail does not cover this direct fallback; configure required retention controls on the OpenAI organization too. |
+| `VISION_AGENT_API_KEY` | LandingAI ADE dashboard → API keys. Used for document parsing via ADE Parse v2 (`dpt-3-pro-latest`): OCR + inline figure description. ZDR requires a Team/Enterprise plan with the Org-Settings ZDR toggle ON — the key alone does not enable it. |
 | `COHERE_API_KEY` | dashboard.cohere.com → API keys. Trial key works for Phase 1. Used for `rerank-english-v3.0`. |
 | `BOOTSTRAP_SUPER_USER_EMAIL` | Email for the first super_user. Read once at startup; if no active super_user exists in the DB, one is created with these credentials. Idempotent — leaving the value in place after first login has no effect (existing super_user is left as-is). |
 | `BOOTSTRAP_SUPER_USER_PASSWORD` | Password for the first super_user. The user is forced to change it on first login. After the change, this env var is unused. |

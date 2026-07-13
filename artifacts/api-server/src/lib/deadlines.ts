@@ -35,8 +35,9 @@ export interface DeadlineConfig {
   nameSession: ProviderDeadline;
   /** Eval-only faithfulness judge. Not latency-sensitive, still bounded. */
   faithfulness: ProviderDeadline;
-  /** Ingestion image description (vision). Background, still bounded. */
-  imageDescribe: ProviderDeadline;
+  /** Ingestion document parse (LandingAI ADE). Background; generous — a large
+   *  PDF parse is slow, and figures are described inline within the same call. */
+  documentParse: ProviderDeadline;
   /** Overall /ask wall-clock budget. Exceeded → fail closed with the canned refusal. */
   askDeadlineMs: number;
 }
@@ -86,7 +87,7 @@ export function getDeadlineConfig(): DeadlineConfig {
     rewrite: readDeadline("REWRITE", 5_000, 1),
     nameSession: readDeadline("NAME_SESSION", 5_000, 1),
     faithfulness: readDeadline("FAITHFULNESS", 60_000, 2),
-    imageDescribe: readDeadline("IMAGE_DESCRIBE", 30_000, 2),
+    documentParse: readDeadline("DOCUMENT_PARSE", 120_000, 2),
     askDeadlineMs: readIntEnv(
       "ASK_DEADLINE_MS",
       45_000,
