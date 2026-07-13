@@ -8,8 +8,8 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 |---|---|---|
 | `DATABASE_URL` | Neon Postgres (Replit-managed) | Must have `vector` and `pg_trgm` extensions enabled |
 | `OPENROUTER_API_KEY` | Answer generation through the approved model-routing presets, plus the auxiliary utility calls (follow-up rewrite, session naming) pinned to the Granite 4.1 8B ZDR route | Assign key to the ZDR guardrail. Every request pins one provider, sends `provider.zdr=true`, denies data collection, and disables provider fallback. No direct answer-generation escape hatch exists. |
-| `OPENAI_API_KEY` | Embeddings (`text-embedding-3-small`), vision, and the opt-in eval judge | These direct utilities are outside OpenRouter's ZDR boundary; configure required retention controls on the OpenAI organization. They are never used as an answer-generation fallback. Follow-up rewrite and session naming moved to the OpenRouter ZDR utility (2026-07) and no longer touch this key. |
-| `MISTRAL_API_KEY` | Mistral OCR for document parsing | `mistral-ocr-latest` |
+| `OPENAI_API_KEY` | Embeddings (`text-embedding-3-small`) and the opt-in eval judge | These direct utilities are outside OpenRouter's ZDR boundary; configure required retention controls on the OpenAI organization. They are never used as an answer-generation fallback. Follow-up rewrite and session naming moved to the OpenRouter ZDR utility (2026-07) and no longer touch this key. |
+| `VISION_AGENT_API_KEY` | LandingAI ADE Parse v2 for document parsing (OCR + inline figure description) | Model `dpt-3-pro-latest`. ZDR is account-level (Team/Enterprise plan + Org-Settings toggle), NOT a request parameter — the key alone does not guarantee ZDR. |
 | `COHERE_API_KEY` | Rerank v3 | Cuts irrelevant chunks from final LLM context |
 | `BOOTSTRAP_SUPER_USER_EMAIL` | First-login seed | Used once on api-server startup to create the initial super_user if none exists. Idempotent. |
 | `BOOTSTRAP_SUPER_USER_PASSWORD` | First-login seed | Forced reset on first login; env var unused thereafter. |
@@ -36,5 +36,5 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 
 - Never log API keys. Never echo `process.env.*_KEY` in error responses.
 - Embedding model is `text-embedding-3-small` (1536 dim). The `chunks.embedding VECTOR(1536)` column hardcodes that — changing models requires re-ingestion.
-- Mistral OCR uses base64 file upload OR a URL. Prefer base64 for uploaded files to avoid signed-URL plumbing.
+- LandingAI ADE Parse v2 takes a `multipart/form-data` upload (`document` field) via direct HTTP — no SDK, Node's global `fetch`/`FormData`/`Blob`. See `lib/parsing/landing-parse.ts` and `.claude/reference/landingai-ade.md`.
 - Replit reserves port 5000 for the public webview, so on Replit `PORT=5000` (frontend) and `API_PORT=3001` (or any non-5000). The defaults in `.env.example` reflect this. Local-only dev can flip them back to the donor's `API_PORT=5000`/`PORT=5173` Express+Vite convention. See `.claude/reference/pitfalls.md`.

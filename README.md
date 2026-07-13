@@ -52,11 +52,10 @@ Pure vector search misses exact-match queries CSRs actually ask ("cancellation f
 
 Runs once per document version, never at query time:
 
-1. Upload → object storage, SHA-256 dedupe (accidental re-uploads skip OCR entirely)
-2. Parse via Mistral OCR (PDFs, images, scans, and tables handled uniformly)
+1. Upload → object storage, SHA-256 dedupe (accidental re-uploads skip parsing entirely)
+2. Parse via LandingAI ADE Parse v2 (PDFs, images, scans, and tables handled uniformly; embedded figures described inline in one call, so no separate vision step)
 3. Semantic chunking (~500 tokens; never splits a table or a list), with a contextual header — `[Doc Title > Heading > Subheading]` — prepended to each chunk so both the embedding and the keyword index carry provenance
-4. Images get 1–3 sentence GPT-4o vision descriptions, stored as their own searchable chunks
-5. Embed, index, activate
+4. Embed, index, activate
 
 ## Eval harness
 
@@ -84,7 +83,7 @@ Every change touching ingestion, retrieval, or generation runs the suite. Exit c
 | Frontend | React 18 + Vite + Tailwind CSS (wouter routing) |
 | API | Express + TypeScript |
 | Database | Postgres (Neon) with `pgvector` (HNSW) + `pg_trgm`, via Drizzle |
-| Parsing | Mistral OCR |
+| Parsing | LandingAI ADE Parse v2 (`dpt-3-pro-latest`) |
 | Embeddings | OpenAI `text-embedding-3-small` |
 | Reranking | Cohere Rerank |
 | Generation | Super-user-ordered approved OpenRouter fallback chain (GPT-5.6 Luna/OpenAI low-reasoning default primary; Mercury 2/Inception available as a low-latency option; cascades on model errors, not grounded refusals), with a final direct-OpenAI GPT-5.6 Luna low-reasoning backup |
@@ -116,7 +115,7 @@ pnpm -r run test          # unit tests
 pnpm dev                  # frontend + API (see .env.example for ports)
 ```
 
-You'll need API keys for OpenRouter (primary answers), OpenAI (embeddings, vision, utility calls, and backup answers), Mistral (OCR), and Cohere (reranking). `.env.example` documents every variable, including the Replit-specific port arrangement.
+You'll need API keys for OpenRouter (primary answers), OpenAI (embeddings, utility calls, and backup answers), LandingAI (document parsing via ADE — `VISION_AGENT_API_KEY`), and Cohere (reranking). `.env.example` documents every variable, including the Replit-specific port arrangement.
 
 ## Design
 
