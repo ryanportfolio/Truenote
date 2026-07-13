@@ -256,7 +256,7 @@ export function LoginPage({
           * (camelCase fetchPriority warns and gets dropped); the spread
           * sidesteps the React 18 type defs that lack it. */}
         <img
-          src="/visuals/luminous-archive-diagonal.webp"
+          src="/visuals/luminous-archive-clean.webp"
           alt=""
           aria-hidden
           className="archive-image"
@@ -266,7 +266,7 @@ export function LoginPage({
         <div className="archive-plane archive-plane-rear" aria-hidden>
           <div className="archive-plane-motion">
             <img
-              src="/visuals/luminous-archive-diagonal.webp"
+              src="/visuals/luminous-archive-clean.webp"
               alt=""
               className="archive-layer-image"
             />
@@ -276,18 +276,17 @@ export function LoginPage({
         <div className="archive-plane archive-plane-core" aria-hidden>
           <div className="archive-plane-motion">
             <img
-              src="/visuals/luminous-archive-diagonal.webp"
+              src="/visuals/luminous-archive-clean.webp"
               alt=""
               className="archive-layer-image"
             />
-            <span className="archive-tab-glint" />
           </div>
         </div>
 
         <div className="archive-plane archive-plane-mineral" aria-hidden>
           <div className="archive-plane-motion">
             <img
-              src="/visuals/luminous-archive-diagonal.webp"
+              src="/visuals/luminous-archive-clean.webp"
               alt=""
               className="archive-layer-image"
             />
@@ -298,10 +297,11 @@ export function LoginPage({
         <div className="archive-plane archive-plane-foreground" aria-hidden>
           <div className="archive-plane-motion">
             <img
-              src="/visuals/luminous-archive-diagonal.webp"
+              src="/visuals/luminous-archive-clean.webp"
               alt=""
               className="archive-layer-image"
             />
+            <span className="archive-tab-glint" />
           </div>
         </div>
       </section>
