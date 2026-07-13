@@ -841,19 +841,19 @@
     position: relative;
     min-width: 0;
     overflow: hidden;
-    background: oklch(91.5% 0.025 75);
+    background: oklch(92.5% 0.022 78);
     isolation: isolate;
   }
 
   .archive-image,
   .archive-layer-image {
     position: absolute;
-    inset: -3%;
-    width: 106%;
-    height: 106%;
+    inset: -2%;
+    width: 104%;
+    height: 104%;
     max-width: none;
     object-fit: cover;
-    object-position: 76% center;
+    object-position: right center;
     user-select: none;
   }
 
@@ -864,10 +864,9 @@
     pointer-events: none;
   }
 
-  /* Motion is assembled from the photograph's actual depth planes. The
-   * still image remains the complete composition; these feathered copies
-   * only separate the standing archive, evidence seam, mineral sheet, and
-   * foreground stack by a few pixels. */
+  /* Motion follows the clean archive's real bands. The still image remains
+   * complete; feathered copies register the outer paper, mineral index,
+   * cobalt evidence core, and lower foreground without adding graphics. */
   .archive-plane {
     display: none;
     transform-origin: var(--archive-origin, 75% 50%);
@@ -887,47 +886,48 @@
 
   .archive-plane-rear {
     --archive-mask: radial-gradient(
-      ellipse 57% 53% at 76% 18%,
-      black 0 38%,
-      rgb(0 0 0 / 0.86) 50%,
-      rgb(0 0 0 / 0.34) 63%,
-      transparent 76%
+      ellipse 73% 76% at 52% 49%,
+      transparent 0 48%,
+      rgb(0 0 0 / 0.28) 53%,
+      black 61% 83%,
+      rgb(0 0 0 / 0.28) 91%,
+      transparent 100%
     );
-    --archive-origin: 76% 18%;
+    --archive-origin: 52% 49%;
   }
 
   .archive-plane-core {
     --archive-mask: radial-gradient(
-      ellipse 29% 34% at 82% 25%,
-      black 0 35%,
-      rgb(0 0 0 / 0.92) 47%,
-      rgb(0 0 0 / 0.28) 67%,
-      transparent 82%
+      ellipse 31% 37% at 52% 49%,
+      black 0 56%,
+      rgb(0 0 0 / 0.94) 68%,
+      rgb(0 0 0 / 0.24) 84%,
+      transparent 100%
     );
-    --archive-origin: 82% 25%;
+    --archive-origin: 52% 49%;
   }
 
   .archive-plane-mineral {
-    --archive-mask: linear-gradient(
-      157deg,
-      transparent 0 45%,
-      rgb(0 0 0 / 0.3) 49%,
-      black 53% 60%,
-      rgb(0 0 0 / 0.32) 64%,
-      transparent 68%
+    --archive-mask: radial-gradient(
+      ellipse 55% 62% at 52% 49%,
+      transparent 0 43%,
+      rgb(0 0 0 / 0.24) 48%,
+      black 57% 78%,
+      rgb(0 0 0 / 0.22) 88%,
+      transparent 100%
     );
-    --archive-origin: 68% 58%;
+    --archive-origin: 52% 49%;
   }
 
   .archive-plane-foreground {
     --archive-mask: linear-gradient(
-      157deg,
-      transparent 0 48%,
-      rgb(0 0 0 / 0.22) 53%,
-      rgb(0 0 0 / 0.9) 61%,
-      black 68% 100%
+      to bottom,
+      transparent 0 66%,
+      rgb(0 0 0 / 0.18) 72%,
+      rgb(0 0 0 / 0.88) 82%,
+      black 90% 100%
     );
-    --archive-origin: 74% 78%;
+    --archive-origin: 62% 92%;
   }
 
   .archive-refraction {
@@ -939,29 +939,29 @@
 
   .archive-refraction::after {
     position: absolute;
-    top: -32%;
-    left: -30%;
-    width: 24%;
-    height: 168%;
+    top: -26%;
+    left: -25%;
+    width: 21%;
+    height: 154%;
     background: linear-gradient(
       90deg,
       transparent 0 26%,
       oklch(var(--card) / 0.18) 36%,
-      oklch(var(--card) / 0.94) 49%,
-      oklch(var(--archive-green) / 0.38) 56%,
+      oklch(var(--card) / 0.88) 49%,
+      oklch(var(--archive-green) / 0.3) 56%,
       transparent 72%
     );
     content: "";
     opacity: 0;
-    transform: translate3d(0, 0, 0) rotate(18deg);
+    transform: translate3d(0, 0, 0) rotate(17deg);
   }
 
   .archive-tab-glint {
     position: absolute;
-    top: 11.5%;
-    right: 5.2%;
-    width: 5.5%;
-    height: 14%;
+    right: 0.5%;
+    bottom: -1%;
+    width: 18%;
+    height: 27%;
     background: linear-gradient(
       104deg,
       transparent 0 38%,
@@ -969,7 +969,7 @@
       oklch(var(--archive-coral) / 0.42) 54%,
       transparent 65%
     );
-    clip-path: polygon(26% 0, 100% 0, 76% 100%, 0 100%);
+    clip-path: polygon(34% 0, 100% 12%, 82% 100%, 0 84%);
     opacity: 0;
     pointer-events: none;
     transform: translate3d(-18%, 0, 0);
@@ -1368,8 +1368,8 @@
 
 @keyframes archive-rear-settle {
   from {
-    opacity: 0.74;
-    transform: translate3d(4px, -13px, 0) scale(1.012);
+    opacity: 0.7;
+    transform: translate3d(10px, -8px, 0) rotate(-0.32deg) scale(1.012);
   }
 
   to {
@@ -1380,8 +1380,8 @@
 
 @keyframes archive-core-register {
   from {
-    opacity: 0.68;
-    transform: translate3d(6px, -5px, 0) scale(0.982);
+    opacity: 0.64;
+    transform: translate3d(7px, -2px, 0) scale(0.964);
   }
 
   to {
@@ -1392,8 +1392,8 @@
 
 @keyframes archive-mineral-settle {
   from {
-    opacity: 0.72;
-    transform: translate3d(-8px, 6px, 0);
+    opacity: 0.68;
+    transform: translate3d(-12px, 8px, 0) rotate(0.22deg);
   }
 
   to {
@@ -1404,8 +1404,8 @@
 
 @keyframes archive-foreground-align {
   from {
-    opacity: 0.78;
-    transform: translate3d(14px, 9px, 0) scale(1.008);
+    opacity: 0.74;
+    transform: translate3d(16px, 12px, 0) rotate(-0.18deg) scale(1.009);
   }
 
   to {
@@ -1423,11 +1423,11 @@
   }
 
   34% {
-    transform: translate3d(4px, -4px, 0);
+    transform: translate3d(5px, -4px, 0) rotate(0.18deg);
   }
 
   59% {
-    transform: translate3d(-3px, 2px, 0);
+    transform: translate3d(-4px, 3px, 0) rotate(-0.12deg);
   }
 }
 
@@ -1440,11 +1440,11 @@
   }
 
   34% {
-    transform: translate3d(2px, -2px, 0) scale(1.012);
+    transform: translate3d(2px, -1px, 0) scale(1.018);
   }
 
   59% {
-    transform: translate3d(-1px, 2px, 0) scale(0.997);
+    transform: translate3d(-1px, 1px, 0) scale(0.994);
   }
 }
 
@@ -1457,11 +1457,11 @@
   }
 
   34% {
-    transform: translate3d(-7px, 5px, 0);
+    transform: translate3d(-10px, 7px, 0) rotate(-0.16deg);
   }
 
   59% {
-    transform: translate3d(5px, -3px, 0);
+    transform: translate3d(7px, -5px, 0) rotate(0.12deg);
   }
 }
 
@@ -1474,18 +1474,18 @@
   }
 
   34% {
-    transform: translate3d(-10px, 8px, 0);
+    transform: translate3d(-13px, 9px, 0) rotate(0.12deg);
   }
 
   59% {
-    transform: translate3d(7px, -5px, 0);
+    transform: translate3d(9px, -6px, 0) rotate(-0.08deg);
   }
 }
 
 @keyframes archive-verification-pass {
   0% {
     opacity: 0;
-    transform: translate3d(0, 0, 0) rotate(18deg);
+    transform: translate3d(0, 0, 0) rotate(17deg);
   }
 
   4% {
@@ -1499,7 +1499,7 @@
   13.5%,
   100% {
     opacity: 0;
-    transform: translate3d(520%, 0, 0) rotate(18deg);
+    transform: translate3d(610%, 0, 0) rotate(17deg);
   }
 }
 
