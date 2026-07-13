@@ -856,7 +856,8 @@
     isolation: isolate;
   }
 
-  .archive-image {
+  .archive-image,
+  .archive-layer-image {
     position: absolute;
     inset: -4%;
     width: 108%;
@@ -865,6 +866,25 @@
     object-fit: cover;
     object-position: 64% center;
     transform: scale(1.035);
+  }
+
+  .archive-parallax {
+    position: absolute;
+    inset: 0;
+    display: none;
+    pointer-events: none;
+  }
+
+  .archive-parallax-mid {
+    -webkit-mask-image: radial-gradient(circle at 72% 36%, black 0 27%, transparent 48%);
+    mask-image: radial-gradient(circle at 72% 36%, black 0 27%, transparent 48%);
+    transform-origin: 72% 36%;
+  }
+
+  .archive-parallax-near {
+    -webkit-mask-image: linear-gradient(148deg, transparent 0 52%, black 68%);
+    mask-image: linear-gradient(148deg, transparent 0 52%, black 68%);
+    transform-origin: 82% 76%;
   }
 
   .archive-light {
@@ -880,9 +900,7 @@
     pointer-events: none;
   }
 
-  /* These overlays sit directly on the archive's illustrated evidence core
-   * and brass route, so they move with the physical scene rather than
-   * drawing decorative space rings over it. */
+  /* Light is registered to the illustrated evidence core and glass strata. */
   .archive-core-aura {
     position: absolute;
     top: 36%;
@@ -901,30 +919,65 @@
     transform: translate3d(-50%, -50%, 0) scale(0.97);
   }
 
-  .archive-signal {
+  .archive-refraction {
     position: absolute;
     top: 36%;
     left: 72%;
-    width: 46%;
+    width: 61%;
     aspect-ratio: 1;
     border-radius: 50%;
+    background: conic-gradient(
+      from 212deg,
+      transparent 0 12%,
+      oklch(var(--card) / 0.88) 17%,
+      oklch(var(--accent) / 0.34) 20%,
+      transparent 26% 63%,
+      oklch(var(--warning) / 0.5) 68%,
+      oklch(var(--card) / 0.74) 71%,
+      transparent 76%
+    );
+    -webkit-mask-image: radial-gradient(circle, transparent 0 43%, black 46% 49%, transparent 52%);
+    mask-image: radial-gradient(circle, transparent 0 43%, black 46% 49%, transparent 52%);
+    opacity: 0;
     pointer-events: none;
-    transform: translate3d(-50%, -50%, 0) rotate(-52deg);
+    transform: translate3d(-50%, -50%, 0) rotate(-24deg) scale(0.96);
   }
 
-  .archive-signal::after {
+  .archive-refraction::after {
     position: absolute;
-    top: 6%;
-    left: 50%;
-    width: 0.58rem;
-    height: 0.58rem;
-    border: 1px solid oklch(var(--card) / 0.92);
+    inset: 15%;
     border-radius: 50%;
-    background: oklch(var(--accent) / 0.96);
-    box-shadow: 0 0 0 0.32rem oklch(var(--primary) / 0.14),
-      0 0.15rem 0.6rem oklch(var(--primary) / 0.44);
+    background: conic-gradient(
+      from 38deg,
+      transparent 0 24%,
+      oklch(var(--accent) / 0.48) 29%,
+      oklch(var(--card) / 0.92) 32%,
+      transparent 37% 78%,
+      oklch(var(--warning) / 0.46) 82%,
+      transparent 87%
+    );
+    -webkit-mask-image: radial-gradient(circle, transparent 0 42%, black 46% 50%, transparent 54%);
+    mask-image: radial-gradient(circle, transparent 0 42%, black 46% 50%, transparent 54%);
     content: "";
-    transform: translateX(-50%);
+  }
+
+  .archive-caustic {
+    position: absolute;
+    top: -12%;
+    bottom: -12%;
+    left: 32%;
+    width: 32%;
+    background: linear-gradient(
+      104deg,
+      transparent 0 30%,
+      oklch(var(--card) / 0.08) 39%,
+      oklch(var(--card) / 0.34) 48%,
+      oklch(var(--accent) / 0.12) 52%,
+      transparent 66%
+    );
+    opacity: 0;
+    pointer-events: none;
+    transform: translate3d(-90%, 0, 0) skewX(-9deg);
   }
 
   .page-title {
@@ -1248,19 +1301,37 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .archive-image {
-    animation: archive-settle 14s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  .archive-image,
+  .archive-layer-image {
+    animation: archive-camera 16s cubic-bezier(0.25, 1, 0.5, 1) infinite;
     will-change: transform;
   }
 
+  .archive-parallax {
+    display: block;
+    will-change: transform;
+  }
+
+  .archive-parallax-mid {
+    animation: archive-mid-depth 16s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  }
+
+  .archive-parallax-near {
+    animation: archive-near-depth 16s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  }
+
   .archive-core-aura {
-    animation: archive-core-illuminate 4.8s ease-in-out infinite;
+    animation: archive-core-illuminate 6s cubic-bezier(0.25, 1, 0.5, 1) infinite;
     will-change: opacity, transform;
   }
 
-  .archive-signal {
-    /* One clear pass around the illustrated core, then rest. */
-    animation: archive-route-trace 9s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  .archive-refraction {
+    animation: archive-refract 10s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+    will-change: opacity, transform;
+  }
+
+  .archive-caustic {
+    animation: archive-caustic-pass 10s cubic-bezier(0.25, 1, 0.5, 1) infinite;
     will-change: opacity, transform;
   }
 
@@ -1279,19 +1350,59 @@
 
 /* On low-GPU machines, keep the composed artwork as a still. */
 :root[data-perf="low"] .archive-image,
+:root[data-perf="low"] .archive-layer-image,
 :root[data-perf="low"] .archive-core-aura,
-:root[data-perf="low"] .archive-signal {
+:root[data-perf="low"] .archive-refraction,
+:root[data-perf="low"] .archive-caustic {
   animation: none;
 }
 
-@keyframes archive-settle {
+:root[data-perf="low"] .archive-parallax {
+  display: none;
+}
+
+@keyframes archive-camera {
   0%,
   100% {
     transform: scale(1.035) translate3d(0, 0, 0);
   }
 
-  48% {
-    transform: scale(1.078) translate3d(-1.2%, -0.75%, 0);
+  34% {
+    transform: scale(1.07) translate3d(-0.8%, -0.55%, 0);
+  }
+
+  68% {
+    transform: scale(1.085) translate3d(-1.5%, 0.35%, 0);
+  }
+}
+
+@keyframes archive-mid-depth {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  34% {
+    transform: translate3d(1.15%, -0.7%, 0) scale(1.015);
+  }
+
+  68% {
+    transform: translate3d(-0.7%, 1.05%, 0) scale(1.025);
+  }
+}
+
+@keyframes archive-near-depth {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  34% {
+    transform: translate3d(-1.4%, 1.1%, 0) scale(1.025);
+  }
+
+  68% {
+    transform: translate3d(1%, -0.8%, 0) scale(1.04);
   }
 }
 
@@ -1308,26 +1419,49 @@
   }
 }
 
-@keyframes archive-route-trace {
+@keyframes archive-refract {
   0%,
-  14% {
+  12% {
     opacity: 0;
-    transform: translate3d(-50%, -50%, 0) rotate(-52deg);
+    transform: translate3d(-50%, -50%, 0) rotate(-24deg) scale(0.96);
   }
 
-  20% {
-    opacity: 1;
+  22% {
+    opacity: 0.92;
   }
 
-  62% {
-    opacity: 1;
-    transform: translate3d(-50%, -50%, 0) rotate(18deg);
+  58% {
+    opacity: 0.86;
+    transform: translate3d(-50%, -50%, 0) rotate(62deg) scale(1.025);
+  }
+
+  72%,
+  100% {
+    opacity: 0;
+    transform: translate3d(-50%, -50%, 0) rotate(78deg) scale(1.04);
+  }
+}
+
+@keyframes archive-caustic-pass {
+  0%,
+  15% {
+    opacity: 0;
+    transform: translate3d(-90%, 0, 0) skewX(-9deg);
+  }
+
+  24% {
+    opacity: 0.78;
+  }
+
+  60% {
+    opacity: 0.54;
+    transform: translate3d(205%, 0, 0) skewX(-9deg);
   }
 
   70%,
   100% {
     opacity: 0;
-    transform: translate3d(-50%, -50%, 0) rotate(18deg);
+    transform: translate3d(225%, 0, 0) skewX(-9deg);
   }
 }
 
