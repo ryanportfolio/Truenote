@@ -250,14 +250,6 @@ h2 { max-width: 13ch; font-size: clamp(3rem, 5.35vw, 6.4rem); line-height: .94; 
   color: var(--card);
 }
 
-.replacement-controls strong {
-  flex: 0 0 auto;
-  font-size: clamp(.76rem, 1.08vw, 1.25rem);
-  font-weight: 600;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-}
-
 .replacement-controls ul {
   display: flex;
   flex: 1;
