@@ -61,6 +61,14 @@ Anything that changes how **Claude Code** behaves — skills, hooks, MCP servers
 - **MCP server config the repo should use?** Add to `.claude/settings.json` and commit.
 - **Globally-installed CLI tooling**: user runs in their Claude Code desktop / CLI. Provide the exact command.
 
+## Windows Python runner
+
+Use `.claude/scripts/run-python.ps1` for repository Python scripts on Windows. The machine may have working interpreters that are not registered with `py.exe`, while `python.exe` resolves to the Microsoft Store stub. The runner probes candidates with a three-second timeout, prefers uv-managed Python, and supports `CODEX_PYTHON` as an explicit override.
+
+```powershell
+.claude\scripts\run-python.ps1 path\to\script.py --arg value
+```
+
 ## Database schema changes — raw DDL protocol
 
 Claude Code cannot run migrations. For any schema change, give the Replit Agent **raw DDL only**.

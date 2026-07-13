@@ -17,6 +17,7 @@ hooks, and `.claude/skills/` exactly as before.
 ## Codex Runtime Defaults
 
 - Use RTK explicitly for supported noisy reads when installed; use native commands for mutations, exact parsing, interactivity, and full verification output.
+- On Windows, run repository Python scripts through `.claude/scripts/run-python.ps1`; `python.exe` may resolve to the Microsoft Store stub and `py.exe` may have no registered interpreter.
 - Inspect actual tool availability before capability-gated skills. Independent-review skills do not have a valid main-thread fallback.
 - Read `.agents/CODEX-SKILL-COMPATIBILITY.md` before adapted, gated, or dangerous skills.
 
