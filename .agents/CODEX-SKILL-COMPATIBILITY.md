@@ -10,7 +10,7 @@
 
 | Status | Skills |
 |---|---|
-| Native | `applying-best-practices`, `brainstorming`, `caveman`, `conflict`, `design-truenote-ui`, `enhance-prompt`, `executing-plans`, `handoff-audit`, `humanizer`, `learning`, `recall`, `systematic-debugging`, `test-driven-development`, `verification-before-completion`, `writing-plans` |
+| Native | `applying-best-practices`, `brainstorming`, `caveman`, `conflict`, `design-truenote-ui`, `enhance-prompt`, `executing-plans`, `handoff-audit`, `humanizer`, `learning`, `purposeful-writing`, `recall`, `systematic-debugging`, `test-driven-development`, `verification-before-completion`, `writing-plans` |
 | Adapted | `addskill`, `finishing-a-development-branch`, `init-project`, `lab`, `optimize-context`, `sync-starter`, `using-git-worktrees`, `using-superpowers`, `writing-skills` |
 | Capability-gated | `advocate`, `dispatching-parallel-agents`, `impartial-review`, `subagent-driven-development`, `why` |
 | Dangerous | `merge`, `pr`, `safe-ship` |
