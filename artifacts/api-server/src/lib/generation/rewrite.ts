@@ -1,8 +1,11 @@
-import OpenAI from "openai";
-import { zodResponseFormat } from "openai/helpers/zod";
-import { z } from "zod";
+import type OpenAI from "openai";
 import { getDeadlineConfig, isAbortError } from "../deadlines.js";
 import { recordAppError } from "../observability/error-log.js";
+import {
+  runUtilityCompletion,
+  stripWrappingQuotes,
+  UTILITY_MODEL_ROUTE
+} from "./utility-model.js";
 
 /**
  * Conversation-aware query rewriting (multi-turn RAG, 2026-07).
@@ -19,19 +22,17 @@ import { recordAppError } from "../observability/error-log.js";
  *   - Any rewrite failure falls back to the original question — the rewrite
  *     is an enhancement, never a gate.
  *
- * gpt-4o-mini: rewriting is low-stakes (worst case equals sending the raw
- * follow-up to retrieval) and latency-sensitive (CSR is mid-call).
+ * Routes through the shared OpenRouter ZDR utility (Granite 4.1 8B), NOT
+ * direct OpenAI: the follow-up plus recent history stay inside the same
+ * Zero Data Retention boundary the product enforces on answer generation.
+ * Rewriting is low-stakes (worst case equals sending the raw follow-up to
+ * retrieval), so a single pinned route with fail-open fallback is deliberate.
  */
-const REWRITE_MODEL = "gpt-4o-mini";
 
 /** Most recent exchanges to give the rewriter. More adds cost, not accuracy. */
 const MAX_HISTORY_TURNS = 3;
 /** Per-field cap; answers can be long and the rewriter only needs referents. */
 const MAX_FIELD_CHARS = 500;
-
-export const RewriteSchema = z.object({
-  standalone_question: z.string()
-});
 
 export interface HistoryTurn {
   question: string;
@@ -56,13 +57,8 @@ export interface RewriteResult {
 }
 
 export interface RewriteDeps {
+  /** Injected for tests. Defaults to the shared OpenRouter ZDR utility client. */
   client?: OpenAI;
-}
-
-let _client: OpenAI | null = null;
-function getClient(): OpenAI {
-  if (!_client) _client = new OpenAI();
-  return _client;
 }
 
 const REWRITE_SYSTEM_PROMPT = [
@@ -75,7 +71,10 @@ const REWRITE_SYSTEM_PROMPT = [
   "- If the FOLLOW-UP is already standalone, return it unchanged.",
   "- Never answer the question. Never add facts, product names, or details",
   "  that appear in neither the FOLLOW-UP nor the CONVERSATION.",
-  "- Keep the rewritten question short and searchable."
+  "- Keep the rewritten question short and searchable.",
+  "",
+  "Return ONLY the rewritten standalone question as plain text — no quotes,",
+  "no preamble, no explanation, nothing else."
 ].join("\n");
 
 export function formatHistory(history: HistoryTurn[]): string {
@@ -98,28 +97,18 @@ export async function rewriteFollowUp(
   }
 
   try {
-    const client = deps.client ?? getClient();
     const { rewrite } = getDeadlineConfig();
-    const completion = await client.beta.chat.completions.parse(
+    const raw = await runUtilityCompletion(
       {
-        model: REWRITE_MODEL,
-        temperature: 0,
-        messages: [
-          { role: "system", content: REWRITE_SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: `CONVERSATION:\n${formatHistory(input.history)}\n\nFOLLOW-UP: ${question}`
-          }
-        ],
-        response_format: zodResponseFormat(RewriteSchema, "rewrite")
-      },
-      {
-        timeout: rewrite.timeoutMs,
+        system: REWRITE_SYSTEM_PROMPT,
+        user: `CONVERSATION:\n${formatHistory(input.history)}\n\nFOLLOW-UP: ${question}`,
+        timeoutMs: rewrite.timeoutMs,
         maxRetries: rewrite.maxRetries,
         signal: input.signal
-      }
+      },
+      { client: deps.client }
     );
-    const rewritten = completion.choices[0]?.message.parsed?.standalone_question?.trim();
+    const rewritten = raw ? stripWrappingQuotes(raw) : "";
     if (!rewritten) {
       return { standaloneQuestion: question, llmCalled: true };
     }
@@ -138,8 +127,8 @@ export async function rewriteFollowUp(
       source: "generation",
       operation: "follow-up-rewrite",
       error: err,
-      provider: "openai-direct",
-      model: REWRITE_MODEL,
+      provider: UTILITY_MODEL_ROUTE.provider,
+      model: UTILITY_MODEL_ROUTE.model,
       correlationId: input.diagnostics?.correlationId,
       userId: input.diagnostics?.userId,
       programId: input.diagnostics?.programId,
