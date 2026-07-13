@@ -823,6 +823,10 @@
     font-size: 0.75rem;
   }
 
+  .auth-about {
+    font-weight: 600;
+  }
+
   .auth-trust-line {
     display: flex;
     align-items: center;
