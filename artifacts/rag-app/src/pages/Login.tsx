@@ -259,13 +259,12 @@ export function LoginPage({
           * (camelCase fetchPriority warns and gets dropped); the spread
           * sidesteps the React 18 type defs that lack it. */}
         <img
-          src="/visuals/luminous-archive-seam-v1.webp"
+          src="/visuals/luminous-archive.webp"
           alt=""
           aria-hidden
           className="archive-image"
           {...{ fetchpriority: "high" }}
         />
-        <div className="archive-seam" aria-hidden />
         <div className="archive-light" aria-hidden />
         <div className="archive-core-aura" aria-hidden />
         <div className="archive-signal" aria-hidden />

@@ -852,9 +852,7 @@
     position: relative;
     min-width: 0;
     overflow: hidden;
-    background:
-      radial-gradient(circle at -8% 82%, oklch(var(--success) / 0.14), transparent 48%),
-      linear-gradient(135deg, oklch(var(--card)) 0%, oklch(var(--background)) 54%, oklch(var(--primary) / 0.13) 100%);
+    background: oklch(93% 0.025 74);
     isolation: isolate;
   }
 
@@ -865,22 +863,8 @@
     height: 108%;
     max-width: none;
     object-fit: cover;
-    /* The evidence core is offset in the source art so this narrow panel
-     * crops it into the same visual center as the left-side sign-in form. */
-    object-position: 90% center;
+    object-position: 64% center;
     transform: scale(1.035);
-  }
-
-  /* Mirrors the BrandField's airy cream / blue-green edge at the panel
-   * boundary, so the archive reads as the login surface continuing rather
-   * than an unrelated image bolted to its right. */
-  .archive-seam {
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(circle at 0 78%, oklch(var(--success) / 0.11), transparent 40%),
-      linear-gradient(90deg, oklch(var(--card) / 0.93) 0%, oklch(var(--background) / 0.64) 24%, transparent 50%);
-    pointer-events: none;
   }
 
   .archive-light {
@@ -892,26 +876,26 @@
      * ruinous on machines without a GPU. Alphas are retuned so the
      * darkening over the image's bright range matches the old multiply
      * result (multiply's edge factor ≈0.85 ≙ ~0.2 alpha of this ink). */
-    background: radial-gradient(circle at 72% 50%, transparent 0 17%, oklch(21% 0.03 255 / 0.025) 45%, oklch(21% 0.03 255 / 0.17) 100%);
+    background: radial-gradient(circle at 72% 36%, transparent 0 17%, oklch(21% 0.03 255 / 0.025) 45%, oklch(21% 0.03 255 / 0.17) 100%);
     pointer-events: none;
   }
 
-  /* These overlays are positioned on the aperture's illustrated core and
-   * brass route. They add depth to the physical scene instead of drawing
-   * decorative space rings over it. */
+  /* These overlays sit directly on the archive's illustrated evidence core
+   * and brass route, so they move with the physical scene rather than
+   * drawing decorative space rings over it. */
   .archive-core-aura {
     position: absolute;
-    top: 50%;
+    top: 36%;
     left: 72%;
     width: 42%;
     aspect-ratio: 1;
     border-radius: 50%;
     background: radial-gradient(
       circle,
-      oklch(var(--card) / 0.13) 0,
-      oklch(var(--accent) / 0.1) 17%,
-      oklch(var(--primary) / 0.045) 38%,
-      transparent 67%
+      oklch(var(--card) / 0.18) 0,
+      oklch(var(--accent) / 0.22) 17%,
+      oklch(var(--primary) / 0.13) 38%,
+      transparent 70%
     );
     pointer-events: none;
     transform: translate3d(-50%, -50%, 0) scale(0.97);
@@ -919,9 +903,9 @@
 
   .archive-signal {
     position: absolute;
-    top: 50%;
+    top: 36%;
     left: 72%;
-    width: 40%;
+    width: 46%;
     aspect-ratio: 1;
     border-radius: 50%;
     pointer-events: none;
@@ -932,13 +916,13 @@
     position: absolute;
     top: 6%;
     left: 50%;
-    width: 0.42rem;
-    height: 0.42rem;
-    border: 1px solid oklch(var(--card) / 0.74);
+    width: 0.58rem;
+    height: 0.58rem;
+    border: 1px solid oklch(var(--card) / 0.92);
     border-radius: 50%;
-    background: oklch(var(--warning-foreground) / 0.82);
-    box-shadow: 0 0 0 0.25rem oklch(var(--warning) / 0.09),
-      0 0.1rem 0.3rem oklch(var(--archive-ink) / 0.18);
+    background: oklch(var(--accent) / 0.96);
+    box-shadow: 0 0 0 0.32rem oklch(var(--primary) / 0.14),
+      0 0.15rem 0.6rem oklch(var(--primary) / 0.44);
     content: "";
     transform: translateX(-50%);
   }
@@ -1265,18 +1249,18 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .archive-image {
-    animation: archive-settle 24s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+    animation: archive-settle 14s cubic-bezier(0.25, 1, 0.5, 1) infinite;
     will-change: transform;
   }
 
   .archive-core-aura {
-    animation: archive-core-illuminate 8s ease-in-out infinite;
+    animation: archive-core-illuminate 4.8s ease-in-out infinite;
     will-change: opacity, transform;
   }
 
   .archive-signal {
-    /* One slow pass along an illustrated brass route, then rest. */
-    animation: archive-route-trace 16s cubic-bezier(0.5, 0, 0.35, 1) infinite;
+    /* One clear pass around the illustrated core, then rest. */
+    animation: archive-route-trace 9s cubic-bezier(0.25, 1, 0.5, 1) infinite;
     will-change: opacity, transform;
   }
 
@@ -1293,8 +1277,7 @@
   }
 }
 
-/* On low-GPU machines, keep the composed artwork as a still rather than
- * spending frames on an effect that is deliberately quieter than the image. */
+/* On low-GPU machines, keep the composed artwork as a still. */
 :root[data-perf="low"] .archive-image,
 :root[data-perf="low"] .archive-core-aura,
 :root[data-perf="low"] .archive-signal {
@@ -1308,43 +1291,43 @@
   }
 
   48% {
-    transform: scale(1.052) translate3d(-0.55%, -0.3%, 0);
+    transform: scale(1.078) translate3d(-1.2%, -0.75%, 0);
   }
 }
 
 @keyframes archive-core-illuminate {
   0%,
   100% {
-    opacity: 0.42;
-    transform: translate3d(-50%, -50%, 0) scale(0.97);
+    opacity: 0.56;
+    transform: translate3d(-50%, -50%, 0) scale(0.94);
   }
 
   50% {
-    opacity: 0.82;
-    transform: translate3d(-50%, -50%, 0) scale(1.035);
+    opacity: 1;
+    transform: translate3d(-50%, -50%, 0) scale(1.1);
   }
 }
 
 @keyframes archive-route-trace {
   0%,
-  12% {
+  14% {
     opacity: 0;
     transform: translate3d(-50%, -50%, 0) rotate(-52deg);
   }
 
-  18% {
-    opacity: 0.86;
+  20% {
+    opacity: 1;
   }
 
-  43% {
-    opacity: 0.9;
-    transform: translate3d(-50%, -50%, 0) rotate(-11deg);
+  62% {
+    opacity: 1;
+    transform: translate3d(-50%, -50%, 0) rotate(18deg);
   }
 
-  48%,
+  70%,
   100% {
     opacity: 0;
-    transform: translate3d(-50%, -50%, 0) rotate(-11deg);
+    transform: translate3d(-50%, -50%, 0) rotate(18deg);
   }
 }
 
