@@ -59,9 +59,10 @@ export interface UtilityCompletionDeps {
  * Run a single pinned-ZDR-route chat completion and return the raw message
  * text (null when the model returns nothing). Mirrors the provider block in
  * generateAnswer(): one pinned provider, ZDR required, data collection denied,
- * no provider fallback. The utility route is not assumed to support
- * structured-output json_schema, so callers instruct the model to return a
- * bare JSON object in the prompt and parse it with parseJsonObject().
+ * no provider fallback. Utility callers ask for a single plain-text value (a
+ * question, a title) and use the text directly — the answer path dropped
+ * structured output because enforced JSON errored on ZDR providers, and small
+ * models botch it. Use stripWrappingQuotes() to clean the returned text.
  */
 export async function runUtilityCompletion(
   input: UtilityCompletionInput,
@@ -110,22 +111,12 @@ export async function runUtilityCompletion(
 }
 
 /**
- * Defensive JSON-object extraction for utility responses. Tolerates a ```json
- * fence or surrounding prose by slicing to the outermost braces. Returns null
- * on any failure so callers fall back cleanly; the caller then validates the
- * shape with its own zod schema.
+ * Strip a matching pair of wrapping quotes a model may add around a plain-text
+ * value. Matters for the rewrite: a quoted question would otherwise become a
+ * BM25 phrase search. Returns the trimmed text unchanged when it is not quoted.
  */
-export function parseJsonObject(text: string | null): unknown {
-  if (!text) return null;
-  let candidate = text.trim();
-  const fence = candidate.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  if (fence?.[1]) candidate = fence[1].trim();
-  const start = candidate.indexOf("{");
-  const end = candidate.lastIndexOf("}");
-  if (start === -1 || end === -1 || end < start) return null;
-  try {
-    return JSON.parse(candidate.slice(start, end + 1));
-  } catch {
-    return null;
-  }
+export function stripWrappingQuotes(text: string): string {
+  const trimmed = text.trim();
+  const match = trimmed.match(/^["'`“”]([\s\S]*)["'`“”]$/);
+  return match?.[1] !== undefined ? match[1].trim() : trimmed;
 }

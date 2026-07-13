@@ -2,14 +2,12 @@ import { describe, expect, it } from "vitest";
 import type OpenAI from "openai";
 import { formatHistory, rewriteFollowUp } from "../rewrite.js";
 
-/** The utility route returns text; the rewriter parses a JSON object from it. */
-function stubClient(parsed: { standalone_question: string } | null): OpenAI {
+/** The utility route returns the rewritten question as plain text. */
+function stubClient(text: string | null): OpenAI {
   return {
     chat: {
       completions: {
-        create: async () => ({
-          choices: [{ message: { content: parsed ? JSON.stringify(parsed) : null } }]
-        })
+        create: async () => ({ choices: [{ message: { content: text } }] })
       }
     }
   } as unknown as OpenAI;
@@ -54,9 +52,7 @@ function optionsCapturingClient(options: CapturedOptions[]): OpenAI {
       completions: {
         create: async (_body: unknown, requestOptions: CapturedOptions) => {
           options.push(requestOptions);
-          return {
-            choices: [{ message: { content: JSON.stringify({ standalone_question: "x" }) } }]
-          };
+          return { choices: [{ message: { content: "x" } }] };
         }
       }
     }
@@ -77,7 +73,7 @@ describe("rewriteFollowUp", () => {
         question: "what about the premium plan?",
         history: [{ question: "cancellation fee for basic plan?", answer: "The fee is $25." }]
       },
-      { client: stubClient({ standalone_question: "cancellation fee for the premium plan?" }) }
+      { client: stubClient("cancellation fee for the premium plan?") }
     );
     expect(result.standaloneQuestion).toBe("cancellation fee for the premium plan?");
     expect(result.llmCalled).toBe(true);

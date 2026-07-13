@@ -1,10 +1,9 @@
 import type OpenAI from "openai";
-import { z } from "zod";
 import { getDeadlineConfig } from "../deadlines.js";
 import { recordAppError } from "../observability/error-log.js";
 import {
-  parseJsonObject,
   runUtilityCompletion,
+  stripWrappingQuotes,
   UTILITY_MODEL_ROUTE
 } from "./utility-model.js";
 
@@ -26,10 +25,6 @@ import {
 /** Hard cap on the stored title; the namer is told to stay well under it. */
 export const MAX_TITLE_CHARS = 60;
 const MAX_FIELD_CHARS = 500;
-
-export const SessionNameSchema = z.object({
-  title: z.string()
-});
 
 export interface NameSessionInput {
   question: string;
@@ -54,10 +49,9 @@ const NAME_SYSTEM_PROMPT = [
   "- 2 to 6 words. Title Case. No trailing punctuation.",
   "- Name the SUBJECT of the question, not the fact in the answer.",
   "- No quotes, no 'Question about', no filler. Just the topic.",
-  '- Example: "What is the cancellation fee on the Basic plan?" -> "Basic Plan Cancellation Fee".',
+  '- Example: "What is the cancellation fee on the Basic plan?" -> Basic Plan Cancellation Fee.',
   "",
-  'Respond with ONLY a JSON object: {"title": "<title>"}.',
-  "No prose, no code fences, no other keys."
+  "Return ONLY the title as plain text — no quotes, no preamble, nothing else."
 ].join("\n");
 
 /** Deterministic fallback: the question, trimmed to the title cap. */
@@ -88,8 +82,7 @@ export async function nameSession(
       },
       { client: deps.client }
     );
-    const parsed = SessionNameSchema.safeParse(parseJsonObject(raw));
-    const title = parsed.success ? parsed.data.title.trim() : "";
+    const title = raw ? stripWrappingQuotes(raw) : "";
     if (!title) return fallbackTitle(question);
     // Guard against a chatty model blowing the column cap.
     return title.length > MAX_TITLE_CHARS ? fallbackTitle(question) : title;

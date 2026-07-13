@@ -2,14 +2,12 @@ import { describe, expect, it } from "vitest";
 import type OpenAI from "openai";
 import { fallbackTitle, nameSession, MAX_TITLE_CHARS } from "../name-session.js";
 
-/** The utility route returns text; the namer parses a JSON object from it. */
-function stubClient(parsed: { title: string } | null): OpenAI {
+/** The utility route returns the title as plain text. */
+function stubClient(text: string | null): OpenAI {
   return {
     chat: {
       completions: {
-        create: async () => ({
-          choices: [{ message: { content: parsed ? JSON.stringify(parsed) : null } }]
-        })
+        create: async () => ({ choices: [{ message: { content: text } }] })
       }
     }
   } as unknown as OpenAI;
@@ -43,7 +41,7 @@ describe("nameSession", () => {
   it("uses the model title when present", async () => {
     const title = await nameSession(
       { question: "What is the cancellation fee on the Basic plan?" },
-      { client: stubClient({ title: "Basic Plan Cancellation Fee" }) }
+      { client: stubClient("Basic Plan Cancellation Fee") }
     );
     expect(title).toBe("Basic Plan Cancellation Fee");
   });
@@ -59,7 +57,7 @@ describe("nameSession", () => {
   it("rejects an over-long model title in favor of the fallback", async () => {
     const title = await nameSession(
       { question: "Short question" },
-      { client: stubClient({ title: "A ".repeat(80) }) }
+      { client: stubClient("A ".repeat(80)) }
     );
     expect(title).toBe("Short question");
   });

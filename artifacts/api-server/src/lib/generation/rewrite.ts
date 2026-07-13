@@ -1,10 +1,9 @@
 import type OpenAI from "openai";
-import { z } from "zod";
 import { getDeadlineConfig, isAbortError } from "../deadlines.js";
 import { recordAppError } from "../observability/error-log.js";
 import {
-  parseJsonObject,
   runUtilityCompletion,
+  stripWrappingQuotes,
   UTILITY_MODEL_ROUTE
 } from "./utility-model.js";
 
@@ -34,10 +33,6 @@ import {
 const MAX_HISTORY_TURNS = 3;
 /** Per-field cap; answers can be long and the rewriter only needs referents. */
 const MAX_FIELD_CHARS = 500;
-
-export const RewriteSchema = z.object({
-  standalone_question: z.string()
-});
 
 export interface HistoryTurn {
   question: string;
@@ -78,8 +73,8 @@ const REWRITE_SYSTEM_PROMPT = [
   "  that appear in neither the FOLLOW-UP nor the CONVERSATION.",
   "- Keep the rewritten question short and searchable.",
   "",
-  'Respond with ONLY a JSON object: {"standalone_question": "<question>"}.',
-  "No prose, no code fences, no other keys."
+  "Return ONLY the rewritten standalone question as plain text — no quotes,",
+  "no preamble, no explanation, nothing else."
 ].join("\n");
 
 export function formatHistory(history: HistoryTurn[]): string {
@@ -113,8 +108,7 @@ export async function rewriteFollowUp(
       },
       { client: deps.client }
     );
-    const parsed = RewriteSchema.safeParse(parseJsonObject(raw));
-    const rewritten = parsed.success ? parsed.data.standalone_question.trim() : "";
+    const rewritten = raw ? stripWrappingQuotes(raw) : "";
     if (!rewritten) {
       return { standaloneQuestion: question, llmCalled: true };
     }
