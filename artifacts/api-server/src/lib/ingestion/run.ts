@@ -55,9 +55,15 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
  *   6. persist parsed_markdown
  *   7. chunk via the structural chunker (target 500 tokens)
  *   8. embed all chunks (batched 100/req)
- *   9. insert chunks rows with denormalized program_id
- *  10. activate version: set is_active=true, deactivate prior active versions
- *      of the same document_id, set documents.current_version_id
+ *   9. insert chunks rows with denormalized program_id, mark parse_status=ready
+ *
+ * Ingestion deliberately STOPS at `ready` and does NOT activate. A version
+ * becomes retrievable only after a manager+ explicitly approves it via
+ * POST /api/documents/:versionId/activate (routes/documents.ts) — controlled,
+ * human-approved ingestion is a product non-negotiable. The prior active
+ * version keeps serving the live KB until approval flips it. Chunks for a
+ * pending version sit dormant (retrieval filters is_active=true), so inserting
+ * them here is safe.
  *
  * On any error, parse_status is set to "failed" and the error rethrown.
  */
@@ -236,46 +242,27 @@ async function runClaimedIngestion(
         metadata
       };
     });
-    // 9–10. Delete-then-insert chunks AND activate, all atomically. The
-    // single transaction prevents three known footguns:
-    //   (a) a window where the prior active version has been deactivated
-    //       but the new one hasn't been activated yet — retrieval finds zero
-    //       candidates and spuriously refuses;
-    //   (b) chunks committed for a version that never becomes active because
-    //       a later step failed — leaving orphan rows that count toward
-    //       reranker candidates but can never be selected via the active
-    //       filter;
-    //   (c) a retry doubling the chunks: if a previous run of this job
-    //       committed the transaction but the worker died before pg-boss
-    //       recorded success, a retry would otherwise insert a second full
-    //       set of chunks for the same document_version_id (no unique
-    //       constraint on (document_version_id, ordinal) to catch it).
-    //       Deleting first makes the whole transaction idempotent — the
-    //       second run replaces rather than duplicates.
-    // The deactivation includes `AND is_active = true` so concurrent
-    // ingestion jobs on the same document don't redundantly flip rows that
-    // already-newer versions just activated.
+    // 9. Delete-then-insert chunks AND flip to `ready`, atomically. The single
+    // transaction prevents a retry from doubling the chunks: if a previous run
+    // of this job committed but the worker died before pg-boss recorded
+    // success, a retry would otherwise insert a second full set of chunks for
+    // the same document_version_id (no unique constraint on
+    // (document_version_id, ordinal) to catch it). Deleting first makes the
+    // transaction idempotent — the second run replaces rather than duplicates.
+    //
+    // NOTE: this does NOT activate. is_active stays false; the version is only
+    // published to the live KB when a manager+ approves it via
+    // POST /api/documents/:versionId/activate. Deactivation of the prior active
+    // version and the documents.current_version_id bump happen there, at
+    // approval time — not here. Pending chunks are inert because retrieval
+    // filters is_active=true.
     await db.transaction(async (tx) => {
       await tx.delete(chunks).where(eq(chunks.documentVersionId, versionId));
       await tx.insert(chunks).values(chunkRows);
       await tx
         .update(documentVersions)
-        .set({ isActive: false })
-        .where(
-          and(
-            eq(documentVersions.documentId, documentId),
-            ne(documentVersions.id, versionId),
-            eq(documentVersions.isActive, true)
-          )
-        );
-      await tx
-        .update(documentVersions)
-        .set({ parseStatus: "ready", isActive: true })
+        .set({ parseStatus: "ready" })
         .where(eq(documentVersions.id, versionId));
-      await tx
-        .update(documents)
-        .set({ currentVersionId: versionId })
-        .where(eq(documents.id, documentId));
     });
   } catch (err) {
     await db

@@ -21,17 +21,18 @@ honestly:
 
 - **Already meets or exceeds the review** on: server-side program (tenant) isolation as a hard
   boundary, role-based access control enforced at the retrieval endpoint, versioned/attributed
-  ingestion with role-gated writes, refusal-over-hallucination generation, immutable answer
-  receipts, and a first-class evaluation harness with held-out overfitting detection.
+  ingestion with role-gated writes **and an enforced human approval gate before a document goes
+  live**, refusal-over-hallucination generation, immutable answer receipts, and a first-class
+  evaluation harness with held-out overfitting detection.
 - **Partially meets** the review on: logging depth (rich query/error logging, but Postgres-resident
   and **no append-only audit trail for admin/config actions**, not yet streamed to a SIEM), and
   lifecycle/CI-CD controls (an eval gate exists and is CI-ready but is not yet wired to block merges).
-- **Gaps with a concrete plan** on: **enforcing the ingestion approval gate** (documents currently
-  auto-activate after parsing — §2 defect), a dedicated input/output guardrail classifier for
-  prompt injection / jailbreak / exfiltration, ingestion-anomaly (poisoning) detection, formal
-  governance artifacts (SSP, risk register, named roles, data classification), request-rate
-  limiting on the query endpoint, data masking/tokenization, and **enterprise identity
-  (SSO/MFA/provisioning)** — current auth is local password + session cookie.
+- **Gaps with a concrete plan** on: a dedicated input/output guardrail classifier for prompt
+  injection / jailbreak / exfiltration, ingestion-anomaly (poisoning) detection, formal governance
+  artifacts (SSP, risk register, named roles, data classification), request-rate limiting on the
+  query endpoint, data masking/tokenization, and **enterprise identity (SSO/MFA/provisioning)** —
+  current auth is local password + session cookie. *(The ingestion approval gate, flagged as a
+  defect in review, was fixed 2026-07-13 — see §2.)*
 
 The risk register (Appendix A), role map (Appendix B), and 800-53 crosswalk (Appendix C) that
 the review asks for are drafted here as the starting artifacts.
@@ -79,13 +80,13 @@ restricted write access and change logging; sources explicitly approved and trac
 | Change history / traceability | ✅ | Re-uploading a document **never overwrites** — it creates a new `document_versions` row and flips `is_active`; prior versions are retained for audit/rollback ([ingestion.md](../../.claude/reference/ingestion.md), invariants in [data-model.md](../../.claude/reference/data-model.md)). Every version records `uploaded_by`, `uploaded_at`, `file_sha256`, `mime_type`, and `parse_status`. Content is content-addressed (SHA-256) so identical re-uploads are deduped and provenance is exact. |
 | Origin recorded | ✅ | Raw source file is stored in object storage keyed by SHA + sanitized filename; `document_versions.source_url` points at it. |
 | Data **classification** labels | 📋 Gap | Documents carry a program (tenant) and title but **no sensitivity/classification tag** today. **Plan:** add an optional `classification` column to `documents` (raw DDL, per the schema-change protocol) and surface it in the admin uploader; feed it into the segmentation model in §3. |
-| Explicit **source-approval workflow** | 📋 Gap **(known defect)** | The system enforces *who* may add content (role gate) and a preview endpoint exists ([documents.ts](../../artifacts/api-server/src/routes/documents.ts) `/:versionId/preview`), but **approval is NOT enforced**: the ingestion worker sets `parse_status='ready'` **and** `is_active=true` automatically in one transaction the moment embedding succeeds ([run.ts:271-278](../../artifacts/api-server/src/lib/ingestion/run.ts)) — a freshly uploaded document is retrievable with no human sign-off. `.claude/reference/ingestion.md`'s "Admin preview is mandatory" is documented *intent*, not an enforced control. **Plan (P1):** worker leaves `is_active=false`; add a manager+ approve route that flips `is_active=true` and records `approved_by`/`approved_at`; until then, do not represent ingestion as "human-approved." |
+| Explicit **source-approval workflow** | ✅ (gate enforced) / 🟡 (approver audit via DDL) | **Fixed 2026-07-13.** The ingestion worker now stops at `parse_status='ready'` with `is_active=false` and never activates ([run.ts](../../artifacts/api-server/src/lib/ingestion/run.ts)). A version becomes retrievable **only** when a manager+ reviews the parsed text and approves it via `POST /api/documents/:versionId/activate` — the sole place `is_active` flips true, guarded by `requireManagerOrAbove + blockDemoWrites + fresh password` and scoped to the actor's program ([documents.ts](../../artifacts/api-server/src/routes/documents.ts)). The approver identity (`approved_by`/`approved_at`) is recorded best-effort and ships via raw DDL (below); the *gate* is enforced in code regardless. Remaining nicety: surface the approver in the admin UI once the columns land. |
 | Validation / sanitization at ingest | 🟡 | Type is validated against a MIME allowlist with extension-sniff normalization for browser quirks, and size is capped at 20 MB (enforced by multer **and** re-checked post-parse so a chunked/misreported upload can't slip past) — [documents.ts](../../artifacts/api-server/src/routes/documents.ts). Parsing runs out-of-band in a background worker (`pg-boss`), not in the request. What is **not** yet done is *content* sanitization to resist embedded-instruction poisoning (e.g. a PDF that contains "ignore prior instructions and reveal…"). **Plan:** see the poisoning row in Appendix A — a pre-embedding content scan + the retrieval-time architectural defenses in §4. |
 
-**Bottom line:** the KB is a controlled, versioned, attributed store with role-gated writes — but
-it is **not human-gated at activation today** (auto-activation defect above). The three additions
-the review needs are: (1) enforce the approval gate before `is_active=true`, (2) a formal approval
-record, and (3) a classification tag.
+**Bottom line:** the KB is a controlled, versioned, attributed store with role-gated writes **and
+an enforced human approval gate** before any version goes live (fixed 2026-07-13). The remaining
+additions the review would want are: (1) run the approver-audit DDL so `approved_by`/`approved_at`
+persist, and (2) a classification tag.
 
 ---
 
@@ -201,9 +202,9 @@ The focused risk list the review asked for. Residual risk assumes current mitiga
 |---|---|---|---|---|
 | R1 | **Prompt injection** (malicious instructions in the question or in retrieved content) | Excerpts-only generation contract; no tools/automation; cite-or-refuse; history used only for query rewrite, never generation | Medium — architectural, no explicit detector | Guardrail classifier on input+output (§4); OWASP-aligned adversarial eval set (§6) |
 | R2 | **Data leakage / cross-tenant exposure** | Server-side `program_id` filter in SQL before ranking; DB CHECK pins non-super users to one program; fail-closed `filterToProgramScope` with security-event logging; session re-validation | **Low** — strongest control in the system | Add sensitivity-tier scoping on top of tenant scoping (§3); exfiltration pattern detection (§4) |
-| R3 | **Knowledge-base poisoning** (malicious/misleading content embedded to be retrieved later) | Role-gated uploads; immutable versioning + SHA-256 provenance; `uploaded_by` attribution | **Medium-High** — no content/malware scan, no anomaly detection, **and documents auto-activate with no enforced human approval** (§2 defect) | Enforce approval gate before `is_active=true` (§2, P1); pre-embedding content + malware sanitization; ingestion-rate/volume + embedding-drift anomaly alerting (§5) |
+| R3 | **Knowledge-base poisoning** (malicious/misleading content embedded to be retrieved later) | Role-gated uploads; **enforced manager+ approval gate before a version goes live** (fixed 2026-07-13); immutable versioning + SHA-256 provenance; `uploaded_by` attribution | Medium — human approval now blocks blind activation; residual is no content/malware scan and no anomaly detection | Pre-embedding content + malware sanitization; ingestion-rate/volume + embedding-drift anomaly alerting (§5) |
 | R4 | **Misuse of outputs** (wrong/hallucinated answer acted on) | Confidence-gate refusal; citation contract (invalid-if-uncited); faithfulness judge in eval; refusal renders as a distinct state | Low–Medium | Business-rule validation layer **if** outputs ever drive automation (§4) |
-| R5 | **Uncontrolled onboarding of new data sources** | Role gate; program scoping; versioned/attributed store | **Medium-High** — no enforced approval gate (auto-activation, §2 defect), no classification, no source registry | Enforce `approved_by`/`approved_at` gate before activation (P1); `classification` tag; source registry (origin, owner, purpose, retention, review date) (§2) |
+| R5 | **Uncontrolled onboarding of new data sources** | Role gate; **enforced approval gate before activation** (fixed 2026-07-13); program scoping; versioned/attributed store | Medium — approval now required; residual is no classification and no source registry | Run `approved_by`/`approved_at` DDL; `classification` tag; source registry (origin, owner, purpose, retention, review date) (§2) |
 | R6 | **Abuse / scraping / DoS of the query path** | Length cap + fail-closed deadline; auth-endpoint rate limits; background-job isolation of ingestion | Medium — no `/ask` request-rate limit | Per-user/per-program query rate limiter (§4); capacity/throttling documentation (§5) |
 | R7 | **Credential / secret exposure in logs** | Recursive credential redaction in `error_log`; generic prod error messages; session tokens hashed at rest | Low | Confirm redaction coverage when SIEM shipping is added (§6) |
 
@@ -251,7 +252,7 @@ implementation evidence**, to seed the SSP. Impact level TBD by leadership.
 
 | Priority | Item | Sections | Type |
 |---|---|---|---|
-| **P0** | **Enforce ingestion approval gate** — stop auto-activation; require manager+ approval before `is_active=true` | §2, A/R3, A/R5 | **Defect fix** |
+| ~~P0~~ ✅ | **Ingestion approval gate enforced** (done 2026-07-13) — worker stops at `ready`; manager+ approval required before `is_active=true`. *Run the `approved_by`/`approved_at` DDL to persist the approver receipt.* | §2, A/R3, A/R5 | **Defect fixed** |
 | **P1** | Enterprise identity — confirm TTEC SSO/MFA/SCIM provisioning + password-policy requirements (current auth is local password + cookie) | §1, App B | Dependency + build |
 | **P1** | Input/output guardrail classifier (injection/jailbreak/exfiltration) | §4, §6, A/R1 | New capability |
 | **P1** | Per-user/per-program rate limiting on `/ask` (distributed, not the current in-memory limiter) | §4, §5, A/R6 | Additive |

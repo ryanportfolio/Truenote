@@ -9,15 +9,18 @@
 3. **Parse** — call LandingAI ADE Parse v2 (`dpt-3-pro-latest`, `lib/parsing/landing-parse.ts`) for PDFs and images; `mammoth` for DOCX; passthrough for text/markdown. Parse returns reading-order markdown with any figures/screenshots **described inline** (`<figure><description>…</description></figure>`), so OCR text and image content arrive in one call — there is no separate vision step. Store the markdown in `document_versions.parsed_markdown`. Update `parse_status='ready'`.
 4. **Chunk** — semantic chunker over the markdown. Target ~500 tokens. Hard rules: never split inside a markdown table, never split mid-list, prefer header boundaries. Each chunk then gets a **contextual header** (2026-07): `[Doc Title > Heading > Subheading]` prepended to `content` before storage — so both the embedding AND `content_tsv` (generated from `content`) carry the chunk's provenance (the no-LLM core of Anthropic's contextual retrieval). Header recorded in `metadata.context_header`; helpers in `lib/ingestion/contextual.ts`. **Existing docs need re-ingestion to pick this up**: `pnpm --filter @workspace/scripts run reingest` (re-chunks + re-embeds active versions from stored `parsed_markdown`, no parse cost).
 5. **Embed** — `text-embedding-3-small` for each chunk. Insert into `chunks` with `embedding`, `content_tsv` (auto-generated), and denormalized `program_id`. Inline figure descriptions ride along as ordinary text chunks.
-6. **Activate** — set `document_versions.is_active=true`. Previous active version for this `document_id` becomes inactive (NOT deleted).
+6. **Ready (NOT active)** — the worker sets `parse_status='ready'` and stops. It does **NOT** activate: `is_active` stays `false`, the prior active version keeps serving, and `documents.current_version_id` is untouched. Chunks are inserted but inert (retrieval filters `is_active=true`).
+7. **Approve** — a manager+ reviews the parsed text and calls `POST /api/documents/:versionId/activate` (`routes/documents.ts`). Only that route sets `is_active=true`, deactivates the prior active version for this `document_id` (NOT deleted), points `documents.current_version_id` at the new version, and records `approved_by`/`approved_at` (best-effort). **This is the enforced human gate** — ingestion never publishes to the live KB on its own. Controlled, human-approved ingestion is a product non-negotiable.
 
 ## Why LandingAI ADE (not LlamaParse / a Python microservice)
 
 LandingAI ADE Parse v2 handles PDFs + images + scanned docs + tables uniformly via REST, describes embedded figures inline (so no separate captioner), and — on a Team/Enterprise plan with the Org ZDR toggle ON — runs under Zero Data Retention, which the product requires. That single ZDR-capable call replaced the former Mistral OCR + `gpt-4o` captioner pair (2026-07). PyMuPDF4LLM is faster and free but mangles complex tables and cannot describe figures — not worth running a Python service next to Node for a CSR-scale KB. Full vendor detail: `.claude/reference/landingai-ade.md`.
 
-## Admin preview is mandatory
+## Admin approval is enforced (not just advised)
 
-After parse completes, render the parsed markdown side-by-side with chunk boundaries highlighted. Admin must visually confirm before the doc goes live. **Most KB quality bugs are bad parses caught too late.**
+A parsed version is **not retrievable** until a manager+ approves it. The worker leaves it `ready` + `is_active=false`; the admin opens the preview panel (`components/admin/PreviewPanel.tsx`, parsed markdown), reviews it, and clicks **Approve & publish** → `POST /api/documents/:versionId/activate`. The activate route is the ONLY place `is_active` flips to `true`. **Most KB quality bugs are bad parses caught too late** — the gate is what catches them, so it is enforced server-side, not left to UI discipline.
+
+`approved_by`/`approved_at` on `document_versions` record the approver (ship via raw DDL — see the schema-handoff SQL; the route writes them best-effort and degrades if the columns are absent, so the gate itself works pre-DDL).
 
 ## Pitfalls
 

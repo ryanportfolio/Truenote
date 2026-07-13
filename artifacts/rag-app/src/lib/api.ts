@@ -513,6 +513,29 @@ export async function deleteDocument(documentId: string): Promise<void> {
   }
 }
 
+/**
+ * Approve (publish) a parsed document version. Ingestion leaves a new version
+ * ready-but-inactive; this is the enforced human gate that makes it
+ * retrievable. Manager+ only (server-enforced). Idempotent on an already-live
+ * version.
+ */
+export async function activateDocument(versionId: string): Promise<void> {
+  const response = await fetch(
+    `/api/documents/${encodeURIComponent(versionId)}/activate`,
+    withDefaults({ method: "POST" })
+  );
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (typeof body.error === "string") detail = body.error;
+    } catch {
+      // ignore parse errors; fall through to statusText
+    }
+    throw new Error(detail || `HTTP ${response.status}: ${response.statusText}`);
+  }
+}
+
 export async function listPrograms(): Promise<ProgramListResponse> {
   const response = await fetch("/api/admin/programs", withDefaults());
   return asJson<ProgramListResponse>(response);

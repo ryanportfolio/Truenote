@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "../lib/db-client.js";
 import { documents, documentVersions } from "@workspace/db/schema";
 import { getObjectStorage } from "../lib/storage/object-storage.js";
@@ -66,6 +66,13 @@ export interface DocumentListItem {
   versionId: string | null;
   parseStatus: string | null;
   uploadedAt: string | null;
+  /**
+   * Whether the newest version is the live, retrievable one. A parsed-and-ready
+   * version stays inactive until a manager+ approves it, so `parseStatus:"ready"`
+   * with `isActive:false` means "awaiting review" — the admin UI gates the
+   * approve action on this.
+   */
+  isActive: boolean;
 }
 
 /**
@@ -104,6 +111,7 @@ documentsRouter.get("/", async (req, res, next) => {
         title: documents.title,
         versionId: documentVersions.id,
         parseStatus: documentVersions.parseStatus,
+        isActive: documentVersions.isActive,
         uploadedAt: documentVersions.uploadedAt,
         docCreatedAt: documents.createdAt
       })
@@ -121,7 +129,8 @@ documentsRouter.get("/", async (req, res, next) => {
         title: r.title,
         versionId: r.versionId,
         parseStatus: r.parseStatus,
-        uploadedAt: r.uploadedAt ? r.uploadedAt.toISOString() : null
+        uploadedAt: r.uploadedAt ? r.uploadedAt.toISOString() : null,
+        isActive: r.isActive === true
       });
     }
     res.json({ items: Array.from(byDocId.values()) });
@@ -467,6 +476,146 @@ documentsRouter.delete("/:id", async (req, res, next) => {
         }
       }
     })();
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Approve (publish) a parsed document version — the enforced human gate.
+ *
+ * Ingestion deliberately stops at `parse_status='ready'` with `is_active=false`
+ * (see lib/ingestion/run.ts); a version is NOT retrievable until a manager+
+ * approves it here. Controlled, human-approved ingestion is a product
+ * non-negotiable — the worker never publishes to the live KB on its own.
+ *
+ * Guards: the router chain already enforces requireManagerOrAbove + fresh
+ * password + blockDemoWrites. This route additionally scopes to the actor's
+ * effective program and returns 404 (not 403) on a cross-program/missing
+ * version to avoid leaking existence — same convention as preview/delete.
+ *
+ * On approval, one transaction: deactivate the prior live version of this
+ * document, activate this version, and repoint documents.current_version_id.
+ * The approver (approved_by/approved_at) is recorded best-effort via raw SQL so
+ * the gate works before those audit columns' DDL lands (a missing column is
+ * swallowed — same posture as citation snapshots). Only a `ready` version can
+ * be approved; an already-active version is an idempotent no-op.
+ */
+documentsRouter.post("/:versionId/activate", async (req, res, next) => {
+  try {
+    const user = authedUser(req);
+    const versionId = req.params.versionId;
+    if (!UUID_RE.test(versionId)) {
+      res.status(400).json({ ok: false, error: "Invalid version id" });
+      return;
+    }
+    const programId = await resolveEffectiveProgramId(user, req);
+    if (programId === null) {
+      res.status(400).json({ ok: false, error: "No program selected." });
+      return;
+    }
+
+    // Load the version joined to its owning document. The combined
+    // `id AND program_id` predicate scopes to the effective program; a
+    // cross-program or missing version returns 404 (existence-hiding).
+    const rows = await db
+      .select({
+        documentId: documentVersions.documentId,
+        parseStatus: documentVersions.parseStatus,
+        isActive: documentVersions.isActive,
+        programId: documents.programId
+      })
+      .from(documentVersions)
+      .innerJoin(documents, eq(documents.id, documentVersions.documentId))
+      .where(
+        and(
+          eq(documentVersions.id, versionId),
+          eq(documents.programId, programId)
+        )
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row || !row.documentId) {
+      res.status(404).json({ ok: false, error: "Not found" });
+      return;
+    }
+    // Defense in depth: canAccessProgram is the single source of truth for
+    // program scope. The SQL predicate already bound programId to the actor's
+    // effective program, so this is belt-and-suspenders.
+    if (!canAccessProgram(user, programId)) {
+      res.status(403).json({ ok: false, error: "Forbidden" });
+      return;
+    }
+    if (row.parseStatus !== "ready") {
+      res.status(409).json({
+        ok: false,
+        error: `This version isn't ready to publish yet (status: ${row.parseStatus ?? "unknown"}).`
+      });
+      return;
+    }
+    if (row.isActive === true) {
+      res.json({ ok: true, alreadyActive: true });
+      return;
+    }
+
+    const documentId = row.documentId;
+    await db.transaction(async (tx) => {
+      // Deactivate the currently-live version of this document, if any. The
+      // `AND is_active = true` keeps it a no-op when nothing is live yet.
+      await tx
+        .update(documentVersions)
+        .set({ isActive: false })
+        .where(
+          and(
+            eq(documentVersions.documentId, documentId),
+            ne(documentVersions.id, versionId),
+            eq(documentVersions.isActive, true)
+          )
+        );
+      await tx
+        .update(documentVersions)
+        .set({ isActive: true })
+        .where(eq(documentVersions.id, versionId));
+      await tx
+        .update(documents)
+        .set({ currentVersionId: versionId })
+        .where(eq(documents.id, documentId));
+    });
+
+    // Best-effort approver receipt. The gate above is already enforced; this
+    // only records WHO approved and WHEN. Ships via raw DDL (approved_by uuid,
+    // approved_at timestamptz on document_versions). Until it lands, a missing
+    // column (Postgres 42703) is swallowed so approval never 500s; any other
+    // failure is logged, not surfaced.
+    try {
+      await db.execute(sql`
+        UPDATE document_versions
+        SET approved_by = ${user.id}::uuid, approved_at = now()
+        WHERE id = ${versionId}::uuid
+      `);
+    } catch (err) {
+      const code =
+        typeof err === "object" && err !== null && "code" in err
+          ? (err as { code?: unknown }).code
+          : undefined;
+      if (code !== "42703") {
+        console.warn(
+          `[documents] approver receipt write failed for version ${versionId}:`,
+          err instanceof Error ? err.message : err
+        );
+        void recordAppError({
+          severity: "warning",
+          source: "documents",
+          operation: "record-approver",
+          error: err,
+          userId: user.id,
+          programId,
+          context: { versionId }
+        });
+      }
+    }
+
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

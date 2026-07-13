@@ -157,6 +157,12 @@ export interface DocumentListItem {
   parseStatus: ParseStatus | null;
   /** ISO timestamp string (or null). */
   uploadedAt: string | null;
+  /**
+   * Whether the newest version is live/retrievable. `parseStatus:"ready"` with
+   * `isActive:false` = parsed but awaiting a manager+ approval before it can
+   * answer questions.
+   */
+  isActive: boolean;
 }
 
 export interface DocumentListResponse {

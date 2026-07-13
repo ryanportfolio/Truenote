@@ -12,33 +12,52 @@ interface DocumentListProps {
   items: DocumentListItem[];
   /** Called after a successful delete so the parent can refetch. */
   onDeleted?: () => void;
+  /** Called after a version is approved/published so the parent can refetch. */
+  onActivated?: () => void;
 }
 
-function StatusPill({ status }: { status: string | null }): JSX.Element {
-  const s = status ?? "pending";
+/**
+ * Collapse (parseStatus, isActive) into one display status. A parsed version
+ * that hasn't been approved shows "needs review" — the enforced gate before it
+ * can answer questions — distinct from "published" (live) and the raw parse
+ * states.
+ */
+function displayStatus(item: DocumentListItem): { key: string; label: string } {
+  if (item.parseStatus === "ready") {
+    return item.isActive
+      ? { key: "published", label: "published" }
+      : { key: "review", label: "needs review" };
+  }
+  const s = item.parseStatus ?? "pending";
+  return { key: s, label: s };
+}
+
+function StatusPill({ item }: { item: DocumentListItem }): JSX.Element {
+  const { key, label } = displayStatus(item);
   const map: Record<string, string> = {
     pending: "bg-muted text-muted-foreground",
     parsing: "bg-warning/20 text-warning-foreground",
-    ready: "bg-success/15 text-success",
+    review: "bg-warning/20 text-warning-foreground",
+    published: "bg-success/15 text-success",
     failed: "bg-destructive/15 text-destructive"
   };
   return (
     <span
       className={cn(
         "rounded-full px-2 py-0.5 text-xs font-medium",
-        map[s] ?? map["pending"],
+        map[key] ?? map["pending"],
         // The only in-progress state in the app gets the only ambient
         // motion — same precedent as the chat wait-stage pulse.
-        s === "parsing" && "motion-safe:animate-pulse"
+        key === "parsing" && "motion-safe:animate-pulse"
       )}
     >
-      {s}
+      {label}
     </span>
   );
 }
 
-export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Element {
-  const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
+export function DocumentList({ items, onDeleted, onActivated }: DocumentListProps): JSX.Element {
+  const [previewItem, setPreviewItem] = useState<DocumentListItem | null>(null);
   // Per-document delete state — keyed by documentId so we can disable just
   // the row being deleted (instead of blocking the whole table).
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -111,17 +130,24 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
                   {item.uploadedAt ? <RelativeTime iso={item.uploadedAt} /> : "—"}
                 </td>
                 <td className="px-3 py-2">
-                  <StatusPill status={item.parseStatus} />
+                  <StatusPill item={item} />
                 </td>
                 <td className="px-3 py-2 text-right">
                   <div className="flex flex-wrap justify-end gap-2">
                     {item.versionId && item.parseStatus === "ready" ? (
                       <button
-                        onClick={() => setPreviewVersionId(item.versionId)}
+                        onClick={() => setPreviewItem(item)}
                         disabled={isDeleting}
-                        className="btn-whisper px-2.5 py-1 text-xs"
+                        className={cn(
+                          "px-2.5 py-1 text-xs",
+                          // A parsed-but-unapproved version leads with the
+                          // review action — publishing is the gated next step.
+                          item.isActive
+                            ? "btn-whisper"
+                            : "rounded-full bg-primary px-2.5 py-1 font-medium text-primary-foreground transition-colors duration-100 ease-out hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        )}
                       >
-                        Parsed text
+                        {item.isActive ? "Parsed text" : "Review & publish"}
                       </button>
                     ) : null}
                     <button
@@ -140,8 +166,16 @@ export function DocumentList({ items, onDeleted }: DocumentListProps): JSX.Eleme
       </table>
       </div>
 
-      {previewVersionId ? (
-        <PreviewPanel versionId={previewVersionId} onClose={() => setPreviewVersionId(null)} />
+      {previewItem && previewItem.versionId ? (
+        <PreviewPanel
+          versionId={previewItem.versionId}
+          isActive={previewItem.isActive}
+          onApproved={() => {
+            setPreviewItem(null);
+            onActivated?.();
+          }}
+          onClose={() => setPreviewItem(null)}
+        />
       ) : null}
     </>
   );

@@ -1,16 +1,39 @@
 import { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
-import { getDocumentPreview } from "@/lib/api";
+import { Check, X } from "lucide-react";
+import { activateDocument, getDocumentPreview } from "@/lib/api";
 import type { PreviewResponse } from "@/types/api";
 
 interface PreviewPanelProps {
   versionId: string;
+  /** Whether this version is already live. When false, the panel offers approval. */
+  isActive: boolean;
+  /** Called after the version is approved/published. */
+  onApproved: () => void;
   onClose: () => void;
 }
 
-export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Element {
+export function PreviewPanel({
+  versionId,
+  isActive,
+  onApproved,
+  onClose
+}: PreviewPanelProps): JSX.Element {
   const [data, setData] = useState<PreviewResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);
+  const [approveError, setApproveError] = useState<string | null>(null);
+
+  async function handleApprove(): Promise<void> {
+    setApproveError(null);
+    setApproving(true);
+    try {
+      await activateDocument(versionId);
+      onApproved();
+    } catch (err) {
+      setApproveError(err instanceof Error ? err.message : "Failed to publish");
+      setApproving(false);
+    }
+  }
   const panelRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -102,6 +125,39 @@ export function PreviewPanel({ versionId, onClose }: PreviewPanelProps): JSX.Ele
           </pre>
         )}
       </div>
+      {/* Approval gate. A parsed version is not retrievable until a manager+
+        * approves it here — controlled, human-approved ingestion. */}
+      <footer className="border-t border-border px-4 py-3">
+        {isActive ? (
+          <p className="flex items-center gap-1.5 text-xs text-success">
+            <Check className="h-4 w-4" aria-hidden />
+            Published — live in the knowledge base.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {approveError ? (
+              <p
+                role="alert"
+                className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                {approveError}
+              </p>
+            ) : null}
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                Review the parsed text, then publish to make it answerable.
+              </p>
+              <button
+                onClick={() => void handleApprove()}
+                disabled={approving || data?.markdown === null}
+                className="shrink-0 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors duration-100 ease-out hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {approving ? "Publishing…" : "Approve & publish"}
+              </button>
+            </div>
+          </div>
+        )}
+      </footer>
     </aside>
   );
 }

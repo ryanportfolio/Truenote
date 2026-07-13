@@ -128,7 +128,11 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
           <span className="sr-only">Loading documents…</span>
         </div>
       ) : noProgramSelected ? null : (
-        <DocumentList items={items} onDeleted={() => void refresh()} />
+        <DocumentList
+          items={items}
+          onDeleted={() => void refresh()}
+          onActivated={() => void refresh()}
+        />
       )}
     </div>
   );
