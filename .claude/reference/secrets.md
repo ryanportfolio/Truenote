@@ -7,8 +7,8 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 | Var | Used for | Notes |
 |---|---|---|
 | `DATABASE_URL` | Neon Postgres (Replit-managed) | Must have `vector` and `pg_trgm` extensions enabled |
-| `OPENROUTER_API_KEY` | Plain-text answer generation through the approved model-routing presets | Assign key to the ZDR guardrail. Every request pins one provider, sends `provider.zdr=true`, denies data collection, and disables provider fallback. No direct answer-generation escape hatch exists. |
-| `OPENAI_API_KEY` | Embeddings (`text-embedding-3-small`), vision, follow-up rewrite, session naming, and the opt-in eval judge | These direct utilities are outside OpenRouter's ZDR boundary; configure required retention controls on the OpenAI organization. They are never used as an answer-generation fallback. |
+| `OPENROUTER_API_KEY` | Answer generation through the approved model-routing presets, plus the auxiliary utility calls (follow-up rewrite, session naming) pinned to the Granite 4.1 8B ZDR route | Assign key to the ZDR guardrail. Every request pins one provider, sends `provider.zdr=true`, denies data collection, and disables provider fallback. No direct answer-generation escape hatch exists. |
+| `OPENAI_API_KEY` | Embeddings (`text-embedding-3-small`), vision, and the opt-in eval judge | These direct utilities are outside OpenRouter's ZDR boundary; configure required retention controls on the OpenAI organization. They are never used as an answer-generation fallback. Follow-up rewrite and session naming moved to the OpenRouter ZDR utility (2026-07) and no longer touch this key. |
 | `MISTRAL_API_KEY` | Mistral OCR for document parsing | `mistral-ocr-latest` |
 | `COHERE_API_KEY` | Rerank v3 | Cuts irrelevant chunks from final LLM context |
 | `BOOTSTRAP_SUPER_USER_EMAIL` | First-login seed | Used once on api-server startup to create the initial super_user if none exists. Idempotent. |

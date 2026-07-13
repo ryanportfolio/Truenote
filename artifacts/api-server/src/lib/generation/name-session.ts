@@ -1,8 +1,12 @@
-import OpenAI from "openai";
-import { zodResponseFormat } from "openai/helpers/zod";
+import type OpenAI from "openai";
 import { z } from "zod";
 import { getDeadlineConfig } from "../deadlines.js";
 import { recordAppError } from "../observability/error-log.js";
+import {
+  parseJsonObject,
+  runUtilityCompletion,
+  UTILITY_MODEL_ROUTE
+} from "./utility-model.js";
 
 /**
  * Auto-name a chat session from its opening exchange.
@@ -12,12 +16,12 @@ import { recordAppError } from "../observability/error-log.js";
  * majority of CSR lookups (follow-ups elaborate the same topic), so we
  * name once, from the first Q+A, rather than re-summarizing every turn.
  *
- * Same low-stakes/latency-sensitive posture as the follow-up rewriter:
- *   - gpt-4o-mini (a title is not worth gpt-4o).
- *   - Any failure falls back to a truncated question — naming is an
- *     enhancement, never a gate on answering.
+ * Same low-stakes posture as the follow-up rewriter: routes through the
+ * shared OpenRouter ZDR utility (Granite 4.1 8B), NOT direct OpenAI, so the
+ * opening question and answer stay inside the product's Zero Data Retention
+ * boundary. Any failure falls back to a truncated question — naming is an
+ * enhancement, never a gate on answering.
  */
-const NAME_MODEL = "gpt-4o-mini";
 
 /** Hard cap on the stored title; the namer is told to stay well under it. */
 export const MAX_TITLE_CHARS = 60;
@@ -39,13 +43,8 @@ export interface NameSessionInput {
 }
 
 export interface NameSessionDeps {
+  /** Injected for tests. Defaults to the shared OpenRouter ZDR utility client. */
   client?: OpenAI;
-}
-
-let _client: OpenAI | null = null;
-function getClient(): OpenAI {
-  if (!_client) _client = new OpenAI();
-  return _client;
 }
 
 const NAME_SYSTEM_PROMPT = [
@@ -55,7 +54,10 @@ const NAME_SYSTEM_PROMPT = [
   "- 2 to 6 words. Title Case. No trailing punctuation.",
   "- Name the SUBJECT of the question, not the fact in the answer.",
   "- No quotes, no 'Question about', no filler. Just the topic.",
-  '- Example: "What is the cancellation fee on the Basic plan?" -> "Basic Plan Cancellation Fee".'
+  '- Example: "What is the cancellation fee on the Basic plan?" -> "Basic Plan Cancellation Fee".',
+  "",
+  'Respond with ONLY a JSON object: {"title": "<title>"}.',
+  "No prose, no code fences, no other keys."
 ].join("\n");
 
 /** Deterministic fallback: the question, trimmed to the title cap. */
@@ -73,27 +75,21 @@ export async function nameSession(
   if (question.length === 0) return "New conversation";
 
   try {
-    const client = deps.client ?? getClient();
     const context = input.answer
       ? `QUESTION: ${question.slice(0, MAX_FIELD_CHARS)}\n\nANSWER: ${input.answer.slice(0, MAX_FIELD_CHARS)}`
       : `QUESTION: ${question.slice(0, MAX_FIELD_CHARS)}`;
     const { nameSession: deadline } = getDeadlineConfig();
-    const completion = await client.beta.chat.completions.parse(
+    const raw = await runUtilityCompletion(
       {
-        model: NAME_MODEL,
-        temperature: 0,
-        messages: [
-          { role: "system", content: NAME_SYSTEM_PROMPT },
-          { role: "user", content: context }
-        ],
-        response_format: zodResponseFormat(SessionNameSchema, "session_name")
-      },
-      {
-        timeout: deadline.timeoutMs,
+        system: NAME_SYSTEM_PROMPT,
+        user: context,
+        timeoutMs: deadline.timeoutMs,
         maxRetries: deadline.maxRetries
-      }
+      },
+      { client: deps.client }
     );
-    const title = completion.choices[0]?.message.parsed?.title?.trim();
+    const parsed = SessionNameSchema.safeParse(parseJsonObject(raw));
+    const title = parsed.success ? parsed.data.title.trim() : "";
     if (!title) return fallbackTitle(question);
     // Guard against a chatty model blowing the column cap.
     return title.length > MAX_TITLE_CHARS ? fallbackTitle(question) : title;
@@ -107,8 +103,8 @@ export async function nameSession(
       source: "generation",
       operation: "session-name-model",
       error: err,
-      provider: "openai-direct",
-      model: NAME_MODEL,
+      provider: UTILITY_MODEL_ROUTE.provider,
+      model: UTILITY_MODEL_ROUTE.model,
       correlationId: input.diagnostics?.correlationId,
       userId: input.diagnostics?.userId,
       programId: input.diagnostics?.programId

@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import type OpenAI from "openai";
 import { formatHistory, rewriteFollowUp } from "../rewrite.js";
 
+/** The utility route returns text; the rewriter parses a JSON object from it. */
 function stubClient(parsed: { standalone_question: string } | null): OpenAI {
   return {
-    beta: {
-      chat: {
-        completions: {
-          parse: async () => ({ choices: [{ message: { parsed } }] })
-        }
+    chat: {
+      completions: {
+        create: async () => ({
+          choices: [{ message: { content: parsed ? JSON.stringify(parsed) : null } }]
+        })
       }
     }
   } as unknown as OpenAI;
@@ -16,12 +17,10 @@ function stubClient(parsed: { standalone_question: string } | null): OpenAI {
 
 function throwingClient(): OpenAI {
   return {
-    beta: {
-      chat: {
-        completions: {
-          parse: async () => {
-            throw new Error("model unavailable");
-          }
+    chat: {
+      completions: {
+        create: async () => {
+          throw new Error("model unavailable");
         }
       }
     }
@@ -31,14 +30,12 @@ function throwingClient(): OpenAI {
 /** Rejects as if the AbortSignal fired mid-request. */
 function abortingClient(): OpenAI {
   return {
-    beta: {
-      chat: {
-        completions: {
-          parse: async () => {
-            const error = new Error("Request was aborted.");
-            error.name = "APIUserAbortError";
-            throw error;
-          }
+    chat: {
+      completions: {
+        create: async () => {
+          const error = new Error("Request was aborted.");
+          error.name = "APIUserAbortError";
+          throw error;
         }
       }
     }
@@ -53,13 +50,13 @@ interface CapturedOptions {
 
 function optionsCapturingClient(options: CapturedOptions[]): OpenAI {
   return {
-    beta: {
-      chat: {
-        completions: {
-          parse: async (_body: unknown, requestOptions: CapturedOptions) => {
-            options.push(requestOptions);
-            return { choices: [{ message: { parsed: { standalone_question: "x" } } }] };
-          }
+    chat: {
+      completions: {
+        create: async (_body: unknown, requestOptions: CapturedOptions) => {
+          options.push(requestOptions);
+          return {
+            choices: [{ message: { content: JSON.stringify({ standalone_question: "x" }) } }]
+          };
         }
       }
     }

@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import type OpenAI from "openai";
 import { fallbackTitle, nameSession, MAX_TITLE_CHARS } from "../name-session.js";
 
+/** The utility route returns text; the namer parses a JSON object from it. */
 function stubClient(parsed: { title: string } | null): OpenAI {
   return {
-    beta: {
-      chat: {
-        completions: {
-          parse: async () => ({ choices: [{ message: { parsed } }] })
-        }
+    chat: {
+      completions: {
+        create: async () => ({
+          choices: [{ message: { content: parsed ? JSON.stringify(parsed) : null } }]
+        })
       }
     }
   } as unknown as OpenAI;
@@ -16,12 +17,10 @@ function stubClient(parsed: { title: string } | null): OpenAI {
 
 function throwingClient(): OpenAI {
   return {
-    beta: {
-      chat: {
-        completions: {
-          parse: async () => {
-            throw new Error("model unavailable");
-          }
+    chat: {
+      completions: {
+        create: async () => {
+          throw new Error("model unavailable");
         }
       }
     }

@@ -7,8 +7,9 @@
 ```
 question
   → follow-up rewrite (only when the client sent conversation history:
-    gpt-4o-mini resolves "that plan"/"the fee" into a standalone question;
-    failure falls back to the raw question; first turn = passthrough)
+    Granite 4.1 8B via the OpenRouter ZDR utility resolves "that plan"/"the
+    fee" into a standalone question; failure falls back to the raw question;
+    first turn = passthrough)
   → embed (text-embedding-3-small)
   → parallel: vector search (top 40) + BM25 search (top 40)
        BM25 zero-hit → pg_trgm word_similarity fallback (typos, SKU codes)
@@ -37,7 +38,7 @@ question
 - **Trigram fallback (2026-07):** when `websearch_to_tsquery` matches zero rows, `word_similarity(question, content) > 0.3` supplies BM25-leg candidates instead — catches typos ("cancelation") and exact codes tsvector stems away. Plain function call, no trgm index yet; if the KB passes ~100k chunks, add a `gin (content gin_trgm_ops)` index via DDL and switch to the `<%` operator form.
 - **Neighbor expansion (2026-07):** after the gate passes, ordinal ±1 siblings (same active document version) of the top `RETRIEVAL_NEIGHBOR_ANCHORS` (default 3) reranked chunks are appended as context — procedures routinely span a chunk boundary. Neighbors carry `relevanceScore: 0` and `neighbor: true`, never affect the gate, and are citable (they're real chunks). Set the env to 0 to disable.
 - **Eval trace:** `retrieve({ withTrace: true })` returns pre-rerank candidates + post-rerank top-K (chunk id → doc id) so the eval harness attributes failures to a stage. `/api/ask` doesn't request it.
-- **Multi-turn (2026-07):** the Chat client sends its last 3 completed exchanges; `lib/generation/rewrite.ts` (gpt-4o-mini) rewrites a follow-up into a standalone question used for retrieval AND generation. HARD boundary: conversation history is used ONLY for reference resolution — answer generation still sees excerpts + standalone question, so an ungrounded fact from a previous answer can never leak into a new one. `query_log.question` stores what the CSR typed; the rewrite is returned as `rewrittenQuestion` (manager+ debug footer shows "Searched as: …"). Rewrite failure falls back to the raw question. "New conversation" button clears history between calls.
+- **Multi-turn (2026-07):** the Chat client sends its last 3 completed exchanges; `lib/generation/rewrite.ts` (Granite 4.1 8B via the OpenRouter ZDR utility, `lib/generation/utility-model.ts`) rewrites a follow-up into a standalone question used for retrieval AND generation. HARD boundary: conversation history is used ONLY for reference resolution — answer generation still sees excerpts + standalone question, so an ungrounded fact from a previous answer can never leak into a new one. `query_log.question` stores what the CSR typed; the rewrite is returned as `rewrittenQuestion` (manager+ debug footer shows "Searched as: …"). Rewrite failure falls back to the raw question. "New conversation" button clears history between calls.
 
 ## Generation contract (the part most demos botch)
 
