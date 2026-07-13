@@ -163,17 +163,136 @@ h2 { max-width: 13ch; font-size: clamp(3rem, 5.35vw, 6.4rem); line-height: .94; 
 .search-stack em { color: rgba(255,255,255,.52); font-size: .72rem; font-style: normal; }
 .search-stack .escalate small { background: rgba(239,165,48,.15); color: #ffd17c; }
 
-.workflow-cost h1 { max-width: 12ch; font-size: clamp(3rem, 5.35vw, 6.4rem); line-height: .94; }
-.cost-path { display: grid; grid-template-columns: 1fr 4.5rem 1fr 4.5rem 1fr; align-items: center; gap: 1.2rem; margin-top: 9vh; }
-.cost-path article { position: relative; min-height: 14.5rem; padding: 2.1rem; border: 1px solid var(--line); border-radius: 1.2rem; background: rgba(255,253,248,.7); box-shadow: 0 1.6rem 4rem rgba(32,27,16,.06); }
-.cost-path article span { color: var(--cobalt); font: 600 .73rem/1 Verdana; letter-spacing: .13em; }
-.cost-path article strong { display: block; margin: 3.2rem 0 .8rem; font-family: Georgia, serif; font-size: clamp(1.4rem, 2vw, 2.2rem); font-weight: 500; }
-.cost-path article p { color: var(--muted); font-size: clamp(.78rem, .9vw, 1rem); line-height: 1.6; }
-.cost-path > i { position: relative; height: 1px; background: var(--line); }
-.cost-path > i::after { position: absolute; top: -3px; right: 0; width: 7px; height: 7px; border-top: 1px solid var(--muted); border-right: 1px solid var(--muted); content: ""; transform: rotate(45deg); }
-.consequence { display: flex; align-items: center; gap: 2rem; margin-top: 2rem; padding: 1.2rem 1.5rem; border-radius: 999px; background: var(--ink); color: #fffdf8; }
-.consequence span { color: #7db0ff; font-size: .68rem; font-weight: 600; letter-spacing: .16em; white-space: nowrap; }
-.consequence p { font: 400 clamp(.85rem, 1vw, 1.15rem)/1.4 Verdana; }
+.replacement-layout {
+  display: grid;
+  grid-template-columns: minmax(20rem, .88fr) minmax(30rem, 1.12fr);
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  gap: clamp(2rem, 5vw, 6rem);
+  padding-bottom: 0;
+}
+
+.replacement-thesis { grid-column: 1; grid-row: 1; }
+
+.replacement-thesis h1 {
+  display: grid;
+  max-width: none;
+  font-size: clamp(3.7rem, 6vw, 7.2rem);
+  line-height: .86;
+}
+
+.replacement-thesis h1 span { display: block; }
+.replacement-thesis h1 span:last-child { color: var(--amber); }
+
+.replacement-lead {
+  max-width: 31rem;
+  margin-top: clamp(1.25rem, 2.5vh, 2rem);
+  color: var(--ink);
+  font-size: clamp(.94rem, 1.28vw, 1.42rem);
+  line-height: 1.45;
+}
+
+.replacement-gates {
+  display: grid;
+  grid-column: 2;
+  grid-row: 1;
+  align-content: center;
+  gap: clamp(.8rem, 1.8vh, 1.25rem);
+}
+
+.replacement-gates article {
+  --gate-accent: var(--cobalt);
+  display: grid;
+  grid-template-columns: clamp(4.5rem, 6vw, 7rem) 1fr;
+  grid-template-rows: auto 1fr;
+  column-gap: clamp(1rem, 2vw, 2rem);
+  min-height: clamp(7.25rem, 18vh, 10.25rem);
+  padding: clamp(1rem, 1.55vw, 1.65rem);
+  border: 1px solid var(--gate-accent);
+  border-radius: 1.2rem;
+  background: rgba(255, 253, 248, .72);
+  box-shadow: 0 1.4rem 3.6rem rgba(32, 27, 16, .06);
+}
+
+.replacement-gates article:nth-child(2) { --gate-accent: var(--green); }
+.replacement-gates article:nth-child(3) { --gate-accent: var(--amber); }
+
+.replacement-gates article > span {
+  grid-row: 1 / 3;
+  align-self: stretch;
+  padding-right: clamp(1rem, 1.5vw, 1.5rem);
+  border-right: 1px solid var(--gate-accent);
+  color: var(--gate-accent);
+  font: 500 clamp(2.5rem, 3.6vw, 4.25rem)/.9 Georgia, serif;
+  letter-spacing: -.04em;
+}
+
+.replacement-gates strong {
+  align-self: end;
+  margin-bottom: .45rem;
+  color: var(--gate-accent);
+  font-size: clamp(.8rem, 1.05vw, 1.18rem);
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.replacement-gates p {
+  align-self: start;
+  color: var(--ink);
+  font-size: clamp(.82rem, 1vw, 1rem);
+  line-height: 1.55;
+}
+
+.replacement-controls {
+  display: flex;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-height: 3.75rem;
+  align-items: center;
+  gap: clamp(1.5rem, 4vw, 5rem);
+  margin-right: calc(clamp(2.5rem, 7vw, 8.5rem) * -1);
+  margin-left: calc(clamp(2.5rem, 7vw, 8.5rem) * -1);
+  padding: clamp(1rem, 2.3vh, 1.5rem) clamp(2.5rem, 7vw, 8.5rem);
+  background: var(--ink);
+  color: var(--card);
+}
+
+.replacement-controls strong {
+  flex: 0 0 auto;
+  font-size: clamp(.76rem, 1.08vw, 1.25rem);
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.replacement-controls ul {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.replacement-controls li {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  color: var(--card);
+  font-size: clamp(.76rem, .9vw, 1rem);
+  white-space: nowrap;
+}
+
+.replacement-controls li:not(:first-child)::before {
+  width: .5rem;
+  height: .5rem;
+  border-radius: 50%;
+  background: var(--blue);
+  content: "";
+}
 
 .scope { background: radial-gradient(circle at 50% 100%, #12366c, #061127 48%, #030812 100%); }
 .scope h2 { max-width: 11ch; }
@@ -199,12 +318,15 @@ h2 { max-width: 13ch; font-size: clamp(3rem, 5.35vw, 6.4rem); line-height: .94; 
 
 .new-workflow::before { position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, rgba(244,240,231,.98) 0 38%, rgba(244,240,231,.76) 54%, rgba(244,240,231,.08) 77%); content: ""; }
 .evidence-art { position: absolute; inset: 0; background: url("./assets/evidence-orbit.png") center / cover; transform: scale(1.03); }
-.new-workflow h2 { max-width: 10ch; }
-.orbit-flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: .8rem; max-width: 70rem; margin-top: 10vh; }
-.orbit-flow article { min-height: 11rem; padding: 1.3rem; border: 1px solid rgba(23,25,22,.14); border-radius: 1rem; background: rgba(255,253,248,.8); box-shadow: 0 1.2rem 3rem rgba(39,31,15,.05); backdrop-filter: blur(18px); }
+.workflow-layout { display: grid; grid-template-columns: minmax(20rem, .75fr) minmax(32rem, 1.25fr); align-items: center; gap: clamp(2rem, 5vw, 6rem); }
+.workflow-copy { position: relative; z-index: 2; }
+.new-workflow h2 { max-width: 11ch; }
+.workflow-copy .lead { max-width: 29rem; margin-top: 1.5rem; }
+.orbit-flow { display: grid; grid-template-columns: repeat(2, 1fr); gap: clamp(.8rem, 1.4vw, 1.25rem); max-width: none; margin-top: 0; }
+.orbit-flow article { min-height: clamp(10rem, 24vh, 13.5rem); padding: clamp(1.1rem, 1.5vw, 1.5rem); border: 1px solid rgba(23,25,22,.14); border-radius: 1rem; background: rgba(255,253,248,.84); box-shadow: 0 1.2rem 3rem rgba(39,31,15,.05); backdrop-filter: blur(18px); }
 .orbit-flow article span { display: grid; width: 2.4rem; height: 2.4rem; place-items: center; border-radius: 50%; background: var(--cobalt); color: #fff; font-size: .78rem; }
-.orbit-flow article strong { display: block; margin: 2.3rem 0 .65rem; font: 500 clamp(1rem, 1.2vw, 1.35rem)/1.2 Georgia; }
-.orbit-flow article small { color: var(--muted); font-size: .7rem; line-height: 1.45; }
+.orbit-flow article strong { display: block; margin: clamp(1.2rem, 2.4vh, 2rem) 0 .65rem; font: 500 clamp(1rem, 1.2vw, 1.35rem)/1.2 Georgia; }
+.orbit-flow article small { color: var(--muted); font-size: clamp(.72rem, .82vw, .9rem); line-height: 1.5; }
 
 .product-definition { background: radial-gradient(circle at 65% 46%, #12376f 0, #07172f 34%, #020916 72%); }
 .definition-field { position: absolute; top: -14%; right: -6%; width: 62%; aspect-ratio: 1; border: 1px solid rgba(125,176,255,.18); border-radius: 50%; box-shadow: 0 0 8rem rgba(11,101,239,.15), inset 0 0 7rem rgba(11,101,239,.08); }
@@ -724,7 +846,9 @@ body:hover .key-hint { opacity: 1; }
 
 /* At laptop widths, reduce column count before shrinking the type. */
 @media (max-width: 1280px) and (min-width: 901px) {
+  .workflow-layout { grid-template-columns: minmax(17rem, .7fr) minmax(0, 1.3fr); gap: 3vw; }
   .orbit-flow { grid-template-columns: repeat(2, 1fr); margin-top: 5vh; }
+  .new-workflow .orbit-flow { margin-top: 0; }
   .orbit-flow article { min-height: 8.5rem; }
   .definition-layout { grid-template-columns: minmax(17rem,.7fr) minmax(0,1.3fr); gap: 2vw 3vw; }
   .product-definition h2 { font-size: clamp(2.8rem,4.2vw,4.7rem); }
@@ -762,10 +886,27 @@ body:hover .key-hint { opacity: 1; }
 
 @media (max-width: 900px) {
   .slide-pad { padding: 3rem 2rem 5rem; }
+  .replacement-layout { grid-template-columns: minmax(15rem, .8fr) minmax(0, 1.2fr); gap: 1.1rem; padding-bottom: 0; }
+  .replacement-thesis h1 { font-size: clamp(3rem, 7vw, 4.8rem); }
+  .replacement-gates { gap: .7rem; }
+  .replacement-gates article { grid-template-columns: 3.5rem 1fr; min-height: 7rem; padding: 1rem; }
+  .replacement-gates article > span { padding-right: .8rem; font-size: clamp(2rem, 4vw, 3rem); }
+  .replacement-gates strong { margin-bottom: .35rem; }
+  .replacement-controls {
+    gap: 1.2rem;
+    margin-right: -2rem;
+    margin-left: -2rem;
+    padding-right: 2rem;
+    padding-left: 2rem;
+  }
+  .replacement-controls ul { gap: .7rem; }
+  .replacement-controls li { gap: .7rem; white-space: normal; }
   .split, .split-45, .split-38 { grid-template-columns: 1fr; align-content: center; gap: 2rem; }
   .split .copy-block { gap: .8rem; }
   .call-stage, .product-window { min-height: 45vh; }
   .cost-path, .orbit-flow { grid-template-columns: repeat(2, 1fr); margin-top: 3vh; }
+  .workflow-layout { grid-template-columns: minmax(15rem, .72fr) minmax(0, 1.28fr); gap: 1.25rem; }
+  .new-workflow .orbit-flow { margin-top: 0; }
   .definition-layout { grid-template-columns: minmax(15rem,.72fr) minmax(0,1.28fr); grid-template-rows: 1fr auto; gap: 1.4rem 2vw; }
   .product-definition h2 { font-size: clamp(2.65rem,5vw,3.7rem); }
   .definition-flow { grid-template-columns: 1fr 1.05fr 1fr; gap: .45rem; }
@@ -821,6 +962,19 @@ body:hover .key-hint { opacity: 1; }
 }
 
 @media (max-height: 820px) and (min-width: 901px) {
+  .replacement-layout { gap: 3vw; }
+  .replacement-thesis h1 { font-size: clamp(3rem, 5.2vw, 5.6rem); }
+  .replacement-lead { margin-top: .8rem; }
+  .replacement-gates { gap: .65rem; }
+  .replacement-gates article { min-height: 6.25rem; padding: .85rem 1rem; }
+  .replacement-gates article > span { font-size: clamp(2.2rem, 3vw, 3.4rem); }
+  .replacement-gates strong { margin-bottom: .25rem; }
+  .replacement-controls { padding-top: .7rem; padding-bottom: .7rem; }
+  .workflow-layout { gap: 3vw; }
+  .workflow-copy .lead { margin-top: .8rem; }
+  .new-workflow .orbit-flow { gap: .65rem; margin-top: 0; }
+  .new-workflow .orbit-flow article { min-height: 7.75rem; padding: .9rem 1rem; }
+  .new-workflow .orbit-flow article strong { margin: .85rem 0 .4rem; }
   .scope-grid { margin-top: 2.2vh; }
   .scope-grid article { min-height: 36vh; padding: 1.35rem 1.7rem; }
   .scope-head { padding-bottom: .9rem; }
@@ -908,7 +1062,7 @@ body:hover .key-hint { opacity: 1; }
   }
   .slide-pad { height: auto; min-height: 100svh; padding: 4.2rem 1.25rem 5rem; }
 
-  h1, .workflow-cost h1 { font-size: clamp(3.5rem, 14vw, 4.5rem); }
+  h1, .replacement-thesis h1 { font-size: clamp(3.5rem, 14vw, 4.5rem); }
   h2, .answer-model h2 { max-width: 12ch; font-size: clamp(2.8rem, 14vw, 4.5rem); }
   .fragment { opacity: 1 !important; transform: none !important; }
   .hero { min-height: 100svh; }
@@ -919,10 +1073,25 @@ body:hover .key-hint { opacity: 1; }
   .call-stage { min-height: 31rem; }
   .search-stack article { width: 94%; grid-template-columns: 3rem 1fr; }
   .search-stack article em { display: none; }
-  .cost-path { grid-template-columns: 1fr; margin-top: 3rem; }
-  .cost-path > i { display: none; }
-  .cost-path article { min-height: 11rem; }
-  .consequence { align-items: flex-start; border-radius: 1rem; flex-direction: column; gap: .7rem; }
+  .replacement-layout { display: grid; grid-template-columns: 1fr; grid-template-rows: auto; gap: 2rem; padding-bottom: 0; }
+  .replacement-thesis, .replacement-gates, .replacement-controls { grid-column: 1; grid-row: auto; }
+  .replacement-thesis h1 { gap: .08em; line-height: .9; }
+  .replacement-lead { font-size: 1rem; }
+  .replacement-gates { grid-template-columns: 1fr; gap: 1rem; }
+  .replacement-gates article { min-height: 0; padding: 1.2rem; }
+  .replacement-gates article > span { font-size: 2.7rem; }
+  .replacement-controls {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 1rem;
+    margin-right: -1.25rem;
+    margin-left: -1.25rem;
+    padding: 1.5rem 1.25rem;
+  }
+  .replacement-controls ul { align-items: flex-start; flex-direction: column; gap: .8rem; }
+  .replacement-controls li:not(:first-child)::before { display: none; }
+  .workflow-layout { grid-template-columns: 1fr; gap: 2rem; }
+  .new-workflow .orbit-flow { margin-top: 0; }
   .scope-grid article { min-height: 29rem; }
   .scope-arrow { display: none; }
   .source-line { padding-bottom: 2rem; }
