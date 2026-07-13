@@ -20,19 +20,30 @@ against a control framework. Those are two different things, and this response s
 honestly:
 
 - **Already meets or exceeds the review** on: server-side program (tenant) isolation as a hard
-  boundary, role-based access control enforced at the retrieval endpoint, controlled/versioned
-  ingestion with attribution, refusal-over-hallucination generation, immutable answer receipts,
-  and a first-class evaluation harness with held-out overfitting detection.
-- **Partially meets** the review on: logging depth (rich, but Postgres-resident, not yet
-  streamed to a SIEM), and lifecycle/CI-CD controls (an eval gate exists and is CI-ready but is
-  not yet wired to block merges).
-- **Gaps with a concrete plan** on: a dedicated input/output guardrail classifier for prompt
-  injection / jailbreak / exfiltration, ingestion-anomaly (poisoning) detection, formal
+  boundary, role-based access control enforced at the retrieval endpoint, versioned/attributed
+  ingestion with role-gated writes, refusal-over-hallucination generation, immutable answer
+  receipts, and a first-class evaluation harness with held-out overfitting detection.
+- **Partially meets** the review on: logging depth (rich query/error logging, but Postgres-resident
+  and **no append-only audit trail for admin/config actions**, not yet streamed to a SIEM), and
+  lifecycle/CI-CD controls (an eval gate exists and is CI-ready but is not yet wired to block merges).
+- **Gaps with a concrete plan** on: **enforcing the ingestion approval gate** (documents currently
+  auto-activate after parsing — §2 defect), a dedicated input/output guardrail classifier for
+  prompt injection / jailbreak / exfiltration, ingestion-anomaly (poisoning) detection, formal
   governance artifacts (SSP, risk register, named roles, data classification), request-rate
-  limiting on the query endpoint, and data masking/tokenization.
+  limiting on the query endpoint, data masking/tokenization, and **enterprise identity
+  (SSO/MFA/provisioning)** — current auth is local password + session cookie.
 
 The risk register (Appendix A), role map (Appendix B), and 800-53 crosswalk (Appendix C) that
 the review asks for are drafted here as the starting artifacts.
+
+### How to describe Truenote's posture (claims discipline)
+
+- ✅ **Accurate:** "Truenote has strong security-by-design controls in its core RAG path (server-side
+  tenant isolation, RBAC, cite-or-refuse generation, ZDR model routing, versioned/attributed
+  ingestion) and a defined remediation plan toward RMF alignment."
+- ❌ **Do not claim:** "FedRAMP compliant," "FedRAMP-ready," or "fully controlled / human-approved
+  ingestion." The first two require an authorization Truenote has not been through; the third is
+  contradicted by the §2 auto-activation defect until that gate is enforced.
 
 **Legend:** ✅ Built & verifiable · 🟡 Partial · 📋 Planned / Gap
 
@@ -68,12 +79,13 @@ restricted write access and change logging; sources explicitly approved and trac
 | Change history / traceability | ✅ | Re-uploading a document **never overwrites** — it creates a new `document_versions` row and flips `is_active`; prior versions are retained for audit/rollback ([ingestion.md](../../.claude/reference/ingestion.md), invariants in [data-model.md](../../.claude/reference/data-model.md)). Every version records `uploaded_by`, `uploaded_at`, `file_sha256`, `mime_type`, and `parse_status`. Content is content-addressed (SHA-256) so identical re-uploads are deduped and provenance is exact. |
 | Origin recorded | ✅ | Raw source file is stored in object storage keyed by SHA + sanitized filename; `document_versions.source_url` points at it. |
 | Data **classification** labels | 📋 Gap | Documents carry a program (tenant) and title but **no sensitivity/classification tag** today. **Plan:** add an optional `classification` column to `documents` (raw DDL, per the schema-change protocol) and surface it in the admin uploader; feed it into the segmentation model in §3. |
-| Explicit **source-approval workflow** | 🟡 | The system enforces *who* may add content (role gate) and a **mandatory human preview** — parsed markdown is rendered with chunk boundaries and an admin must confirm before a version goes live ([ingestion.md](../../.claude/reference/ingestion.md), "Admin preview is mandatory"). What's missing is a first-class *approval record* (approver identity + timestamp + decision) distinct from the uploader. **Plan:** add an `approved_by` / `approved_at` pair to `document_versions` and gate `is_active=true` behind it. |
+| Explicit **source-approval workflow** | 📋 Gap **(known defect)** | The system enforces *who* may add content (role gate) and a preview endpoint exists ([documents.ts](../../artifacts/api-server/src/routes/documents.ts) `/:versionId/preview`), but **approval is NOT enforced**: the ingestion worker sets `parse_status='ready'` **and** `is_active=true` automatically in one transaction the moment embedding succeeds ([run.ts:271-278](../../artifacts/api-server/src/lib/ingestion/run.ts)) — a freshly uploaded document is retrievable with no human sign-off. `.claude/reference/ingestion.md`'s "Admin preview is mandatory" is documented *intent*, not an enforced control. **Plan (P1):** worker leaves `is_active=false`; add a manager+ approve route that flips `is_active=true` and records `approved_by`/`approved_at`; until then, do not represent ingestion as "human-approved." |
 | Validation / sanitization at ingest | 🟡 | Type is validated against a MIME allowlist with extension-sniff normalization for browser quirks, and size is capped at 20 MB (enforced by multer **and** re-checked post-parse so a chunked/misreported upload can't slip past) — [documents.ts](../../artifacts/api-server/src/routes/documents.ts). Parsing runs out-of-band in a background worker (`pg-boss`), not in the request. What is **not** yet done is *content* sanitization to resist embedded-instruction poisoning (e.g. a PDF that contains "ignore prior instructions and reveal…"). **Plan:** see the poisoning row in Appendix A — a pre-embedding content scan + the retrieval-time architectural defenses in §4. |
 
-**Bottom line:** the KB is already a controlled, versioned, attributed, human-gated store. The
-two additions the review would want are a formal *approval* record (separate from upload) and a
-*classification* tag — both are small, additive schema changes.
+**Bottom line:** the KB is a controlled, versioned, attributed store with role-gated writes — but
+it is **not human-gated at activation today** (auto-activation defect above). The three additions
+the review needs are: (1) enforce the approval gate before `is_active=true`, (2) a formal approval
+record, and (3) a classification tag.
 
 ---
 
@@ -151,6 +163,7 @@ OWASP LLM guidance.
 | "Who requested what, and what was returned" | ✅ | Every ask writes a `query_log` row: `user_id`, `program_id`, `session_id`, the exact question the CSR typed, the answer, `cited_chunk_ids`, `refused`, `latency_ms`, and immutable `citation_snapshots` (the exact source receipts) — [data-model.md](../../.claude/reference/data-model.md). Per-stage/provider timing is captured in `timing_breakdown`. This already answers the audit question precisely, including *which sources* were returned. |
 | Operational error / diagnostics log | ✅ | `error_log` captures redacted provider/API/worker failures with correlation IDs, request IDs, route, user, and program — after **recursive credential redaction** so secrets never land in logs ([error-log.ts](../../artifacts/api-server/src/lib/observability/error-log.ts), [data-model.md](../../.claude/reference/data-model.md)). Production API errors return a generic message; full detail stays server-side ([app.ts](../../artifacts/api-server/src/app.ts)). |
 | Read surfaces for operators | ✅ | Super-user admin pages expose query analytics, errors, and pipeline observability (`/admin/queries`, `/admin/errors`, `/admin/observability`). |
+| **Append-only audit trail for admin/config actions** | 📋 Gap | Query and error activity are logged well, but **administrative and configuration mutations are not event-logged**: document upload/approve/activate/delete, user create/edit/role-change/deactivate, and model-routing changes update rows in place (some record `updated_by`/`updated_at`, e.g. `app_settings`, but there is **no append-only history**). This is a real gap versus "durable audit trail." **Plan (P1):** add an append-only `audit_events` table written on every privileged mutation (actor, action, target, before/after, reason). |
 | **SIEM integration (DataDog / Exabeam)** | 📋 Gap | All of the above is **Postgres-resident and admin-surfaced** — there is **no** export/stream to an external SIEM, and therefore no cross-system anomaly detection or automated alerting today. **Plan:** add a structured log shipper (JSON to stdout → platform log drain, or a direct DataDog/Exabeam forwarder) covering the ingestion pipeline, vector store operations, LLM interface, and — once built — the guardrail component. This is the main integration item in this section. |
 | Security testing aligned to OWASP LLM Top 10 | 🟡 | The **evaluation harness** already exercises retrieval/generation quality, refusal behavior on out-of-KB questions (hallucination probes), and claim-level faithfulness via an LLM judge ([eval.md](../../.claude/reference/eval.md)). It is not yet a *security* test suite. **Plan:** add an adversarial test set — prompt-injection strings, jailbreak attempts, cross-program leakage probes, exfiltration patterns — as protected eval questions and/or a dedicated red-team script, mapped to OWASP LLM01–LLM10. The held-out "protected" eval mechanism is the right container for regression-proofing these. |
 
@@ -188,9 +201,9 @@ The focused risk list the review asked for. Residual risk assumes current mitiga
 |---|---|---|---|---|
 | R1 | **Prompt injection** (malicious instructions in the question or in retrieved content) | Excerpts-only generation contract; no tools/automation; cite-or-refuse; history used only for query rewrite, never generation | Medium — architectural, no explicit detector | Guardrail classifier on input+output (§4); OWASP-aligned adversarial eval set (§6) |
 | R2 | **Data leakage / cross-tenant exposure** | Server-side `program_id` filter in SQL before ranking; DB CHECK pins non-super users to one program; fail-closed `filterToProgramScope` with security-event logging; session re-validation | **Low** — strongest control in the system | Add sensitivity-tier scoping on top of tenant scoping (§3); exfiltration pattern detection (§4) |
-| R3 | **Knowledge-base poisoning** (malicious/misleading content embedded to be retrieved later) | Role-gated uploads; mandatory human preview before activation; immutable versioning + SHA-256 provenance; `uploaded_by` attribution | Medium — no content scan, no anomaly detection | Pre-embedding content sanitization; ingestion-rate/volume + embedding-drift anomaly alerting (§5); formal source-approval record (§2) |
+| R3 | **Knowledge-base poisoning** (malicious/misleading content embedded to be retrieved later) | Role-gated uploads; immutable versioning + SHA-256 provenance; `uploaded_by` attribution | **Medium-High** — no content/malware scan, no anomaly detection, **and documents auto-activate with no enforced human approval** (§2 defect) | Enforce approval gate before `is_active=true` (§2, P1); pre-embedding content + malware sanitization; ingestion-rate/volume + embedding-drift anomaly alerting (§5) |
 | R4 | **Misuse of outputs** (wrong/hallucinated answer acted on) | Confidence-gate refusal; citation contract (invalid-if-uncited); faithfulness judge in eval; refusal renders as a distinct state | Low–Medium | Business-rule validation layer **if** outputs ever drive automation (§4) |
-| R5 | **Uncontrolled onboarding of new data sources** | Role gate + mandatory preview; program scoping; versioned/attributed store | Medium — no explicit approval role or classification | `approved_by`/`approved_at` gate on activation; `classification` tag; source registry (§2) |
+| R5 | **Uncontrolled onboarding of new data sources** | Role gate; program scoping; versioned/attributed store | **Medium-High** — no enforced approval gate (auto-activation, §2 defect), no classification, no source registry | Enforce `approved_by`/`approved_at` gate before activation (P1); `classification` tag; source registry (origin, owner, purpose, retention, review date) (§2) |
 | R6 | **Abuse / scraping / DoS of the query path** | Length cap + fail-closed deadline; auth-endpoint rate limits; background-job isolation of ingestion | Medium — no `/ask` request-rate limit | Per-user/per-program query rate limiter (§4); capacity/throttling documentation (§5) |
 | R7 | **Credential / secret exposure in logs** | Recursive credential redaction in `error_log`; generic prod error messages; session tokens hashed at rest | Low | Confirm redaction coverage when SIEM shipping is added (§6) |
 
@@ -207,7 +220,7 @@ are the accountable owners TTEC leadership would assign at onboarding.
 | Overall system accountability | — | **System Owner** | Accepts residual risk; owns the SSP |
 | Security posture & control currency | — | **ISSO** | Maintains control mappings (Appendix C), owns IR, approves guardrail config |
 | Data source approval & classification | `super_user` / `senior_manager` | **Data Steward** (per program) | Approves new sources, assigns classification, owns KB accuracy |
-| Program-level content management | `manager` | Program content owner | Uploads/curates, runs the mandatory preview |
+| Program-level content management | `manager` | Program content owner | Uploads/curates; would run the approval gate once enforced (§2) |
 | Consumption | `csr` | End user (CSR) | Read-only query access; no KB write path |
 | Model/guardrail ops & monitoring | `super_user` | **MLSecOps / Ops** | Orders approved model routes, runs eval gates, watches monitoring/alerts |
 
@@ -238,15 +251,21 @@ implementation evidence**, to seed the SSP. Impact level TBD by leadership.
 
 | Priority | Item | Sections | Type |
 |---|---|---|---|
+| **P0** | **Enforce ingestion approval gate** — stop auto-activation; require manager+ approval before `is_active=true` | §2, A/R3, A/R5 | **Defect fix** |
+| **P1** | Enterprise identity — confirm TTEC SSO/MFA/SCIM provisioning + password-policy requirements (current auth is local password + cookie) | §1, App B | Dependency + build |
 | **P1** | Input/output guardrail classifier (injection/jailbreak/exfiltration) | §4, §6, A/R1 | New capability |
-| **P1** | Per-user/per-program rate limiting on `/ask` | §4, §5, A/R6 | Additive |
+| **P1** | Per-user/per-program rate limiting on `/ask` (distributed, not the current in-memory limiter) | §4, §5, A/R6 | Additive |
+| **P1** | Append-only audit trail for admin/config actions (upload, approve, activate, delete, user/role, model-routing, guardrail, eval config) | §6, §7 | New capability |
 | **P1** | SIEM log shipping (DataDog/Exabeam) | §6 | Integration |
-| **P2** | OWASP-LLM adversarial eval set + wire eval into CI as blocking gate | §6, §7 | Test + process |
-| **P2** | Source-approval record (`approved_by`) + classification tag | §2, §3, A/R5 | Schema + UI |
+| **P1** | Vendor assurance package — DPAs/ZDR/retention/residency across Replit, Neon, LandingAI, OpenAI, Cohere, OpenRouter + model providers | §5, App C | Documentation |
+| **P2** | OWASP-LLM adversarial eval set + wire eval into CI as blocking gate (SAST, dep/secret scan, SBOM) | §6, §7 | Test + process |
+| **P2** | Source registry (`approved_by`, origin, owner, purpose, classification, retention, review date) | §2, §3, A/R5 | Schema + UI |
+| **P2** | Ingestion protection — malware/file validation + PII/secrets + suspicious-instruction detection | §2, §4, A/R3 | New capability |
 | **P2** | Ingestion-anomaly / poisoning detection | §5, A/R3 | Monitoring |
 | **P3** | Sensitivity-tier scoping on top of tenant scoping | §3 | Additive to enforcement point |
 | **P3** | PII detection/masking at ingest | §4, A/R5 | New capability |
-| **P3** | Formal SSP + 800-53 mapping + named role assignment | §1, App B/C | Documentation |
+| **P3** | Availability engineering — load/capacity tests, SLOs, backup/restore + RTO/RPO, provider-failure tests | §5 | Engineering |
+| **P3** | Formal SSP + 800-53 mapping + AI RMF profile + POA&M + named role assignment | §1, App B/C | Documentation |
 
 ---
 
