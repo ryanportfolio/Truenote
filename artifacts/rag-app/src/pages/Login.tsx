@@ -265,9 +265,24 @@ export function LoginPage({
           className="archive-image"
           {...{ fetchpriority: "high" }}
         />
+        <div className="archive-parallax archive-parallax-mid" aria-hidden>
+          <img
+            src="/visuals/luminous-archive.webp"
+            alt=""
+            className="archive-layer-image"
+          />
+        </div>
+        <div className="archive-parallax archive-parallax-near" aria-hidden>
+          <img
+            src="/visuals/luminous-archive.webp"
+            alt=""
+            className="archive-layer-image"
+          />
+        </div>
         <div className="archive-light" aria-hidden />
         <div className="archive-core-aura" aria-hidden />
-        <div className="archive-signal" aria-hidden />
+        <div className="archive-refraction" aria-hidden />
+        <div className="archive-caustic" aria-hidden />
       </section>
     </main>
   );
