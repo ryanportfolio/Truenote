@@ -678,7 +678,9 @@ documentsRouter.post(
       const user = authedUser(req);
       const maxClassification = await getUserMaxClassification(user.id);
       const versionId = req.params.versionId;
-      if (!UUID_RE.test(versionId)) throw new DocumentControlError(404, "Not found");
+      if (!versionId || !UUID_RE.test(versionId)) {
+        throw new DocumentControlError(404, "Not found");
+      }
       const parsed = ReviewBody.safeParse(req.body);
       if (!parsed.success) throw new DocumentControlError(400, "Invalid review decision.");
       const programId = await effectiveDocumentProgram(req, res);
@@ -787,7 +789,9 @@ documentsRouter.post(
       const user = authedUser(req);
       const maxClassification = await getUserMaxClassification(user.id);
       const versionId = req.params.versionId;
-      if (!UUID_RE.test(versionId)) throw new DocumentControlError(404, "Not found");
+      if (!versionId || !UUID_RE.test(versionId)) {
+        throw new DocumentControlError(404, "Not found");
+      }
       const parsed = ReasonBody.safeParse(req.body);
       if (!parsed.success) throw new DocumentControlError(400, "A rejection reason is required.");
       const programId = await effectiveDocumentProgram(req, res);
@@ -886,7 +890,9 @@ documentsRouter.post(
       const user = authedUser(req);
       const maxClassification = await getUserMaxClassification(user.id);
       const versionId = req.params.versionId;
-      if (!UUID_RE.test(versionId)) throw new DocumentControlError(404, "Not found");
+      if (!versionId || !UUID_RE.test(versionId)) {
+        throw new DocumentControlError(404, "Not found");
+      }
       const parsed = ReasonBody.safeParse(req.body);
       if (!parsed.success) throw new DocumentControlError(400, "A revocation reason is required.");
       const programId = await effectiveDocumentProgram(req, res);
@@ -1034,7 +1040,9 @@ documentsRouter.post(
       const user = authedUser(req);
       const maxClassification = await getUserMaxClassification(user.id);
       const id = req.params.id;
-      if (!UUID_RE.test(id)) throw new DocumentControlError(404, "Not found");
+      if (!id || !UUID_RE.test(id)) {
+        throw new DocumentControlError(404, "Not found");
+      }
       const parsed = PurgeBody.safeParse(req.body);
       if (!parsed.success) throw new DocumentControlError(400, "Invalid purge confirmation.");
       const programId = await effectiveDocumentProgram(req, res);
