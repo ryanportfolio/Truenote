@@ -31,15 +31,15 @@
       <table><thead><tr><th>Control</th><th>Grade</th><th>Evidence</th><th>Risk / next action</th><th>Owner</th><th>Binary acceptance test</th></tr></thead><tbody>
         <tr><td>P0/P1 database controls</td><td><span class="tag done">Verified</span></td><td>Owner attestation: all acceptance requirements passed in heliumdb development. Canonical DDL hash retained here; raw output is not retained.</td><td>Preserve results for the next run and repeat for any separate production database.</td><td>Platform / database owner</td><td>Verification SQL returns required objects, zero unsafe active versions, and zero broken hash links.</td></tr>
         <tr><td>Browser CSP and CSRF/origin defense</td><td><span class="tag config">Implemented, unverified</span></td><td>PR 111 merged; TypeScript, tests, CodeQL, secret scan, dependency audit, and SBOM passed.</td><td>Replit deployment smoke evidence is missing.</td><td>Engineering</td><td>Normal same-origin mutation succeeds, foreign Origin returns 403, CSP header is present, and browser console has no CSP violation.</td></tr>
-        <tr><td>Negative security suite</td><td><span class="tag config">Implemented, unverified</span></td><td>Consolidated tests cover cross-program access, clearance, user administration, self-approval, purge, revocation, CSRF, and SIEM failure paths in this change.</td><td>Current change still needs authoritative CI.</td><td>Engineering / Security</td><td>Required GitHub typecheck, test, CodeQL, secret-scan, dependency-audit, and SBOM jobs all pass.</td></tr>
+        <tr><td>Negative security suite</td><td><span class="tag done">Verified</span></td><td>PR 112 run <a href="https://github.com/ryanportfolio/kbase/actions/runs/29376130715">29376130715</a> passed. Consolidated tests cover cross-program access, clearance, user administration, self-approval, purge, revocation, CSRF, and SIEM failure paths.</td><td>Retain the run and add deployed negative checks when SIEM is configured.</td><td>Engineering / Security</td><td>Required GitHub typecheck, test, CodeQL, secret-scan, dependency-audit, and SBOM jobs all pass.</td></tr>
         <tr><td>Durable SIEM delivery</td><td><span class="tag config">Configuration required</span></td><td>Transactional outbox, lease-fenced worker, bounded retries, dead-letter state, signed delivery, health API, tests, and forward-only DDL are included in this change.</td><td>DDL, endpoint, signing key, receiver verification, alerts, and runtime evidence are missing.</td><td>Security operations / Platform</td><td>Forced receiver outage queues and retries an event; recovery delivers it once; max attempts dead-letter it; health reports backlog and dead-letter state.</td></tr>
-        <tr><td>CI security gates</td><td><span class="tag done">Verified</span></td><td>PR 111 required workflow passed CodeQL SARIF evidence, Gitleaks, TypeScript, tests, high-severity dependency audit, and CycloneDX SBOM.</td><td>Branch-protection settings and recurring evidence retention still require owner confirmation.</td><td>Repository owner</td><td>Main rejects a PR when any required security job fails and retains the named artifacts.</td></tr>
+        <tr><td>CI security gates</td><td><span class="tag done">Verified</span></td><td>PRs 111 and 112 passed CodeQL SARIF evidence, Gitleaks, TypeScript, tests, high-severity dependency audit, and CycloneDX SBOM.</td><td>Branch-protection settings and recurring evidence retention still require owner confirmation.</td><td>Repository owner</td><td>Main rejects a PR when any required security job fails and retains the named artifacts.</td></tr>
         <tr><td>OIDC MFA</td><td><span class="tag config">Configuration required</span></td><td>Code exists; owner deferred rollout.</td><td>Authentication assurance remains incomplete.</td><td>IAM / Security</td><td>Approved IdP login produces verified MFA/ACR evidence and break-glass drill succeeds.</td></tr>
         <tr><td>External malware scanner</td><td><span class="tag config">Configuration required</span></td><td>Fail-closed adapter exists; owner placed integration on the backburner.</td><td>New uploads quarantine without an approved scanner.</td><td>Security architecture</td><td>EICAR is blocked, clean file passes, outage quarantines, and provider evidence is retained.</td></tr>
       </tbody></table>
       <h3>Next five actions, dependency order</h3>
       <ol>
-        <li>Pass authoritative CI for this SIEM and negative-test change. Evidence: required GitHub checks. Owner: Engineering.</li>
+        <li>Retain PR 112 CI evidence and confirm main branch protection requires the same gates. Evidence: run 29376130715 and repository rules. Owner: Repository owner.</li>
         <li>Apply the SIEM outbox DDL in heliumdb development and retain raw verification. Evidence: the verification block in the embedded DDL. Owner: Platform.</li>
         <li>Deploy and smoke CSP, origin defense, outbox delivery, retry, dead-letter, and health. Evidence: timestamped request/response and receiver receipts. Owner: Platform and Security operations.</li>
         <li>Configure the organization receiver, HMAC key, alert routes, and delivery SLO. Evidence: signed event and outage alert receipt. Owner: Security operations.</li>
@@ -85,7 +85,7 @@
         <tr><td>SSO and MFA</td><td><span class="tag config">Needs config</span></td><td>IdP app, phishing-resistant MFA, claims, break-glass drill.</td></tr>
         <tr><td>Audit and rate limits</td><td><span class="tag done">Verified in dev</span></td><td>Owner reports P0/P1 DDL acceptance passed in heliumdb development; retain raw output on the next run.</td></tr>
         <tr><td>SIEM</td><td><span class="tag config">Needs DDL + config</span></td><td>Apply embedded outbox DDL, configure endpoint and signing key, test retry/dead-letter, and alert on health.</td></tr>
-        <tr><td>CI security</td><td><span class="tag done">Verified</span></td><td>PR 111 passed required CodeQL SARIF, Gitleaks, TypeScript/tests, dependency audit, and SBOM jobs; confirm main branch protection.</td></tr>
+        <tr><td>CI security</td><td><span class="tag done">Verified</span></td><td>PRs 111 and 112 passed required CodeQL SARIF, Gitleaks, TypeScript/tests, dependency audit, and SBOM jobs; confirm main branch protection.</td></tr>
         <tr><td>FedRAMP certification</td><td><span class="tag gap">Not achieved</span></td><td>Scope, all rules, evidence, package, assessment, FedRAMP process.</td></tr>
       </tbody></table>
     </section>
@@ -100,7 +100,7 @@
         <li>Owner-deferred: select an approved scanner and validate location, retention, subprocessors, incident terms, authentication, and uptime.</li>
         <li>Owner-deferred: configure IdP OIDC and phishing-resistant MFA; verify <code>amr: ["mfa"]</code> or an approved ACR.</li>
         <li>Review seeded sources, legacy documents, user clearances, and provisional 365-day retention.</li>
-        <li>Run authoritative CI for the consolidated negative-security suite, then retain staged runtime evidence.</li>
+        <li>PR 112 CI verifies the consolidated negative-security suite; retain staged runtime evidence after deployment.</li>
       </ul>
       <h3>P1 organizational and infrastructure gaps</h3>
       <ul>
@@ -116,7 +116,7 @@
       <div class="warning"><strong>Hosting boundary warning</strong>Public Replit materials describe SOC 2, SSO, private deployments, RBAC, GCP-backed deployments, and shared responsibility. They do not by themselves establish that this Truenote boundary is eligible for Class C. Request current Trust Center evidence and written confirmation. See <a href="https://replit.com/security/">Replit Security</a> and <a href="https://docs.replit.com/references/security/shared-responsibility-model">Replit shared responsibility</a>.</div>
       <h3>Known residual technical debt</h3>
       <table><thead><tr><th>Gap</th><th>Next work</th></tr></thead><tbody>
-        <tr><td>The historical initial CodeQL run produced 45 unsuppressed results.</td><td>Current PR 111 passed the repository's zero-finding SARIF gate. Preserve the historical record, confirm branch protection, and enable integrated GitHub alerts when the repository is eligible.</td></tr>
+        <tr><td>The historical initial CodeQL run produced 45 unsuppressed results.</td><td>PRs 111 and 112 passed the repository's zero-finding SARIF gate. Preserve the historical record, confirm branch protection, and enable integrated GitHub alerts when the repository is eligible.</td></tr>
         <tr><td>SIEM runtime delivery is not yet evidenced.</td><td>This change adds a durable outbox, retries, dead-letter state, and super-user health. Apply DDL, configure the receiver, test outage/recovery, and retain receipts.</td></tr>
         <tr><td>Database audit is not external WORM.</td><td>Immutable external retention and restricted app DB privileges.</td></tr>
         <tr><td>No clearance administration UI.</td><td>Reasoned, approved, expiring clearance workflow and review.</td></tr>
@@ -315,7 +315,7 @@ WHERE sequence &gt; (SELECT min(sequence) FROM security_events)
         <li>OIDC rejects state, nonce, issuer, audience, authorized-party, endpoint, and MFA failures.</li>
         <li>GitHub checks pass and branch protection requires them.</li>
       </ul>
-      <div class="warning"><strong>Verification boundary</strong>PR 111 passed TypeScript, tests, CodeQL, Gitleaks, dependency audit, and SBOM. The current SIEM/negative-test change still requires its own authoritative CI. Database and service-secret checks require Replit. OIDC, scanner, SIEM receiver, storage, and provider integrations remain runtime evidence obligations.</div>
+      <div class="warning"><strong>Verification boundary</strong>PR 112 run 29376130715 passed TypeScript, 281 tests, CodeQL, Gitleaks, dependency audit, and SBOM. This verifies repository behavior, not deployed SIEM operation. Database and service-secret checks require Replit. OIDC, scanner, SIEM receiver, storage, and provider integrations remain runtime evidence obligations.</div>
     </section>
 
     <section id="siem-ddl">
