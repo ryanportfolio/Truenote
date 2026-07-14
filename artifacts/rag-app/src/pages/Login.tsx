@@ -58,6 +58,10 @@ export function LoginPage({
   // configured and a brief absence on first paint is worse than a
   // brief presence that survives.
   const [emailResetAvailable, setEmailResetAvailable] = useState(true);
+  const [oidcEnabled, setOidcEnabled] = useState(false);
+  const [localLoginMode, setLocalLoginMode] = useState<
+    "enabled" | "break_glass" | "disabled"
+  >("enabled");
   // Demo deployments (server env DEMO_LOGIN_ACCOUNTS) publish demo
   // credentials via /api/config; we pre-fill the first account so anyone
   // opening the deployment can try every feature immediately.
@@ -71,6 +75,8 @@ export function LoginPage({
       .then((cfg) => {
         if (cancelled) return;
         setEmailResetAvailable(cfg.emailResetAvailable);
+        setOidcEnabled(cfg.oidcEnabled);
+        setLocalLoginMode(cfg.localLoginMode);
         const accounts = cfg.demoAccounts ?? [];
         setDemoAccounts(accounts);
         // Pre-fill only while the form is still untouched — the config
@@ -144,7 +150,33 @@ export function LoginPage({
           </div>
 
           <form onSubmit={handleSubmit} className="auth-form">
-            {demoAccounts.length > 0 ? (
+            {oidcEnabled ? (
+              <div className="flex flex-col gap-3">
+                <a
+                  href={`/api/auth/oidc/start?returnTo=${encodeURIComponent(redirectTo ?? "/chat")}`}
+                  className="btn-primary inline-flex justify-center px-5 py-2.5 text-base"
+                >
+                  Continue with company SSO
+                </a>
+                {new URLSearchParams(window.location.search).get("sso_error") ? (
+                  <p
+                    role="alert"
+                    className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                  >
+                    Company sign-in could not be completed. Contact an administrator if it repeats.
+                  </p>
+                ) : null}
+                {localLoginMode !== "disabled" ? (
+                  <p className="text-center text-xs text-muted-foreground">
+                    {localLoginMode === "break_glass"
+                      ? "Emergency super-user access"
+                      : "Or sign in with a local account"}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {demoAccounts.length > 0 && localLoginMode !== "disabled" ? (
               <fieldset className="auth-demo">
                 <legend>Choose your view</legend>
                 <div className="auth-demo-grid">
@@ -178,7 +210,7 @@ export function LoginPage({
               </fieldset>
             ) : null}
 
-            <div className="auth-field">
+            <div className={localLoginMode === "disabled" ? "hidden" : "auth-field"}>
               <label htmlFor="email">Email</label>
               <input
                 id="email"
@@ -195,7 +227,7 @@ export function LoginPage({
               />
             </div>
 
-            <div className="auth-field">
+            <div className={localLoginMode === "disabled" ? "hidden" : "auth-field"}>
               <label htmlFor="password">Password</label>
               <input
                 id="password"
@@ -224,22 +256,30 @@ export function LoginPage({
             <div className="auth-actions">
               <button
                 type="submit"
-                disabled={submitting || !email || !password}
-                className="btn-primary min-w-32 px-5 py-2.5 text-base"
+                disabled={
+                  submitting || !email || !password || localLoginMode === "disabled"
+                }
+                className={
+                  localLoginMode === "disabled"
+                    ? "hidden"
+                    : oidcEnabled
+                      ? "btn-whisper min-w-32 px-5 py-2.5 text-base"
+                      : "btn-primary min-w-32 px-5 py-2.5 text-base"
+                }
               >
                 {submitting ? "Signing in…" : "Sign in"}
               </button>
 
               <div className="auth-secondary-links">
-                {emailResetAvailable ? (
+                {emailResetAvailable && localLoginMode !== "disabled" ? (
                   <Link href="/forgot-password" className="auth-forgot">
                     Forgot password?
                   </Link>
-                ) : (
+                ) : localLoginMode !== "disabled" ? (
                   <p className="text-xs text-muted-foreground">
                     Contact an admin to reset your password.
                   </p>
-                )}
+                ) : null}
                 <a href="/about/" className="auth-about">
                   About Truenote
                 </a>

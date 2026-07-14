@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { cn } from "@/lib/utils";
 import { uploadDocument } from "@/lib/api";
+import type { ContentSourceItem } from "@/types/api";
 
 const ACCEPT =
   "application/pdf,image/png,image/jpeg,image/webp,text/markdown,text/plain,.md,.markdown,.docx";
@@ -29,18 +30,31 @@ interface UploadFormProps {
    * input — the title is already written.
    */
   initialTitle?: string;
+  sources: ContentSourceItem[];
 }
 
-export function UploadForm({ onUploaded, initialTitle }: UploadFormProps): JSX.Element {
+export function UploadForm({
+  onUploaded,
+  initialTitle,
+  sources
+}: UploadFormProps): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [sourceId, setSourceId] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (initialTitle) fileRef.current?.focus();
   }, [initialTitle]);
+
+  useEffect(() => {
+    if (sources.some((source) => source.id === sourceId)) return;
+    setSourceId(sources[0]?.id ?? "");
+  }, [sourceId, sources]);
+
+  const selectedSource = sources.find((source) => source.id === sourceId) ?? null;
 
   // Empty title + file chosen → title becomes the filename (extension
   // stripped). Prefill, not a submit-time fallback: the admin sees the
@@ -155,6 +169,59 @@ export function UploadForm({ onUploaded, initialTitle }: UploadFormProps): JSX.E
           className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </label>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">Approved source</span>
+          <select
+            name="sourceId"
+            required
+            value={sourceId}
+            onChange={(event) => setSourceId(event.currentTarget.value)}
+            disabled={sources.length === 0}
+            className="select-quiet rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {sources.length === 0 ? <option value="">No approved sources</option> : null}
+            {sources.map((source) => (
+              <option key={source.id} value={source.id}>
+                {source.name}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-muted-foreground">
+            {selectedSource
+              ? `Data owner: ${selectedSource.ownerName}`
+              : "An authorized data steward must register a source first."}
+          </span>
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">Data classification</span>
+          <select
+            name="classification"
+            required
+            defaultValue="internal"
+            className="select-quiet rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="public">Public</option>
+            <option value="internal">Internal</option>
+            <option value="confidential">Confidential</option>
+            <option value="restricted">Restricted</option>
+          </select>
+        </label>
+      </div>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium">Original source location</span>
+        <input
+          type="text"
+          name="sourceOriginUri"
+          required
+          maxLength={2048}
+          placeholder="https://company.sharepoint.com/sites/operations/policy.pdf"
+          className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+        <span className="text-xs text-muted-foreground">
+          Record where the source-of-truth came from. Truenote does not fetch this address.
+        </span>
+      </label>
       <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium">File</span>
         <input
@@ -185,10 +252,10 @@ export function UploadForm({ onUploaded, initialTitle }: UploadFormProps): JSX.E
       <div>
         <button
           type="submit"
-          disabled={busy}
+          disabled={busy || sources.length === 0}
           className="btn-primary px-5 py-2 text-base"
         >
-          {busy ? "Uploading…" : "Upload"}
+          {busy ? "Uploading…" : sources.length === 0 ? "Source required" : "Upload"}
         </button>
       </div>
     </form>

@@ -1,4 +1,5 @@
 import { randomBytes, createHash } from "node:crypto";
+import type { Response } from "express";
 import { and, eq, gt, lt } from "drizzle-orm";
 import { db } from "../db-client.js";
 import { sessions, users } from "@workspace/db/schema";
@@ -18,6 +19,20 @@ export const SESSION_COOKIE_NAME = "kbase_session";
  * sessions row; long lifetimes are safe BECAUSE revocation works.
  */
 export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function setSessionCookie(res: Response, token: string): void {
+  res.cookie(SESSION_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: SESSION_DURATION_MS,
+    path: "/"
+  });
+}
+
+export function clearSessionCookie(res: Response): void {
+  res.clearCookie(SESSION_COOKIE_NAME, { path: "/" });
+}
 
 export interface SessionUser {
   id: string;

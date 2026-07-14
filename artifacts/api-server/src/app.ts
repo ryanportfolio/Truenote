@@ -8,12 +8,30 @@ import { attachCurrentUser } from "./middleware/current-user.js";
 import { registerRoutes } from "./routes/index.js";
 import { recordAppError } from "./lib/observability/error-log.js";
 import { robotsHeaderForSpaPath } from "./lib/seo.js";
+import { securityAuditMiddleware } from "./middleware/security-audit.js";
+import { SecurityControlsNotReadyError } from "./lib/security/errors.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function createApp(): Express {
   const app = express();
   const dist = path.resolve(__dirname, "../../rag-app/dist");
+
+  app.disable("x-powered-by");
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "same-origin");
+    res.setHeader(
+      "Permissions-Policy",
+      "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
+    );
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+    if (process.env.NODE_ENV === "production") {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000");
+    }
+    next();
+  });
 
   // Serve the built SPA before API middleware. Authenticated browsers send
   // the session cookie on every same-origin request; if static files flow
@@ -89,8 +107,13 @@ export function createApp(): Express {
     })
   );
   app.use("/api", express.json({ limit: "1mb" }));
+  app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader("Cache-Control", "no-store");
+    next();
+  });
   app.use("/api", cookieParser());
   app.use("/api", attachCurrentUser);
+  app.use("/api", securityAuditMiddleware);
 
   registerRoutes(app);
 
@@ -135,6 +158,10 @@ export function createApp(): Express {
         responseHeadersSent: res.headersSent
       }
     });
+    if (err instanceof SecurityControlsNotReadyError) {
+      res.status(503).json({ error: err.message, code: "security_controls_not_ready" });
+      return;
+    }
     const message =
       process.env.NODE_ENV === "production"
         ? "Internal server error"

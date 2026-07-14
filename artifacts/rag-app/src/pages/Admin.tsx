@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { listDocuments } from "@/lib/api";
-import type { CurrentUser, DocumentListItem } from "@/types/api";
+import type { ContentSourceItem, CurrentUser, DocumentListItem } from "@/types/api";
 import { UploadForm } from "@/components/admin/UploadForm";
 import { DocumentList } from "@/components/admin/DocumentList";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
@@ -18,6 +18,8 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
     () => new URLSearchParams(window.location.search).get("title") ?? ""
   );
   const [items, setItems] = useState<DocumentListItem[]>([]);
+  const [sources, setSources] = useState<ContentSourceItem[]>([]);
+  const [controlsReady, setControlsReady] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Super_user without a program selected: server returns
@@ -30,6 +32,8 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
     try {
       const response = await listDocuments();
       setItems(response.items);
+      setSources(response.sources ?? []);
+      setControlsReady(response.controlsReady !== false);
       setNoProgramSelected(response.noProgramSelected === true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load documents");
@@ -59,13 +63,13 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
   }, [refresh]);
 
   // Auto-refresh while any document is mid-ingestion. Polling stops as soon
-  // as every doc reaches a terminal state (ready / failed) so an idle page
+  // as every doc reaches a review or terminal state so an idle page
   // costs nothing. The setTimeout is scheduled fresh on each items change,
   // so a successful refresh that resolves all in-flight docs naturally
   // breaks the chain.
   useEffect(() => {
-    const hasInFlight = items.some(
-      (item) => item.parseStatus === "pending" || item.parseStatus === "parsing"
+    const hasInFlight = items.some((item) =>
+      ["submitted", "scanning", "parsing"].includes(item.lifecycleState)
     );
     if (!hasInFlight) return;
     const timer = setTimeout(() => {
@@ -83,7 +87,15 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
           questions.
         </p>
       </header>
-      {noProgramSelected ? (
+      {!controlsReady ? (
+        <div
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
+          Security controls are not initialized. Apply the reviewed P0/P1 DDL before uploading or
+          serving documents.
+        </div>
+      ) : noProgramSelected ? (
         <div
           role="status"
           className="rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
@@ -99,7 +111,11 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
               "Your account isn't scoped to a program yet. Contact an admin."}
         </div>
       ) : (
-        <UploadForm onUploaded={() => void refresh()} initialTitle={initialTitle} />
+        <UploadForm
+          onUploaded={() => void refresh()}
+          initialTitle={initialTitle}
+          sources={sources}
+        />
       )}
       {error ? (
         <p
@@ -127,8 +143,8 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
           ))}
           <span className="sr-only">Loading documents…</span>
         </div>
-      ) : noProgramSelected ? null : (
-        <DocumentList items={items} onDeleted={() => void refresh()} />
+      ) : noProgramSelected || !controlsReady ? null : (
+        <DocumentList items={items} onChanged={() => void refresh()} />
       )}
     </div>
   );

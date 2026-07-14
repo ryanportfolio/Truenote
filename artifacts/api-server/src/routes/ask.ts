@@ -37,6 +37,11 @@ import {
   withoutDurableCitation,
   type LinkedSource
 } from "../lib/citations.js";
+import { enforceAskRateLimit } from "../lib/security/distributed-rate-limit.js";
+import { recordSecurityEventBestEffort } from "../lib/security/audit.js";
+import { clientIpFrom } from "../lib/auth/rate-limit.js";
+import { getUserMaxClassification } from "../lib/security/classification.js";
+import { scanTextForSensitiveContent } from "../lib/security/content-scan.js";
 
 export type { LinkedSource } from "../lib/citations.js";
 
@@ -59,6 +64,47 @@ const UUID_RE =
 const MAX_QUESTION_CHARS = 2000;
 const TOO_LONG_TEXT =
   "Your question is too long. Please shorten it (under 2000 characters) and try again.";
+
+function allowAskContent(
+  req: Request,
+  res: Response,
+  user: CurrentUser,
+  programId: string,
+  question: string,
+  history: HistoryTurn[]
+): boolean {
+  // History is client-supplied and reaches the rewrite provider, so inspect it
+  // with the current question. Record rule metadata only, never matched text.
+  const text = [
+    question,
+    ...history.flatMap((turn) => [turn.question, turn.answer])
+  ].join("\n");
+  const findings = scanTextForSensitiveContent(text).filter(
+    (finding) =>
+      finding.blocking &&
+      (finding.category === "pii" || finding.category === "secret")
+  );
+  if (findings.length === 0) return true;
+  recordSecurityEventBestEffort({
+    action: "ask.sensitive_input_blocked",
+    outcome: "denied",
+    actor: user,
+    programId,
+    resourceType: "ask_request",
+    sourceIp: clientIpFrom(req),
+    details: {
+      rules: findings.map((finding) => ({
+        ruleId: finding.ruleId,
+        category: finding.category,
+        count: finding.count
+      }))
+    }
+  });
+  res.status(400).json({
+    error: "Remove payment-card data, SSNs, or credentials before asking Truenote."
+  });
+  return false;
+}
 
 function uniqueUuids(ids: string[]): string[] {
   const set = new Set<string>();
@@ -233,6 +279,31 @@ async function resolveAskProgram(req: Request, res: Response): Promise<string | 
   return programId;
 }
 
+async function allowAskRequest(
+  req: Request,
+  res: Response,
+  user: CurrentUser,
+  programId: string
+): Promise<boolean> {
+  const limit = await enforceAskRateLimit({ userId: user.id, programId });
+  if (limit.allowed) return true;
+  res.setHeader("Retry-After", String(limit.retryAfterSeconds));
+  res.status(429).json({
+    error: "Too many questions in a short period. Wait a moment and try again."
+  });
+  recordSecurityEventBestEffort({
+    action: "ask.rate_limited",
+    outcome: "denied",
+    actor: user,
+    programId,
+    resourceType: "rate_limit",
+    resourceId: limit.scope,
+    sourceIp: clientIpFrom(req),
+    details: { scope: limit.scope, retryAfterSeconds: limit.retryAfterSeconds }
+  });
+  return false;
+}
+
 /**
  * The ask pipeline, shared by the JSON and streaming endpoints. Stage
  * callbacks fire at real checkpoints (see AskStage).
@@ -346,8 +417,9 @@ async function runAsk(
   const rewrittenQuestion = searchQuestion !== question ? searchQuestion : null;
 
   onStage?.("searching");
+  const maxClassification = await getUserMaxClassification(user.id);
   const retrieval = await retrieve(
-    { programId, question: searchQuestion },
+    { programId, question: searchQuestion, maxClassification },
     { onRerankStart: () => onStage?.("reranking"), signal }
   );
   stages.retrieval = retrieval.timing.totalMs;
@@ -508,6 +580,10 @@ askRouter.post("/ask", async (req, res, next) => {
     const programScopeStartedAt = performance.now();
     programId = await resolveAskProgram(req, res);
     if (programId === null) return;
+    if (!(await allowAskRequest(req, res, user, programId))) return;
+    if (!allowAskContent(req, res, user, programId, question, parsed.data.history ?? [])) {
+      return;
+    }
     const programScopeMs = elapsedMs(programScopeStartedAt);
     const sessionResolutionStartedAt = performance.now();
     sessionId = await resolveOrCreateSession(user, programId, parsed.data.sessionId);
@@ -574,6 +650,10 @@ askRouter.post("/ask/stream", async (req, res, next) => {
     const programScopeStartedAt = performance.now();
     const programId = await resolveAskProgram(req, res);
     if (programId === null) return;
+    if (!(await allowAskRequest(req, res, user, programId))) return;
+    if (!allowAskContent(req, res, user, programId, question, parsed.data.history ?? [])) {
+      return;
+    }
     const programScopeMs = elapsedMs(programScopeStartedAt);
     // Resolve the session BEFORE streaming starts so a failure here is a
     // clean pre-stream error, not a mid-stream break.

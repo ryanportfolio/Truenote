@@ -20,6 +20,11 @@ import {
   loadAuthorizedCitationReceipt,
   type CitationTarget
 } from "../lib/citations.js";
+import {
+  classificationSqlPredicate,
+  getUserMaxClassification,
+  type Classification
+} from "../lib/security/classification.js";
 
 /**
  * CSR-facing knowledge base reader. Unlike /api/documents (manager+ admin
@@ -54,9 +59,12 @@ export function parseCitationSourceIndex(value: unknown): number | null {
 
 export function canServeKbVersion(
   isActive: boolean,
-  citationAuthorized: boolean
+  citationAuthorized: boolean,
+  lifecycleState: string
 ): boolean {
-  return isActive || citationAuthorized;
+  if (lifecycleState === "revoked" || lifecycleState === "rejected") return false;
+  return (isActive && lifecycleState === "active") ||
+    (citationAuthorized && lifecycleState === "retired");
 }
 
 function queryString(value: unknown): string | null {
@@ -70,7 +78,8 @@ interface ActiveVersionRow {
 
 async function findActiveVersion(
   documentId: string,
-  programId: string
+  programId: string,
+  maxClassification: Classification
 ): Promise<string | null> {
   const rows = await db
     .select({ documentVersionId: documentVersions.id })
@@ -80,7 +89,12 @@ async function findActiveVersion(
       and(
         eq(documentVersions.documentId, documents.id),
         eq(documentVersions.isActive, true),
-        eq(documentVersions.parseStatus, "ready")
+        eq(documentVersions.parseStatus, "ready"),
+        sql`document_versions.lifecycle_state = 'active'`,
+        classificationSqlPredicate(
+          sql.raw("document_versions.classification"),
+          maxClassification
+        )
       )
     )
     .where(and(eq(documents.id, documentId), eq(documents.programId, programId)))
@@ -99,6 +113,7 @@ export interface KbDocumentListItem {
 kbRouter.get("/documents", async (req, res, next) => {
   try {
     const user = authedUser(req);
+    const maxClassification = await getUserMaxClassification(user.id);
     const programId = await resolveEffectiveProgramId(user, req);
     if (programId === null) {
       res.json({ items: [], noProgramSelected: true });
@@ -116,7 +131,12 @@ kbRouter.get("/documents", async (req, res, next) => {
         and(
           eq(documentVersions.documentId, documents.id),
           eq(documentVersions.isActive, true),
-          eq(documentVersions.parseStatus, "ready")
+          eq(documentVersions.parseStatus, "ready"),
+          sql`document_versions.lifecycle_state = 'active'`,
+          classificationSqlPredicate(
+            sql.raw("document_versions.classification"),
+            maxClassification
+          )
         )
       )
       .where(eq(documents.programId, programId))
@@ -143,6 +163,7 @@ kbRouter.get("/documents", async (req, res, next) => {
 kbRouter.get("/documents/:id", async (req, res, next) => {
   try {
     const user = authedUser(req);
+    const maxClassification = await getUserMaxClassification(user.id);
     const id = req.params.id;
     if (!UUID_RE.test(id)) {
       res.status(404).json({ error: "Not found" });
@@ -164,6 +185,7 @@ kbRouter.get("/documents/:id", async (req, res, next) => {
         documentVersionId: documentVersions.id,
         versionNumber: documentVersions.versionNumber,
         isActive: documentVersions.isActive,
+        lifecycleState: sql<string>`document_versions.lifecycle_state`,
         title: documents.title,
         markdown: documentVersions.parsedMarkdown,
         updatedAt: documentVersions.uploadedAt
@@ -174,6 +196,13 @@ kbRouter.get("/documents/:id", async (req, res, next) => {
         and(
           eq(documentVersions.documentId, documents.id),
           eq(documentVersions.parseStatus, "ready"),
+          classificationSqlPredicate(
+            sql.raw("document_versions.classification"),
+            maxClassification
+          ),
+          rawVersion
+            ? sql`document_versions.lifecycle_state IN ('active', 'retired')`
+            : sql`document_versions.lifecycle_state = 'active'`,
           rawVersion
             ? eq(documentVersions.id, rawVersion)
             : eq(documentVersions.isActive, true)
@@ -216,7 +245,13 @@ kbRouter.get("/documents/:id", async (req, res, next) => {
     }
     // Inactive versions are audit history, not a general CSR browsing API.
     // Only the owner of a matching immutable answer receipt may open one.
-    if (!canServeKbVersion(row.isActive === true, citationAuthorized)) {
+    if (
+      !canServeKbVersion(
+        row.isActive === true,
+        citationAuthorized,
+        row.lifecycleState
+      )
+    ) {
       res.status(404).json({ error: "Not found" });
       return;
     }
@@ -240,6 +275,7 @@ kbRouter.get("/documents/:id", async (req, res, next) => {
 kbRouter.get("/documents/:id/highlights", async (req, res, next) => {
   try {
     const user = authedUser(req);
+    const maxClassification = await getUserMaxClassification(user.id);
     const documentId = req.params.id;
     if (!UUID_RE.test(documentId)) {
       res.status(404).json({ error: "Not found" });
@@ -250,7 +286,11 @@ kbRouter.get("/documents/:id/highlights", async (req, res, next) => {
       res.status(400).json({ error: "No program selected." });
       return;
     }
-    const documentVersionId = await findActiveVersion(documentId, programId);
+    const documentVersionId = await findActiveVersion(
+      documentId,
+      programId,
+      maxClassification
+    );
     if (documentVersionId === null) {
       res.status(404).json({ error: "Not found" });
       return;
@@ -285,6 +325,7 @@ kbRouter.get("/documents/:id/highlights", async (req, res, next) => {
 kbRouter.post("/documents/:id/highlights", async (req, res, next) => {
   try {
     const user = authedUser(req);
+    const maxClassification = await getUserMaxClassification(user.id);
     const documentId = req.params.id;
     if (!UUID_RE.test(documentId)) {
       res.status(404).json({ error: "Not found" });
@@ -314,6 +355,8 @@ kbRouter.post("/documents/:id/highlights", async (req, res, next) => {
           AND d.program_id = ${programId}::uuid
           AND v.is_active = true
           AND v.parse_status = 'ready'
+          AND v.lifecycle_state = 'active'
+          AND ${classificationSqlPredicate(sql.raw("v.classification"), maxClassification)}
         ORDER BY v.uploaded_at DESC
         LIMIT 1
         FOR SHARE OF v
@@ -430,6 +473,7 @@ kbRouter.post("/documents/:id/highlights", async (req, res, next) => {
 kbRouter.patch("/highlights/:id", async (req, res, next) => {
   try {
     const user = authedUser(req);
+    const maxClassification = await getUserMaxClassification(user.id);
     const highlightId = req.params.id;
     if (!UUID_RE.test(highlightId)) {
       res.status(404).json({ error: "Not found" });
@@ -457,6 +501,8 @@ kbRouter.patch("/highlights/:id", async (req, res, next) => {
         AND v.document_id = d.id
         AND v.is_active = true
         AND v.parse_status = 'ready'
+        AND v.lifecycle_state = 'active'
+        AND ${classificationSqlPredicate(sql.raw("v.classification"), maxClassification)}
       RETURNING
         h.id::text,
         h.highlighted_text,
@@ -480,6 +526,7 @@ kbRouter.patch("/highlights/:id", async (req, res, next) => {
 kbRouter.delete("/highlights/:id", async (req, res, next) => {
   try {
     const user = authedUser(req);
+    const maxClassification = await getUserMaxClassification(user.id);
     const highlightId = req.params.id;
     if (!UUID_RE.test(highlightId)) {
       res.status(404).json({ error: "Not found" });
@@ -501,6 +548,8 @@ kbRouter.delete("/highlights/:id", async (req, res, next) => {
         AND v.document_id = d.id
         AND v.is_active = true
         AND v.parse_status = 'ready'
+        AND v.lifecycle_state = 'active'
+        AND ${classificationSqlPredicate(sql.raw("v.classification"), maxClassification)}
       RETURNING h.id
     `);
     if (result.rows.length === 0) {

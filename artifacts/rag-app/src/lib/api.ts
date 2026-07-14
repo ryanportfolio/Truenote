@@ -495,10 +495,50 @@ export async function getDocumentPreview(versionId: string): Promise<PreviewResp
   return asJson<PreviewResponse>(response);
 }
 
-export async function deleteDocument(documentId: string): Promise<void> {
+async function documentControlAction(
+  versionId: string,
+  action: "approve" | "reject" | "revoke" | "rescan",
+  body?: object
+): Promise<void> {
+  const response = await fetch(
+    `/api/documents/${encodeURIComponent(versionId)}/${action}`,
+    withDefaults({
+      method: "POST",
+      ...(body
+        ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+        : {})
+    })
+  );
+  await asJson<{ ok: true }>(response);
+}
+
+export function approveDocumentVersion(
+  versionId: string,
+  input: { notes: string; acknowledgeFindings: boolean }
+): Promise<void> {
+  return documentControlAction(versionId, "approve", input);
+}
+
+export function rejectDocumentVersion(versionId: string, reason: string): Promise<void> {
+  return documentControlAction(versionId, "reject", { reason });
+}
+
+export function revokeDocumentVersion(versionId: string, reason: string): Promise<void> {
+  return documentControlAction(versionId, "revoke", { reason });
+}
+
+export function rescanDocumentVersion(versionId: string): Promise<void> {
+  return documentControlAction(versionId, "rescan");
+}
+
+export async function deleteDocument(documentId: string, reason: string): Promise<void> {
   const response = await fetch(
     `/api/documents/${encodeURIComponent(documentId)}`,
-    withDefaults({ method: "DELETE" })
+    withDefaults({
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason })
+    })
   );
   if (!response.ok) {
     // Try to surface the server's JSON error message if there is one.

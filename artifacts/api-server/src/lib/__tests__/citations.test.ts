@@ -174,7 +174,7 @@ describe("applyVersionActivity", () => {
   it("keeps active-version citations unchanged", () => {
     const out = applyVersionActivity(
       [sourceForVersion(activeVersion, 0)],
-      new Map([[activeVersion, true]])
+      new Map([[activeVersion, { isActive: true, lifecycleState: "active" }]])
     );
     expect(out).toHaveLength(1);
     expect(out[0]?.superseded).toBeUndefined();
@@ -183,7 +183,7 @@ describe("applyVersionActivity", () => {
   it("flags a superseded (inactive but existing) version, preserving the receipt", () => {
     const out = applyVersionActivity(
       [sourceForVersion(supersededVersion, 0)],
-      new Map([[supersededVersion, false]])
+      new Map([[supersededVersion, { isActive: false, lifecycleState: "retired" }]])
     );
     expect(out).toHaveLength(1);
     expect(out[0]?.superseded).toBe(true);
@@ -193,7 +193,7 @@ describe("applyVersionActivity", () => {
   it("drops a citation whose version no longer exists (document deleted)", () => {
     const out = applyVersionActivity(
       [sourceForVersion(deletedVersion, 0)],
-      new Map([[activeVersion, true]])
+      new Map([[activeVersion, { isActive: true, lifecycleState: "active" }]])
     );
     expect(out).toHaveLength(0);
   });
@@ -220,12 +220,21 @@ describe("applyVersionActivity", () => {
         sourceForVersion(deletedVersion, 2)
       ],
       new Map([
-        [activeVersion, true],
-        [supersededVersion, false]
+        [activeVersion, { isActive: true, lifecycleState: "active" }],
+        [supersededVersion, { isActive: false, lifecycleState: "retired" }]
       ])
     );
     expect(out.map((s) => s.citation_index)).toEqual([0, 1]);
     expect(out[0]?.superseded).toBeUndefined();
     expect(out[1]?.superseded).toBe(true);
+  });
+
+  it("drops revoked versions even when their receipt still exists", () => {
+    const out = applyVersionActivity(
+      [sourceForVersion(activeVersion, 0)],
+      new Map([[activeVersion, { isActive: false, lifecycleState: "revoked" }]])
+    );
+
+    expect(out).toEqual([]);
   });
 });

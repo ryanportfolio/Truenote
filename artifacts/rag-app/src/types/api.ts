@@ -149,6 +149,35 @@ export interface SessionDetailResponse {
 }
 
 export type ParseStatus = "pending" | "parsing" | "ready" | "failed";
+export type Classification = "public" | "internal" | "confidential" | "restricted";
+export type DocumentLifecycleState =
+  | "submitted"
+  | "scanning"
+  | "parsing"
+  | "pending_review"
+  | "active"
+  | "retired"
+  | "quarantined"
+  | "rejected"
+  | "revoked"
+  | "failed";
+
+export interface SecurityFinding {
+  category: "file_validation" | "malware" | "pii" | "secret" | "prompt_injection";
+  ruleId: string;
+  severity: "low" | "medium" | "high" | "critical";
+  count: number;
+  message: string;
+  blocking: boolean;
+}
+
+export interface ContentSourceItem {
+  id: string;
+  name: string;
+  originType: string;
+  baseUri: string | null;
+  ownerName: string;
+}
 
 export interface DocumentListItem {
   documentId: string;
@@ -157,10 +186,27 @@ export interface DocumentListItem {
   parseStatus: ParseStatus | null;
   /** ISO timestamp string (or null). */
   uploadedAt: string | null;
+  lifecycleState: DocumentLifecycleState;
+  scanStatus: string;
+  classification: Classification;
+  isActive: boolean;
+  sourceName: string | null;
+  sourceOriginUri: string | null;
+  sourceOwner: string | null;
+  uploadedById: string | null;
+  uploadedByName: string | null;
+  approvedByName: string | null;
+  findings: SecurityFinding[];
+  canApprove: boolean;
+  canReject: boolean;
+  canRevoke: boolean;
+  canRescan: boolean;
 }
 
 export interface DocumentListResponse {
   items: DocumentListItem[];
+  sources: ContentSourceItem[];
+  controlsReady: boolean;
   /**
    * Set to true when a super_user hasn't picked a target program yet.
    * The UI uses this to render a "select a program" prompt instead of
@@ -271,6 +317,21 @@ export interface PreviewResponse {
   markdown: string | null;
   parseStatus: ParseStatus | null;
   title: string | null;
+  lifecycleState: DocumentLifecycleState;
+  scanStatus: string;
+  findings: SecurityFinding[];
+  classification: Classification;
+  sourceName: string | null;
+  sourceOriginUri: string | null;
+  sourceOwner: string | null;
+  uploadedByName: string | null;
+  approvedByName: string | null;
+  approvalNotes: string | null;
+  isActive: boolean;
+  canApprove: boolean;
+  canReject: boolean;
+  canRevoke: boolean;
+  canRescan: boolean;
 }
 
 export interface Program {
@@ -486,6 +547,10 @@ export interface AppConfig {
    * coming when it isn't.
    */
   emailResetAvailable: boolean;
+  /** True only when every required OIDC/PKCE server setting is present. */
+  oidcEnabled: boolean;
+  /** Password login posture. Fully configured OIDC defaults to super-user break-glass. */
+  localLoginMode: "enabled" | "break_glass" | "disabled";
   /**
    * Present only on demo deployments (server env DEMO_LOGIN_ACCOUNTS).
    * Working credentials, published on purpose so the login page can

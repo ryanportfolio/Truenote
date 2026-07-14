@@ -177,6 +177,17 @@ describe("validateGeneratedAnswer", () => {
       expect.objectContaining({ refused: true, sources: [] })
     );
   });
+
+  it("rejects sensitive output even when it has a valid citation", () => {
+    const result = validateGeneratedAnswer(
+      "The customer's SSN is 123-45-6789 [S1].",
+      chunks
+    );
+
+    expect(result.failure?.reason).toBe("sensitive_output");
+    expect(result.failure?.returnedText).toBe("[redacted: sensitive output blocked]");
+    expect(result.payload).toBeNull();
+  });
 });
 
 describe("generateAnswer ZDR route fallback", () => {
