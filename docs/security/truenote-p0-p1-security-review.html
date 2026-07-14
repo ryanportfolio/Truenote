@@ -51,7 +51,7 @@
         <article class="card"><p class="number">06</p><h3>OIDC and MFA evidence</h3><p>PKCE, signed state, nonce, RS256, issuer, audience, authorized party, domain, MFA, and optional ACR checks.</p></article>
         <article class="card"><p class="number">07</p><h3>Security audit</h3><p>Hash-chained ledger, mutation trigger, lifecycle triggers, request correlation, and signed SIEM export.</p></article>
         <article class="card"><p class="number">08</p><h3>Retention and revocation</h3><p>Retire preserves evidence. Revoke removes retrieval and citations. Purge is retention-gated.</p></article>
-        <article class="card"><p class="number">09</p><h3>Build assurance</h3><p>Typecheck, tests, audit, SBOM, Gitleaks, Dependabot, and a no-unreviewed-finding CodeQL SARIF gate with 30-day evidence retention.</p></article>
+        <article class="card"><p class="number">09</p><h3>Build assurance</h3><p>Typecheck, tests, audit, SBOM, Gitleaks, Dependabot, and a CodeQL security-extended SARIF scan with 30-day evidence retention.</p></article>
       </div>
       <h3>Activation path</h3>
       <div class="flow"><span>Submitted</span><b>→</b><span>Scanning</span><b>→</b><span>Parsing</span><b>→</b><span>Pending review</span><b>→</b><span>Active</span><b>→</b><span>Retired or revoked</span></div>
@@ -93,7 +93,7 @@
       <div class="warning"><strong>Hosting boundary warning</strong>Public Replit materials describe SOC 2, SSO, private deployments, RBAC, GCP-backed deployments, and shared responsibility. They do not by themselves establish that this Truenote boundary is eligible for Class C. Request current Trust Center evidence and written confirmation. See <a href="https://replit.com/security/">Replit Security</a> and <a href="https://docs.replit.com/references/security/shared-responsibility-model">Replit shared responsibility</a>.</div>
       <h3>Known residual technical debt</h3>
       <table><thead><tr><th>Gap</th><th>Next work</th></tr></thead><tbody>
-        <tr><td>CodeQL has a reviewed 45-result baseline, including 39 rate-limit model or accepted-risk results.</td><td>CI rejects new, changed, or stale fingerprints. Add universal risk-tiered API quotas, remove resolved fingerprints, and re-review the baseline on every CodeQL version change.</td></tr>
+        <tr><td>The initial CodeQL scan produced 45 unsuppressed results, including 39 rate-limit model or hardening results.</td><td>Triage and resolve genuine gaps, document false positives through an approved review, add universal risk-tiered API quotas, and enable integrated GitHub alerts when the repository is eligible.</td></tr>
         <tr><td>SIEM export is fire-and-forget.</td><td>Durable outbox, retries, dead-letter queue, exporter health alert.</td></tr>
         <tr><td>Database audit is not external WORM.</td><td>Immutable external retention and restricted app DB privileges.</td></tr>
         <tr><td>No clearance administration UI.</td><td>Reasoned, approved, expiring clearance workflow and review.</td></tr>
