@@ -65,13 +65,12 @@ jobs:
           GITLEAKS_ENABLE_COMMENTS: "false"
 
   codeql:
-    name: CodeQL
+    name: CodeQL SARIF gate
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
       actions: read
       contents: read
-      security-events: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -80,6 +79,20 @@ jobs:
         with:
           languages: javascript-typescript
           queries: security-extended
-      - uses: github/codeql-action/analyze@v4
+      - id: analyze
+        uses: github/codeql-action/analyze@v4
         with:
           category: /language:javascript-typescript
+          output: codeql-results
+          upload: never
+          upload-database: false
+      - name: Require zero CodeQL findings
+        run: node .github/scripts/check-codeql-sarif.mjs "${{ steps.analyze.outputs.sarif-output }}"
+      - name: Retain CodeQL SARIF evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: truenote-codeql-sarif
+          path: codeql-results
+          if-no-files-found: error
+          retention-days: 30

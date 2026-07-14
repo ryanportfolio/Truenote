@@ -51,7 +51,7 @@
         <article class="card"><p class="number">06</p><h3>OIDC and MFA evidence</h3><p>PKCE, signed state, nonce, RS256, issuer, audience, authorized party, domain, MFA, and optional ACR checks.</p></article>
         <article class="card"><p class="number">07</p><h3>Security audit</h3><p>Hash-chained ledger, mutation trigger, lifecycle triggers, request correlation, and signed SIEM export.</p></article>
         <article class="card"><p class="number">08</p><h3>Retention and revocation</h3><p>Retire preserves evidence. Revoke removes retrieval and citations. Purge is retention-gated.</p></article>
-        <article class="card"><p class="number">09</p><h3>Build assurance</h3><p>Typecheck, tests, audit, SBOM, Gitleaks, CodeQL, and Dependabot workflow.</p></article>
+        <article class="card"><p class="number">09</p><h3>Build assurance</h3><p>Typecheck, tests, audit, SBOM, Gitleaks, Dependabot, and a zero-finding CodeQL SARIF gate with 30-day evidence retention.</p></article>
       </div>
       <h3>Activation path</h3>
       <div class="flow"><span>Submitted</span><b>→</b><span>Scanning</span><b>→</b><span>Parsing</span><b>→</b><span>Pending review</span><b>→</b><span>Active</span><b>→</b><span>Retired or revoked</span></div>
@@ -63,7 +63,7 @@
         <tr><td>SSO and MFA</td><td><span class="tag config">Needs config</span></td><td>IdP app, phishing-resistant MFA, claims, break-glass drill.</td></tr>
         <tr><td>Audit and rate limits</td><td><span class="tag config">Needs DDL</span></td><td>Run DDL, restrict DB privileges, monitor.</td></tr>
         <tr><td>SIEM</td><td><span class="tag config">Needs config</span></td><td>Endpoint, signing key, alerts, delivery SLO.</td></tr>
-        <tr><td>CI security</td><td><span class="tag config">Needs enablement</span></td><td>Protect main, require checks, set organization Gitleaks license.</td></tr>
+        <tr><td>CI security</td><td><span class="tag config">Needs enablement</span></td><td>Protect main, require checks, set organization Gitleaks license, and enable GitHub Code Security when the repository is eligible.</td></tr>
         <tr><td>FedRAMP certification</td><td><span class="tag gap">Not achieved</span></td><td>Scope, all rules, evidence, package, assessment, FedRAMP process.</td></tr>
       </tbody></table>
     </section>
@@ -81,6 +81,7 @@
       </ul>
       <h3>P1 organizational and infrastructure gaps</h3>
       <ul>
+        <li>GitHub-integrated CodeQL alerts require an eligible organization plan with GitHub Code Security for this private repository. Until then, CI runs the security-extended suite, requires zero SARIF findings, and retains the SARIF evidence for 30 days.</li>
         <li>Define Minimum Assessment Scope, service boundary, data flows, assets, identities, ports, and customer responsibilities.</li>
         <li>Obtain assurance for Replit, Neon, storage, model routes, embeddings, Cohere, LandingAI, email, scanner, SIEM, and subprocessors.</li>
         <li>Confirm data location, encryption, key ownership, backup, disaster recovery, vulnerability, incident, personnel, change, and SDLC controls.</li>
