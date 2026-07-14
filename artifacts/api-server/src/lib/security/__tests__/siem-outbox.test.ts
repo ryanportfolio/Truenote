@@ -165,6 +165,7 @@ describe("SIEM outbox delivery", () => {
     expect(failures).toEqual([
       {
         eventId: delivery().event.id,
+        error: "HTTP 503",
         deadLetter: false,
         nextAttemptAt: new Date(now.getTime() + retryDelayMs(2)),
       },
