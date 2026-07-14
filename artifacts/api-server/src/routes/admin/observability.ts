@@ -10,6 +10,7 @@ import {
   type PipelineTimingBreakdown
 } from "../../lib/observability/pipeline-timing.js";
 import { isMissingTimingColumn } from "../../lib/observability/pipeline-timing-store.js";
+import { getSiemDeliveryHealth } from "../../lib/security/siem-outbox.js";
 import {
   requireAuth,
   requireFreshPassword,
@@ -26,6 +27,14 @@ const Query = z.object({
 });
 
 const MAX_AGGREGATE_SAMPLES = 2_000;
+
+observabilityRouter.get("/security-audit", async (_req, res, next) => {
+  try {
+    res.json(await getSiemDeliveryHealth());
+  } catch (error) {
+    next(error);
+  }
+});
 
 interface TimingRow {
   id: string;

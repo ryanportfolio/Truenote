@@ -14,15 +14,37 @@
     <div class="eyebrow">Security review packet · P0/P1 implementation</div>
     <h1>Truenote control foundation and practical FedRAMP alignment plan</h1>
     <p class="lede">What changed, what must be configured, what remains an organizational obligation, and the exact database DDL to give Replit Agent.</p>
-    <div class="meta"><span>Prepared July 13, 2026</span><span>Internal target: FedRAMP 20x Class C practices</span><span>DDL SHA-256: <code>44fd12ae4663552d518615ca7d8939d473b01126ceadaeb8be315a85902e3736</code></span></div>
+    <div class="meta"><span>Reviewed July 14, 2026</span><span>Internal target: FedRAMP 20x Class C practices</span><span>P0/P1 DDL SHA-256: <code>44fd12ae4663552d518615ca7d8939d473b01126ceadaeb8be315a85902e3736</code></span><span>SIEM outbox DDL SHA-256: <code>205bca6fb8138a2be40b16b77873ca3e03d17128718f9a02d22cb338f75f5465</code></span></div>
   </div></header>
-  <nav><div class="shell"><a href="#decision">Decision</a><a href="#defaults">Defaults</a><a href="#implemented">Implemented</a><a href="#gaps">Gaps</a><a href="#rollout">Rollout</a><a href="#replit">Replit</a><a href="#verify">Verify</a><a href="#ddl">DDL</a></div></nav>
+  <nav><div class="shell"><a href="#decision">Decision</a><a href="#posture">Posture</a><a href="#defaults">Defaults</a><a href="#implemented">Implemented</a><a href="#gaps">Gaps</a><a href="#rollout">Rollout</a><a href="#replit">Replit</a><a href="#verify">Verify</a><a href="#siem-ddl">SIEM DDL</a><a href="#ddl">P0/P1 DDL</a></div></nav>
   <main class="shell">
     <section id="decision">
       <h2>Decision summary</h2>
-      <div class="callout"><strong>Good control foundation, not a certification claim.</strong>P0 and P1 application controls are implemented in this worktree. Do not describe Truenote as “FedRAMP compliant,” “FedRAMP-ready,” or “fully controlled ingestion.” Database migration, configuration, operational evidence, vendor assurance, infrastructure scope, and independent assessment remain incomplete.</div>
+      <div class="callout"><strong>Good control foundation, not a certification claim.</strong>The original P0/P1 database controls are owner-attested as applied and acceptance-tested in heliumdb development. Browser CSRF/origin defense, CSP, CI security gates, and application controls are present in code. Do not describe Truenote as “FedRAMP compliant,” “FedRAMP-ready,” or “fully controlled ingestion.” SIEM outbox DDL, Replit runtime checks, configuration, recurring evidence, vendor assurance, infrastructure scope, and independent assessment remain incomplete.</div>
       <p>FedRAMP describes Class C as the 20x class for common enterprise or important government services. Its 2026 rules require persistent evidence and independent verification, including annual assessment of all Key Security Indicators for Class C. This packet uses Class C as a conservative internal design target, not as a FedRAMP determination.</p>
       <p class="small">Official sources: <a href="https://www.fedramp.gov/20x/">FedRAMP 20x</a>, <a href="https://www.fedramp.gov/2026/reference/20x/c/independent-verification-and-validation/">2026 Class C independent verification rules</a>, <a href="https://www.fedramp.gov/docs/20x/key-security-indicators/authorization-by-fedramp/">Authorization by FedRAMP KSIs</a>, and <a href="https://www.fedramp.gov/2026/providers/rev5/controls/identification-and-authentication/">2026 identification and authentication guidance</a>.</p>
+    </section>
+
+    <section id="posture">
+      <h2>Evidence-graded posture</h2>
+      <p class="small">Review date: July 14, 2026. Scope: repository controls, owner-provided heliumdb development acceptance, and retained GitHub CI evidence. Confidence: high for code and CI state; moderate for the database because raw verification output is not retained in this repository; low for deployed settings and external providers.</p>
+      <table><thead><tr><th>Control</th><th>Grade</th><th>Evidence</th><th>Risk / next action</th><th>Owner</th><th>Binary acceptance test</th></tr></thead><tbody>
+        <tr><td>P0/P1 database controls</td><td><span class="tag done">Verified</span></td><td>Owner attestation: all acceptance requirements passed in heliumdb development. Canonical DDL hash retained here; raw output is not retained.</td><td>Preserve results for the next run and repeat for any separate production database.</td><td>Platform / database owner</td><td>Verification SQL returns required objects, zero unsafe active versions, and zero broken hash links.</td></tr>
+        <tr><td>Browser CSP and CSRF/origin defense</td><td><span class="tag config">Implemented, unverified</span></td><td>PR 111 merged; TypeScript, tests, CodeQL, secret scan, dependency audit, and SBOM passed.</td><td>Replit deployment smoke evidence is missing.</td><td>Engineering</td><td>Normal same-origin mutation succeeds, foreign Origin returns 403, CSP header is present, and browser console has no CSP violation.</td></tr>
+        <tr><td>Negative security suite</td><td><span class="tag done">Verified</span></td><td>PR 112 run <a href="https://github.com/ryanportfolio/kbase/actions/runs/29376130715">29376130715</a> passed. Consolidated tests cover cross-program access, clearance, user administration, self-approval, purge, revocation, CSRF, and SIEM failure paths.</td><td>Retain the run and add deployed negative checks when SIEM is configured.</td><td>Engineering / Security</td><td>Required GitHub typecheck, test, CodeQL, secret-scan, dependency-audit, and SBOM jobs all pass.</td></tr>
+        <tr><td>Durable SIEM delivery</td><td><span class="tag config">Configuration required</span></td><td>Transactional outbox, lease-fenced worker, bounded retries, dead-letter state, signed delivery, health API, tests, and forward-only DDL are included in this change.</td><td>DDL, endpoint, signing key, receiver verification, alerts, and runtime evidence are missing.</td><td>Security operations / Platform</td><td>Forced receiver outage queues and retries an event; recovery delivers it once; max attempts dead-letter it; health reports backlog and dead-letter state.</td></tr>
+        <tr><td>CI security gates</td><td><span class="tag done">Verified</span></td><td>PRs 111 and 112 passed CodeQL SARIF evidence, Gitleaks, TypeScript, tests, high-severity dependency audit, and CycloneDX SBOM.</td><td>Branch-protection settings and recurring evidence retention still require owner confirmation.</td><td>Repository owner</td><td>Main rejects a PR when any required security job fails and retains the named artifacts.</td></tr>
+        <tr><td>OIDC MFA</td><td><span class="tag config">Configuration required</span></td><td>Code exists; owner deferred rollout.</td><td>Authentication assurance remains incomplete.</td><td>IAM / Security</td><td>Approved IdP login produces verified MFA/ACR evidence and break-glass drill succeeds.</td></tr>
+        <tr><td>External malware scanner</td><td><span class="tag config">Configuration required</span></td><td>Fail-closed adapter exists; owner placed integration on the backburner.</td><td>New uploads quarantine without an approved scanner.</td><td>Security architecture</td><td>EICAR is blocked, clean file passes, outage quarantines, and provider evidence is retained.</td></tr>
+      </tbody></table>
+      <h3>Next five actions, dependency order</h3>
+      <ol>
+        <li>Retain PR 112 CI evidence and confirm main branch protection requires the same gates. Evidence: run 29376130715 and repository rules. Owner: Repository owner.</li>
+        <li>Apply the SIEM outbox DDL in heliumdb development and retain raw verification. Evidence: the verification block in the embedded DDL. Owner: Platform.</li>
+        <li>Deploy and smoke CSP, origin defense, outbox delivery, retry, dead-letter, and health. Evidence: timestamped request/response and receiver receipts. Owner: Platform and Security operations.</li>
+        <li>Configure the organization receiver, HMAC key, alert routes, and delivery SLO. Evidence: signed event and outage alert receipt. Owner: Security operations.</li>
+        <li>Build the boundary, vendor, incident, recovery, and recurring KSI evidence package. Evidence: approved records with named owners and dates. Owner: Security governance.</li>
+      </ol>
     </section>
 
     <section id="defaults">
@@ -61,9 +83,9 @@
         <tr><td>Approval and separation</td><td><span class="tag done">Implemented</span></td><td>Assign reviewers and procedure.</td></tr>
         <tr><td>Classification enforcement</td><td><span class="tag done">Implemented</span></td><td>Approve clearances and periodic review.</td></tr>
         <tr><td>SSO and MFA</td><td><span class="tag config">Needs config</span></td><td>IdP app, phishing-resistant MFA, claims, break-glass drill.</td></tr>
-        <tr><td>Audit and rate limits</td><td><span class="tag config">Needs DDL</span></td><td>Run DDL, restrict DB privileges, monitor.</td></tr>
-        <tr><td>SIEM</td><td><span class="tag config">Needs config</span></td><td>Endpoint, signing key, alerts, delivery SLO.</td></tr>
-        <tr><td>CI security</td><td><span class="tag config">Needs enablement</span></td><td>Protect main, require checks, set organization Gitleaks license, and enable GitHub Code Security when the repository is eligible.</td></tr>
+        <tr><td>Audit and rate limits</td><td><span class="tag done">Verified in dev</span></td><td>Owner reports P0/P1 DDL acceptance passed in heliumdb development; retain raw output on the next run.</td></tr>
+        <tr><td>SIEM</td><td><span class="tag config">Needs DDL + config</span></td><td>Apply embedded outbox DDL, configure endpoint and signing key, test retry/dead-letter, and alert on health.</td></tr>
+        <tr><td>CI security</td><td><span class="tag done">Verified</span></td><td>PRs 111 and 112 passed required CodeQL SARIF, Gitleaks, TypeScript/tests, dependency audit, and SBOM jobs; confirm main branch protection.</td></tr>
         <tr><td>FedRAMP certification</td><td><span class="tag gap">Not achieved</span></td><td>Scope, all rules, evidence, package, assessment, FedRAMP process.</td></tr>
       </tbody></table>
     </section>
@@ -72,12 +94,13 @@
       <h2>What remains lacking</h2>
       <h3>P0 deployment blockers</h3>
       <ul>
-        <li>Apply and verify DDL in non-production, then production through an approved change window.</li>
-        <li>Select an approved scanner and validate location, retention, subprocessors, incident terms, authentication, and uptime.</li>
-        <li>Configure IdP OIDC and phishing-resistant MFA. Verify <code>amr: ["mfa"]</code> or an approved ACR.</li>
-        <li>Configure signed SIEM delivery and alert on authentication, quarantine, activation, revocation, purge, limit, and exporter failures.</li>
+        <li>The original P0/P1 DDL is verified in heliumdb development by owner attestation. Retain raw output next time and repeat only for a separate production database.</li>
+        <li>Apply and verify the new SIEM outbox DDL, then configure signed delivery and alert on authentication, quarantine, activation, revocation, purge, limit, backlog, dead-letter, and exporter failures.</li>
+        <li>Deploy and smoke-test CSP and origin enforcement in Replit.</li>
+        <li>Owner-deferred: select an approved scanner and validate location, retention, subprocessors, incident terms, authentication, and uptime.</li>
+        <li>Owner-deferred: configure IdP OIDC and phishing-resistant MFA; verify <code>amr: ["mfa"]</code> or an approved ACR.</li>
         <li>Review seeded sources, legacy documents, user clearances, and provisional 365-day retention.</li>
-        <li>Run typecheck, tests, integration, negative security, and staged smoke tests.</li>
+        <li>PR 112 CI verifies the consolidated negative-security suite; retain staged runtime evidence after deployment.</li>
       </ul>
       <h3>P1 organizational and infrastructure gaps</h3>
       <ul>
@@ -93,14 +116,14 @@
       <div class="warning"><strong>Hosting boundary warning</strong>Public Replit materials describe SOC 2, SSO, private deployments, RBAC, GCP-backed deployments, and shared responsibility. They do not by themselves establish that this Truenote boundary is eligible for Class C. Request current Trust Center evidence and written confirmation. See <a href="https://replit.com/security/">Replit Security</a> and <a href="https://docs.replit.com/references/security/shared-responsibility-model">Replit shared responsibility</a>.</div>
       <h3>Known residual technical debt</h3>
       <table><thead><tr><th>Gap</th><th>Next work</th></tr></thead><tbody>
-        <tr><td>The initial CodeQL scan produced 45 unsuppressed results, including 39 rate-limit model or hardening results.</td><td>Triage and resolve genuine gaps, document false positives through an approved review, add universal risk-tiered API quotas, and enable integrated GitHub alerts when the repository is eligible.</td></tr>
-        <tr><td>SIEM export is fire-and-forget.</td><td>Durable outbox, retries, dead-letter queue, exporter health alert.</td></tr>
+        <tr><td>The historical initial CodeQL run produced 45 unsuppressed results.</td><td>PRs 111 and 112 passed the repository's zero-finding SARIF gate. Preserve the historical record, confirm branch protection, and enable integrated GitHub alerts when the repository is eligible.</td></tr>
+        <tr><td>SIEM runtime delivery is not yet evidenced.</td><td>This change adds a durable outbox, retries, dead-letter state, and super-user health. Apply DDL, configure the receiver, test outage/recovery, and retain receipts.</td></tr>
         <tr><td>Database audit is not external WORM.</td><td>Immutable external retention and restricted app DB privileges.</td></tr>
         <tr><td>No clearance administration UI.</td><td>Reasoned, approved, expiring clearance workflow and review.</td></tr>
         <tr><td>Source creation is not dual-approved.</td><td>Proposed/approved source states when policy requires separation.</td></tr>
         <tr><td>Legacy content uses <code>legacy_accepted</code>.</td><td>Re-ingest or manually review, then eliminate exception.</td></tr>
         <tr><td>No independent application assessment yet.</td><td>Code review, SAST/DAST, API auth test, AI red team, penetration test.</td></tr>
-        <tr><td>Browser policy is not complete.</td><td>Core headers and SameSite cookies are present; add a tested CSP and explicit CSRF token/origin defense.</td></tr>
+        <tr><td>Browser policy lacks deployed evidence.</td><td>CSP and explicit CSRF/origin defense merged in PR 111 and passed CI. Run the Replit browser and foreign-Origin smoke tests.</td></tr>
       </tbody></table>
     </section>
 
@@ -109,9 +132,9 @@
       <ol>
         <li><strong>Approve decisions.</strong> Security, IAM, Legal/Records, data governance, and platform owners confirm defaults.</li>
         <li><strong>Prepare non-production.</strong> Snapshot DB, inventory users/documents, configure test scanner and SIEM, keep local login enabled.</li>
-        <li><strong>Apply DDL.</strong> Give Replit Agent the prompt and exact SQL below. Save verification results.</li>
+        <li><strong>Apply SIEM outbox DDL.</strong> The original P0/P1 DDL is verified in heliumdb development. Give Replit Agent the new SIEM prompt and exact SQL below; save raw verification results.</li>
         <li><strong>Deploy non-production code.</strong> Confirm missing controls fail closed.</li>
-        <li><strong>Run negative tests.</strong> Wrong signatures, EICAR, scanner outage, secrets/PII, prompt injection, self-approval, cross-program, over-classification, rate, revoke, purge, SIEM.</li>
+        <li><strong>Run negative tests.</strong> CI covers cross-program, clearance, self-administration, self-approval, purge, revoke, CSRF, and SIEM retry/dead-letter paths. Runtime still covers wrong signatures, scanner outage, provider failures, and receiver recovery.</li>
         <li><strong>Enable SSO safely.</strong> Test ordinary and privileged users plus failure cases, then switch local login to break glass.</li>
         <li><strong>Review migrated data.</strong> Replace generic owners, approve clearances, review legacy active versions.</li>
         <li><strong>Enable CI gates.</strong> Require checks and retain evidence.</li>
@@ -123,7 +146,7 @@
 
     <section id="replit">
       <h2>Replit Agent handoff</h2>
-      <p>Copy this prompt first. Paste the exact DDL from the last section when requested.</p>
+      <p>The original P0/P1 migration is already owner-verified in heliumdb development. Use the new SIEM prompt for the next database change. Keep the original prompt only for a separate database that has not received the base controls.</p>
       <div class="codebar"><span>Replit Agent prompt</span><button class="copy" data-copy="replit-prompt">Copy</button></div>
       <pre id="replit-prompt">Apply the approved Truenote P0/P1 security migration to the selected Replit PostgreSQL database.
 
@@ -137,11 +160,27 @@ Guardrails:
 7. Run every verification query in this packet after commit. Return raw results.
 8. Do not set OIDC, scanner, SIEM, retention override, or production secrets. Those need Security-approved values.
 9. Do not deploy or publish the application.</pre>
+      <h3>SIEM outbox handoff</h3>
+      <div class="codebar"><span>Replit Agent prompt</span><button class="copy" data-copy="siem-replit-prompt">Copy</button></div>
+      <pre id="siem-replit-prompt">Apply the approved Truenote durable SIEM outbox migration to heliumdb development.
+
+Guardrails:
+1. Confirm current_database() is the intended development database and report current_user and server version.
+2. Confirm docs/security/p0-p1-security-controls.sql is already applied and security_events plus append_security_event exist.
+3. Take or confirm a recoverable snapshot before changing schema.
+4. Verify the supplied DDL SHA-256 is 205bca6fb8138a2be40b16b77873ca3e03d17128718f9a02d22cb338f75f5465.
+5. Execute the embedded SIEM outbox SQL exactly as written, including BEGIN and COMMIT. Do not rewrite it.
+6. If any statement fails, stop and report the exact statement and error. Do not deploy code.
+7. Run every verification query after COMMIT and return raw, unabridged results.
+8. Expected: table/functions/trigger non-null, events_missing_outbox=0, invalid_delivery_rows=0.
+9. Do not set SIEM_WEBHOOK_URL or SIEM_WEBHOOK_SIGNING_KEY. Security operations must provide approved values.
+10. Do not deploy or publish the application.</pre>
       <h3>Production configuration</h3>
       <table><thead><tr><th>Variable</th><th>Rule</th></tr></thead><tbody>
         <tr><td><code>MALWARE_SCANNER_URL</code></td><td>Approved HTTPS endpoint; clean/infected JSON contract.</td></tr>
         <tr><td><code>MALWARE_SCANNER_TOKEN</code> or <code>MALWARE_SCANNER_HMAC_KEY</code></td><td>Approved scanner authentication.</td></tr>
         <tr><td><code>SIEM_WEBHOOK_URL</code> and signing key</td><td>Organization-controlled HTTPS receiver verifies HMAC.</td></tr>
+        <tr><td><code>SIEM_DELIVERY_*</code></td><td>Defaults: poll 10 seconds, batch 25, concurrency 5, lease 60 seconds, 8 attempts, unhealthy backlog after 300 seconds. The worker raises undersized leases to cover its bounded batch.</td></tr>
         <tr><td>OIDC issuer, client, secret, redirect, state secret</td><td>All set; state secret at least 32 characters.</td></tr>
         <tr><td><code>OIDC_REQUIRE_MFA</code></td><td><code>true</code>; test IdP evidence.</td></tr>
         <tr><td><code>LOCAL_LOGIN_MODE</code></td><td><code>enabled</code> until SSO passes, then <code>break_glass</code>.</td></tr>
@@ -276,7 +315,334 @@ WHERE sequence &gt; (SELECT min(sequence) FROM security_events)
         <li>OIDC rejects state, nonce, issuer, audience, authorized-party, endpoint, and MFA failures.</li>
         <li>GitHub checks pass and branch protection requires them.</li>
       </ul>
-      <div class="warning"><strong>Workspace verification status</strong>Runtime verification could not run here because dependencies, database, and service secrets are absent. Replit and CI must run typecheck, tests, DDL, OIDC, scanner, SIEM, storage, and provider integration checks before release.</div>
+      <div class="warning"><strong>Verification boundary</strong>PR 112 run 29376130715 passed TypeScript, 281 tests, CodeQL, Gitleaks, dependency audit, and SBOM. This verifies repository behavior, not deployed SIEM operation. Database and service-secret checks require Replit. OIDC, scanner, SIEM receiver, storage, and provider integrations remain runtime evidence obligations.</div>
+    </section>
+
+    <section id="siem-ddl">
+      <h2>Exact Replit-ready SIEM outbox DDL</h2>
+      <p>Canonical file: <code>docs/security/p1-siem-delivery-outbox.sql</code>. SHA-256: <code>205bca6fb8138a2be40b16b77873ca3e03d17128718f9a02d22cb338f75f5465</code>. Apply only after the base P0/P1 controls are verified. The migration backfills existing security events into the outbox so delivery can catch up in bounded batches.</p>
+      <div class="codebar"><span>PostgreSQL · 320 lines</span><button class="copy" data-copy="siem-ddl-sql">Copy SIEM DDL</button></div>
+      <pre id="siem-ddl-sql">-- Truenote durable SIEM delivery outbox
+-- Apply only after docs/security/p0-p1-security-controls.sql is verified.
+-- This migration is forward-only. It intentionally queues existing security
+-- events so the configured SIEM can receive a complete historical catch-up.
+
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS siem_delivery_outbox (
+  security_event_id uuid PRIMARY KEY
+    REFERENCES security_events(id) ON DELETE RESTRICT,
+  status text NOT NULL DEFAULT &#39;pending&#39;
+    CHECK (status IN (&#39;pending&#39;, &#39;delivering&#39;, &#39;delivered&#39;, &#39;dead_letter&#39;)),
+  attempts integer NOT NULL DEFAULT 0 CHECK (attempts &gt;= 0),
+  next_attempt_at timestamptz,
+  lease_token uuid,
+  lease_expires_at timestamptz,
+  last_attempt_at timestamptz,
+  delivered_at timestamptz,
+  dead_lettered_at timestamptz,
+  last_error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT siem_delivery_outbox_lease_check CHECK (
+    (
+      status = &#39;delivering&#39;
+      AND lease_token IS NOT NULL
+      AND lease_expires_at IS NOT NULL
+    )
+    OR (
+      status &lt;&gt; &#39;delivering&#39;
+      AND lease_token IS NULL
+      AND lease_expires_at IS NULL
+    )
+  ),
+  CONSTRAINT siem_delivery_outbox_terminal_check CHECK (
+    (
+      status = &#39;delivered&#39;
+      AND delivered_at IS NOT NULL
+      AND dead_lettered_at IS NULL
+      AND next_attempt_at IS NULL
+    )
+    OR (
+      status = &#39;dead_letter&#39;
+      AND delivered_at IS NULL
+      AND dead_lettered_at IS NOT NULL
+      AND next_attempt_at IS NULL
+    )
+    OR (
+      status IN (&#39;pending&#39;, &#39;delivering&#39;)
+      AND delivered_at IS NULL
+      AND dead_lettered_at IS NULL
+      AND next_attempt_at IS NOT NULL
+    )
+  )
+);
+
+CREATE INDEX IF NOT EXISTS siem_delivery_outbox_due_idx
+  ON siem_delivery_outbox (next_attempt_at, created_at)
+  WHERE status IN (&#39;pending&#39;, &#39;delivering&#39;);
+
+CREATE INDEX IF NOT EXISTS siem_delivery_outbox_dead_letter_idx
+  ON siem_delivery_outbox (dead_lettered_at DESC)
+  WHERE status = &#39;dead_letter&#39;;
+
+CREATE OR REPLACE FUNCTION enqueue_security_event_for_siem()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+  INSERT INTO siem_delivery_outbox (
+    security_event_id,
+    status,
+    next_attempt_at
+  ) VALUES (
+    NEW.id,
+    &#39;pending&#39;,
+    clock_timestamp()
+  )
+  ON CONFLICT (security_event_id) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS security_events_siem_enqueue ON security_events;
+CREATE TRIGGER security_events_siem_enqueue
+AFTER INSERT ON security_events
+FOR EACH ROW EXECUTE FUNCTION enqueue_security_event_for_siem();
+
+-- Catch up events written before this outbox existed. Delivery remains
+-- bounded by the worker batch size and retry policy.
+INSERT INTO siem_delivery_outbox (
+  security_event_id,
+  status,
+  next_attempt_at
+)
+SELECT id, &#39;pending&#39;, clock_timestamp()
+FROM security_events
+ON CONFLICT (security_event_id) DO NOTHING;
+
+CREATE OR REPLACE FUNCTION claim_siem_deliveries(
+  p_limit integer,
+  p_lease_seconds integer
+)
+RETURNS TABLE (
+  security_event_id uuid,
+  lease_token uuid,
+  attempts integer,
+  id uuid,
+  occurred_at timestamptz,
+  event_hash text,
+  action text,
+  outcome text,
+  actor_user_id uuid,
+  actor_email text,
+  actor_role text,
+  program_id uuid,
+  resource_type text,
+  resource_id text,
+  request_id text,
+  source_ip text,
+  details jsonb
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  WITH candidates AS (
+    SELECT outbox.security_event_id
+    FROM siem_delivery_outbox AS outbox
+    WHERE (
+      outbox.status = &#39;pending&#39;
+      AND outbox.next_attempt_at &lt;= clock_timestamp()
+    ) OR (
+      outbox.status = &#39;delivering&#39;
+      AND outbox.lease_expires_at &lt;= clock_timestamp()
+    )
+    ORDER BY outbox.next_attempt_at, outbox.created_at
+    FOR UPDATE OF outbox SKIP LOCKED
+    LIMIT greatest(1, least(p_limit, 100))
+  ),
+  claimed AS (
+    UPDATE siem_delivery_outbox AS outbox
+    SET status = &#39;delivering&#39;,
+        attempts = outbox.attempts + 1,
+        last_attempt_at = clock_timestamp(),
+        lease_token = gen_random_uuid(),
+        lease_expires_at = clock_timestamp()
+          + make_interval(secs =&gt; greatest(5, least(p_lease_seconds, 300))),
+        updated_at = clock_timestamp()
+    FROM candidates
+    WHERE outbox.security_event_id = candidates.security_event_id
+    RETURNING
+      outbox.security_event_id,
+      outbox.lease_token,
+      outbox.attempts
+  )
+  SELECT
+    claimed.security_event_id,
+    claimed.lease_token,
+    claimed.attempts,
+    event.id,
+    event.occurred_at,
+    event.event_hash,
+    event.action,
+    event.outcome,
+    event.actor_user_id,
+    event.actor_email,
+    event.actor_role,
+    event.program_id,
+    event.resource_type,
+    event.resource_id,
+    event.request_id,
+    event.source_ip,
+    event.details
+  FROM claimed
+  JOIN security_events AS event ON event.id = claimed.security_event_id
+  ORDER BY event.sequence;
+$$;
+
+CREATE OR REPLACE FUNCTION complete_siem_delivery(
+  p_security_event_id uuid,
+  p_lease_token uuid
+)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  WITH completed AS (
+    UPDATE siem_delivery_outbox
+    SET status = &#39;delivered&#39;,
+        next_attempt_at = NULL,
+        lease_token = NULL,
+        lease_expires_at = NULL,
+        delivered_at = clock_timestamp(),
+        dead_lettered_at = NULL,
+        last_error = NULL,
+        updated_at = clock_timestamp()
+    WHERE security_event_id = p_security_event_id
+      AND status = &#39;delivering&#39;
+      AND lease_token = p_lease_token
+    RETURNING 1
+  )
+  SELECT EXISTS (SELECT 1 FROM completed);
+$$;
+
+CREATE OR REPLACE FUNCTION fail_siem_delivery(
+  p_security_event_id uuid,
+  p_lease_token uuid,
+  p_error text,
+  p_dead_letter boolean,
+  p_next_attempt_at timestamptz
+)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  WITH failed AS (
+    UPDATE siem_delivery_outbox
+    SET status = CASE WHEN p_dead_letter THEN &#39;dead_letter&#39; ELSE &#39;pending&#39; END,
+        next_attempt_at = CASE
+          WHEN p_dead_letter THEN NULL
+          ELSE greatest(clock_timestamp(), p_next_attempt_at)
+        END,
+        lease_token = NULL,
+        lease_expires_at = NULL,
+        delivered_at = NULL,
+        dead_lettered_at = CASE
+          WHEN p_dead_letter THEN clock_timestamp()
+          ELSE NULL
+        END,
+        last_error = left(COALESCE(p_error, &#39;unknown delivery failure&#39;), 2000),
+        updated_at = clock_timestamp()
+    WHERE security_event_id = p_security_event_id
+      AND status = &#39;delivering&#39;
+      AND lease_token = p_lease_token
+    RETURNING 1
+  )
+  SELECT EXISTS (SELECT 1 FROM failed);
+$$;
+
+CREATE OR REPLACE FUNCTION get_siem_delivery_health()
+RETURNS TABLE (
+  pending_count bigint,
+  delivering_count bigint,
+  delivered_count bigint,
+  dead_letter_count bigint,
+  oldest_pending_at timestamptz,
+  last_delivered_at timestamptz
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT
+    count(*) FILTER (WHERE status = &#39;pending&#39;) AS pending_count,
+    count(*) FILTER (WHERE status = &#39;delivering&#39;) AS delivering_count,
+    count(*) FILTER (WHERE status = &#39;delivered&#39;) AS delivered_count,
+    count(*) FILTER (WHERE status = &#39;dead_letter&#39;) AS dead_letter_count,
+    min(created_at) FILTER (
+      WHERE status IN (&#39;pending&#39;, &#39;delivering&#39;)
+    ) AS oldest_pending_at,
+    max(delivered_at) AS last_delivered_at
+  FROM siem_delivery_outbox;
+$$;
+
+-- State changes are available only through lease-fenced functions. The role
+-- applying this DDL must be the same role used by the app. If deployment later
+-- separates migration and runtime roles, grant these functions only to the
+-- named runtime role instead.
+REVOKE ALL ON siem_delivery_outbox FROM PUBLIC;
+REVOKE ALL ON FUNCTION enqueue_security_event_for_siem() FROM PUBLIC;
+REVOKE ALL ON FUNCTION claim_siem_deliveries(integer, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION complete_siem_delivery(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION fail_siem_delivery(uuid, uuid, text, boolean, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION get_siem_delivery_health() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION claim_siem_deliveries(integer, integer) TO CURRENT_USER;
+GRANT EXECUTE ON FUNCTION complete_siem_delivery(uuid, uuid) TO CURRENT_USER;
+GRANT EXECUTE ON FUNCTION fail_siem_delivery(uuid, uuid, text, boolean, timestamptz) TO CURRENT_USER;
+GRANT EXECUTE ON FUNCTION get_siem_delivery_health() TO CURRENT_USER;
+
+COMMIT;
+
+-- Verification. Run after COMMIT and retain raw results.
+SELECT to_regclass(&#39;siem_delivery_outbox&#39;) AS siem_delivery_outbox;
+SELECT to_regprocedure(&#39;claim_siem_deliveries(integer,integer)&#39;) AS claim_function;
+SELECT to_regprocedure(&#39;complete_siem_delivery(uuid,uuid)&#39;) AS complete_function;
+SELECT to_regprocedure(
+  &#39;fail_siem_delivery(uuid,uuid,text,boolean,timestamp with time zone)&#39;
+) AS fail_function;
+SELECT to_regprocedure(&#39;get_siem_delivery_health()&#39;) AS health_function;
+
+SELECT tgname, tgrelid::regclass AS table_name
+FROM pg_trigger
+WHERE NOT tgisinternal
+  AND tgname = &#39;security_events_siem_enqueue&#39;;
+
+SELECT
+  (SELECT count(*) FROM security_events) AS security_event_count,
+  (SELECT count(*) FROM siem_delivery_outbox) AS outbox_count,
+  (
+    SELECT count(*)
+    FROM security_events AS event
+    LEFT JOIN siem_delivery_outbox AS outbox
+      ON outbox.security_event_id = event.id
+    WHERE outbox.security_event_id IS NULL
+  ) AS events_missing_outbox;
+
+SELECT * FROM get_siem_delivery_health();
+
+SELECT count(*) AS invalid_delivery_rows
+FROM siem_delivery_outbox
+WHERE (status = &#39;delivering&#39; AND (lease_token IS NULL OR lease_expires_at IS NULL))
+   OR (status &lt;&gt; &#39;delivering&#39; AND (lease_token IS NOT NULL OR lease_expires_at IS NOT NULL))
+   OR (status = &#39;delivered&#39; AND delivered_at IS NULL)
+   OR (status = &#39;dead_letter&#39; AND dead_lettered_at IS NULL);
+</pre>
     </section>
 
     <section id="ddl">
@@ -833,9 +1199,10 @@ COMMIT;
       <article class="card"><h3>Database and lifecycle</h3><code>docs/security/p0-p1-security-controls.sql</code><code>artifacts/api-server/src/routes/documents.ts</code><code>artifacts/api-server/src/lib/ingestion/run.ts</code></article>
       <article class="card"><h3>Identity and access</h3><code>artifacts/api-server/src/lib/auth/oidc.ts</code><code>artifacts/api-server/src/routes/oidc.ts</code><code>artifacts/api-server/src/lib/security/classification.ts</code></article>
       <article class="card"><h3>AI and data safety</h3><code>artifacts/api-server/src/lib/security/content-scan.ts</code><code>artifacts/api-server/src/lib/generation/answer.ts</code><code>artifacts/api-server/src/lib/retrieval/query.ts</code></article>
-      <article class="card"><h3>Audit and abuse</h3><code>artifacts/api-server/src/lib/security/audit.ts</code><code>artifacts/api-server/src/middleware/security-audit.ts</code><code>artifacts/api-server/src/lib/security/distributed-rate-limit.ts</code></article>
+      <article class="card"><h3>Audit and abuse</h3><code>artifacts/api-server/src/lib/security/audit.ts</code><code>artifacts/api-server/src/lib/security/siem-outbox.ts</code><code>docs/security/p1-siem-delivery-outbox.sql</code><code>artifacts/api-server/src/middleware/security-audit.ts</code><code>artifacts/api-server/src/lib/security/distributed-rate-limit.ts</code></article>
       <article class="card"><h3>Administrator UX</h3><code>artifacts/rag-app/src/components/admin/UploadForm.tsx</code><code>artifacts/rag-app/src/components/admin/DocumentList.tsx</code><code>artifacts/rag-app/src/components/admin/PreviewPanel.tsx</code></article>
       <article class="card"><h3>Supply chain</h3><code>.github/workflows/security.yml</code><code>.github/dependabot.yml</code><code>.env.example</code></article>
+      <article class="card"><h3>Negative security tests</h3><code>artifacts/api-server/src/lib/security/__tests__/negative-controls.test.ts</code><code>artifacts/api-server/src/lib/security/__tests__/siem-outbox.test.ts</code><code>artifacts/api-server/src/middleware/__tests__/browser-security.test.ts</code></article>
     </div></section>
   </main>
   <footer><div class="shell">Internal review artifact. Not a certification, authorization, legal opinion, or vendor assurance statement.</div></footer>

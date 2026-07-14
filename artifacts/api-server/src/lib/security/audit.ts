@@ -1,4 +1,3 @@
-import { createHmac } from "node:crypto";
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "../db-client.js";
 import type { CurrentUser } from "../auth/current-user.js";
@@ -106,57 +105,12 @@ export async function appendSecurityEvent(
   }
 }
 
-/**
- * Optional one-way SIEM copy. URL + signing key are both required; unsigned
- * exports are refused. Delivery failure never rewrites the append-only DB
- * receipt, but is logged so monitoring can alert on exporter degradation.
- */
-export async function exportSecurityEvent(
-  event: StoredSecurityEvent
-): Promise<boolean> {
-  const url = process.env.SIEM_WEBHOOK_URL?.trim();
-  if (!url) return false;
-  const signingKey = process.env.SIEM_WEBHOOK_SIGNING_KEY?.trim();
-  if (!signingKey) {
-    console.warn("[security-audit] SIEM export disabled: signing key is missing");
-    return false;
-  }
-  if (process.env.NODE_ENV === "production" && !url.startsWith("https://")) {
-    console.warn("[security-audit] SIEM export disabled: production URL must use HTTPS");
-    return false;
-  }
-  const body = JSON.stringify(event);
-  const signature = createHmac("sha256", signingKey).update(body).digest("hex");
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Truenote-Signature": `sha256=${signature}`,
-        "X-Truenote-Event-Id": event.id
-      },
-      body,
-      signal: AbortSignal.timeout(5_000)
-    });
-    if (!response.ok) {
-      throw new Error(`SIEM webhook returned HTTP ${response.status}`);
-    }
-    return true;
-  } catch (error) {
-    console.warn(
-      "[security-audit] SIEM export failed:",
-      error instanceof Error ? error.message : error
-    );
-    return false;
-  }
-}
-
 export async function recordSecurityEvent(
   input: SecurityEventInput
 ): Promise<StoredSecurityEvent> {
-  const event = await appendSecurityEvent(input);
-  void exportSecurityEvent(event);
-  return event;
+  // The database trigger created by p1-siem-delivery-outbox.sql enqueues the
+  // receipt in the same transaction. Delivery is deliberately off-path.
+  return appendSecurityEvent(input);
 }
 
 /** Best-effort wrapper for response middleware and denied requests. */
