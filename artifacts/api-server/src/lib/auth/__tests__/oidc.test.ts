@@ -7,13 +7,13 @@ import {
 } from "../oidc.js";
 
 describe("OIDC state", () => {
-  const secret = "0123456789abcdef0123456789abcdef";
+  const testSigningKey = "test-only-oidc-state-signing-material";
 
   it("round-trips signed PKCE state and rejects tampering", () => {
     const state = createOidcState("/admin/documents");
-    const sealed = sealOidcState(state, secret);
-    expect(openOidcState(sealed, secret)).toEqual(state);
-    expect(openOidcState(`${sealed}x`, secret)).toBeNull();
+    const sealed = sealOidcState(state, testSigningKey);
+    expect(openOidcState(sealed, testSigningKey)).toEqual(state);
+    expect(openOidcState(`${sealed}x`, testSigningKey)).toBeNull();
   });
 
   it("blocks absolute, protocol-relative, API, and backslash redirects", () => {
