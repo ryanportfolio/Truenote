@@ -88,7 +88,7 @@ jobs:
           upload-database: false
       - name: Retain CodeQL SARIF evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: truenote-codeql-sarif
           path: codeql-results
