@@ -10,6 +10,10 @@ import { recordAppError } from "./lib/observability/error-log.js";
 import { robotsHeaderForSpaPath } from "./lib/seo.js";
 import { securityAuditMiddleware } from "./middleware/security-audit.js";
 import { SecurityControlsNotReadyError } from "./lib/security/errors.js";
+import {
+  contentSecurityPolicy,
+  trustedMutationOriginMiddleware,
+} from "./middleware/browser-security.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -27,6 +31,7 @@ export function createApp(): Express {
       "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
     );
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+    res.setHeader("Content-Security-Policy", contentSecurityPolicy());
     if (process.env.NODE_ENV === "production") {
       res.setHeader("Strict-Transport-Security", "max-age=31536000");
     }
@@ -106,7 +111,6 @@ export function createApp(): Express {
       origin: corsAllowed.length > 0 ? corsAllowed : false
     })
   );
-  app.use("/api", express.json({ limit: "1mb" }));
   app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
     res.setHeader("Cache-Control", "no-store");
     next();
@@ -114,6 +118,8 @@ export function createApp(): Express {
   app.use("/api", cookieParser());
   app.use("/api", attachCurrentUser);
   app.use("/api", securityAuditMiddleware);
+  app.use("/api", trustedMutationOriginMiddleware());
+  app.use("/api", express.json({ limit: "1mb" }));
 
   registerRoutes(app);
 
