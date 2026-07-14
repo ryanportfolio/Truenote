@@ -32,9 +32,12 @@ import {
   SecurityControlsNotReadyError
 } from "../lib/security/errors.js";
 import {
-  appendSecurityEvent,
-  exportSecurityEvent
+  appendSecurityEvent
 } from "../lib/security/audit.js";
+import {
+  evaluateDocumentApproval,
+  evaluateDocumentPurge
+} from "../lib/security/document-policy.js";
 
 export const documentsRouter = Router();
 
@@ -649,15 +652,6 @@ interface ReviewRow {
   source_approved_at: Date | string | null;
 }
 
-function securityFindings(value: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(value)
-    ? value.filter(
-        (item): item is Record<string, unknown> =>
-          typeof item === "object" && item !== null
-      )
-    : [];
-}
-
 async function effectiveDocumentProgram(
   req: import("express").Request,
   res: import("express").Response
@@ -709,27 +703,20 @@ documentsRouter.post(
         `);
         const row = locked.rows[0] as unknown as ReviewRow | undefined;
         if (!row) throw new DocumentControlError(404, "Not found");
-        if (row.lifecycle_state !== "pending_review" || row.parse_status !== "ready") {
-          throw new DocumentControlError(409, "Document is not awaiting review.");
-        }
-        if (row.scan_status !== "clean") {
-          throw new DocumentControlError(409, "Document has no clean malware-scan verdict.");
-        }
-        if (!row.source_id || !row.source_active || !row.source_approved_at) {
-          throw new DocumentControlError(409, "Document source is no longer approved.");
-        }
-        if (row.uploaded_by === user.id) {
-          throw new DocumentControlError(409, "A different authorized reviewer must approve this upload.");
-        }
-        const findings = securityFindings(row.scan_findings);
-        if (findings.some((finding) => finding["blocking"] === true)) {
-          throw new DocumentControlError(
-            409,
-            "Blocking secret, PII, or file-safety findings must be resolved before approval."
-          );
-        }
-        if (findings.length > 0 && !parsed.data.acknowledgeFindings) {
-          throw new DocumentControlError(400, "Acknowledge the scan findings before approval.");
+        const approval = evaluateDocumentApproval({
+          reviewerId: user.id,
+          uploadedBy: row.uploaded_by,
+          lifecycleState: row.lifecycle_state,
+          parseStatus: row.parse_status,
+          scanStatus: row.scan_status,
+          sourceId: row.source_id,
+          sourceActive: row.source_active,
+          sourceApprovedAt: row.source_approved_at,
+          findings: row.scan_findings,
+          acknowledgeFindings: parsed.data.acknowledgeFindings
+        });
+        if (!approval.allowed) {
+          throw new DocumentControlError(approval.status, approval.error);
         }
 
         await tx.execute(sql`
@@ -1070,12 +1057,6 @@ documentsRouter.post(
         `);
         const row = locked.rows[0];
         if (!row) throw new DocumentControlError(404, "Not found");
-        if (row["title"] !== parsed.data.confirmTitle) {
-          throw new DocumentControlError(400, "Document title confirmation does not match.");
-        }
-        if (row["lifecycle_state"] !== "retired") {
-          throw new DocumentControlError(409, "Retire the document before permanent purge.");
-        }
         const versions = await tx.execute(sql`
           SELECT
             coalesce(bool_and(retention_until <= now()), true) AS retention_elapsed,
@@ -1087,10 +1068,17 @@ documentsRouter.post(
           WHERE document_id = ${id}::uuid
         `);
         const versionState = versions.rows[0];
-        if (versionState?.["retention_elapsed"] !== true && !overrideEnabled) {
-          throw new DocumentControlError(409, "Document retention period has not elapsed.");
+        const purge = evaluateDocumentPurge({
+          title: row["title"],
+          confirmTitle: parsed.data.confirmTitle,
+          lifecycleState: row["lifecycle_state"],
+          retentionElapsed: versionState?.["retention_elapsed"] === true,
+          retentionOverrideEnabled: overrideEnabled
+        });
+        if (!purge.allowed) {
+          throw new DocumentControlError(purge.status, purge.error);
         }
-        const auditEvent = await appendSecurityEvent(
+        await appendSecurityEvent(
           {
             action: "document.purge",
             outcome: "success",
@@ -1115,10 +1103,9 @@ documentsRouter.post(
               (value): value is string => typeof value === "string"
             )
           : [];
-        return { auditEvent, sourceKeys };
+        return { sourceKeys };
       });
 
-      void exportSecurityEvent(purgeReceipt.auditEvent);
       await purgeCitationSnapshotsForDocument({ programId, documentId: id });
       const storage = getObjectStorage();
       const failedKeys: string[] = [];
