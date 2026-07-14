@@ -1,0 +1,159 @@
+{
+  "reviewedAt": "2026-07-13",
+  "policy": "Exact reviewed fingerprints only. Any new, changed, or stale result fails CI and requires security review.",
+  "entries": [
+    {
+      "ruleId": "js/clear-text-logging",
+      "path": "artifacts/api-server/src/index.ts",
+      "reason": "The logged value is a minimum password-length policy number embedded in a bootstrap validation error, not a credential or secret.",
+      "fingerprints": [{ "hash": "59c7e6d454e7a8a9:1", "column": "48" }]
+    },
+    {
+      "ruleId": "js/incomplete-multi-character-sanitization",
+      "path": "artifacts/rag-app/src/pages/__tests__/KnowledgeBaseDocument.test.tsx",
+      "reason": "Security regression fixture in test-only code; it is not shipped as an application sanitizer.",
+      "fingerprints": [
+        { "hash": "95f8769649866940:1", "column": "7" },
+        { "hash": "95f8769649866940:1", "column": "43" }
+      ]
+    },
+    {
+      "ruleId": "js/missing-token-validation",
+      "path": "artifacts/api-server/src/app.ts",
+      "reason": "Browser sessions use Secure SameSite=Lax cookies and credentialed cross-origin API requests use an explicit origin allowlist. CodeQL does not model these controls through cookie-parser and the custom session layer.",
+      "fingerprints": [{ "hash": "d1d57d30a9b498e3:1", "column": "16" }]
+    },
+    {
+      "ruleId": "js/user-controlled-bypass",
+      "path": "artifacts/api-server/src/routes/kb.ts",
+      "reason": "Historical-version access requires an immutable citation receipt matching user, program, document, version, and source index; the query parameters do not independently authorize access.",
+      "fingerprints": [
+        { "hash": "a04f9630b6fd6dfe:1", "column": "0" },
+        { "hash": "af3339f1d1ff8580:1", "column": "0" }
+      ]
+    },
+    {
+      "ruleId": "js/missing-rate-limiting",
+      "path": "artifacts/api-server/src/app.ts",
+      "reason": "Static fingerprinted assets and the SPA shell are bounded file reads, not sensitive API operations. API abuse controls are applied in route-specific middleware and handlers.",
+      "fingerprints": [
+        { "hash": "7da29005151cf6bc:1", "column": "13" },
+        { "hash": "ff30f9efb32a026b:1", "column": "21" }
+      ]
+    },
+    {
+      "ruleId": "js/missing-rate-limiting",
+      "path": "artifacts/api-server/src/routes/admin/evaluations.ts",
+      "reason": "Reviewed risk-tiered route baseline; authorization and bounded request inputs exist, while universal route quotas remain tracked hardening work.",
+      "fingerprints": [{ "hash": "23066b5a48ef751b:1", "column": "32" }]
+    },
+    {
+      "ruleId": "js/missing-rate-limiting",
+      "path": "artifacts/api-server/src/routes/admin/insights.ts",
+      "reason": "Reviewed risk-tiered route baseline; authorization and bounded request inputs exist, while universal route quotas remain tracked hardening work.",
+      "fingerprints": [{ "hash": "e82a3619398c9998:1", "column": "31" }]
+    },
+    {
+      "ruleId": "js/missing-rate-limiting",
+      "path": "artifacts/api-server/src/routes/admin/model-routing.ts",
+      "reason": "Reviewed risk-tiered route baseline; authorization and bounded request inputs exist, while universal route quotas remain tracked hardening work.",
+      "fingerprints": [{ "hash": "54e048f871507df3:1", "column": "28" }]
+    },
+    {
+      "ruleId": "js/missing-rate-limiting",
+      "path": "artifacts/api-server/src/routes/admin/programs.ts",
+      "reason": "Reviewed risk-tiered route baseline; authorization and bounded request inputs exist, while universal route quotas remain tracked hardening work.",
+      "fingerprints": [{ "hash": "d924adeb77d1979f:1", "column": "24" }]
+    },
+    {
+      "ruleId": "js/missing-rate-limiting",
+      "path": "artifacts/api-server/src/routes/admin/queries.ts",
+      "reason": "Reviewed risk-tiered route baseline; authorization and bounded request inputs exist, while universal route quotas remain tracked hardening work.",
+      "fingerprints": [{ "hash": "53dff0eb5e86d188:1", "column": "23" }]
+    },
+    {
+      "ruleId": "js/missing-rate-limiting",
+      "path": "artifacts/api-server/src/routes/admin/users.ts",
+      "reason": "Reviewed risk-tiered route baseline; authorization and bounded request inputs exist, while universal route quotas remain tracked hardening work.",
+      "fingerprints": [
+        { "hash": "3ab909340cbb8351:1", "column": "26" },
+        { "hash": "4623ce6535ef8b76:1", "column": "27" },
+        { "hash": "8ea7d023c29d6157:1", "column": "21" },
+        { "hash": "8f8b3cbcb3f3d4a2:1", "column": "22" },
+        { "hash": "d6918c88f4e4057:1", "column": "26" },
+        { "hash": "eaa2ee925f6eca9f:1", "column": "40" }
+      ]
+    },
+    {
+      "ruleId": "js/missing-rate-limiting",
+      "path": "artifacts/api-server/src/routes/ask.ts",
+      "reason": "The ask path uses shared PostgreSQL per-user and per-program fixed-window limits; CodeQL does not recognize the custom limiter.",
+      "fingerprints": [
+        { "hash": "99878c1e01405f69:1", "column": "32" },
+        { "hash": "9a4e5741930c49f2:1", "column": "28" },
+        { "hash": "a877884e47c6dc1:1", "column": "23" },
+        { "hash": "c9ca3ba9257d3405:1", "column": "30" }
+      ]
+    },
+    {
+      "ruleId": "js/missing-rate-limiting",
+      "path": "artifacts/api-server/src/routes/auth.ts",
+      "reason": "Login and password-reset routes use bounded in-memory per-IP and per-email limiters; CodeQL does not recognize the custom limiter.",
+      "fingerprints": [
+        { "hash": "9721927d31f914bd:1", "column": "49" },
+        { "hash": "9b09f51aba801bf8:1", "column": "26" }
+      ]
+    },
+    {
+      "ruleId": "js/missing-rate-limiting",
+      "path": "artifacts/api-server/src/routes/documents.ts",
+      "reason": "Reviewed risk-tiered route baseline; authorization, file-size limits, and bounded inputs exist, while universal route quotas remain tracked hardening work.",
+      "fingerprints": [
+        { "hash": "1995c88d122f64c9:1", "column": "43" },
+        { "hash": "4eee9dccc92e1e4:1", "column": "0" },
+        { "hash": "a8754cbd747522e9:1", "column": "43" },
+        { "hash": "b3034e880e5a7a91:1", "column": "0" },
+        { "hash": "b6dca23ed3c9d52a:1", "column": "25" },
+        { "hash": "eae0f1eeb56b28db:1", "column": "31" },
+        { "hash": "f5afb80c33444cd9:1", "column": "0" },
+        { "hash": "f5afb80c33444cd9:2", "column": "0" },
+        { "hash": "f5afb80c33444cd9:3", "column": "0" },
+        { "hash": "f5afb80c33444cd9:4", "column": "0" }
+      ]
+    },
+    {
+      "ruleId": "js/missing-rate-limiting",
+      "path": "artifacts/api-server/src/routes/kb.ts",
+      "reason": "Reviewed read/write route baseline; authorization, classification, and program scoping exist, while universal route quotas remain tracked hardening work.",
+      "fingerprints": [
+        { "hash": "211326d2a5ecca96:1", "column": "43" },
+        { "hash": "39d90d751ad1f4af:1", "column": "34" },
+        { "hash": "5f770c243aa6ad7:1", "column": "27" },
+        { "hash": "6ae47eb5e7c04fcc:1", "column": "31" },
+        { "hash": "915cbb085975be5b:1", "column": "35" },
+        { "hash": "cf715b43e4d289a3:1", "column": "42" }
+      ]
+    },
+    {
+      "ruleId": "js/missing-rate-limiting",
+      "path": "artifacts/api-server/src/routes/me.ts",
+      "reason": "Reviewed authenticated profile-read baseline; universal route quotas remain tracked hardening work.",
+      "fingerprints": [{ "hash": "638444003db91532:1", "column": "31" }]
+    },
+    {
+      "ruleId": "js/missing-rate-limiting",
+      "path": "artifacts/api-server/src/routes/oidc.ts",
+      "reason": "OIDC uses signed state, PKCE, nonce, issuer/audience validation, and a short-lived flow cookie; universal route quotas remain tracked hardening work.",
+      "fingerprints": [{ "hash": "57a0839965fda8c6:1", "column": "28" }]
+    },
+    {
+      "ruleId": "js/missing-rate-limiting",
+      "path": "artifacts/api-server/src/routes/sessions.ts",
+      "reason": "Reviewed authenticated session-management baseline; authorization exists, while universal route quotas remain tracked hardening work.",
+      "fingerprints": [
+        { "hash": "240f4a3a35fd9fa:1", "column": "24" },
+        { "hash": "ac91a69b92c7bdd0:1", "column": "27" }
+      ]
+    }
+  ]
+}
