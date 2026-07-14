@@ -1,8 +1,13 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-const JSON_LD_SCRIPT_HASH =
-  "'sha256-mzwEHf+hexf5p9PXIB+clKkWnHKVaog3paHjZ9ztzug='";
+// Git may materialize index.html with LF or CRLF depending on the build host.
+// Both hashes represent the same static JSON-LD block with only line endings
+// changed; allowing both keeps the production policy portable and exact.
+const JSON_LD_SCRIPT_HASHES = [
+  "'sha256-AjnjJ19PVMR54X+Ngxi+l6KID4BwmKiWNCakhZjrlb0='",
+  "'sha256-mzwEHf+hexf5p9PXIB+clKkWnHKVaog3paHjZ9ztzug='",
+].join(" ");
 
 function normalizeHttpOrigin(value: string | undefined): string | null {
   if (value === undefined || value.trim() === "") return null;
@@ -119,7 +124,7 @@ export function contentSecurityPolicy(nodeEnv = process.env.NODE_ENV): string {
     "manifest-src 'self'",
     "media-src 'self'",
     "object-src 'none'",
-    `script-src 'self' ${JSON_LD_SCRIPT_HASH}`,
+    `script-src 'self' ${JSON_LD_SCRIPT_HASHES}`,
     "script-src-attr 'none'",
     "style-src 'self'",
     "style-src-attr 'unsafe-inline'",

@@ -158,7 +158,7 @@ describe("contentSecurityPolicy", () => {
     expect(policy).not.toContain("script-src 'self' 'unsafe-inline'");
   });
 
-  it("contains the exact hash of the source JSON-LD block", async () => {
+  it("contains the exact LF and CRLF hashes of the source JSON-LD block", async () => {
     const indexPath = fileURLToPath(
       new URL("../../../../rag-app/index.html", import.meta.url),
     );
@@ -167,8 +167,16 @@ describe("contentSecurityPolicy", () => {
       /<script type="application\/ld\+json">([\s\S]*?)<\/script>/,
     )?.[1];
     expect(body).toBeDefined();
-    const hash = createHash("sha256").update(body ?? "").digest("base64");
-    expect(contentSecurityPolicy("production")).toContain(`'sha256-${hash}'`);
+    const variants = new Set([
+      (body ?? "").replace(/\r\n/g, "\n"),
+      (body ?? "").replace(/\r?\n/g, "\r\n"),
+    ]);
+    for (const variant of variants) {
+      const hash = createHash("sha256").update(variant).digest("base64");
+      expect(contentSecurityPolicy("production")).toContain(
+        `'sha256-${hash}'`,
+      );
+    }
   });
 
   it("does not upgrade local development requests", () => {
