@@ -66,7 +66,11 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: `http://localhost:${API_PORT}`,
-        changeOrigin: true
+        changeOrigin: true,
+        // Preserve the browser-facing host/protocol for the API's mutation
+        // Origin check. Replit exposes Vite publicly and keeps API_PORT
+        // internal, so the rewritten Host alone is not the trusted origin.
+        xfwd: true
       }
     }
   },
