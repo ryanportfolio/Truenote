@@ -448,6 +448,9 @@ async function evaluateOne(
     const retrieval = await retrieve({
       programId: q.programId,
       question: q.question,
+      // Eval is a super-user security/quality operation. Live asks resolve
+      // the authenticated user's clearance before retrieval.
+      maxClassification: "restricted",
       withTrace: true
     });
     const generation = await generateAnswer(

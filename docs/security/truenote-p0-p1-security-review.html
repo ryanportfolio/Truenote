@@ -1,0 +1,844 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Truenote P0/P1 Security Review</title>
+  <style>
+    :root{--ink:#172126;--muted:#59666c;--paper:#f7f5ef;--card:#fffdfa;--line:#d9d8d1;--accent:#0f5c5e;--soft:#e6f1ef;--warn:#875d13;--warnsoft:#fff4d7;--bad:#8b2f32;--badsoft:#fbe9e8;--good:#216b48;--goodsoft:#e6f4eb;--code:#152026}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 Inter,system-ui,sans-serif}a{color:var(--accent);text-underline-offset:3px}code,pre{font-family:Consolas,"Liberation Mono",monospace}.shell{width:min(1160px,calc(100% - 32px));margin:auto}.hero{padding:68px 0 44px;border-bottom:1px solid var(--line);background:radial-gradient(circle at 85% 15%,rgba(15,92,94,.14),transparent 32%),linear-gradient(180deg,#fffdfa,var(--paper))}.eyebrow{color:var(--accent);font-size:.76rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}h1{max-width:850px;margin:12px 0 16px;font:700 clamp(2rem,5vw,4.3rem)/.98 Georgia,serif;letter-spacing:-.04em}.lede{max-width:850px;color:var(--muted);font-size:1.14rem}.meta{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:24px;color:var(--muted);font-size:.86rem}nav{position:sticky;top:0;z-index:5;overflow:auto;white-space:nowrap;border-bottom:1px solid var(--line);background:rgba(247,245,239,.94);backdrop-filter:blur(12px)}nav .shell{display:flex;gap:21px;padding:12px 0}nav a{color:var(--muted);font-size:.82rem;font-weight:750;text-decoration:none}main{padding:45px 0 82px}section{scroll-margin-top:64px;margin-bottom:60px}h2{margin:0 0 18px;font:700 2rem/1.1 Georgia,serif}h3{margin:28px 0 10px;font-size:1rem}p{max-width:880px}.callout{padding:19px 21px;border:1px solid #98beb8;border-radius:10px;background:var(--soft)}.warning{padding:19px 21px;border:1px solid #e1c47d;border-radius:10px;background:var(--warnsoft)}.callout strong,.warning strong{display:block;margin-bottom:4px}.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:15px}.card{grid-column:span 4;padding:19px;border:1px solid var(--line);border-radius:10px;background:var(--card);box-shadow:0 8px 25px rgba(28,39,43,.04)}.card h3{margin-top:0}.card p{margin-bottom:0;color:var(--muted);font-size:.91rem}.number{margin:0 0 4px;color:var(--accent);font:700 1.8rem/1 Georgia,serif}.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0}.flow span{padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:var(--card);font-size:.82rem}.flow b{color:var(--accent)}table{width:100%;border-collapse:collapse;background:var(--card);font-size:.89rem}th,td{padding:11px;border:1px solid var(--line);text-align:left;vertical-align:top}th{background:#eeece5;font-size:.75rem;letter-spacing:.04em;text-transform:uppercase}.tag{display:inline-block;padding:2px 7px;border-radius:999px;font-size:.7rem;font-weight:800;white-space:nowrap}.done{color:var(--good);background:var(--goodsoft)}.config{color:var(--warn);background:var(--warnsoft)}.gap{color:var(--bad);background:var(--badsoft)}.small{color:var(--muted);font-size:.85rem}li{margin:7px 0}.codebar{display:flex;justify-content:space-between;align-items:center;padding:9px 11px;border-radius:8px 8px 0 0;background:#24333a;color:#d3dee2;font-size:.77rem}.copy{border:1px solid #61747d;border-radius:6px;background:transparent;color:white;padding:5px 9px;cursor:pointer;font:inherit;font-weight:700}pre{max-height:660px;margin:0;overflow:auto;padding:17px;border-radius:0 0 8px 8px;background:var(--code);color:#e6edf0;white-space:pre;font-size:.76rem;line-height:1.5}details{margin:14px 0;border:1px solid var(--line);border-radius:10px;background:var(--card)}summary{cursor:pointer;padding:15px 17px;font-weight:800}details>div{padding:0 17px 17px}.files code{display:block;margin:4px 0;color:var(--muted);overflow-wrap:anywhere}footer{padding:28px 0 50px;border-top:1px solid var(--line);color:var(--muted);font-size:.82rem}@media(max-width:820px){.card{grid-column:span 12}table{display:block;overflow:auto}}@media print{nav,.copy{display:none}body{background:white}.shell{width:100%}pre{max-height:none}}
+  </style>
+</head>
+<body>
+  <header class="hero"><div class="shell">
+    <div class="eyebrow">Security review packet · P0/P1 implementation</div>
+    <h1>Truenote control foundation and practical FedRAMP alignment plan</h1>
+    <p class="lede">What changed, what must be configured, what remains an organizational obligation, and the exact database DDL to give Replit Agent.</p>
+    <div class="meta"><span>Prepared July 13, 2026</span><span>Internal target: FedRAMP 20x Class C practices</span><span>DDL SHA-256: <code>44fd12ae4663552d518615ca7d8939d473b01126ceadaeb8be315a85902e3736</code></span></div>
+  </div></header>
+  <nav><div class="shell"><a href="#decision">Decision</a><a href="#defaults">Defaults</a><a href="#implemented">Implemented</a><a href="#gaps">Gaps</a><a href="#rollout">Rollout</a><a href="#replit">Replit</a><a href="#verify">Verify</a><a href="#ddl">DDL</a></div></nav>
+  <main class="shell">
+    <section id="decision">
+      <h2>Decision summary</h2>
+      <div class="callout"><strong>Good control foundation, not a certification claim.</strong>P0 and P1 application controls are implemented in this worktree. Do not describe Truenote as “FedRAMP compliant,” “FedRAMP-ready,” or “fully controlled ingestion.” Database migration, configuration, operational evidence, vendor assurance, infrastructure scope, and independent assessment remain incomplete.</div>
+      <p>FedRAMP describes Class C as the 20x class for common enterprise or important government services. Its 2026 rules require persistent evidence and independent verification, including annual assessment of all Key Security Indicators for Class C. This packet uses Class C as a conservative internal design target, not as a FedRAMP determination.</p>
+      <p class="small">Official sources: <a href="https://www.fedramp.gov/20x/">FedRAMP 20x</a>, <a href="https://www.fedramp.gov/2026/reference/20x/c/independent-verification-and-validation/">2026 Class C independent verification rules</a>, <a href="https://www.fedramp.gov/docs/20x/key-security-indicators/authorization-by-fedramp/">Authorization by FedRAMP KSIs</a>, and <a href="https://www.fedramp.gov/2026/providers/rev5/controls/identification-and-authentication/">2026 identification and authentication guidance</a>.</p>
+    </section>
+
+    <section id="defaults">
+      <h2>Recommended defaults used</h2>
+      <table><thead><tr><th>Decision</th><th>Default</th><th>Owner to confirm</th></tr></thead><tbody>
+        <tr><td>Assurance target</td><td>Internal alignment to FedRAMP 20x Class C practices</td><td>Security and leadership</td></tr>
+        <tr><td>Authentication</td><td>OIDC SSO with IdP MFA; local super-user break glass</td><td>IAM and Security</td></tr>
+        <tr><td>Approval</td><td>Managers upload; senior managers or super users approve; no self-approval</td><td>Content governance</td></tr>
+        <tr><td>Classification</td><td>Public, Internal, Confidential, Restricted</td><td>Data governance</td></tr>
+        <tr><td>Scanner</td><td>Fail closed through an organization-approved scanner API</td><td>Security architecture</td></tr>
+        <tr><td>Audit</td><td>Append-only hash chain plus signed SIEM webhook</td><td>Security operations</td></tr>
+        <tr><td>Retention</td><td>365 days; normal deletion becomes reversible retirement</td><td>Legal, records, Security</td></tr>
+        <tr><td>Rate limits</td><td>30 asks/user/minute; 300 asks/program/minute</td><td>Platform and FinOps</td></tr>
+      </tbody></table>
+      <div class="warning" style="margin-top:16px"><strong>Safe SSO rollout</strong>Keep <code>LOCAL_LOGIN_MODE=enabled</code> through the SSO smoke test. Change it to <code>break_glass</code> only after OIDC, MFA claim mapping, and emergency access are tested. The server does not enforce local lockout unless OIDC is fully configured.</div>
+    </section>
+
+    <section id="implemented">
+      <h2>Implemented P0/P1 controls</h2>
+      <div class="grid">
+        <article class="card"><p class="number">01</p><h3>Controlled lifecycle</h3><p>Nothing activates automatically. Uploads remain inactive through scan, parse, and review.</p></article>
+        <article class="card"><p class="number">02</p><h3>Fail-closed scanning</h3><p>File signatures, EICAR, malware, secrets, SSNs, payment cards, and prompt-injection patterns are checked.</p></article>
+        <article class="card"><p class="number">03</p><h3>DLP before providers</h3><p>Blocked sources quarantine before embedding. Sensitive ask input and model output are blocked.</p></article>
+        <article class="card"><p class="number">04</p><h3>Human approval</h3><p>Review includes provenance, parsed text, findings, and classification. Uploaders cannot self-approve.</p></article>
+        <article class="card"><p class="number">05</p><h3>Classification</h3><p>Server-owned clearance filters every retrieval and knowledge-base read path.</p></article>
+        <article class="card"><p class="number">06</p><h3>OIDC and MFA evidence</h3><p>PKCE, signed state, nonce, RS256, issuer, audience, authorized party, domain, MFA, and optional ACR checks.</p></article>
+        <article class="card"><p class="number">07</p><h3>Security audit</h3><p>Hash-chained ledger, mutation trigger, lifecycle triggers, request correlation, and signed SIEM export.</p></article>
+        <article class="card"><p class="number">08</p><h3>Retention and revocation</h3><p>Retire preserves evidence. Revoke removes retrieval and citations. Purge is retention-gated.</p></article>
+        <article class="card"><p class="number">09</p><h3>Build assurance</h3><p>Typecheck, tests, audit, SBOM, Gitleaks, Dependabot, and a CodeQL security-extended SARIF scan with 30-day evidence retention.</p></article>
+      </div>
+      <h3>Activation path</h3>
+      <div class="flow"><span>Submitted</span><b>→</b><span>Scanning</span><b>→</b><span>Parsing</span><b>→</b><span>Pending review</span><b>→</b><span>Active</span><b>→</b><span>Retired or revoked</span></div>
+      <table><thead><tr><th>Control</th><th>Status</th><th>Still required</th></tr></thead><tbody>
+        <tr><td>Provenance and approved sources</td><td><span class="tag done">Implemented</span></td><td>Validate seeded sources and legacy provenance.</td></tr>
+        <tr><td>Malware and file safety</td><td><span class="tag config">Needs config</span></td><td>Select scanner, configure HTTPS endpoint, test EICAR.</td></tr>
+        <tr><td>Approval and separation</td><td><span class="tag done">Implemented</span></td><td>Assign reviewers and procedure.</td></tr>
+        <tr><td>Classification enforcement</td><td><span class="tag done">Implemented</span></td><td>Approve clearances and periodic review.</td></tr>
+        <tr><td>SSO and MFA</td><td><span class="tag config">Needs config</span></td><td>IdP app, phishing-resistant MFA, claims, break-glass drill.</td></tr>
+        <tr><td>Audit and rate limits</td><td><span class="tag config">Needs DDL</span></td><td>Run DDL, restrict DB privileges, monitor.</td></tr>
+        <tr><td>SIEM</td><td><span class="tag config">Needs config</span></td><td>Endpoint, signing key, alerts, delivery SLO.</td></tr>
+        <tr><td>CI security</td><td><span class="tag config">Needs enablement</span></td><td>Protect main, require checks, set organization Gitleaks license, and enable GitHub Code Security when the repository is eligible.</td></tr>
+        <tr><td>FedRAMP certification</td><td><span class="tag gap">Not achieved</span></td><td>Scope, all rules, evidence, package, assessment, FedRAMP process.</td></tr>
+      </tbody></table>
+    </section>
+
+    <section id="gaps">
+      <h2>What remains lacking</h2>
+      <h3>P0 deployment blockers</h3>
+      <ul>
+        <li>Apply and verify DDL in non-production, then production through an approved change window.</li>
+        <li>Select an approved scanner and validate location, retention, subprocessors, incident terms, authentication, and uptime.</li>
+        <li>Configure IdP OIDC and phishing-resistant MFA. Verify <code>amr: ["mfa"]</code> or an approved ACR.</li>
+        <li>Configure signed SIEM delivery and alert on authentication, quarantine, activation, revocation, purge, limit, and exporter failures.</li>
+        <li>Review seeded sources, legacy documents, user clearances, and provisional 365-day retention.</li>
+        <li>Run typecheck, tests, integration, negative security, and staged smoke tests.</li>
+      </ul>
+      <h3>P1 organizational and infrastructure gaps</h3>
+      <ul>
+        <li>GitHub-integrated CodeQL alerts require an eligible organization plan with GitHub Code Security for this private repository. Until then, CI runs the security-extended suite, requires zero SARIF findings, and retains the SARIF evidence for 30 days.</li>
+        <li>Define Minimum Assessment Scope, service boundary, data flows, assets, identities, ports, and customer responsibilities.</li>
+        <li>Obtain assurance for Replit, Neon, storage, model routes, embeddings, Cohere, LandingAI, email, scanner, SIEM, and subprocessors.</li>
+        <li>Confirm data location, encryption, key ownership, backup, disaster recovery, vulnerability, incident, personnel, change, and SDLC controls.</li>
+        <li>Determine FIPS-validated cryptography requirements and collect module evidence.</li>
+        <li>Create persistent KSI measurements, evidence retention, quarterly review, incident communication, significant change, and authorization data sharing.</li>
+        <li>Engage a FedRAMP Recognized independent assessment service. Class C requires verification at least annually.</li>
+        <li>Create the Security Decision Record and certification package; own remediation findings.</li>
+      </ul>
+      <div class="warning"><strong>Hosting boundary warning</strong>Public Replit materials describe SOC 2, SSO, private deployments, RBAC, GCP-backed deployments, and shared responsibility. They do not by themselves establish that this Truenote boundary is eligible for Class C. Request current Trust Center evidence and written confirmation. See <a href="https://replit.com/security/">Replit Security</a> and <a href="https://docs.replit.com/references/security/shared-responsibility-model">Replit shared responsibility</a>.</div>
+      <h3>Known residual technical debt</h3>
+      <table><thead><tr><th>Gap</th><th>Next work</th></tr></thead><tbody>
+        <tr><td>The initial CodeQL scan produced 45 unsuppressed results, including 39 rate-limit model or hardening results.</td><td>Triage and resolve genuine gaps, document false positives through an approved review, add universal risk-tiered API quotas, and enable integrated GitHub alerts when the repository is eligible.</td></tr>
+        <tr><td>SIEM export is fire-and-forget.</td><td>Durable outbox, retries, dead-letter queue, exporter health alert.</td></tr>
+        <tr><td>Database audit is not external WORM.</td><td>Immutable external retention and restricted app DB privileges.</td></tr>
+        <tr><td>No clearance administration UI.</td><td>Reasoned, approved, expiring clearance workflow and review.</td></tr>
+        <tr><td>Source creation is not dual-approved.</td><td>Proposed/approved source states when policy requires separation.</td></tr>
+        <tr><td>Legacy content uses <code>legacy_accepted</code>.</td><td>Re-ingest or manually review, then eliminate exception.</td></tr>
+        <tr><td>No independent application assessment yet.</td><td>Code review, SAST/DAST, API auth test, AI red team, penetration test.</td></tr>
+        <tr><td>Browser policy is not complete.</td><td>Core headers and SameSite cookies are present; add a tested CSP and explicit CSRF token/origin defense.</td></tr>
+      </tbody></table>
+    </section>
+
+    <section id="rollout">
+      <h2>Practical rollout</h2>
+      <ol>
+        <li><strong>Approve decisions.</strong> Security, IAM, Legal/Records, data governance, and platform owners confirm defaults.</li>
+        <li><strong>Prepare non-production.</strong> Snapshot DB, inventory users/documents, configure test scanner and SIEM, keep local login enabled.</li>
+        <li><strong>Apply DDL.</strong> Give Replit Agent the prompt and exact SQL below. Save verification results.</li>
+        <li><strong>Deploy non-production code.</strong> Confirm missing controls fail closed.</li>
+        <li><strong>Run negative tests.</strong> Wrong signatures, EICAR, scanner outage, secrets/PII, prompt injection, self-approval, cross-program, over-classification, rate, revoke, purge, SIEM.</li>
+        <li><strong>Enable SSO safely.</strong> Test ordinary and privileged users plus failure cases, then switch local login to break glass.</li>
+        <li><strong>Review migrated data.</strong> Replace generic owners, approve clearances, review legacy active versions.</li>
+        <li><strong>Enable CI gates.</strong> Require checks and retain evidence.</li>
+        <li><strong>Production change.</strong> Snapshot, DDL, verify, secrets, deploy, smoke test, SIEM confirmation, release.</li>
+        <li><strong>Build persistent evidence.</strong> Track KSIs, access reviews, incidents, changes, vulnerabilities, recovery, vendors, exceptions.</li>
+      </ol>
+      <div class="warning"><strong>No automatic down migration.</strong>This migration backfills governance metadata and creates audit evidence. Dropping it after production writes can destroy evidence. Use snapshot restore only under an approved incident/change decision; prefer a forward fix.</div>
+    </section>
+
+    <section id="replit">
+      <h2>Replit Agent handoff</h2>
+      <p>Copy this prompt first. Paste the exact DDL from the last section when requested.</p>
+      <div class="codebar"><span>Replit Agent prompt</span><button class="copy" data-copy="replit-prompt">Copy</button></div>
+      <pre id="replit-prompt">Apply the approved Truenote P0/P1 security migration to the selected Replit PostgreSQL database.
+
+Guardrails:
+1. Confirm this is the intended non-production environment first. Report current_database(), current_user, and server version.
+2. Take or confirm a recoverable database snapshot before changing schema.
+3. Confirm pgcrypto digest(text,text) exists.
+4. Execute the SQL block in this packet exactly as written, including BEGIN and COMMIT. Do not rewrite it.
+5. If any statement fails, stop and report the exact statement and error. Do not deploy code.
+6. Do not edit lib/db/src/schema.ts. This migration intentionally uses reviewed raw DDL.
+7. Run every verification query in this packet after commit. Return raw results.
+8. Do not set OIDC, scanner, SIEM, retention override, or production secrets. Those need Security-approved values.
+9. Do not deploy or publish the application.</pre>
+      <h3>Production configuration</h3>
+      <table><thead><tr><th>Variable</th><th>Rule</th></tr></thead><tbody>
+        <tr><td><code>MALWARE_SCANNER_URL</code></td><td>Approved HTTPS endpoint; clean/infected JSON contract.</td></tr>
+        <tr><td><code>MALWARE_SCANNER_TOKEN</code> or <code>MALWARE_SCANNER_HMAC_KEY</code></td><td>Approved scanner authentication.</td></tr>
+        <tr><td><code>SIEM_WEBHOOK_URL</code> and signing key</td><td>Organization-controlled HTTPS receiver verifies HMAC.</td></tr>
+        <tr><td>OIDC issuer, client, secret, redirect, state secret</td><td>All set; state secret at least 32 characters.</td></tr>
+        <tr><td><code>OIDC_REQUIRE_MFA</code></td><td><code>true</code>; test IdP evidence.</td></tr>
+        <tr><td><code>LOCAL_LOGIN_MODE</code></td><td><code>enabled</code> until SSO passes, then <code>break_glass</code>.</td></tr>
+        <tr><td><code>MIN_PASSWORD_LENGTH</code></td><td>At least <code>15</code> for single-factor local and break-glass passwords; lower values fall back to 15.</td></tr>
+        <tr><td><code>ALLOW_RETENTION_OVERRIDE</code></td><td>Keep <code>false</code> without approved emergency/legal process.</td></tr>
+      </tbody></table>
+      <details><summary>Malware scanner contract</summary><div><p>HTTPS POST of raw bytes as <code>application/octet-stream</code>. Request headers carry digest, MIME, filename, and optional bearer/HMAC authentication.</p><div class="codebar"><span>Response</span></div><pre>{
+  "verdict": "clean",
+  "engine": "organization-approved-engine",
+  "scanId": "provider-receipt-id"
+}
+
+{
+  "verdict": "infected",
+  "engine": "organization-approved-engine",
+  "scanId": "provider-receipt-id",
+  "signature": "optional detection name"
+}</pre></div></details>
+    </section>
+
+    <section id="verify">
+      <h2>Post-DDL verification</h2>
+      <p>Expected: control objects non-null, <code>unsafe_active_versions=0</code>, required triggers/constraints present, <code>broken_hash_links=0</code>.</p>
+      <div class="codebar"><span>Verification SQL</span><button class="copy" data-copy="verification-sql">Copy</button></div>
+      <pre id="verification-sql">-- Environment and prerequisite
+SELECT current_database(), current_user, version();
+SELECT to_regprocedure('digest(text,text)') AS pgcrypto_digest;
+
+-- Control objects
+SELECT to_regclass('content_sources') AS content_sources,
+       to_regclass('security_events') AS security_events,
+       to_regclass('security_rate_limits') AS security_rate_limits;
+
+SELECT table_name, column_name, is_nullable, column_default
+FROM information_schema.columns
+WHERE (table_name = 'document_versions' AND column_name IN (
+  'lifecycle_state','classification','source_id','source_origin_uri',
+  'scan_status','scan_findings','approved_by','retention_until'
+))
+OR (table_name = 'users' AND column_name = 'max_classification')
+OR (table_name = 'sessions' AND column_name IN ('auth_method','auth_time'))
+ORDER BY table_name, ordinal_position;
+
+-- No unsafe active version may exist
+SELECT count(*) AS unsafe_active_versions
+FROM document_versions
+WHERE is_active = true
+  AND (
+    lifecycle_state &lt;&gt; 'active'
+    OR approved_at IS NULL
+    OR source_id IS NULL
+    OR scan_status NOT IN ('clean','legacy_accepted')
+  );
+
+-- Governance inventory
+SELECT lifecycle_state, scan_status, classification, count(*)
+FROM document_versions
+GROUP BY lifecycle_state, scan_status, classification
+ORDER BY lifecycle_state, scan_status, classification;
+
+SELECT role, max_classification, count(*)
+FROM users
+GROUP BY role, max_classification
+ORDER BY role, max_classification;
+
+SELECT program_id, name, owner_name, approved_at, approval_basis
+FROM content_sources
+ORDER BY program_id, name;
+
+-- Trigger and constraint evidence
+SELECT tgname, tgrelid::regclass AS table_name
+FROM pg_trigger
+WHERE NOT tgisinternal
+  AND tgname IN (
+    'security_events_append_only',
+    'document_versions_audit_insert',
+    'document_versions_audit_lifecycle',
+    'content_sources_audit_insert',
+    'content_sources_audit_update'
+  )
+ORDER BY tgname;
+
+SELECT conname, conrelid::regclass AS table_name
+FROM pg_constraint
+WHERE conname IN (
+  'document_versions_lifecycle_check',
+  'document_versions_classification_check',
+  'document_versions_scan_status_check',
+  'document_versions_active_control_check',
+  'document_versions_separation_check',
+  'documents_lifecycle_check',
+  'users_max_classification_check',
+  'sessions_auth_method_check'
+)
+ORDER BY conname;
+
+-- Durable deployment receipt. Run once in the intended environment.
+SELECT *
+FROM append_security_event(
+  'deployment.p0_p1_ddl_verified',
+  'success',
+  NULL, NULL, 'replit_agent',
+  NULL,
+  'database',
+  current_database(),
+  NULL, NULL,
+  jsonb_build_object('ddlSha256', '44fd12ae4663552d518615ca7d8939d473b01126ceadaeb8be315a85902e3736')
+);
+
+-- Hash-chain linkage check
+WITH ordered AS (
+  SELECT sequence, previous_hash,
+         lag(event_hash) OVER (ORDER BY sequence) AS expected_previous_hash
+  FROM security_events
+)
+SELECT count(*) AS broken_hash_links
+FROM ordered
+WHERE sequence &gt; (SELECT min(sequence) FROM security_events)
+  AND previous_hash IS DISTINCT FROM expected_previous_hash;</pre>
+      <h3>Application acceptance</h3>
+      <ul>
+        <li>Unavailable scanner quarantines, never activates.</li>
+        <li>Blocking source PII/secrets quarantine before embeddings.</li>
+        <li>Sensitive ask input returns 400 and is not query-logged.</li>
+        <li>Sensitive model output is refused and diagnostics are redacted.</li>
+        <li>Uploader cannot approve at API or DB layers.</li>
+        <li>Only clean, parsed, approved-source content activates.</li>
+        <li>Classification applies across ask, KB, citations, and highlights.</li>
+        <li>Revocation immediately removes retrieval and citation access.</li>
+        <li>Rate limits return 429 and Retry-After.</li>
+        <li>Security mutations produce correlated audit and valid SIEM signature.</li>
+        <li>OIDC rejects state, nonce, issuer, audience, authorized-party, endpoint, and MFA failures.</li>
+        <li>GitHub checks pass and branch protection requires them.</li>
+      </ul>
+      <div class="warning"><strong>Workspace verification status</strong>Runtime verification could not run here because dependencies, database, and service secrets are absent. Replit and CI must run typecheck, tests, DDL, OIDC, scanner, SIEM, storage, and provider integration checks before release.</div>
+    </section>
+
+    <section id="ddl">
+      <h2>Exact Replit-ready DDL</h2>
+      <p>Canonical file: <code>docs/security/p0-p1-security-controls.sql</code>. SHA-256: <code>44fd12ae4663552d518615ca7d8939d473b01126ceadaeb8be315a85902e3736</code>. The embedded copy must match before use.</p>
+      <div class="codebar"><span>PostgreSQL · 543 lines</span><button class="copy" data-copy="ddl-sql">Copy DDL</button></div>
+      <pre id="ddl-sql">-- Truenote P0/P1 security controls
+-- Target: Replit-managed PostgreSQL (Neon)
+-- Apply in a maintenance window BEFORE deploying the matching application code.
+-- Idempotent for repeated Replit Agent execution.
+
+BEGIN;
+
+-- Replit/Neon prerequisite used by the audit hash chain. The existing project
+-- already uses gen_random_uuid(); this check makes a missing pgcrypto digest
+-- fail with a clear message before any schema change is applied.
+DO $$
+BEGIN
+  IF to_regprocedure('digest(text,text)') IS NULL THEN
+    RAISE EXCEPTION 'pgcrypto digest(text,text) is required before P0/P1 DDL';
+  END IF;
+END $$;
+
+-- 1. Approved content-source registry.
+CREATE TABLE IF NOT EXISTS content_sources (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  program_id uuid NOT NULL REFERENCES programs(id) ON DELETE RESTRICT,
+  name text NOT NULL,
+  origin_type text NOT NULL CHECK (
+    origin_type IN ('manual_upload', 'sharepoint', 'confluence', 's3', 'other')
+  ),
+  base_uri text,
+  owner_name text NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  created_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  approved_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  approved_at timestamptz,
+  approval_basis text,
+  retired_at timestamptz,
+  CONSTRAINT content_sources_approval_check CHECK (
+    (is_active = false) OR (approved_at IS NOT NULL AND owner_name &lt;&gt; '')
+  )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS content_sources_program_name_uidx
+  ON content_sources (program_id, lower(name));
+CREATE INDEX IF NOT EXISTS content_sources_program_active_idx
+  ON content_sources (program_id, is_active, approved_at);
+
+-- Bootstrap one controlled manual source plus one explicit legacy source per
+-- existing program. Security/Data Steward must review owner and approval basis.
+INSERT INTO content_sources (
+  program_id, name, origin_type, owner_name, approved_at, approval_basis
+)
+SELECT
+  p.id,
+  'Manual administrator upload',
+  'manual_upload',
+  'Program data steward',
+  now(),
+  'P0/P1 bootstrap default; owner and authority require Security review'
+FROM programs p
+ON CONFLICT DO NOTHING;
+
+INSERT INTO content_sources (
+  program_id, name, origin_type, owner_name, approved_at, approval_basis
+)
+SELECT
+  p.id,
+  'Legacy migration source',
+  'other',
+  'Legacy owner review required',
+  now(),
+  'Existing content migrated into controlled lifecycle; formal provenance review required'
+FROM programs p
+ON CONFLICT DO NOTHING;
+
+-- 2. Document and version lifecycle, provenance, classification, review,
+-- scanner evidence, revocation, and retention.
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS lifecycle_state text NOT NULL DEFAULT 'active',
+  ADD COLUMN IF NOT EXISTS retired_at timestamptz,
+  ADD COLUMN IF NOT EXISTS retired_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS retirement_reason text;
+
+ALTER TABLE document_versions
+  ADD COLUMN IF NOT EXISTS lifecycle_state text NOT NULL DEFAULT 'submitted',
+  ADD COLUMN IF NOT EXISTS classification text NOT NULL DEFAULT 'internal',
+  ADD COLUMN IF NOT EXISTS source_id uuid REFERENCES content_sources(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS source_origin_uri text,
+  ADD COLUMN IF NOT EXISTS source_owner text,
+  ADD COLUMN IF NOT EXISTS original_file_name text,
+  ADD COLUMN IF NOT EXISTS scan_status text NOT NULL DEFAULT 'pending',
+  ADD COLUMN IF NOT EXISTS scan_engine text,
+  ADD COLUMN IF NOT EXISTS scan_id text,
+  ADD COLUMN IF NOT EXISTS scan_findings jsonb NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS scan_completed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS approved_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS approved_at timestamptz,
+  ADD COLUMN IF NOT EXISTS approval_notes text,
+  ADD COLUMN IF NOT EXISTS activated_at timestamptz,
+  ADD COLUMN IF NOT EXISTS retired_at timestamptz,
+  ADD COLUMN IF NOT EXISTS rejected_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS rejected_at timestamptz,
+  ADD COLUMN IF NOT EXISTS rejection_reason text,
+  ADD COLUMN IF NOT EXISTS revoked_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS revoked_at timestamptz,
+  ADD COLUMN IF NOT EXISTS revocation_reason text,
+  ADD COLUMN IF NOT EXISTS retention_until timestamptz NOT NULL DEFAULT (now() + interval '365 days');
+
+-- Backfill every pre-control version. `legacy_accepted` is deliberately
+-- distinguishable from a real clean scanner verdict.
+UPDATE document_versions dv
+SET
+  source_id = COALESCE(
+    dv.source_id,
+    (
+      SELECT cs.id
+      FROM content_sources cs
+      JOIN documents d ON d.program_id = cs.program_id
+      WHERE d.id = dv.document_id
+        AND cs.name = 'Legacy migration source'
+      LIMIT 1
+    )
+  ),
+  source_origin_uri = COALESCE(
+    dv.source_origin_uri,
+    'legacy-object-storage://' || COALESCE(dv.source_url, dv.id::text)
+  ),
+  source_owner = COALESCE(dv.source_owner, 'Legacy owner review required'),
+  original_file_name = COALESCE(
+    dv.original_file_name,
+    nullif(regexp_replace(COALESCE(dv.source_url, ''), '^.*/', ''), ''),
+    'legacy-document'
+  ),
+  lifecycle_state = CASE WHEN dv.is_active THEN 'active' ELSE 'retired' END,
+  scan_status = CASE
+    WHEN dv.scan_status IN ('clean', 'infected', 'unavailable', 'error') THEN dv.scan_status
+    ELSE 'legacy_accepted'
+  END,
+  scan_completed_at = COALESCE(dv.scan_completed_at, dv.uploaded_at, now()),
+  approved_at = CASE
+    WHEN dv.is_active THEN COALESCE(dv.approved_at, dv.uploaded_at, now())
+    ELSE dv.approved_at
+  END,
+  approval_notes = CASE
+    WHEN dv.is_active THEN COALESCE(
+      dv.approval_notes,
+      'Legacy active content backfilled during P0/P1 rollout; provenance and scan review required'
+    )
+    ELSE dv.approval_notes
+  END,
+  activated_at = CASE
+    WHEN dv.is_active THEN COALESCE(dv.activated_at, dv.uploaded_at, now())
+    ELSE dv.activated_at
+  END,
+  retired_at = CASE
+    WHEN NOT dv.is_active THEN COALESCE(dv.retired_at, now())
+    ELSE dv.retired_at
+  END
+WHERE
+  dv.source_id IS NULL
+  OR dv.source_origin_uri IS NULL
+  OR dv.source_owner IS NULL
+  OR dv.original_file_name IS NULL;
+
+ALTER TABLE document_versions
+  ALTER COLUMN source_id SET NOT NULL,
+  ALTER COLUMN source_origin_uri SET NOT NULL,
+  ALTER COLUMN source_owner SET NOT NULL,
+  ALTER COLUMN original_file_name SET NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'document_versions_lifecycle_check'
+  ) THEN
+    ALTER TABLE document_versions ADD CONSTRAINT document_versions_lifecycle_check CHECK (
+      lifecycle_state IN (
+        'submitted', 'scanning', 'parsing', 'pending_review', 'active',
+        'retired', 'quarantined', 'rejected', 'revoked', 'failed'
+      )
+    );
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'document_versions_classification_check'
+  ) THEN
+    ALTER TABLE document_versions ADD CONSTRAINT document_versions_classification_check CHECK (
+      classification IN ('public', 'internal', 'confidential', 'restricted')
+    );
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'document_versions_scan_status_check'
+  ) THEN
+    ALTER TABLE document_versions ADD CONSTRAINT document_versions_scan_status_check CHECK (
+      scan_status IN (
+        'pending', 'running', 'clean', 'infected', 'unavailable',
+        'error', 'legacy_accepted'
+      )
+    );
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'document_versions_active_control_check'
+  ) THEN
+    ALTER TABLE document_versions ADD CONSTRAINT document_versions_active_control_check CHECK (
+      is_active = false OR (
+        lifecycle_state = 'active'
+        AND approved_at IS NOT NULL
+        AND source_id IS NOT NULL
+        AND scan_status IN ('clean', 'legacy_accepted')
+      )
+    );
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'document_versions_separation_check'
+  ) THEN
+    ALTER TABLE document_versions ADD CONSTRAINT document_versions_separation_check CHECK (
+      approved_by IS NULL OR uploaded_by IS NULL OR approved_by::text &lt;&gt; uploaded_by
+    );
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'documents_lifecycle_check'
+  ) THEN
+    ALTER TABLE documents ADD CONSTRAINT documents_lifecycle_check CHECK (
+      lifecycle_state IN ('active', 'retired')
+    );
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS document_versions_review_queue_idx
+  ON document_versions (lifecycle_state, uploaded_at DESC)
+  WHERE lifecycle_state IN ('pending_review', 'quarantined');
+CREATE INDEX IF NOT EXISTS document_versions_classification_active_idx
+  ON document_versions (classification, document_id)
+  WHERE is_active = true AND lifecycle_state = 'active';
+CREATE INDEX IF NOT EXISTS document_versions_source_idx
+  ON document_versions (source_id);
+CREATE INDEX IF NOT EXISTS document_versions_retention_idx
+  ON document_versions (retention_until)
+  WHERE lifecycle_state IN ('retired', 'rejected', 'revoked');
+
+-- 3. User clearance and session authentication evidence.
+CREATE TABLE IF NOT EXISTS security_control_metadata (
+  key text PRIMARY KEY,
+  applied_at timestamptz NOT NULL DEFAULT now(),
+  details jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS max_classification text NOT NULL DEFAULT 'internal';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM security_control_metadata WHERE key = 'p0_p1_clearance_bootstrap'
+  ) THEN
+    UPDATE users
+    SET max_classification = CASE role::text
+      WHEN 'super_user' THEN 'restricted'
+      WHEN 'senior_manager' THEN 'restricted'
+      WHEN 'manager' THEN 'confidential'
+      ELSE 'internal'
+    END;
+    INSERT INTO security_control_metadata (key, details)
+    VALUES (
+      'p0_p1_clearance_bootstrap',
+      '{"super_user":"restricted","senior_manager":"restricted","manager":"confidential","csr":"internal"}'::jsonb
+    );
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'users_max_classification_check'
+  ) THEN
+    ALTER TABLE users ADD CONSTRAINT users_max_classification_check CHECK (
+      max_classification IN ('public', 'internal', 'confidential', 'restricted')
+    );
+  END IF;
+END $$;
+
+ALTER TABLE sessions
+  ADD COLUMN IF NOT EXISTS auth_method text NOT NULL DEFAULT 'local',
+  ADD COLUMN IF NOT EXISTS auth_time timestamptz NOT NULL DEFAULT now();
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sessions_auth_method_check'
+  ) THEN
+    ALTER TABLE sessions ADD CONSTRAINT sessions_auth_method_check CHECK (
+      auth_method IN ('local', 'oidc')
+    );
+  END IF;
+END $$;
+
+-- 4. Distributed fixed-window rate-limit counters.
+CREATE TABLE IF NOT EXISTS security_rate_limits (
+  scope text NOT NULL,
+  subject text NOT NULL,
+  window_start timestamptz NOT NULL,
+  request_count integer NOT NULL CHECK (request_count &gt; 0),
+  expires_at timestamptz NOT NULL,
+  PRIMARY KEY (scope, subject, window_start)
+);
+
+CREATE INDEX IF NOT EXISTS security_rate_limits_expiry_idx
+  ON security_rate_limits (expires_at);
+
+-- 5. Append-only, hash-chained security events.
+CREATE TABLE IF NOT EXISTS security_events (
+  sequence bigint GENERATED ALWAYS AS IDENTITY UNIQUE,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  occurred_at timestamptz NOT NULL DEFAULT now(),
+  action text NOT NULL,
+  outcome text NOT NULL CHECK (outcome IN ('success', 'denied', 'failure')),
+  actor_user_id uuid,
+  actor_email text,
+  actor_role text,
+  program_id uuid,
+  resource_type text,
+  resource_id text,
+  request_id text,
+  source_ip text,
+  details jsonb NOT NULL DEFAULT '{}'::jsonb,
+  previous_hash text,
+  event_hash text NOT NULL UNIQUE
+);
+
+CREATE INDEX IF NOT EXISTS security_events_occurred_idx
+  ON security_events (occurred_at DESC);
+CREATE INDEX IF NOT EXISTS security_events_program_occurred_idx
+  ON security_events (program_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS security_events_action_occurred_idx
+  ON security_events (action, occurred_at DESC);
+
+CREATE OR REPLACE FUNCTION append_security_event(
+  p_action text,
+  p_outcome text,
+  p_actor_user_id uuid,
+  p_actor_email text,
+  p_actor_role text,
+  p_program_id uuid,
+  p_resource_type text,
+  p_resource_id text,
+  p_request_id text,
+  p_source_ip text,
+  p_details jsonb
+)
+RETURNS TABLE(id uuid, occurred_at timestamptz, event_hash text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_catalog
+AS $$
+DECLARE
+  v_id uuid := gen_random_uuid();
+  v_occurred_at timestamptz := clock_timestamp();
+  v_previous_hash text;
+  v_event_hash text;
+BEGIN
+  IF p_action IS NULL OR p_action = '' THEN
+    RAISE EXCEPTION 'security event action is required';
+  END IF;
+  IF p_outcome NOT IN ('success', 'denied', 'failure') THEN
+    RAISE EXCEPTION 'security event outcome is invalid';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtext('truenote.security_events.hash_chain'));
+  SELECT se.event_hash
+  INTO v_previous_hash
+  FROM security_events se
+  ORDER BY se.sequence DESC
+  LIMIT 1;
+
+  v_event_hash := encode(
+    digest(
+      concat_ws(
+        '|',
+        COALESCE(v_previous_hash, ''),
+        v_id::text,
+        v_occurred_at::text,
+        p_action,
+        p_outcome,
+        COALESCE(p_actor_user_id::text, ''),
+        COALESCE(p_actor_email, ''),
+        COALESCE(p_actor_role, ''),
+        COALESCE(p_program_id::text, ''),
+        COALESCE(p_resource_type, ''),
+        COALESCE(p_resource_id, ''),
+        COALESCE(p_request_id, ''),
+        COALESCE(p_source_ip, ''),
+        COALESCE(p_details, '{}'::jsonb)::text
+      ),
+      'sha256'
+    ),
+    'hex'
+  );
+
+  INSERT INTO security_events (
+    id, occurred_at, action, outcome, actor_user_id, actor_email, actor_role,
+    program_id, resource_type, resource_id, request_id, source_ip, details,
+    previous_hash, event_hash
+  ) VALUES (
+    v_id, v_occurred_at, p_action, p_outcome, p_actor_user_id, p_actor_email,
+    p_actor_role, p_program_id, p_resource_type, p_resource_id, p_request_id,
+    p_source_ip, COALESCE(p_details, '{}'::jsonb), v_previous_hash, v_event_hash
+  );
+
+  RETURN QUERY SELECT v_id, v_occurred_at, v_event_hash;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION block_security_event_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RAISE EXCEPTION 'security_events is append-only';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS security_events_append_only ON security_events;
+CREATE TRIGGER security_events_append_only
+BEFORE UPDATE OR DELETE ON security_events
+FOR EACH ROW EXECUTE FUNCTION block_security_event_mutation();
+
+-- Transactional audit for every document-version lifecycle transition.
+CREATE OR REPLACE FUNCTION audit_document_version_lifecycle()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_catalog
+AS $$
+DECLARE
+  v_program_id uuid;
+  v_actor_id uuid;
+  v_actor_email text;
+  v_actor_role text;
+  v_actor_text text;
+  v_old_state text;
+BEGIN
+  SELECT d.program_id INTO v_program_id
+  FROM documents d
+  WHERE d.id = NEW.document_id;
+
+  v_old_state := CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD.lifecycle_state END;
+  v_actor_text := CASE NEW.lifecycle_state
+    WHEN 'active' THEN NEW.approved_by::text
+    WHEN 'rejected' THEN NEW.rejected_by::text
+    WHEN 'revoked' THEN NEW.revoked_by::text
+    ELSE NEW.uploaded_by
+  END;
+  IF v_actor_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+    v_actor_id := v_actor_text::uuid;
+    SELECT u.email, u.role::text INTO v_actor_email, v_actor_role
+    FROM users u WHERE u.id = v_actor_id;
+  END IF;
+
+  PERFORM append_security_event(
+    'document.lifecycle.' || NEW.lifecycle_state,
+    'success',
+    v_actor_id,
+    v_actor_email,
+    v_actor_role,
+    v_program_id,
+    'document_version',
+    NEW.id::text,
+    NULL,
+    NULL,
+    jsonb_build_object(
+      'documentId', NEW.document_id,
+      'versionNumber', NEW.version_number,
+      'previousState', v_old_state,
+      'newState', NEW.lifecycle_state,
+      'classification', NEW.classification,
+      'scanStatus', NEW.scan_status,
+      'isActive', NEW.is_active
+    )
+  );
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS document_versions_audit_insert ON document_versions;
+CREATE TRIGGER document_versions_audit_insert
+AFTER INSERT ON document_versions
+FOR EACH ROW EXECUTE FUNCTION audit_document_version_lifecycle();
+
+DROP TRIGGER IF EXISTS document_versions_audit_lifecycle ON document_versions;
+CREATE TRIGGER document_versions_audit_lifecycle
+AFTER UPDATE OF lifecycle_state ON document_versions
+FOR EACH ROW
+WHEN (OLD.lifecycle_state IS DISTINCT FROM NEW.lifecycle_state)
+EXECUTE FUNCTION audit_document_version_lifecycle();
+
+-- Transactional audit for source-registry creation/retirement.
+CREATE OR REPLACE FUNCTION audit_content_source_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_catalog
+AS $$
+DECLARE
+  v_actor_id uuid;
+  v_actor_email text;
+  v_actor_role text;
+BEGIN
+  v_actor_id := COALESCE(NEW.approved_by, NEW.created_by);
+  SELECT u.email, u.role::text INTO v_actor_email, v_actor_role
+  FROM users u WHERE u.id = v_actor_id;
+  PERFORM append_security_event(
+    CASE WHEN TG_OP = 'INSERT' THEN 'content_source.created' ELSE 'content_source.changed' END,
+    'success',
+    v_actor_id,
+    v_actor_email,
+    v_actor_role,
+    NEW.program_id,
+    'content_source',
+    NEW.id::text,
+    NULL,
+    NULL,
+    jsonb_build_object(
+      'name', NEW.name,
+      'originType', NEW.origin_type,
+      'ownerName', NEW.owner_name,
+      'isActive', NEW.is_active,
+      'approvedAt', NEW.approved_at
+    )
+  );
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS content_sources_audit_insert ON content_sources;
+CREATE TRIGGER content_sources_audit_insert
+AFTER INSERT ON content_sources
+FOR EACH ROW EXECUTE FUNCTION audit_content_source_change();
+
+DROP TRIGGER IF EXISTS content_sources_audit_update ON content_sources;
+CREATE TRIGGER content_sources_audit_update
+AFTER UPDATE ON content_sources
+FOR EACH ROW EXECUTE FUNCTION audit_content_source_change();
+
+COMMIT;
+
+-- Optional recurring cleanup (safe to schedule daily):
+-- DELETE FROM security_rate_limits WHERE expires_at &lt; now();
+</pre>
+    </section>
+
+    <section><h2>Evidence map</h2><div class="grid files">
+      <article class="card"><h3>Database and lifecycle</h3><code>docs/security/p0-p1-security-controls.sql</code><code>artifacts/api-server/src/routes/documents.ts</code><code>artifacts/api-server/src/lib/ingestion/run.ts</code></article>
+      <article class="card"><h3>Identity and access</h3><code>artifacts/api-server/src/lib/auth/oidc.ts</code><code>artifacts/api-server/src/routes/oidc.ts</code><code>artifacts/api-server/src/lib/security/classification.ts</code></article>
+      <article class="card"><h3>AI and data safety</h3><code>artifacts/api-server/src/lib/security/content-scan.ts</code><code>artifacts/api-server/src/lib/generation/answer.ts</code><code>artifacts/api-server/src/lib/retrieval/query.ts</code></article>
+      <article class="card"><h3>Audit and abuse</h3><code>artifacts/api-server/src/lib/security/audit.ts</code><code>artifacts/api-server/src/middleware/security-audit.ts</code><code>artifacts/api-server/src/lib/security/distributed-rate-limit.ts</code></article>
+      <article class="card"><h3>Administrator UX</h3><code>artifacts/rag-app/src/components/admin/UploadForm.tsx</code><code>artifacts/rag-app/src/components/admin/DocumentList.tsx</code><code>artifacts/rag-app/src/components/admin/PreviewPanel.tsx</code></article>
+      <article class="card"><h3>Supply chain</h3><code>.github/workflows/security.yml</code><code>.github/dependabot.yml</code><code>.env.example</code></article>
+    </div></section>
+  </main>
+  <footer><div class="shell">Internal review artifact. Not a certification, authorization, legal opinion, or vendor assurance statement.</div></footer>
+  <script>document.querySelectorAll('[data-copy]').forEach(button=>button.addEventListener('click',async()=>{const target=document.getElementById(button.dataset.copy);if(!target)return;await navigator.clipboard.writeText(target.textContent||'');const old=button.textContent;button.textContent='Copied';setTimeout(()=>button.textContent=old,1400)}));</script>
+</body>
+</html>

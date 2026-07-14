@@ -19,8 +19,9 @@ describe("parseCitationSourceIndex", () => {
 
 describe("canServeKbVersion", () => {
   it("keeps current versions readable but gates inactive history on a receipt", () => {
-    expect(canServeKbVersion(true, false)).toBe(true);
-    expect(canServeKbVersion(false, true)).toBe(true);
-    expect(canServeKbVersion(false, false)).toBe(false);
+    expect(canServeKbVersion(true, false, "active")).toBe(true);
+    expect(canServeKbVersion(false, true, "retired")).toBe(true);
+    expect(canServeKbVersion(false, false, "retired")).toBe(false);
+    expect(canServeKbVersion(false, true, "revoked")).toBe(false);
   });
 });

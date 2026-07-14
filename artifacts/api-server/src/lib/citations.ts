@@ -376,6 +376,12 @@ export async function loadAuthorizedCitationReceipt(input: {
 interface VersionActivityRow {
   id: string;
   is_active: boolean;
+  lifecycle_state: string;
+}
+
+export interface VersionActivity {
+  isActive: boolean;
+  lifecycleState: string;
 }
 
 /**
@@ -392,17 +398,22 @@ interface VersionActivityRow {
  */
 export async function loadVersionActivity(
   versionIds: string[]
-): Promise<Map<string, boolean> | null> {
+): Promise<Map<string, VersionActivity> | null> {
   const unique = Array.from(new Set(versionIds));
-  const out = new Map<string, boolean>();
+  const out = new Map<string, VersionActivity>();
   if (unique.length === 0) return out;
   try {
     const ids = sql.join(unique.map((id) => sql`${id}::uuid`), sql`, `);
     const result = await db.execute(sql`
-      SELECT id::text, is_active FROM document_versions WHERE id IN (${ids})
+      SELECT id::text, is_active, lifecycle_state
+      FROM document_versions
+      WHERE id IN (${ids})
     `);
     for (const row of result.rows as unknown as VersionActivityRow[]) {
-      out.set(row.id, row.is_active === true);
+      out.set(row.id, {
+        isActive: row.is_active === true,
+        lifecycleState: row.lifecycle_state
+      });
     }
     return out;
   } catch (error) {
@@ -429,7 +440,7 @@ export async function loadVersionActivity(
  */
 export function applyVersionActivity(
   sources: LinkedSource[],
-  activity: Map<string, boolean> | null
+  activity: Map<string, VersionActivity> | null
 ): LinkedSource[] {
   if (activity === null) return sources;
   const out: LinkedSource[] = [];
@@ -440,9 +451,12 @@ export function applyVersionActivity(
       continue;
     }
     if (!activity.has(versionId)) continue; // deleted → drop
-    out.push(
-      activity.get(versionId) === true ? source : { ...source, superseded: true }
-    );
+    const state = activity.get(versionId);
+    if (!state) continue;
+    if (["revoked", "rejected", "quarantined", "failed"].includes(state.lifecycleState)) {
+      continue;
+    }
+    out.push(state.isActive ? source : { ...source, superseded: true });
   }
   return out;
 }

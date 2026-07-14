@@ -5,6 +5,7 @@ import {
   toPublicDemoAccounts,
   type PublicDemoAccount
 } from "../lib/auth/demo-accounts.js";
+import { getOidcConfig, type LocalLoginMode } from "../lib/auth/oidc.js";
 
 export const configRouter = Router();
 
@@ -29,6 +30,8 @@ export interface AppConfig {
    * Exposing the boolean just makes the UX honest.
    */
   emailResetAvailable: boolean;
+  oidcEnabled: boolean;
+  localLoginMode: LocalLoginMode;
   /**
    * Present ONLY when DEMO_LOGIN_ACCOUNTS is set (demo deployments).
    * This is the one sanctioned exception to "strictly non-secret":
@@ -57,7 +60,9 @@ function isEmailResetAvailable(): boolean {
 configRouter.get("/", (_req, res) => {
   const payload: AppConfig = {
     minPasswordLength: getMinPasswordLength(),
-    emailResetAvailable: isEmailResetAvailable()
+    emailResetAvailable: isEmailResetAvailable(),
+    oidcEnabled: getOidcConfig().enabled,
+    localLoginMode: getOidcConfig().localLoginMode
   };
   const demoAccounts = getDemoAccounts();
   if (demoAccounts) {

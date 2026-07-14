@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne, or } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, withPgAdvisoryLock } from "../db-client.js";
 import { getDeadlineConfig } from "../deadlines.js";
 import { chunks, documents, documentVersions, type ChunkMetadata } from "@workspace/db/schema";
@@ -11,6 +11,13 @@ import { getObjectStorage } from "../storage/object-storage.js";
 import { buildContextHeader, prependContextHeader } from "./contextual.js";
 import { findCachedParsedMarkdown } from "./dedupe.js";
 import { OpenAIEmbedder, type Embedder } from "./embedder.js";
+import {
+  hasBlockingFindings,
+  scanForMalware,
+  scanTextForSensitiveContent,
+  validateFileSignature,
+  type SecurityFinding
+} from "../security/content-scan.js";
 
 export interface RunIngestionInput {
   documentVersionId: string;
@@ -43,6 +50,7 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
  * Ingestion pipeline (one document version):
  *
  *   parse_status: pending → parsing → ready | failed
+ *   lifecycle: submitted → scanning → pending_review → active (human approval)
  *
  *   1. mark `parsing`
  *   2. fetch file from object storage
@@ -56,8 +64,8 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
  *   7. chunk via the structural chunker (target 500 tokens)
  *   8. embed all chunks (batched 100/req)
  *   9. insert chunks rows with denormalized program_id
- *  10. activate version: set is_active=true, deactivate prior active versions
- *      of the same document_id, set documents.current_version_id
+ *  10. leave version inactive in `pending_review`; a different authorized
+ *      reviewer activates it through the approval endpoint
  *
  * On any error, parse_status is set to "failed" and the error rethrown.
  */
@@ -102,20 +110,18 @@ async function runClaimedIngestion(
   // versions are immutable audit/citation evidence;
   // re-chunking them goes through scripts/reingest.ts, which never overwrites
   // parsed_markdown.
-  const claimed = await db
-    .update(documentVersions)
-    .set({ parseStatus: "parsing" })
-    .where(
-      and(
-        eq(documentVersions.id, versionId),
-        or(
-          isNull(documentVersions.parseStatus),
-          ne(documentVersions.parseStatus, "ready")
-        )
-      )
-    )
-    .returning({ id: documentVersions.id });
-  if (claimed.length === 0) {
+  const claimed = await db.execute(sql`
+    UPDATE document_versions
+    SET parse_status = 'parsing',
+        lifecycle_state = 'scanning',
+        scan_status = 'running',
+        scan_findings = '[]'::jsonb
+    WHERE id = ${versionId}::uuid
+      AND parse_status IS DISTINCT FROM 'ready'
+      AND lifecycle_state IN ('submitted', 'scanning', 'quarantined', 'failed')
+    RETURNING id
+  `);
+  if (claimed.rows.length === 0) {
     console.log(
       `[ingestion] version ${versionId} is not claimable; ` +
         "treating as soft-success (deleted or already ready)."
@@ -124,19 +130,29 @@ async function runClaimedIngestion(
   }
 
   try {
-    const versionRows = await db
-      .select()
-      .from(documentVersions)
-      .where(eq(documentVersions.id, versionId))
-      .limit(1);
-    const version = versionRows[0];
+    interface ControlledVersionRow {
+      id: string;
+      document_id: string | null;
+      source_url: string | null;
+      mime_type: string | null;
+      file_sha256: string | null;
+      original_file_name: string | null;
+    }
+    const versionResult = await db.execute(sql`
+      SELECT id::text, document_id::text, source_url, mime_type, file_sha256,
+             original_file_name
+      FROM document_versions
+      WHERE id = ${versionId}::uuid
+      LIMIT 1
+    `);
+    const version = versionResult.rows[0] as unknown as ControlledVersionRow | undefined;
     if (!version) throw new Error(`Document version not found: ${versionId}`);
     // Hoisted into a const so the non-null narrowing survives into the
     // transaction closure below — TS drops property narrowing inside
     // nested functions.
-    const documentId = version.documentId;
+    const documentId = version.document_id;
     if (!documentId) throw new Error(`Version ${versionId} has no document_id`);
-    if (!version.sourceUrl) throw new Error(`Version ${versionId} has no source_url`);
+    if (!version.source_url) throw new Error(`Version ${versionId} has no source_url`);
 
     const documentRows = await db
       .select()
@@ -151,19 +167,64 @@ async function runClaimedIngestion(
 
     // 2. Fetch raw bytes.
     const storage = getObjectStorage();
-    const fileBuffer = await storage.get(version.sourceUrl);
+    const fileBuffer = await storage.get(version.source_url);
 
     // 3. SHA-256 (compute if not stored on upload).
-    const fileSha256 = version.fileSha256 ?? sha256Hex(fileBuffer);
-    if (!version.fileSha256) {
+    const fileSha256 = version.file_sha256 ?? sha256Hex(fileBuffer);
+    if (!version.file_sha256) {
       await db
         .update(documentVersions)
         .set({ fileSha256 })
         .where(eq(documentVersions.id, versionId));
     }
 
+    // File validation + organization-approved malware scanning happen before
+    // any third-party parser receives bytes. Scanner absence is a quarantine,
+    // never an implicit clean verdict.
+    const mimeType = (version.mime_type ?? "application/pdf").toLowerCase();
+    const originalFileName = version.original_file_name ?? "document";
+    const boundaryFindings = validateFileSignature(fileBuffer, mimeType);
+    const malware = await scanForMalware({
+      buffer: fileBuffer,
+      sha256: fileSha256,
+      mimeType,
+      originalFileName
+    });
+    const preParseFindings: SecurityFinding[] = [
+      ...boundaryFindings,
+      ...malware.findings
+    ];
+    if (malware.status !== "clean" || hasBlockingFindings(boundaryFindings)) {
+      await db.execute(sql`
+        UPDATE document_versions
+        SET parse_status = 'failed',
+            lifecycle_state = 'quarantined',
+            scan_status = ${malware.status},
+            scan_engine = ${malware.engine},
+            scan_id = ${malware.scanId},
+            scan_findings = ${JSON.stringify(preParseFindings)}::jsonb,
+            scan_completed_at = now(),
+            is_active = false
+        WHERE id = ${versionId}::uuid
+      `);
+      console.warn(
+        `[ingestion] version ${versionId} quarantined: scanner=${malware.status}, ` +
+          `findings=${preParseFindings.length}`
+      );
+      return;
+    }
+    await db.execute(sql`
+      UPDATE document_versions
+      SET scan_status = 'clean',
+          scan_engine = ${malware.engine},
+          scan_id = ${malware.scanId},
+          scan_findings = ${JSON.stringify(preParseFindings)}::jsonb,
+          scan_completed_at = now(),
+          lifecycle_state = 'parsing'
+      WHERE id = ${versionId}::uuid
+    `);
+
     // 4. Dedupe + 5. Parse.
-    const mimeType = (version.mimeType ?? "application/pdf").toLowerCase();
     let parsedMarkdown: string | null = null;
 
     const cached = await findCachedParsedMarkdown(fileSha256, versionId);
@@ -189,6 +250,24 @@ async function runClaimedIngestion(
       .update(documentVersions)
       .set({ parsedMarkdown })
       .where(eq(documentVersions.id, versionId));
+
+    const contentFindings = scanTextForSensitiveContent(parsedMarkdown);
+    const allFindings = [...preParseFindings, ...contentFindings];
+    if (hasBlockingFindings(contentFindings)) {
+      await db.execute(sql`
+        UPDATE document_versions
+        SET parse_status = 'ready',
+            lifecycle_state = 'quarantined',
+            scan_findings = ${JSON.stringify(allFindings)}::jsonb,
+            is_active = false
+        WHERE id = ${versionId}::uuid
+      `);
+      console.warn(
+        `[ingestion] version ${versionId} quarantined before embedding: ` +
+          `blocking content findings=${contentFindings.filter((finding) => finding.blocking).length}`
+      );
+      return;
+    }
 
     // 7. Chunk, then prepend a contextual header ([Doc Title > Heading >
     //    Subheading]) to every chunk. The header lands in the stored content
@@ -236,52 +315,38 @@ async function runClaimedIngestion(
         metadata
       };
     });
-    // 9–10. Delete-then-insert chunks AND activate, all atomically. The
+    // 9–10. Delete-then-insert chunks AND move to review, all atomically. The
     // single transaction prevents three known footguns:
-    //   (a) a window where the prior active version has been deactivated
-    //       but the new one hasn't been activated yet — retrieval finds zero
-    //       candidates and spuriously refuses;
-    //   (b) chunks committed for a version that never becomes active because
-    //       a later step failed — leaving orphan rows that count toward
-    //       reranker candidates but can never be selected via the active
-    //       filter;
-    //   (c) a retry doubling the chunks: if a previous run of this job
+    //   (a) a retry doubling the chunks: if a previous run of this job
     //       committed the transaction but the worker died before pg-boss
     //       recorded success, a retry would otherwise insert a second full
     //       set of chunks for the same document_version_id (no unique
     //       constraint on (document_version_id, ordinal) to catch it).
     //       Deleting first makes the whole transaction idempotent — the
     //       second run replaces rather than duplicates.
-    // The deactivation includes `AND is_active = true` so concurrent
-    // ingestion jobs on the same document don't redundantly flip rows that
-    // already-newer versions just activated.
     await db.transaction(async (tx) => {
       await tx.delete(chunks).where(eq(chunks.documentVersionId, versionId));
       await tx.insert(chunks).values(chunkRows);
-      await tx
-        .update(documentVersions)
-        .set({ isActive: false })
-        .where(
-          and(
-            eq(documentVersions.documentId, documentId),
-            ne(documentVersions.id, versionId),
-            eq(documentVersions.isActive, true)
-          )
-        );
-      await tx
-        .update(documentVersions)
-        .set({ parseStatus: "ready", isActive: true })
-        .where(eq(documentVersions.id, versionId));
-      await tx
-        .update(documents)
-        .set({ currentVersionId: versionId })
-        .where(eq(documents.id, documentId));
+      await tx.execute(sql`
+        UPDATE document_versions
+        SET parse_status = 'ready',
+            lifecycle_state = 'pending_review',
+            scan_findings = ${JSON.stringify(allFindings)}::jsonb,
+            is_active = false
+        WHERE id = ${versionId}::uuid
+      `);
     });
   } catch (err) {
-    await db
-      .update(documentVersions)
-      .set({ parseStatus: "failed" })
-      .where(eq(documentVersions.id, versionId));
+    await db.execute(sql`
+      UPDATE document_versions
+      SET parse_status = 'failed',
+          lifecycle_state = CASE
+            WHEN lifecycle_state = 'quarantined' THEN lifecycle_state
+            ELSE 'failed'
+          END,
+          is_active = false
+      WHERE id = ${versionId}::uuid
+    `);
     throw err;
   }
 }

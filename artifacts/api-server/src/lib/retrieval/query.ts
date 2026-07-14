@@ -5,6 +5,10 @@ import { OpenAIEmbedder, type Embedder } from "../ingestion/embedder.js";
 import { elapsedMs } from "../observability/pipeline-timing.js";
 import { recordAppError } from "../observability/error-log.js";
 import { getRerankModel, rerankWithCohere } from "./rerank.js";
+import {
+  classificationSqlPredicate,
+  type Classification
+} from "../security/classification.js";
 
 const DEFAULT_RERANK_THRESHOLD = 0.3;
 const DEFAULT_TOP_K = 8;
@@ -41,6 +45,8 @@ export interface RetrievalChunk {
 export interface RetrievalInput {
   programId: string;
   question: string;
+  /** Server-resolved user clearance. Never accept this from a client body. */
+  maxClassification: Classification;
   topK?: number;
   candidateK?: number;
   /** Include the stage-level trace (pre/post-rerank candidates). Used by the eval harness. */
@@ -163,6 +169,7 @@ export function getRetrievalRuntimeConfig(): RetrievalRuntimeConfig {
  */
 async function vectorSearch(
   programId: string,
+  maxClassification: Classification,
   embedding: number[],
   k: number
 ): Promise<CandidateRow[]> {
@@ -176,6 +183,8 @@ async function vectorSearch(
     LEFT JOIN documents d ON d.id = dv.document_id
     WHERE c.program_id = ${programId}::uuid
       AND dv.is_active = true
+      AND dv.lifecycle_state = 'active'
+      AND ${classificationSqlPredicate(sql.raw("dv.classification"), maxClassification)}
     ORDER BY c.embedding <=> ${vec}::vector
     LIMIT ${k}
   `);
@@ -190,6 +199,7 @@ async function vectorSearch(
  */
 async function bm25Search(
   programId: string,
+  maxClassification: Classification,
   question: string,
   k: number
 ): Promise<CandidateRow[]> {
@@ -202,6 +212,8 @@ async function bm25Search(
     LEFT JOIN documents d ON d.id = dv.document_id
     WHERE c.program_id = ${programId}::uuid
       AND dv.is_active = true
+      AND dv.lifecycle_state = 'active'
+      AND ${classificationSqlPredicate(sql.raw("dv.classification"), maxClassification)}
       AND c.content_tsv @@ websearch_to_tsquery('english', ${question})
     ORDER BY ts_rank(c.content_tsv, websearch_to_tsquery('english', ${question})) DESC
     LIMIT ${k}
@@ -226,6 +238,7 @@ async function bm25Search(
  */
 async function trigramSearch(
   programId: string,
+  maxClassification: Classification,
   question: string,
   k: number
 ): Promise<CandidateRow[]> {
@@ -238,6 +251,8 @@ async function trigramSearch(
     LEFT JOIN documents d ON d.id = dv.document_id
     WHERE c.program_id = ${programId}::uuid
       AND dv.is_active = true
+      AND dv.lifecycle_state = 'active'
+      AND ${classificationSqlPredicate(sql.raw("dv.classification"), maxClassification)}
       AND word_similarity(${question}, c.content) > ${TRIGRAM_SIMILARITY_FLOOR}
     ORDER BY word_similarity(${question}, c.content) DESC
     LIMIT ${k}
@@ -291,6 +306,7 @@ export function mergeCandidates(
  */
 async function fetchNeighborRows(
   programId: string,
+  maxClassification: Classification,
   anchors: Array<{ documentVersionId: string; ordinal: number }>
 ): Promise<CandidateRow[]> {
   if (anchors.length === 0) return [];
@@ -307,6 +323,8 @@ async function fetchNeighborRows(
     LEFT JOIN documents d ON d.id = dv.document_id
     WHERE c.program_id = ${programId}::uuid
       AND dv.is_active = true
+      AND dv.lifecycle_state = 'active'
+      AND ${classificationSqlPredicate(sql.raw("dv.classification"), maxClassification)}
       AND (${sql.join(pairConds, sql` OR `)})
   `);
   return result.rows as unknown as CandidateRow[];
@@ -445,7 +463,12 @@ export async function retrieve(
   const vectorPromise = (async () => {
     const startedAt = performance.now();
     try {
-      return await vectorSearch(input.programId, embedding, candidateK);
+      return await vectorSearch(
+        input.programId,
+        input.maxClassification,
+        embedding,
+        candidateK
+      );
     } finally {
       timingStages.vectorSearch = elapsedMs(startedAt);
     }
@@ -453,7 +476,12 @@ export async function retrieve(
   const keywordPromise = (async () => {
     const startedAt = performance.now();
     try {
-      return await bm25Search(input.programId, trimmed, candidateK);
+      return await bm25Search(
+        input.programId,
+        input.maxClassification,
+        trimmed,
+        candidateK
+      );
     } finally {
       timingStages.keywordSearch = elapsedMs(startedAt);
     }
@@ -467,7 +495,12 @@ export async function retrieve(
   let trigramFallback = false;
   if (bm25Rows.length === 0) {
     const trigramStartedAt = performance.now();
-    bm25Rows = await trigramSearch(input.programId, trimmed, candidateK).finally(() => {
+    bm25Rows = await trigramSearch(
+      input.programId,
+      input.maxClassification,
+      trimmed,
+      candidateK
+    ).finally(() => {
       timingStages.trigramSearch = elapsedMs(trigramStartedAt);
     });
     trigramFallback = bm25Rows.length > 0;
@@ -547,7 +580,11 @@ export async function retrieve(
       .filter((a): a is { documentVersionId: string; ordinal: number } => a.ordinal !== null);
     if (anchors.length > 0) {
       const neighborFetchStartedAt = performance.now();
-      const neighborRows = await fetchNeighborRows(input.programId, anchors).finally(() => {
+      const neighborRows = await fetchNeighborRows(
+        input.programId,
+        input.maxClassification,
+        anchors
+      ).finally(() => {
         timingStages.neighborFetch = elapsedMs(neighborFetchStartedAt);
       });
       const neighborMergeStartedAt = performance.now();

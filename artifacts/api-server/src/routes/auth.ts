@@ -7,12 +7,15 @@ import { passwordResetTokens, sessions, users } from "@workspace/db/schema";
 import { hashPassword, verifyPassword } from "../lib/auth/passwords.js";
 import {
   createSession,
+  clearSessionCookie,
   deleteSessionByToken,
   generateToken,
   hashToken,
+  setSessionCookie,
   SESSION_COOKIE_NAME,
   SESSION_DURATION_MS
 } from "../lib/auth/sessions.js";
+import { getOidcConfig } from "../lib/auth/oidc.js";
 import {
   createResetToken,
   hashResetToken,
@@ -35,6 +38,7 @@ import { getEmailSender } from "../lib/email/sender.js";
 import { resolveAppBaseUrl } from "../lib/email/links.js";
 import { recordAppError } from "../lib/observability/error-log.js";
 import { renderResetEmail } from "../lib/email/templates.js";
+import { recordSecurityEventBestEffort } from "../lib/security/audit.js";
 
 export const authRouter = Router();
 
@@ -85,34 +89,6 @@ const ResetPasswordBody = z.object({
     )
     .max(1024)
 });
-
-/**
- * Apply the session cookie to the response. httpOnly + sameSite=lax give us
- * the standard CSRF posture without the complexity of a separate CSRF
- * token; the `secure` flag flips on in production so the cookie won't be
- * sent over plain HTTP. `path: /` is intentional — the API and the static
- * SPA share an origin and both need to see the cookie.
- *
- * `maxAge` is in MILLISECONDS for Express's res.cookie, matching the
- * session's DB expiry. If we ever introduce sliding sessions, this must
- * be refreshed on each request (today it's set once at login).
- */
-function setSessionCookie(
-  res: import("express").Response,
-  token: string
-): void {
-  res.cookie(SESSION_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: SESSION_DURATION_MS,
-    path: "/"
-  });
-}
-
-function clearSessionCookie(res: import("express").Response): void {
-  res.clearCookie(SESSION_COOKIE_NAME, { path: "/" });
-}
 
 /**
  * Lazily-cached argon2 hash of a random nonsense password, used to
@@ -193,8 +169,33 @@ authRouter.post("/login", async (req, res, next) => {
       return;
     }
 
+    const oidc = getOidcConfig();
+    if (oidc.enabled && oidc.localLoginMode === "disabled") {
+      res.status(403).json({ error: "Use company SSO to sign in." });
+      return;
+    }
+    if (
+      oidc.enabled &&
+      oidc.localLoginMode === "break_glass" &&
+      row.role !== "super_user"
+    ) {
+      res.status(403).json({ error: "Use company SSO to sign in." });
+      return;
+    }
+
     const { token } = await createSession(row.id);
     setSessionCookie(res, token);
+    recordSecurityEventBestEffort({
+      action: row.role === "super_user" && oidc.enabled && oidc.localLoginMode === "break_glass"
+        ? "auth.break_glass.login"
+        : "auth.local.login",
+      outcome: "success",
+      actor: { id: row.id, email: row.email, role: row.role },
+      programId: row.programId,
+      resourceType: "session",
+      sourceIp: ip,
+      details: { authMethod: "local" }
+    });
 
     // Best-effort bookkeeping. If this update throws, Express's error
     // handler would send a 500 — but the Set-Cookie header is ALREADY

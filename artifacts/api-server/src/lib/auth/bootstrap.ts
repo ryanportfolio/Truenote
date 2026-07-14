@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db-client.js";
 import { users } from "@workspace/db/schema";
 import { hashPassword } from "./passwords.js";
+import { getMinPasswordLength } from "../config.js";
 
 /**
  * Ensure a super_user exists so the operator can log in to a fresh
@@ -37,6 +38,13 @@ export async function bootstrapSuperUser(): Promise<void> {
         "seed the first login."
     );
     return;
+  }
+
+  const minimumPasswordLength = getMinPasswordLength();
+  if (password.length < minimumPasswordLength) {
+    throw new Error(
+      `BOOTSTRAP_SUPER_USER_PASSWORD must be at least ${minimumPasswordLength} characters.`
+    );
   }
 
   // Filter on is_active too. Otherwise a deactivated super_user satisfies

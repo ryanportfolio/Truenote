@@ -208,8 +208,9 @@ CREATE UNIQUE INDEX eval_runs_program_baseline_uidx ON eval_runs (program_id)
 ## Invariants
 
 - **`chunks.program_id` is denormalized** from `document_versions → documents → programs`. This is intentional. Retrieval queries filter on it directly to avoid joining at query time.
-- **A document has many versions.** Re-uploading does NOT update the existing row — it creates a new `document_versions` row and flips `is_active`.
-- **Only chunks from `is_active=true` versions are searched.** Inactive versions stay for audit / rollback.
+- **A document has many versions.** Re-uploading does NOT update the existing row. It creates an inactive `submitted` version; only a separate authorized review may retire the predecessor and activate the new version.
+- **Search requires three controls.** Retrieval and KB reads require `is_active=true`, `lifecycle_state='active'`, and classification at or below the server-resolved user's `max_classification`. Inactive/retired versions stay for audit and citation receipts; revoked/rejected versions cannot be served through history.
+- **P0/P1 controlled-ingestion columns live in reviewed raw DDL.** `docs/security/p0-p1-security-controls.sql` adds `content_sources`, document/version lifecycle, classification, provenance, scan evidence, approval/revocation/retention, user clearance, session auth evidence, distributed rate limits, and hash-chained `security_events`. Do not add them to `lib/db/src/schema.ts` in the same task; routes intentionally use parameterized raw SQL until Replit Agent applies the reviewed DDL.
 - **`embedding VECTOR(1536)` is locked to `text-embedding-3-small`.** Changing embedding model = re-ingest everything.
 - **`users.role` + `users.program_id` are jointly constrained.** The DB CHECK enforces: `super_user` MUST have `program_id IS NULL`; every other role MUST have a non-null `program_id`. The app's program-scoping helpers (`canAccessProgram`, `requireRole`) rely on this. Bypassing the constraint at the SQL level (e.g., manual inserts) breaks the assumption that a manager always has a program scope.
 - **`sessions.token_hash` stores SHA-256 of the cookie value, not the cookie itself.** A leak of the sessions table does not yield active sessions on its own. Plaintext tokens are only ever in transit (cookie header) and in the cookie store on the user's browser.

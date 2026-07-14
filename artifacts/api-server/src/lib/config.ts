@@ -3,16 +3,14 @@
  * here so every consumer (zod schema, error message, public config
  * endpoint) reads the same value at process start.
  *
- * Default is 3 — this is a dev/test-friendly floor. Tighten via the
- * env var for any real deployment; argon2's cost is mostly wasted on
- * 3-char inputs because the search space is trivial.
+ * Default and hard floor are 15 because local login is a single-factor
+ * break-glass path. Shorter values are rejected even in development so
+ * deployment behavior cannot silently weaken through configuration drift.
  *
- * The bound is clamped to [1, 1024] to match the password column's
- * upstream zod max — a misconfigured 0 would make every password pass
- * length validation (footgun); a huge value would break the form.
+ * The upper bound matches the password column's upstream zod max.
  */
-const DEFAULT_MIN = 3;
-const HARD_FLOOR = 1;
+const DEFAULT_MIN = 15;
+const HARD_FLOOR = 15;
 const HARD_CEILING = 1024;
 
 let cached: number | null = null;

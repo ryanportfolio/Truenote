@@ -15,6 +15,7 @@ import { modelRoutingRouter } from "./admin/model-routing.js";
 import { evaluationsRouter } from "./admin/evaluations.js";
 import { observabilityRouter } from "./admin/observability.js";
 import { errorsRouter } from "./admin/errors.js";
+import { oidcRouter } from "./oidc.js";
 
 export function registerRoutes(app: Express): void {
   app.use("/health", healthRouter);
@@ -22,6 +23,7 @@ export function registerRoutes(app: Express): void {
   // everything else so they remain reachable even if a downstream route's
   // requireAuth/requireFreshPassword guard would reject the actor.
   app.use("/api/auth", authRouter);
+  app.use("/api/auth/oidc", oidcRouter);
   // Public, non-secret config (e.g. minPasswordLength). The change-
   // password page calls this before mount to mirror the server's
   // floor in the UI.
