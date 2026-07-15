@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Evidence-backed summary of Truenote security capabilities mapped to the seven areas in the internal Security review.">
+  <meta name="description" content="Evidence-backed summary of Truenote security capabilities with confirmed repository, CI, and database verification.">
   <title>Truenote Security Capabilities</title>
   <style>
     :root {
@@ -16,8 +16,6 @@
       --teal: #08726f;
       --teal-soft: #e1f2ee;
       --blue-soft: #e6eef3;
-      --gold: #9a6a18;
-      --gold-soft: #fbf1d8;
       --good: #1e6947;
       --good-soft: #e4f3e8;
       --shadow: 0 16px 42px rgba(20, 48, 55, .08);
@@ -142,7 +140,6 @@
     th { background: #e9efeb; color: #405159; font-size: .72rem; letter-spacing: .07em; text-transform: uppercase; }
     .tag { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: .69rem; font-weight: 800; white-space: nowrap; }
     .verified { color: var(--good); background: var(--good-soft); }
-    .implemented { color: var(--gold); background: var(--gold-soft); }
     .evidence code { display: block; margin: 3px 0; color: #53656b; overflow-wrap: anywhere; font-size: .77rem; }
     .receipts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 18px; }
     .receipt { padding: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
@@ -220,7 +217,7 @@
         <article class="card"><p class="number">03</p><h3>Policy-enforced retrieval</h3><p>Program and classification filters run in SQL before vector or keyword ranking. The model never decides which content a user may receive.</p></article>
         <article class="card"><p class="number">04</p><h3>Cite or refuse</h3><p>Every non-refusal answer must contain valid inline citations to retrieved chunks. Missing, unknown, or ungrounded citations produce a refusal.</p></article>
         <article class="card"><p class="number">05</p><h3>Data-loss prevention</h3><p>File signatures, EICAR, secrets, SSNs, payment-card patterns, and prompt-injection language are checked without retaining matched sensitive values.</p></article>
-        <article class="card"><p class="number">06</p><h3>Identity safeguards</h3><p>Local credentials use Argon2id and hashed session tokens. The OIDC path validates PKCE, state, nonce, signed tokens, issuer, audience, domain, MFA evidence, and optional ACR.</p></article>
+        <article class="card"><p class="number">06</p><h3>Identity safeguards</h3><p>Local credentials use Argon2id, session tokens are stored only as SHA-256 hashes, and role and program constraints are enforced server-side.</p></article>
         <article class="card"><p class="number">07</p><h3>Durable security audit</h3><p>Security-sensitive lifecycle, authentication, denial, and rate-limit actions produce correlated, append-only receipts. SIEM delivery uses HMAC signatures, retry leases, exponential backoff, and dead-letter state.</p></article>
         <article class="card"><p class="number">08</p><h3>Security-gated delivery</h3><p>GitHub CI runs TypeScript, unit tests, CodeQL, Gitleaks, high-severity dependency audit, and CycloneDX SBOM generation.</p></article>
         <article class="card"><p class="number">09</p><h3>Browser request defense</h3><p>Credentialed mutations enforce trusted origins and reject foreign, opaque, malformed, cross-site, and same-site sibling origins. CSP restricts active content.</p></article>
@@ -331,7 +328,6 @@
         </div>
         <div class="capabilities">
           <div class="capability"><h3>Controlled lifecycle changes</h3><p>Approval, rejection, rescan, activation, retirement, revocation, and permanent purge have explicit role, state, reason, retention, and audit requirements.</p></div>
-          <div class="capability"><h3>OIDC and break-glass design</h3><p>The application supports OIDC Authorization Code with PKCE, strict token validation, MFA or ACR evidence, domain restrictions, and an explicit local-login mode for staged rollout and emergency access.</p></div>
           <div class="capability"><h3>Retention-aware deletion</h3><p>Normal removal is reversible retirement. Permanent purge requires exact title confirmation, retired state, elapsed retention or an explicit approved override, and a security receipt.</p></div>
           <div class="capability"><h3>Security delivery gates</h3><p>The repository includes CodeQL, secret scanning, dependency auditing, SBOM generation, Dependabot configuration, and a consolidated security regression suite.</p></div>
           <div class="capability"><h3>Evidence-carrying DDL</h3><p>Forward-only SQL defines lifecycle constraints, source governance, clearance, rate limits, append-only audit, and SIEM outbox behavior with post-commit acceptance queries.</p></div>
@@ -342,7 +338,7 @@
 
     <section id="evidence">
       <h2>Evidence-backed capability map</h2>
-      <p class="footnote"><strong>Verified</strong> means direct repository, CI, or owner-provided database evidence passed within the named scope. <strong>Implemented, unverified</strong> means the capability exists in code and awaits deployed runtime proof.</p>
+      <p class="footnote">Every capability below is <strong>Verified</strong>: direct repository, CI, or owner-provided database evidence passed within the named scope.</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Capability</th><th>Evidence grade</th><th>What the evidence shows</th><th>Primary evidence</th></tr></thead>
@@ -353,8 +349,6 @@
             <tr><td>Citation and refusal contract</td><td><span class="tag verified">Verified</span></td><td>Tests reject missing or unknown citations and preserve explicit refusal behavior.</td><td class="evidence"><code>artifacts/api-server/src/lib/generation/answer.ts</code><code>artifacts/api-server/src/lib/generation/__tests__/answer.test.ts</code></td></tr>
             <tr><td>Browser mutation and CSP defense</td><td><span class="tag verified">Verified</span></td><td>PR 111 CI passed origin rejection and CSP policy tests.</td><td class="evidence"><code>artifacts/api-server/src/middleware/browser-security.ts</code><code>artifacts/api-server/src/middleware/__tests__/browser-security.test.ts</code></td></tr>
             <tr><td>Security audit and durable SIEM logic</td><td><span class="tag verified">Verified</span></td><td>PR 112 CI passed signature, retry, dead-letter, successful completion, and DDL-structure tests.</td><td class="evidence"><code>artifacts/api-server/src/lib/security/audit.ts</code><code>artifacts/api-server/src/lib/security/siem-outbox.ts</code><code>artifacts/api-server/src/lib/security/__tests__/siem-outbox.test.ts</code></td></tr>
-            <tr><td>OIDC and MFA validation path</td><td><span class="tag implemented">Implemented, unverified</span></td><td>Code validates the authorization flow and token claims; unit tests cover core rejection paths.</td><td class="evidence"><code>artifacts/api-server/src/lib/auth/oidc.ts</code><code>artifacts/api-server/src/routes/oidc.ts</code><code>artifacts/api-server/src/lib/auth/__tests__/oidc.test.ts</code></td></tr>
-            <tr><td>External malware-scanner adapter</td><td><span class="tag implemented">Implemented, unverified</span></td><td>The adapter requires an acceptable verdict and makes unavailable or insecure operation fail closed.</td><td class="evidence"><code>artifacts/api-server/src/lib/security/content-scan.ts</code><code>artifacts/api-server/src/lib/ingestion/run.ts</code></td></tr>
             <tr><td>CI security gates</td><td><span class="tag verified">Verified</span></td><td>PR 112 passed TypeScript, 281 tests, CodeQL, Gitleaks, dependency audit, and SBOM generation.</td><td class="evidence"><code>.github/workflows/security.yml</code><code>.github/dependabot.yml</code></td></tr>
           </tbody>
         </table>
