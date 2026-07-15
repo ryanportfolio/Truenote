@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { callLandingParse, parseLandingResponse } from "../landing-parse.js";
+import {
+  callLandingParse,
+  normalizeLandingMarkdown,
+  parseLandingResponse
+} from "../landing-parse.js";
 
 interface CapturedRequest {
   url: string;
@@ -51,6 +55,26 @@ describe("parseLandingResponse", () => {
     const result = parseLandingResponse({ markdown: "hello" });
     expect(result.pageCount).toBe(0);
     expect(result.model).toBe("dpt-3-pro-latest");
+  });
+
+  it("converts HTML tables and removes parser-only comments", () => {
+    const result = parseLandingResponse({
+      markdown: `Standard cancellation fees
+
+<table><tr><td>PLAN</td><td>CANCELLATION FEE</td></tr><tr><td><strong>Basic</strong></td><td>$5 &amp; tax</td></tr><tr><td>Pro</td><td>$10</td></tr></table>
+
+<!-- PAGE BREAK -->
+Synthetic demonstration document.
+<!-- doc_id=parse-api-09531f74e4c5-doc -->`
+    });
+
+    expect(result.markdown).toContain(
+      "| PLAN | CANCELLATION FEE |\n| --- | --- |\n| Basic | $5 & tax |\n| Pro | $10 |"
+    );
+    expect(result.markdown).not.toContain("<table>");
+    expect(result.markdown).not.toContain("doc_id");
+    expect(result.markdown).not.toContain("PAGE BREAK");
+    expect(normalizeLandingMarkdown(result.markdown)).toBe(result.markdown);
   });
 
   it("throws when markdown is missing", () => {

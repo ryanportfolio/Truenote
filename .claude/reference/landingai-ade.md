@@ -82,6 +82,8 @@ parsed one page at a time; an image counts as one page. Password-protected files
 
 - **Markdown**: page breaks as `<!-- PAGE BREAK -->`; tables as HTML (merged cells) or pipe via
   option; math as LaTeX (`$…$` / `$$…$$`).
+- **Truenote normalization**: `normalizeLandingMarkdown` converts returned HTML tables to GFM
+  tables and removes parser-only page/document comments before persistence and chunking.
 - **Figures/images described inline** (this replaces the captioner):
   `<figure type="CHART|FLOWCHART|DIAGRAM|ILLUSTRATION|PHOTOGRAPH">` with transcribed text +
   a `<description>` block. Figures are text, never returned as image data.

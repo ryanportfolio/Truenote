@@ -72,11 +72,103 @@ function asNumber(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function decodeHtmlEntities(value: string): string {
+  const named: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"'
+  };
+  return value.replace(
+    /&(#x[0-9a-f]+|#\d+|amp|apos|gt|lt|nbsp|quot);/gi,
+    (match, entity: string) => {
+      const normalized = entity.toLowerCase();
+      if (normalized.startsWith("#x")) {
+        const codePoint = Number.parseInt(normalized.slice(2), 16);
+        return Number.isInteger(codePoint) && codePoint <= 0x10ffff
+          ? String.fromCodePoint(codePoint)
+          : match;
+      }
+      if (normalized.startsWith("#")) {
+        const codePoint = Number.parseInt(normalized.slice(1), 10);
+        return Number.isInteger(codePoint) && codePoint <= 0x10ffff
+          ? String.fromCodePoint(codePoint)
+          : match;
+      }
+      return named[normalized] ?? match;
+    }
+  );
+}
+
+function markdownTableCell(value: string): string {
+  return decodeHtmlEntities(
+    value
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/<[^>]+>/g, " ")
+  )
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\|/g, "\\|");
+}
+
+function colspan(attributes: string): number {
+  const match = attributes.match(
+    /\bcolspan\s*=\s*(?:"(\d+)"|'(\d+)'|(\d+))/i
+  );
+  const parsed = Number.parseInt(match?.[1] ?? match?.[2] ?? match?.[3] ?? "1", 10);
+  return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 20) : 1;
+}
+
+function htmlTableToMarkdown(table: string): string {
+  const rows = Array.from(table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr\s*>/gi))
+    .map((rowMatch) => {
+      const cells: string[] = [];
+      for (const cellMatch of rowMatch[1]?.matchAll(
+        /<(th|td)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi
+      ) ?? []) {
+        cells.push(markdownTableCell(cellMatch[3] ?? ""));
+        for (let index = 1; index < colspan(cellMatch[2] ?? ""); index += 1) {
+          cells.push("");
+        }
+      }
+      return cells;
+    })
+    .filter((row) => row.length > 0);
+
+  if (rows.length === 0) return table;
+  const width = Math.max(...rows.map((row) => row.length));
+  const padded = rows.map((row) => [
+    ...row,
+    ...Array.from({ length: width - row.length }, () => "")
+  ]);
+  const header = padded[0]!.map((cell, index) => cell || `Column ${index + 1}`);
+  const line = (cells: string[]) => `| ${cells.join(" | ")} |`;
+  return [
+    line(header),
+    line(Array.from({ length: width }, () => "---")),
+    ...padded.slice(1).map(line)
+  ].join("\n");
+}
+
+/** Convert parser-only output into readable, chunk-safe Markdown. */
+export function normalizeLandingMarkdown(markdown: string): string {
+  return markdown
+    .replace(/<!--\s*doc_id\s*=[\s\S]*?-->/gi, "")
+    .replace(/<!--\s*PAGE BREAK\s*-->/gi, "\n\n")
+    .replace(/<table\b[^>]*>[\s\S]*?<\/table\s*>/gi, htmlTableToMarkdown)
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function parseLandingResponse(json: unknown): LandingParseResult {
   if (!isRecord(json)) {
     throw new Error("LandingAI parse response: body is not an object");
   }
-  const markdown = asString(json.markdown, "").trim();
+  const markdown = normalizeLandingMarkdown(asString(json.markdown, ""));
   if (markdown.length === 0) {
     throw new Error("LandingAI parse response: missing or empty markdown");
   }

@@ -3,7 +3,10 @@ import { db, withPgAdvisoryLock } from "../db-client.js";
 import { getDeadlineConfig } from "../deadlines.js";
 import { chunks, documents, documentVersions, type ChunkMetadata } from "@workspace/db/schema";
 import { sha256Hex } from "../parsing/hash.js";
-import { callLandingParse } from "../parsing/landing-parse.js";
+import {
+  callLandingParse,
+  normalizeLandingMarkdown
+} from "../parsing/landing-parse.js";
 import { docxToMarkdown } from "../parsing/docx.js";
 import { chunkMarkdown } from "../parsing/chunker.js";
 import { createTiktokenTokenizer } from "../parsing/tokenizer.js";
@@ -237,7 +240,9 @@ async function runClaimedIngestion(
 
     const cached = await findCachedParsedMarkdown(fileSha256, versionId);
     if (cached) {
-      parsedMarkdown = cached.parsedMarkdown;
+      parsedMarkdown = PARSE_MIMES.has(mimeType)
+        ? normalizeLandingMarkdown(cached.parsedMarkdown)
+        : cached.parsedMarkdown;
     } else if (PARSE_MIMES.has(mimeType)) {
       const { documentParse } = getDeadlineConfig();
       const parsed = await callLandingParse(fileBuffer, mimeType, {
