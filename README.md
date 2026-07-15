@@ -12,7 +12,7 @@ Truenote turns SOPs, policy documents, screenshots, and tables into a controlled
 
 ## Why Truenote
 
-Most RAG demos stop when an answer sounds plausible. Truenote is built around the next question a representative has to answer: **Can I trust this enough to say it to a customer?**
+A plausible answer is only the beginning. Truenote is built around the next question a representative has to answer: **Can I trust this enough to say it to a customer?**
 
 | Need | What Truenote does |
 |---|---|
