@@ -83,3 +83,7 @@ ADD COLUMN IF NOT EXISTS <column> <type> NOT NULL DEFAULT <default>;
 ```
 
 Then stop. No schema.ts edits, no index declarations, no migration commands.
+
+### 2026-07-15: Replit publish does not promote row data
+
+Replit Agent SQL runs against the development database. Publishing can carry the dev schema difference into the deployed database, but `INSERT`/`UPDATE` row data stays in development. Any bootstrap data required by the published app must be created through an authorized deployed-runtime workflow; never assume development seed rows will appear after publish.

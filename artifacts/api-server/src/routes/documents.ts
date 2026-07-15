@@ -242,7 +242,7 @@ documentsRouter.get("/", async (req, res, next) => {
         canRescan: ["quarantined", "failed"].includes(lifecycleState)
       };
     });
-    const sourcesResult = await db.execute(sql`
+    let sourcesResult = await db.execute(sql`
       SELECT id::text, name, origin_type, base_uri, owner_name
       FROM content_sources
       WHERE program_id = ${programId}::uuid
@@ -250,6 +250,37 @@ documentsRouter.get("/", async (req, res, next) => {
         AND approved_at IS NOT NULL
       ORDER BY name
     `);
+    if (
+      sourcesResult.rows.length === 0 &&
+      (user.role === "super_user" || user.role === "senior_manager")
+    ) {
+      sourcesResult = await db.execute(sql`
+        INSERT INTO content_sources (
+          program_id, name, origin_type, owner_name, is_active,
+          created_by, approved_by, approved_at, approval_basis, retired_at
+        ) VALUES (
+          ${programId}::uuid,
+          'Manual administrator upload',
+          'manual_upload',
+          'Program data steward',
+          true,
+          ${user.id}::uuid,
+          ${user.id}::uuid,
+          now(),
+          'Enabled by an authorized data steward through Truenote',
+          NULL
+        )
+        ON CONFLICT (program_id, (lower(name))) DO UPDATE
+        SET origin_type = EXCLUDED.origin_type,
+            owner_name = EXCLUDED.owner_name,
+            is_active = true,
+            approved_by = EXCLUDED.approved_by,
+            approved_at = EXCLUDED.approved_at,
+            approval_basis = EXCLUDED.approval_basis,
+            retired_at = NULL
+        RETURNING id::text, name, origin_type, base_uri, owner_name
+      `);
+    }
     const sources: ContentSourceItem[] = sourcesResult.rows.map((raw) => ({
       id: String(raw["id"]),
       name: String(raw["name"]),
