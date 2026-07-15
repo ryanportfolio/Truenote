@@ -12,12 +12,14 @@ import { buildContextHeader, prependContextHeader } from "./contextual.js";
 import { findCachedParsedMarkdown } from "./dedupe.js";
 import { OpenAIEmbedder, type Embedder } from "./embedder.js";
 import {
+  disabledMalwareScanResult,
   hasBlockingFindings,
   scanForMalware,
   scanTextForSensitiveContent,
   validateFileSignature,
   type SecurityFinding
 } from "../security/content-scan.js";
+import { getMalwareScanningPolicy } from "../security/malware-policy.js";
 
 export interface RunIngestionInput {
   documentVersionId: string;
@@ -184,17 +186,23 @@ async function runClaimedIngestion(
     const mimeType = (version.mime_type ?? "application/pdf").toLowerCase();
     const originalFileName = version.original_file_name ?? "document";
     const boundaryFindings = validateFileSignature(fileBuffer, mimeType);
-    const malware = await scanForMalware({
-      buffer: fileBuffer,
-      sha256: fileSha256,
-      mimeType,
-      originalFileName
-    });
+    const malwarePolicy = await getMalwareScanningPolicy();
+    const malware = malwarePolicy.enabled
+      ? await scanForMalware({
+          buffer: fileBuffer,
+          sha256: fileSha256,
+          mimeType,
+          originalFileName
+        })
+      : disabledMalwareScanResult();
     const preParseFindings: SecurityFinding[] = [
       ...boundaryFindings,
       ...malware.findings
     ];
-    if (malware.status !== "clean" || hasBlockingFindings(boundaryFindings)) {
+    if (
+      !["clean", "disabled"].includes(malware.status) ||
+      hasBlockingFindings(boundaryFindings)
+    ) {
       await db.execute(sql`
         UPDATE document_versions
         SET parse_status = 'failed',
@@ -215,7 +223,7 @@ async function runClaimedIngestion(
     }
     await db.execute(sql`
       UPDATE document_versions
-      SET scan_status = 'clean',
+      SET scan_status = ${malware.status},
           scan_engine = ${malware.engine},
           scan_id = ${malware.scanId},
           scan_findings = ${JSON.stringify(preParseFindings)}::jsonb,

@@ -18,7 +18,7 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 
 | Var | Used for | Security behavior |
 |---|---|---|
-| `MALWARE_SCANNER_URL` | Organization-approved raw-byte malware scan | Operationally required for new ingestion. Unset/unavailable/insecure production URL quarantines; it never becomes an implicit clean verdict. |
+| `MALWARE_SCANNER_URL` | Organization-approved raw-byte malware scan | With default enforcement on, an unset/unavailable/insecure production URL quarantines. The super-user Security page can explicitly and auditably disable only the external scan; this never becomes a clean verdict. |
 | `MALWARE_SCANNER_TOKEN` / `MALWARE_SCANNER_HMAC_KEY` | Scanner request authentication | Configure the mechanism approved by the scanner owner. Never put either value in source or the review HTML. |
 | `SIEM_WEBHOOK_URL` / `SIEM_WEBHOOK_SIGNING_KEY` | Signed one-way security-event export | Database event and outbox row commit atomically. Production URL must be HTTPS and the signing key at least 32 characters. Delivery uses lease-fenced retries and dead-letter state after `docs/security/p1-siem-delivery-outbox.sql` is applied. |
 | `SIEM_DELIVERY_POLL_MS`, `SIEM_DELIVERY_BATCH_SIZE`, `SIEM_DELIVERY_CONCURRENCY`, `SIEM_DELIVERY_LEASE_SECONDS`, `SIEM_DELIVERY_MAX_ATTEMPTS`, `SIEM_DELIVERY_SLO_SECONDS` | Durable SIEM worker policy and health | Defaults are 10000, 25, 5, 60, 8, and 300. Worker raises short requested leases to cover the bounded batch. Change only from observed receiver capacity and an approved delivery SLO. |

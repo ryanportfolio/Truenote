@@ -13,6 +13,7 @@ const EXACT_TITLES: Readonly<Record<string, string>> = {
   "/admin/model-routing": "Model Routing | Truenote",
   "/admin/observability": "Observability | Truenote",
   "/admin/errors": "Error Log | Truenote",
+  "/admin/security": "Security | Truenote",
   "/admin/evaluations": "Evaluations | Truenote",
   "/admin/users": "Users | Truenote",
   "/forgot-password": "Forgot Password | Truenote",

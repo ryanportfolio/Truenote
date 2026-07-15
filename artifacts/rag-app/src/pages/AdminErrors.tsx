@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Check, Copy, RefreshCw } from "lucide-react";
+import { AlertTriangle, Check, Copy, RefreshCw, Trash2 } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
-import { listErrors } from "@/lib/api";
+import { clearErrorLog, listErrors } from "@/lib/api";
 import {
   errorDiagnostic,
   serializeErrorBundle,
@@ -76,6 +76,9 @@ function ErrorsDashboard(): JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [copyingAll, setCopyingAll] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearedCount, setClearedCount] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const generationRef = useRef(0);
@@ -173,6 +176,22 @@ function ErrorsDashboard(): JSX.Element {
     }
   }
 
+  async function clearAll(): Promise<void> {
+    setClearing(true);
+    setError(null);
+    setClearedCount(null);
+    try {
+      const result = await clearErrorLog();
+      setClearedCount(result.deletedCount);
+      setConfirmClear(false);
+      await load(false);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Failed to clear errors");
+    } finally {
+      setClearing(false);
+    }
+  }
+
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -187,6 +206,15 @@ function ErrorsDashboard(): JSX.Element {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-full border border-destructive/40 px-3 py-1.5 text-xs text-destructive transition-colors duration-100 ease-out hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => setConfirmClear(true)}
+            disabled={!data?.storageReady || !data.total || clearing}
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+            Clear log
+          </button>
           <button
             type="button"
             className="btn-whisper gap-1.5 px-3 py-1.5 text-xs"
@@ -208,6 +236,39 @@ function ErrorsDashboard(): JSX.Element {
           </button>
         </div>
       </header>
+
+      {confirmClear ? (
+        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3">
+          <div className="flex gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" aria-hidden />
+            <div>
+              <p className="text-sm font-medium">Clear the entire error log?</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                This removes all stored error diagnostics, not only the current filtered view. The action and deleted count remain in the append-only security audit log.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" className="btn-whisper px-3 py-1.5 text-sm" onClick={() => setConfirmClear(false)} disabled={clearing}>
+                  Keep log
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full border border-destructive/40 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => void clearAll()}
+                  disabled={clearing}
+                >
+                  {clearing ? "Clearing…" : "Clear all errors"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {clearedCount !== null ? (
+        <p role="status" className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+          Cleared {clearedCount} error{clearedCount === 1 ? "" : "s"}.
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2" aria-label="Error filters">
         {WINDOWS.map((option) => (

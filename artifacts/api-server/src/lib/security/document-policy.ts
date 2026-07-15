@@ -38,11 +38,11 @@ export function evaluateDocumentApproval(
       error: "Document is not awaiting review.",
     };
   }
-  if (input.scanStatus !== "clean") {
+  if (!["clean", "disabled"].includes(input.scanStatus)) {
     return {
       allowed: false,
       status: 409,
-      error: "Document has no clean malware-scan verdict.",
+      error: "Document has no accepted malware-scan state.",
     };
   }
   if (!input.sourceId || !input.sourceActive || !input.sourceApprovedAt) {
