@@ -34,6 +34,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm -r run check
+      - name: Frontend production build
+        run: pnpm --filter @workspace/rag-app run build
       - name: Unit tests
         run: pnpm -r run test
       - name: High-severity production dependency audit
