@@ -210,13 +210,6 @@ BEGIN
     );
   END IF;
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'document_versions_separation_check'
-  ) THEN
-    ALTER TABLE document_versions ADD CONSTRAINT document_versions_separation_check CHECK (
-      approved_by IS NULL OR uploaded_by IS NULL OR approved_by::text <> uploaded_by
-    );
-  END IF;
-  IF NOT EXISTS (
     SELECT 1 FROM pg_constraint WHERE conname = 'documents_lifecycle_check'
   ) THEN
     ALTER TABLE documents ADD CONSTRAINT documents_lifecycle_check CHECK (

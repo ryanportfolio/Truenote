@@ -29,16 +29,7 @@ export function disabledMalwareScanResult(): MalwareScanResult {
     status: "disabled",
     engine: null,
     scanId: null,
-    findings: [
-      {
-        category: "malware",
-        ruleId: "malware.scanning_disabled",
-        severity: "high",
-        count: 1,
-        message: "External malware scanning was disabled by a super user.",
-        blocking: false
-      }
-    ]
+    findings: []
   };
 }
 

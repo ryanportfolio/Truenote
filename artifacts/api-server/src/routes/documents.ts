@@ -35,6 +35,8 @@ import {
   appendSecurityEvent
 } from "../lib/security/audit.js";
 import {
+  actionableDocumentFindings,
+  canApproveDocumentVersion,
   evaluateDocumentApproval,
   evaluateDocumentPurge
 } from "../lib/security/document-policy.js";
@@ -196,9 +198,7 @@ documentsRouter.get("/", async (req, res, next) => {
       const uploadedById =
         typeof row["uploaded_by"] === "string" ? row["uploaded_by"] : null;
       const classification = parseClassification(row["classification"]) ?? "internal";
-      const findings = Array.isArray(row["scan_findings"])
-        ? row["scan_findings"]
-        : [];
+      const findings = actionableDocumentFindings(row["scan_findings"]);
       return {
         documentId: String(row["document_id"]),
         title: String(row["title"] ?? "Untitled"),
@@ -234,8 +234,7 @@ documentsRouter.get("/", async (req, res, next) => {
             ? row["approved_by_name"]
             : null,
         findings,
-        canApprove:
-          reviewer && lifecycleState === "pending_review" && uploadedById !== user.id,
+        canApprove: canApproveDocumentVersion(user.role, lifecycleState),
         canReject:
           reviewer && ["pending_review", "quarantined"].includes(lifecycleState),
         canRevoke: reviewer && lifecycleState === "active",
@@ -622,7 +621,7 @@ documentsRouter.get("/:versionId/preview", async (req, res, next) => {
       title: typeof row["title"] === "string" ? row["title"] : null,
       lifecycleState: row["lifecycle_state"],
       scanStatus: row["scan_status"],
-      findings: Array.isArray(row["scan_findings"]) ? row["scan_findings"] : [],
+      findings: actionableDocumentFindings(row["scan_findings"]),
       classification: row["classification"],
       sourceName: row["source_name"],
       sourceOriginUri: row["source_origin_uri"],
@@ -631,10 +630,10 @@ documentsRouter.get("/:versionId/preview", async (req, res, next) => {
       approvedByName: row["approved_by_name"],
       approvalNotes: row["approval_notes"],
       isActive: row["is_active"] === true,
-      canApprove:
-        hasAtLeastRole(user, "senior_manager") &&
-        row["lifecycle_state"] === "pending_review" &&
-        row["uploaded_by"] !== user.id,
+      canApprove: canApproveDocumentVersion(
+        user.role,
+        String(row["lifecycle_state"]),
+      ),
       canReject:
         hasAtLeastRole(user, "senior_manager") &&
         ["pending_review", "quarantined"].includes(String(row["lifecycle_state"])),
@@ -677,7 +676,6 @@ interface ReviewRow {
   parse_status: string;
   scan_status: string;
   scan_findings: unknown;
-  uploaded_by: string | null;
   source_id: string | null;
   source_active: boolean | null;
   source_approved_at: Date | string | null;
@@ -720,7 +718,6 @@ documentsRouter.post(
             dv.parse_status,
             dv.scan_status,
             dv.scan_findings,
-            dv.uploaded_by,
             dv.source_id::text,
             source.is_active AS source_active,
             source.approved_at AS source_approved_at
@@ -735,8 +732,6 @@ documentsRouter.post(
         const row = locked.rows[0] as unknown as ReviewRow | undefined;
         if (!row) throw new DocumentControlError(404, "Not found");
         const approval = evaluateDocumentApproval({
-          reviewerId: user.id,
-          uploadedBy: row.uploaded_by,
           lifecycleState: row.lifecycle_state,
           parseStatus: row.parse_status,
           scanStatus: row.scan_status,

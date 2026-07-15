@@ -25,15 +25,10 @@ describe("validateFileSignature", () => {
 });
 
 describe("disabledMalwareScanResult", () => {
-  it("records an explicit non-clean, non-blocking reviewer finding", () => {
+  it("records the operating mode without creating a reviewer warning", () => {
     const result = disabledMalwareScanResult();
     expect(result.status).toBe("disabled");
-    expect(result.findings).toEqual([
-      expect.objectContaining({
-        ruleId: "malware.scanning_disabled",
-        blocking: false
-      })
-    ]);
+    expect(result.findings).toEqual([]);
   });
 });
 

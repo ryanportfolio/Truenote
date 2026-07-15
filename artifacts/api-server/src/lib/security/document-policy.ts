@@ -1,10 +1,10 @@
+import type { UserRole } from "../auth/current-user.js";
+
 export type DocumentPolicyDecision =
   | { allowed: true }
   | { allowed: false; status: number; error: string };
 
 export interface DocumentApprovalInput {
-  reviewerId: string;
-  uploadedBy: string | null;
   lifecycleState: string;
   parseStatus: string;
   scanStatus: string;
@@ -15,13 +15,27 @@ export interface DocumentApprovalInput {
   acknowledgeFindings: boolean;
 }
 
-function securityFindings(value: unknown): Array<Record<string, unknown>> {
+export function actionableDocumentFindings(
+  value: unknown,
+): Array<Record<string, unknown>> {
   return Array.isArray(value)
     ? value.filter(
         (item): item is Record<string, unknown> =>
-          typeof item === "object" && item !== null,
+          typeof item === "object" &&
+          item !== null &&
+          item["ruleId"] !== "malware.scanning_disabled",
       )
     : [];
+}
+
+export function canApproveDocumentVersion(
+  role: UserRole,
+  lifecycleState: string,
+): boolean {
+  return (
+    (role === "senior_manager" || role === "super_user") &&
+    lifecycleState === "pending_review"
+  );
 }
 
 /** Pure, fail-closed approval policy used by the route and negative tests. */
@@ -52,14 +66,7 @@ export function evaluateDocumentApproval(
       error: "Document source is no longer approved.",
     };
   }
-  if (input.uploadedBy === input.reviewerId) {
-    return {
-      allowed: false,
-      status: 409,
-      error: "A different authorized reviewer must approve this upload.",
-    };
-  }
-  const findings = securityFindings(input.findings);
+  const findings = actionableDocumentFindings(input.findings);
   if (findings.some((finding) => finding["blocking"] === true)) {
     return {
       allowed: false,
