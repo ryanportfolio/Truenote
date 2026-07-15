@@ -173,13 +173,15 @@ export function DocumentList({ items, onChanged }: DocumentListProps): JSX.Eleme
                         {isChanging ? "Starting…" : "Rescan"}
                       </button>
                     ) : null}
-                    <button
-                      onClick={() => void handleRetire(item)}
-                      disabled={isChanging || item.lifecycleState === "retired"}
-                      className="rounded-full border border-destructive/40 px-2.5 py-1 text-xs text-destructive transition-colors duration-100 ease-out hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {isChanging ? "Working…" : "Retire"}
-                    </button>
+                    {item.lifecycleState !== "rejected" ? (
+                      <button
+                        onClick={() => void handleRetire(item)}
+                        disabled={isChanging || item.lifecycleState === "retired"}
+                        className="rounded-full border border-destructive/40 px-2.5 py-1 text-xs text-destructive transition-colors duration-100 ease-out hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isChanging ? "Working…" : "Retire"}
+                      </button>
+                    ) : null}
                   </div>
                 </td>
               </tr>
