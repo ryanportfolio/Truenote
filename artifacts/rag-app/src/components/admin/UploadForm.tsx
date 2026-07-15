@@ -87,7 +87,7 @@ export function UploadForm({
   }, [sourceId, sources]);
 
   const selectedSource = sources.find((source) => source.id === sourceId) ?? null;
-  const displayedFiles =
+  const displayedFiles: FileUploadResult[] =
     fileResults.length > 0
       ? fileResults
       : selectedFiles.map((file) => ({
