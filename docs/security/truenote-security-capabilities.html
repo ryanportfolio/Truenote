@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Evidence-backed summary of Truenote security capabilities mapped to the seven areas in the internal Security review.">
+  <title>Truenote Security Capabilities</title>
+  <style>
+    :root {
+      --ink: #14252a;
+      --muted: #52646a;
+      --paper: #f4f6f2;
+      --card: #fffefb;
+      --line: #d5ddd8;
+      --navy: #173e4a;
+      --teal: #08726f;
+      --teal-soft: #e1f2ee;
+      --blue-soft: #e6eef3;
+      --gold: #9a6a18;
+      --gold-soft: #fbf1d8;
+      --good: #1e6947;
+      --good-soft: #e4f3e8;
+      --shadow: 0 16px 42px rgba(20, 48, 55, .08);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 16px/1.58 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--teal); text-underline-offset: 3px; }
+    a:focus-visible, summary:focus-visible { outline: 3px solid #f0bd5a; outline-offset: 3px; }
+    code { font-family: Consolas, "Liberation Mono", monospace; }
+    .shell { width: min(1140px, calc(100% - 34px)); margin: auto; }
+    .hero {
+      overflow: hidden;
+      border-bottom: 1px solid rgba(255,255,255,.15);
+      background:
+        radial-gradient(circle at 87% 18%, rgba(75, 207, 187, .2), transparent 30%),
+        radial-gradient(circle at 8% 88%, rgba(240, 189, 90, .12), transparent 27%),
+        linear-gradient(135deg, #102f39, #164c57 58%, #0b6765);
+      color: white;
+    }
+    .hero-inner { padding: 76px 0 60px; }
+    .eyebrow {
+      margin: 0;
+      color: #9fe1d5;
+      font-size: .76rem;
+      font-weight: 800;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    h1 {
+      max-width: 900px;
+      margin: 13px 0 20px;
+      font: 700 clamp(2.35rem, 6vw, 5rem)/.98 Georgia, serif;
+      letter-spacing: -.045em;
+    }
+    .lede { max-width: 850px; margin: 0; color: #d6e8e8; font-size: clamp(1rem, 2vw, 1.22rem); }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 28px; }
+    .hero-meta span {
+      padding: 6px 10px;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 999px;
+      background: rgba(255,255,255,.08);
+      color: #e6f2f1;
+      font-size: .79rem;
+    }
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      overflow-x: auto;
+      border-bottom: 1px solid var(--line);
+      background: rgba(244, 246, 242, .95);
+      backdrop-filter: blur(12px);
+    }
+    nav .shell { display: flex; gap: 22px; padding: 12px 0; white-space: nowrap; }
+    nav a { color: var(--muted); font-size: .8rem; font-weight: 750; text-decoration: none; }
+    main { padding: 48px 0 84px; }
+    section { margin-bottom: 66px; scroll-margin-top: 70px; }
+    h2 { margin: 0 0 16px; font: 700 clamp(1.75rem, 4vw, 2.5rem)/1.08 Georgia, serif; letter-spacing: -.025em; }
+    h3 { margin: 0 0 8px; font-size: 1rem; }
+    p { max-width: 900px; }
+    .intro {
+      display: grid;
+      grid-template-columns: 1.4fr .6fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+    .callout, .scope {
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--card);
+      box-shadow: var(--shadow);
+    }
+    .callout { border-color: #9bc9c0; background: linear-gradient(145deg, #fffefb, var(--teal-soft)); }
+    .callout strong, .scope strong { display: block; margin-bottom: 5px; }
+    .scope { color: var(--muted); font-size: .88rem; }
+    .scope p { margin: 0; }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 15px; }
+    .card {
+      grid-column: span 4;
+      min-height: 190px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--card);
+      box-shadow: 0 8px 24px rgba(20, 48, 55, .045);
+    }
+    .card p { margin: 0; color: var(--muted); font-size: .91rem; }
+    .number { margin: 0 0 8px; color: var(--teal); font: 700 1.75rem/1 Georgia, serif; }
+    .review-area {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 22px;
+      padding: 25px 0;
+      border-top: 1px solid var(--line);
+    }
+    .review-area:last-child { border-bottom: 1px solid var(--line); }
+    .area-label { color: var(--teal); font-size: .73rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .area-title { margin: 7px 0 9px; font: 700 1.42rem/1.1 Georgia, serif; }
+    .feedback { margin: 0; color: var(--muted); font-size: .87rem; }
+    .capabilities { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .capability {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--card);
+    }
+    .capability p { margin: 0; color: var(--muted); font-size: .88rem; }
+    .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 19px 0 0; }
+    .flow span { padding: 7px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); font-size: .8rem; }
+    .flow b { color: var(--teal); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+    table { width: 100%; border-collapse: collapse; background: var(--card); font-size: .87rem; }
+    th, td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    tr:last-child td { border-bottom: 0; }
+    th { background: #e9efeb; color: #405159; font-size: .72rem; letter-spacing: .07em; text-transform: uppercase; }
+    .tag { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: .69rem; font-weight: 800; white-space: nowrap; }
+    .verified { color: var(--good); background: var(--good-soft); }
+    .implemented { color: var(--gold); background: var(--gold-soft); }
+    .evidence code { display: block; margin: 3px 0; color: #53656b; overflow-wrap: anywhere; font-size: .77rem; }
+    .receipts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 18px; }
+    .receipt { padding: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+    .receipt strong { display: block; margin-bottom: 4px; }
+    .receipt p { margin: 0; color: var(--muted); font-size: .84rem; }
+    .footnote { color: var(--muted); font-size: .82rem; }
+    footer { padding: 30px 0 48px; border-top: 1px solid var(--line); color: var(--muted); font-size: .8rem; }
+    @media (max-width: 850px) {
+      .intro, .review-area { grid-template-columns: 1fr; }
+      .card { grid-column: span 6; }
+      .receipts { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 590px) {
+      .hero-inner { padding: 56px 0 44px; }
+      .card { grid-column: span 12; min-height: 0; }
+      .capabilities { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+    @media print {
+      nav { display: none; }
+      body { background: white; }
+      .shell { width: 100%; }
+      .hero { background: white; color: var(--ink); }
+      .hero-inner { padding: 30px 0; }
+      .eyebrow, .lede { color: var(--muted); }
+      .hero-meta span { border-color: var(--line); background: white; color: var(--muted); }
+      .card, .callout, .scope, .table-wrap { box-shadow: none; break-inside: avoid; }
+      .review-area { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="shell hero-inner">
+      <p class="eyebrow">Internal Security response · capabilities brief</p>
+      <h1>Security controls Truenote has today</h1>
+      <p class="lede">An evidence-backed view of the safeguards implemented across the seven areas raised by Security: governance, ingestion, access, AI safety, confidentiality and integrity, audit, and lifecycle management.</p>
+      <div class="hero-meta">
+        <span>Reviewed July 15, 2026</span>
+        <span>Repository baseline: 7c87587</span>
+        <span>Seven feedback areas mapped</span>
+        <span>Evidence links included</span>
+      </div>
+    </div>
+  </header>
+
+  <nav aria-label="Document sections">
+    <div class="shell">
+      <a href="#overview">Overview</a>
+      <a href="#capabilities">Capabilities</a>
+      <a href="#feedback">Feedback response</a>
+      <a href="#evidence">Evidence</a>
+      <a href="#receipts">Verification receipts</a>
+    </div>
+  </nav>
+
+  <main class="shell">
+    <section id="overview">
+      <div class="intro">
+        <div class="callout">
+          <strong>Truenote has a layered security control foundation.</strong>
+          Program and classification boundaries are enforced before retrieval. Content stays inactive through scanning, parsing, and independent approval. Answers require valid citations or become refusals. Security events are hash-chained and support durable signed SIEM delivery. Required CI checks exercise the negative paths.</div>
+        <aside class="scope">
+          <strong>How to use this brief</strong>
+          <p>This document summarizes present capabilities only. It is not a certification, authorization, deployed-configuration attestation, vendor assurance statement, or replacement for the full posture review.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section id="capabilities">
+      <h2>Control foundation at a glance</h2>
+      <div class="grid">
+        <article class="card"><p class="number">01</p><h3>Controlled content lifecycle</h3><p>Uploads pass through source validation, scanning, parsing, review, activation, retirement, revocation, and retention states. New content does not activate automatically.</p></article>
+        <article class="card"><p class="number">02</p><h3>Independent approval</h3><p>Senior managers or super users approve. The uploader cannot approve the same version. Approval checks the source, scan verdict, findings, and document state.</p></article>
+        <article class="card"><p class="number">03</p><h3>Policy-enforced retrieval</h3><p>Program and classification filters run in SQL before vector or keyword ranking. The model never decides which content a user may receive.</p></article>
+        <article class="card"><p class="number">04</p><h3>Cite or refuse</h3><p>Every non-refusal answer must contain valid inline citations to retrieved chunks. Missing, unknown, or ungrounded citations produce a refusal.</p></article>
+        <article class="card"><p class="number">05</p><h3>Data-loss prevention</h3><p>File signatures, EICAR, secrets, SSNs, payment-card patterns, and prompt-injection language are checked without retaining matched sensitive values.</p></article>
+        <article class="card"><p class="number">06</p><h3>Identity safeguards</h3><p>Local credentials use Argon2id and hashed session tokens. The OIDC path validates PKCE, state, nonce, signed tokens, issuer, audience, domain, MFA evidence, and optional ACR.</p></article>
+        <article class="card"><p class="number">07</p><h3>Durable security audit</h3><p>Security-sensitive lifecycle, authentication, denial, and rate-limit actions produce correlated, append-only receipts. SIEM delivery uses HMAC signatures, retry leases, exponential backoff, and dead-letter state.</p></article>
+        <article class="card"><p class="number">08</p><h3>Security-gated delivery</h3><p>GitHub CI runs TypeScript, unit tests, CodeQL, Gitleaks, high-severity dependency audit, and CycloneDX SBOM generation.</p></article>
+        <article class="card"><p class="number">09</p><h3>Browser request defense</h3><p>Credentialed mutations enforce trusted origins and reject foreign, opaque, malformed, cross-site, and same-site sibling origins. CSP restricts active content.</p></article>
+      </div>
+    </section>
+
+    <section id="feedback">
+      <h2>Response to the seven Security feedback areas</h2>
+
+      <article class="review-area">
+        <div>
+          <div class="area-label">Feedback area 1</div>
+          <h3 class="area-title">Governance and risk</h3>
+          <p class="feedback">Treat the RAG capability as an information system, document AI-specific risks, name control ownership, and keep evidence tied to claims.</p>
+        </div>
+        <div class="capabilities">
+          <div class="capability"><h3>Evidence-based control record</h3><p>The full security review records control decisions, evidence grades, owners, binary acceptance tests, source files, DDL hashes, and retained CI receipts.</p></div>
+          <div class="capability"><h3>AI risk coverage</h3><p>Implemented safeguards address prompt injection, cross-program leakage, knowledge-base poisoning, unsafe output, uncontrolled source onboarding, secret exposure, and query abuse.</p></div>
+          <div class="capability"><h3>Named responsibility domains</h3><p>Control ownership is separated across content governance, IAM, Security operations, platform/database operations, data governance, and repository ownership.</p></div>
+          <div class="capability"><h3>Calibrated claims</h3><p>Evidence distinguishes database acceptance, CI-verified behavior, implemented code, deployed configuration, and third-party responsibilities.</p></div>
+        </div>
+      </article>
+
+      <article class="review-area">
+        <div>
+          <div class="area-label">Feedback area 2</div>
+          <h3 class="area-title">Data ingestion and knowledge base</h3>
+          <p class="feedback">Restrict writes, approve and trace sources, preserve change history, and validate content before it reaches the knowledge base.</p>
+        </div>
+        <div>
+          <div class="capabilities">
+            <div class="capability"><h3>Approved source registry</h3><p>Each source records program, origin type, URI, owner, creator, approver, approval date, approval basis, and active or retired state.</p></div>
+            <div class="capability"><h3>Fail-closed intake</h3><p>The pipeline validates file signatures and EICAR, scans source text for sensitive and hostile patterns, and quarantines any upload without an acceptable scan result.</p></div>
+            <div class="capability"><h3>Inactive until reviewed</h3><p>Ingestion ends at <code>pending_review</code>. Chunks remain outside retrieval until a different authorized reviewer approves the clean version.</p></div>
+            <div class="capability"><h3>Immutable provenance</h3><p>Document versions retain hashes, original filenames, source ownership, parse results, scan receipts, findings, uploader, approver, classification, and lifecycle timestamps.</p></div>
+          </div>
+          <div class="flow" aria-label="Controlled ingestion sequence">
+            <span>Approved source</span><b>→</b><span>Validate bytes</span><b>→</b><span>Scan</span><b>→</b><span>Parse</span><b>→</b><span>Embed inactive</span><b>→</b><span>Independent review</span><b>→</b><span>Activate</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="review-area">
+        <div>
+          <div class="area-label">Feedback area 3</div>
+          <h3 class="area-title">Retrieval and access control</h3>
+          <p class="feedback">Make retrieval a policy enforcement point and apply business, mission, and sensitivity boundaries before content reaches the model.</p>
+        </div>
+        <div class="capabilities">
+          <div class="capability"><h3>Server-side program isolation</h3><p>Vector, keyword, and neighbor queries bind <code>program_id</code> in SQL. A second fail-closed scope filter rejects any mismatched candidate.</p></div>
+          <div class="capability"><h3>Classification clearance</h3><p>Public, Internal, Confidential, and Restricted levels are compared against the authenticated user's server-owned clearance.</p></div>
+          <div class="capability"><h3>Consistent read enforcement</h3><p>The same program, lifecycle, and classification rules protect ask retrieval, knowledge-base reads, citation lookup, highlights, and durable citation history.</p></div>
+          <div class="capability"><h3>Immediate revocation behavior</h3><p>Revoked versions stop participating in retrieval and are removed from citation access rather than remaining available through historical source links.</p></div>
+        </div>
+      </article>
+
+      <article class="review-area">
+        <div>
+          <div class="area-label">Feedback area 4</div>
+          <h3 class="area-title">Prompt, query, and output safety</h3>
+          <p class="feedback">Detect hostile or sensitive content, limit abuse, keep outputs grounded, and prevent model text from becoming uncontrolled automation.</p>
+        </div>
+        <div class="capabilities">
+          <div class="capability"><h3>Input screening</h3><p>Ask requests containing payment-card data, SSNs, or credential-shaped secrets are blocked before retrieval and generation.</p></div>
+          <div class="capability"><h3>Retrieved-content boundaries</h3><p>The generation prompt labels retrieved text as untrusted evidence, rejects embedded instructions, and prohibits prompt disclosure, credential disclosure, role changes, and tool calls.</p></div>
+          <div class="capability"><h3>Output validation</h3><p>Generated text is screened for sensitive content and checked for valid inline citation IDs. Validation failure becomes a refusal.</p></div>
+          <div class="capability"><h3>Abuse controls</h3><p>Postgres-backed per-user and per-program ask limits, question-length bounds, provider deadlines, and an overall fail-closed request deadline constrain scraping and resource exhaustion.</p></div>
+          <div class="capability"><h3>No action-taking path</h3><p>Generation receives excerpts and a question, not application tools. Returned text cannot directly execute workflows, database changes, or external actions.</p></div>
+          <div class="capability"><h3>Approved model routing</h3><p>Answer generation walks only a server-owned route allowlist with ZDR requested and provider fallback disabled. Exhaustion returns a defensive refusal.</p></div>
+        </div>
+      </article>
+
+      <article class="review-area">
+        <div>
+          <div class="area-label">Feedback area 5</div>
+          <h3 class="area-title">Confidentiality, integrity, and availability</h3>
+          <p class="feedback">Protect the knowledge base as a high-value store, detect unauthorized change, and keep RAG workloads bounded.</p>
+        </div>
+        <div class="capabilities">
+          <div class="capability"><h3>Confidentiality controls</h3><p>Passwords use Argon2id, session tokens are stored only as SHA-256 hashes, cookies are HTTP-only and secure in production, CORS is allowlisted, and browser mutations enforce trusted origins.</p></div>
+          <div class="capability"><h3>Content integrity</h3><p>Source files are SHA-256 addressed, document history is versioned, activation is constrained, and privileged lifecycle changes produce immutable audit receipts.</p></div>
+          <div class="capability"><h3>Answer integrity</h3><p>Retrieval confidence gates generation. Every non-refusal answer must resolve its citations against the actual retrieved chunks.</p></div>
+          <div class="capability"><h3>Workload protection</h3><p>Ingestion runs in a background queue. Ask traffic uses distributed limits, bounded candidate counts, provider timeouts, and a whole-request deadline.</p></div>
+        </div>
+      </article>
+
+      <article class="review-area">
+        <div>
+          <div class="area-label">Feedback area 6</div>
+          <h3 class="area-title">Logging, monitoring, and audit</h3>
+          <p class="feedback">Record who asked what and what was returned, connect security activity to monitoring, and exercise AI-focused negative scenarios.</p>
+        </div>
+        <div class="capabilities">
+          <div class="capability"><h3>Question and answer receipts</h3><p>Query records bind the authenticated user, program, session, question, answer, refusal state, cited chunks, immutable citation snapshots, latency, and pipeline timing.</p></div>
+          <div class="capability"><h3>Append-only security ledger</h3><p>Security events include actor, role, program, action, outcome, resource, request ID, source IP, details, previous hash, and event hash. Mutation is blocked by a database trigger.</p></div>
+          <div class="capability"><h3>Durable SIEM transport</h3><p>A database trigger creates outbox rows in the same transaction as security events. The worker signs exact bodies, uses lease-fenced claims, retries, dead-lettering, and exposes super-user health.</p></div>
+          <div class="capability"><h3>Redacted diagnostics</h3><p>Operational errors retain route, user, program, request, provider, and correlation data while recursively removing credential-shaped content.</p></div>
+          <div class="capability"><h3>Negative security tests</h3><p>CI covers cross-program access, malformed principals, privileged user administration, classification, self-approval, unsafe scan states, stale sources, purge gates, revocation, browser origins, CSP, and SIEM failures.</p></div>
+          <div class="capability"><h3>Delivery health</h3><p>Authorized operators can inspect storage readiness, delivery configuration, backlog counts, oldest pending event, delivered count, dead-letter count, and last delivery time.</p></div>
+        </div>
+      </article>
+
+      <article class="review-area">
+        <div>
+          <div class="area-label">Feedback area 7</div>
+          <h3 class="area-title">Lifecycle and operations</h3>
+          <p class="feedback">Review changes formally, protect the delivery pipeline, retain lifecycle evidence, and keep security documentation tied to the deployed architecture.</p>
+        </div>
+        <div class="capabilities">
+          <div class="capability"><h3>Controlled lifecycle changes</h3><p>Approval, rejection, rescan, activation, retirement, revocation, and permanent purge have explicit role, state, reason, retention, and audit requirements.</p></div>
+          <div class="capability"><h3>OIDC and break-glass design</h3><p>The application supports OIDC Authorization Code with PKCE, strict token validation, MFA or ACR evidence, domain restrictions, and an explicit local-login mode for staged rollout and emergency access.</p></div>
+          <div class="capability"><h3>Retention-aware deletion</h3><p>Normal removal is reversible retirement. Permanent purge requires exact title confirmation, retired state, elapsed retention or an explicit approved override, and a security receipt.</p></div>
+          <div class="capability"><h3>Security delivery gates</h3><p>The repository includes CodeQL, secret scanning, dependency auditing, SBOM generation, Dependabot configuration, and a consolidated security regression suite.</p></div>
+          <div class="capability"><h3>Evidence-carrying DDL</h3><p>Forward-only SQL defines lifecycle constraints, source governance, clearance, rate limits, append-only audit, and SIEM outbox behavior with post-commit acceptance queries.</p></div>
+          <div class="capability"><h3>Shared security knowledge base</h3><p>The technical posture HTML and repository security-review skill connect current claims to owners, source files, CI receipts, DDL hashes, and acceptance tests.</p></div>
+        </div>
+      </article>
+    </section>
+
+    <section id="evidence">
+      <h2>Evidence-backed capability map</h2>
+      <p class="footnote"><strong>Verified</strong> means direct repository, CI, or owner-provided database evidence passed within the named scope. <strong>Implemented, unverified</strong> means the capability exists in code but this brief does not claim deployed runtime proof.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Capability</th><th>Evidence grade</th><th>What the evidence shows</th><th>Primary evidence</th></tr></thead>
+          <tbody>
+            <tr><td>P0/P1 database controls</td><td><span class="tag verified">Verified</span></td><td>Owner reports all acceptance requirements passed in heliumdb development.</td><td class="evidence"><code>docs/security/p0-p1-security-controls.sql</code><code>docs/security/truenote-p0-p1-security-review.html</code></td></tr>
+            <tr><td>Program and clearance isolation</td><td><span class="tag verified">Verified</span></td><td>Negative tests deny cross-program and above-clearance access; retrieval filters both values in SQL.</td><td class="evidence"><code>artifacts/api-server/src/lib/retrieval/query.ts</code><code>artifacts/api-server/src/lib/security/classification.ts</code><code>artifacts/api-server/src/lib/security/__tests__/negative-controls.test.ts</code></td></tr>
+            <tr><td>Controlled ingestion and approval</td><td><span class="tag verified">Verified</span></td><td>CI exercises file validation, sensitive-content findings, self-approval denial, unsafe scan denial, and stale-source denial.</td><td class="evidence"><code>artifacts/api-server/src/lib/ingestion/run.ts</code><code>artifacts/api-server/src/routes/documents.ts</code><code>artifacts/api-server/src/lib/security/__tests__/content-scan.test.ts</code><code>artifacts/api-server/src/lib/security/__tests__/negative-controls.test.ts</code></td></tr>
+            <tr><td>Citation and refusal contract</td><td><span class="tag verified">Verified</span></td><td>Tests reject missing or unknown citations and preserve explicit refusal behavior.</td><td class="evidence"><code>artifacts/api-server/src/lib/generation/answer.ts</code><code>artifacts/api-server/src/lib/generation/__tests__/answer.test.ts</code></td></tr>
+            <tr><td>Browser mutation and CSP defense</td><td><span class="tag verified">Verified</span></td><td>PR 111 CI passed origin rejection and CSP policy tests.</td><td class="evidence"><code>artifacts/api-server/src/middleware/browser-security.ts</code><code>artifacts/api-server/src/middleware/__tests__/browser-security.test.ts</code></td></tr>
+            <tr><td>Security audit and durable SIEM logic</td><td><span class="tag verified">Verified</span></td><td>PR 112 CI passed signature, retry, dead-letter, successful completion, and DDL-structure tests.</td><td class="evidence"><code>artifacts/api-server/src/lib/security/audit.ts</code><code>artifacts/api-server/src/lib/security/siem-outbox.ts</code><code>artifacts/api-server/src/lib/security/__tests__/siem-outbox.test.ts</code></td></tr>
+            <tr><td>OIDC and MFA validation path</td><td><span class="tag implemented">Implemented, unverified</span></td><td>Code validates the authorization flow and token claims; unit tests cover core rejection paths.</td><td class="evidence"><code>artifacts/api-server/src/lib/auth/oidc.ts</code><code>artifacts/api-server/src/routes/oidc.ts</code><code>artifacts/api-server/src/lib/auth/__tests__/oidc.test.ts</code></td></tr>
+            <tr><td>External malware-scanner adapter</td><td><span class="tag implemented">Implemented, unverified</span></td><td>The adapter requires an acceptable verdict and makes unavailable or insecure operation fail closed.</td><td class="evidence"><code>artifacts/api-server/src/lib/security/content-scan.ts</code><code>artifacts/api-server/src/lib/ingestion/run.ts</code></td></tr>
+            <tr><td>CI security gates</td><td><span class="tag verified">Verified</span></td><td>PR 112 passed TypeScript, 281 tests, CodeQL, Gitleaks, dependency audit, and SBOM generation.</td><td class="evidence"><code>.github/workflows/security.yml</code><code>.github/dependabot.yml</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="receipts">
+      <h2>Retained verification receipts</h2>
+      <div class="receipts">
+        <article class="receipt"><strong>PR 108</strong><p>P0/P1 lifecycle, identity, ingestion, classification, audit, rate-limit, and security-review foundation.</p><a href="https://github.com/ryanportfolio/kbase/pull/108">Open pull request</a></article>
+        <article class="receipt"><strong>PR 111</strong><p>Trusted mutation-origin enforcement, Content Security Policy, and browser negative tests.</p><a href="https://github.com/ryanportfolio/kbase/pull/111">Open pull request</a></article>
+        <article class="receipt"><strong>PR 112</strong><p>Durable SIEM delivery, consolidated negative-security tests, and successful security CI.</p><a href="https://github.com/ryanportfolio/kbase/pull/112">Open pull request</a></article>
+      </div>
+      <p class="footnote">Technical evidence, DDL, verification SQL, evidence grades, and full claim boundaries remain in <a href="truenote-p0-p1-security-review.html">Truenote P0/P1 Security Review</a>.</p>
+    </section>
+  </main>
+
+  <footer><div class="shell">Internal capabilities brief. Not a certification, authorization, legal opinion, deployed-configuration attestation, or vendor assurance statement.</div></footer>
+</body>
+</html>
