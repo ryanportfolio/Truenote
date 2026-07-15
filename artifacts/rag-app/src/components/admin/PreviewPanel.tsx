@@ -160,7 +160,7 @@ export function PreviewPanel({
               <div className="sm:col-span-2">
                 <dt className="text-xs uppercase tracking-wide text-muted-foreground">Original location</dt>
                 <dd className="mt-1 break-all font-mono text-[13px]">
-                  {data.sourceOriginUri ?? "Unavailable"}
+                  {data.sourceOriginUri ?? "Not provided"}
                 </dd>
               </div>
             </dl>

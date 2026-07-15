@@ -155,15 +155,16 @@ SET
   END
 WHERE
   dv.source_id IS NULL
-  OR dv.source_origin_uri IS NULL
   OR dv.source_owner IS NULL
   OR dv.original_file_name IS NULL;
 
 ALTER TABLE document_versions
   ALTER COLUMN source_id SET NOT NULL,
-  ALTER COLUMN source_origin_uri SET NOT NULL,
   ALTER COLUMN source_owner SET NOT NULL,
   ALTER COLUMN original_file_name SET NOT NULL;
+
+ALTER TABLE document_versions
+  ALTER COLUMN source_origin_uri DROP NOT NULL;
 
 DO $$
 BEGIN
