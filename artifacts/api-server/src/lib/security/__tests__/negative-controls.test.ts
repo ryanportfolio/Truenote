@@ -7,6 +7,7 @@ import {
 import { applyVersionActivity, type LinkedSource } from "../../citations.js";
 import { canReadClassification } from "../classification.js";
 import {
+  canApproveDocumentVersion,
   evaluateDocumentApproval,
   evaluateDocumentPurge,
 } from "../document-policy.js";
@@ -79,10 +80,15 @@ describe("negative security controls", () => {
     expect(canReadClassification("confidential", "restricted")).toBe(false);
   });
 
-  it("denies self-approval, non-clean scans, blocking findings, and stale sources", () => {
+  it("offers pending-review approval to senior managers and super users", () => {
+    expect(canApproveDocumentVersion("senior_manager", "pending_review")).toBe(true);
+    expect(canApproveDocumentVersion("super_user", "pending_review")).toBe(true);
+    expect(canApproveDocumentVersion("manager", "pending_review")).toBe(false);
+    expect(canApproveDocumentVersion("super_user", "active")).toBe(false);
+  });
+
+  it("denies unsafe scans, blocking findings, and stale sources", () => {
     const base = {
-      reviewerId: "reviewer",
-      uploadedBy: "uploader",
       lifecycleState: "pending_review",
       parseStatus: "ready",
       scanStatus: "clean",
@@ -92,9 +98,6 @@ describe("negative security controls", () => {
       findings: [],
       acknowledgeFindings: false,
     };
-    expect(
-      evaluateDocumentApproval({ ...base, uploadedBy: "reviewer" }).allowed,
-    ).toBe(false);
     expect(evaluateDocumentApproval({ ...base, scanStatus: "failed" }).allowed).toBe(
       false,
     );
@@ -114,13 +117,7 @@ describe("negative security controls", () => {
       scanStatus: "disabled",
       findings: [{ ruleId: "malware.scanning_disabled", blocking: false }]
     };
-    expect(evaluateDocumentApproval(disabledScan).allowed).toBe(false);
-    expect(
-      evaluateDocumentApproval({
-        ...disabledScan,
-        acknowledgeFindings: true
-      })
-    ).toEqual({ allowed: true });
+    expect(evaluateDocumentApproval(disabledScan)).toEqual({ allowed: true });
   });
 
   it("denies purge without title match, retirement, or elapsed retention", () => {

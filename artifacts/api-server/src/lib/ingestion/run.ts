@@ -66,8 +66,8 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
  *   7. chunk via the structural chunker (target 500 tokens)
  *   8. embed all chunks (batched 100/req)
  *   9. insert chunks rows with denormalized program_id
- *  10. leave version inactive in `pending_review`; a different authorized
- *      reviewer activates it through the approval endpoint
+ *  10. leave version inactive in `pending_review`; an authorized reviewer
+ *      activates it through the approval endpoint
  *
  * On any error, parse_status is set to "failed" and the error rethrown.
  */

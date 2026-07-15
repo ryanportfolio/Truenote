@@ -184,7 +184,7 @@ function SecurityDashboard(): JSX.Element {
                   <div>
                     <p className="text-sm font-medium">Disable external malware scanning?</p>
                     <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                      New uploads can continue without an external verdict. The change is recorded in the security audit log and every affected document is labeled for reviewer acknowledgment.
+                      New uploads can continue without an external verdict. The operating mode remains recorded in document metadata and the security audit log.
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button type="button" className="btn-whisper px-3 py-1.5 text-sm" onClick={() => setConfirmDisable(false)} disabled={saving}>

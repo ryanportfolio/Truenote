@@ -8,6 +8,7 @@ import {
   persistMalwareScanningPolicy,
   scannerConfiguration
 } from "../../lib/security/malware-policy.js";
+import { actionableDocumentFindings } from "../../lib/security/document-policy.js";
 import {
   authedUser,
   blockDemoWrites,
@@ -135,7 +136,7 @@ async function dashboardResponse() {
       programName: row.program_name ?? "Unknown program",
       lifecycleState: row.lifecycle_state,
       scanStatus: row.scan_status,
-      findings: Array.isArray(row.scan_findings) ? row.scan_findings : [],
+      findings: actionableDocumentFindings(row.scan_findings),
       occurredAt: iso(row.scan_completed_at ?? row.uploaded_at)
     })),
     controlEvents: (eventsResult.rows as unknown as ControlEventRow[]).map((row) => ({

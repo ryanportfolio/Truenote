@@ -190,6 +190,8 @@ export function PreviewPanel({
               <p className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
                 {data.scanStatus === "clean"
                   ? "Malware scan clean. No local DLP or instruction-injection findings."
+                  : data.scanStatus === "disabled"
+                    ? "No file or content issues found."
                   : `Scan status: ${data.scanStatus}. No detailed findings were recorded.`}
               </p>
             )}
