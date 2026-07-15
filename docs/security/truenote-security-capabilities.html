@@ -192,6 +192,7 @@
       <a href="#capabilities">Capabilities</a>
       <a href="#security-domains">Security domains</a>
       <a href="#evidence">Evidence</a>
+      <a href="#acceptance">Acceptance results</a>
       <a href="#receipts">Verification receipts</a>
     </div>
   </nav>
@@ -204,7 +205,7 @@
           Program and classification boundaries are enforced before retrieval. Content stays inactive through scanning, parsing, and independent approval. Answers require valid citations or become refusals. Security events are hash-chained and support durable signed SIEM delivery. Required CI checks exercise the negative paths.</div>
         <aside class="scope">
           <strong>Document boundary</strong>
-          <p>This document describes present capabilities. It is not a certification, authorization, deployed-configuration attestation, or vendor assurance statement.</p>
+          <p>Only controls with direct repository or CI verification, or owner-confirmed database acceptance, are included. This is not a certification, authorization, deployed-configuration attestation, or vendor assurance statement.</p>
         </aside>
       </div>
     </section>
@@ -331,7 +332,7 @@
           <div class="capability"><h3>Retention-aware deletion</h3><p>Normal removal is reversible retirement. Permanent purge requires exact title confirmation, retired state, elapsed retention or an explicit approved override, and a security receipt.</p></div>
           <div class="capability"><h3>Security delivery gates</h3><p>The repository includes CodeQL, secret scanning, dependency auditing, SBOM generation, Dependabot configuration, and a consolidated security regression suite.</p></div>
           <div class="capability"><h3>Evidence-carrying DDL</h3><p>Forward-only SQL defines lifecycle constraints, source governance, clearance, rate limits, append-only audit, and SIEM outbox behavior with post-commit acceptance queries.</p></div>
-          <div class="capability"><h3>Maintained security documentation</h3><p>The technical posture record connects current controls to owners, source files, CI receipts, DDL hashes, and acceptance tests.</p></div>
+          <div class="capability"><h3>Traceable control evidence</h3><p>Control records connect owners, source files, CI receipts, DDL hashes, and acceptance tests to the safeguards they support.</p></div>
         </div>
       </article>
     </section>
@@ -343,26 +344,39 @@
         <table>
           <thead><tr><th>Capability</th><th>Evidence grade</th><th>What the evidence shows</th><th>Primary evidence</th></tr></thead>
           <tbody>
-            <tr><td>P0/P1 database controls</td><td><span class="tag verified">Verified</span></td><td>Owner reports all acceptance requirements passed in heliumdb development.</td><td class="evidence"><code>docs/security/p0-p1-security-controls.sql</code><code>docs/security/truenote-p0-p1-security-review.html</code></td></tr>
-            <tr><td>Program and clearance isolation</td><td><span class="tag verified">Verified</span></td><td>Negative tests deny cross-program and above-clearance access; retrieval filters both values in SQL.</td><td class="evidence"><code>artifacts/api-server/src/lib/retrieval/query.ts</code><code>artifacts/api-server/src/lib/security/classification.ts</code><code>artifacts/api-server/src/lib/security/__tests__/negative-controls.test.ts</code></td></tr>
-            <tr><td>Controlled ingestion and approval</td><td><span class="tag verified">Verified</span></td><td>CI exercises file validation, sensitive-content findings, self-approval denial, unsafe scan denial, and stale-source denial.</td><td class="evidence"><code>artifacts/api-server/src/lib/ingestion/run.ts</code><code>artifacts/api-server/src/routes/documents.ts</code><code>artifacts/api-server/src/lib/security/__tests__/content-scan.test.ts</code><code>artifacts/api-server/src/lib/security/__tests__/negative-controls.test.ts</code></td></tr>
-            <tr><td>Citation and refusal contract</td><td><span class="tag verified">Verified</span></td><td>Tests reject missing or unknown citations and preserve explicit refusal behavior.</td><td class="evidence"><code>artifacts/api-server/src/lib/generation/answer.ts</code><code>artifacts/api-server/src/lib/generation/__tests__/answer.test.ts</code></td></tr>
-            <tr><td>Browser mutation and CSP defense</td><td><span class="tag verified">Verified</span></td><td>PR 111 CI passed origin rejection and CSP policy tests.</td><td class="evidence"><code>artifacts/api-server/src/middleware/browser-security.ts</code><code>artifacts/api-server/src/middleware/__tests__/browser-security.test.ts</code></td></tr>
-            <tr><td>Security audit and durable SIEM logic</td><td><span class="tag verified">Verified</span></td><td>PR 112 CI passed signature, retry, dead-letter, successful completion, and DDL-structure tests.</td><td class="evidence"><code>artifacts/api-server/src/lib/security/audit.ts</code><code>artifacts/api-server/src/lib/security/siem-outbox.ts</code><code>artifacts/api-server/src/lib/security/__tests__/siem-outbox.test.ts</code></td></tr>
-            <tr><td>CI security gates</td><td><span class="tag verified">Verified</span></td><td>PR 112 passed TypeScript, 281 tests, CodeQL, Gitleaks, dependency audit, and SBOM generation.</td><td class="evidence"><code>.github/workflows/security.yml</code><code>.github/dependabot.yml</code></td></tr>
+            <tr><td>Database-enforced control foundation</td><td><span class="tag verified">Verified</span></td><td>Owner-confirmed acceptance in heliumdb development covers required lifecycle, source-governance, classification, approval-separation, rate-limit, and hash-chained audit objects. Acceptance returned zero unsafe active versions and zero broken audit-chain links.</td><td class="evidence"><code>docs/security/p0-p1-security-controls.sql</code></td></tr>
+            <tr><td>Program and clearance isolation</td><td><span class="tag verified">Verified</span></td><td>Negative tests deny cross-program and above-clearance access. Retrieval binds program and classification limits in SQL before ranking, then applies a second fail-closed scope check.</td><td class="evidence"><code>artifacts/api-server/src/lib/retrieval/query.ts</code><code>artifacts/api-server/src/lib/security/classification.ts</code><code>artifacts/api-server/src/lib/security/__tests__/negative-controls.test.ts</code></td></tr>
+            <tr><td>Controlled ingestion and approval</td><td><span class="tag verified">Verified</span></td><td>CI covers file validation, EICAR, sensitive-content findings, self-approval denial, unsafe scan states, stale sources, and inactive-until-approved behavior.</td><td class="evidence"><code>artifacts/api-server/src/lib/ingestion/run.ts</code><code>artifacts/api-server/src/routes/documents.ts</code><code>artifacts/api-server/src/lib/security/__tests__/content-scan.test.ts</code><code>artifacts/api-server/src/lib/security/__tests__/negative-controls.test.ts</code></td></tr>
+            <tr><td>Citation and refusal contract</td><td><span class="tag verified">Verified</span></td><td>Generation tests reject missing, malformed, out-of-range, and unknown citations. A response without at least one valid source becomes the standard refusal.</td><td class="evidence"><code>artifacts/api-server/src/lib/generation/answer.ts</code><code>artifacts/api-server/src/lib/generation/__tests__/answer.test.ts</code></td></tr>
+            <tr><td>Browser mutation and CSP defense</td><td><span class="tag verified">Verified</span></td><td>CI passes ten browser-security tests covering trusted origins, foreign and malformed origins, cross-site requests, same-site sibling origins, and Content Security Policy.</td><td class="evidence"><code>artifacts/api-server/src/middleware/browser-security.ts</code><code>artifacts/api-server/src/middleware/__tests__/browser-security.test.ts</code></td></tr>
+            <tr><td>Security audit and durable SIEM logic</td><td><span class="tag verified">Verified</span></td><td>CI passes signing, lease-fenced claiming, successful completion, retry scheduling, maximum-attempt dead-lettering, health reporting, and DDL-structure tests.</td><td class="evidence"><code>artifacts/api-server/src/lib/security/audit.ts</code><code>artifacts/api-server/src/lib/security/siem-outbox.ts</code><code>artifacts/api-server/src/lib/security/__tests__/siem-outbox.test.ts</code><code>docs/security/p1-siem-delivery-outbox.sql</code></td></tr>
+            <tr><td>CI security gates</td><td><span class="tag verified">Verified</span></td><td>The required workflow passes workspace TypeScript checks, 281 unit tests, CodeQL security analysis, Gitleaks secret scanning, high-severity production dependency audit, and CycloneDX SBOM generation.</td><td class="evidence"><code>.github/workflows/security.yml</code><code>.github/dependabot.yml</code></td></tr>
           </tbody>
         </table>
+      </div>
+    </section>
+
+    <section id="acceptance">
+      <h2>Confirmed acceptance outcomes</h2>
+      <p class="footnote">These are the concrete pass conditions behind the verified capabilities above.</p>
+      <div class="grid">
+        <article class="card"><p class="number">01</p><h3>Database safety gates passed</h3><p>Required control objects, columns, constraints, and triggers were present in heliumdb development. Acceptance found no active version outside the approved lifecycle and no broken audit-chain link.</p></article>
+        <article class="card"><p class="number">02</p><h3>Unauthorized retrieval denied</h3><p>Tests reject cross-program content, above-clearance content, and malformed principals before protected knowledge can reach ranking, generation, citation lookup, or document reads.</p></article>
+        <article class="card"><p class="number">03</p><h3>Unsafe activation denied</h3><p>Tests reject self-approval, unsafe scan state, stale or retired sources, blocking sensitive-content findings, and activation without the required clean and approved state.</p></article>
+        <article class="card"><p class="number">04</p><h3>Ungrounded answers refused</h3><p>Generation tests confirm that missing or invalid citations cannot produce a normal answer. Known citations must resolve to the chunks actually supplied to the model.</p></article>
+        <article class="card"><p class="number">05</p><h3>Browser boundaries enforced</h3><p>Ten tests confirm same-origin mutations work while foreign, opaque, malformed, cross-site, and sibling-origin requests are rejected. CSP restricts active browser content.</p></article>
+        <article class="card"><p class="number">06</p><h3>Audit delivery logic passed</h3><p>Seven SIEM outbox tests confirm signed payloads, bounded claims, retry backoff, lease fencing, dead-letter state, successful completion, and the delivery-health DDL structure.</p></article>
+        <article class="card"><p class="number">07</p><h3>Security pipeline passed</h3><p>The merged security workflow completed TypeScript checks, 281 unit tests, CodeQL, Gitleaks, production dependency audit, and CycloneDX SBOM generation.</p></article>
       </div>
     </section>
 
     <section id="receipts">
       <h2>Verification history</h2>
       <div class="receipts">
-        <article class="receipt"><strong>PR 108</strong><p>P0/P1 lifecycle, identity, ingestion, classification, audit, rate-limit, and security-review foundation.</p><a href="https://github.com/ryanportfolio/kbase/pull/108">Open pull request</a></article>
+        <article class="receipt"><strong>PR 108</strong><p>Database-enforced lifecycle, identity, ingestion, classification, approval, audit, and rate-limit foundation.</p><a href="https://github.com/ryanportfolio/kbase/pull/108">Open pull request</a></article>
         <article class="receipt"><strong>PR 111</strong><p>Trusted mutation-origin enforcement, Content Security Policy, and browser negative tests.</p><a href="https://github.com/ryanportfolio/kbase/pull/111">Open pull request</a></article>
         <article class="receipt"><strong>PR 112</strong><p>Durable SIEM delivery, consolidated negative-security tests, and successful security CI.</p><a href="https://github.com/ryanportfolio/kbase/pull/112">Open pull request</a></article>
       </div>
-      <p class="footnote">Detailed evidence, DDL, verification SQL, control grades, and operating boundaries are maintained in <a href="truenote-p0-p1-security-review.html">Truenote P0/P1 Security Review</a>.</p>
     </section>
   </main>
 
