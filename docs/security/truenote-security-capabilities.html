@@ -316,15 +316,15 @@
       <div class="intro">
         <div class="callout">
           <strong>Truenote has a layered security control foundation.</strong>
-          Program and classification boundaries are enforced before retrieval. Content stays inactive through validation, parsing, and authorized approval. Answer and utility model calls use pinned provider routes with Zero Data Retention requested, data collection denied, and provider fallback disabled. Answers require valid citations or become refusals. Security events are hash-chained and support durable signed SIEM delivery. Required CI checks exercise negative paths.</div>
+          Program and classification boundaries are enforced before retrieval. Content passes source, file, scan, parsing, and role checks before activation. Answer and utility model calls use pinned provider routes with Zero Data Retention requested, data collection denied, and provider fallback disabled. Answers require valid citations or become refusals. Security events are hash-chained and support durable signed SIEM delivery. Required CI checks exercise negative paths.</div>
       </div>
     </section>
 
     <section id="capabilities">
       <h2>Control foundation at a glance</h2>
       <div class="grid">
-        <article class="card"><p class="number">01</p><h3>Controlled content lifecycle</h3><p>Uploads pass through source validation, scanning, parsing, review, activation, retirement, revocation, and retention states. New content does not activate automatically.</p></article>
-        <article class="card"><p class="number">02</p><h3>Authorized approval</h3><p>Senior managers or super users approve. Approval checks the source, scan state, relevant findings, and document state before activation.</p></article>
+        <article class="card"><p class="number">01</p><h3>Controlled content lifecycle</h3><p>Uploads pass through source validation, scanning, parsing, role-based activation, retirement, revocation, and retention states.</p></article>
+        <article class="card"><p class="number">02</p><h3>Authorized activation</h3><p>Senior-manager and super-user uploads activate after control checks pass. Other uploads wait for an authorized reviewer.</p></article>
         <article class="card"><p class="number">03</p><h3>Hybrid, policy-enforced retrieval</h3><p>Vector, full-text, and typo-tolerant retrieval run inside program, lifecycle, and classification filters before reranking. The model never decides which content a user may receive.</p></article>
         <article class="card"><p class="number">04</p><h3>Generation ZDR policy</h3><p>Every answer route requests ZDR, denies provider data collection, pins one approved provider, and disables provider fallback. No direct-provider answer escape hatch exists.</p></article>
         <article class="card"><p class="number">05</p><h3>Cite or refuse</h3><p>Every non-refusal answer must contain valid inline citations to retrieved chunks. Missing, unknown, sensitive, or ungrounded output produces a refusal.</p></article>
@@ -384,12 +384,12 @@
         <div>
           <div class="capabilities">
             <div class="capability"><h3>Approved source registry</h3><p>Each source records program, origin type, URI, owner, creator, approver, approval date, approval basis, and active or retired state.</p></div>
-            <div class="capability"><h3>Controlled intake</h3><p>The pipeline validates file signatures and EICAR, scans source text for sensitive and hostile patterns, and defaults to requiring an acceptable external scan result. A super-user-only temporary override is explicit, audited, and still requires independent review.</p></div>
-            <div class="capability"><h3>Inactive until reviewed</h3><p>Ingestion ends at <code>pending_review</code>. Chunks remain outside retrieval until an authorized senior manager or super user approves the accepted version and acknowledges any relevant non-blocking findings.</p></div>
+            <div class="capability"><h3>Controlled intake</h3><p>The pipeline validates file signatures and EICAR, scans source text for sensitive and hostile patterns, and defaults to requiring an acceptable external scan result. A super-user-only temporary override is explicit and audited.</p></div>
+            <div class="capability"><h3>Role-based activation</h3><p>Senior-manager and super-user uploads activate after source, scan, findings, and document-state checks pass. Other uploads remain outside retrieval until authorized review.</p></div>
             <div class="capability"><h3>Immutable provenance</h3><p>Document versions retain hashes, original filenames, source ownership, parse results, scan receipts, findings, uploader, approver, classification, and lifecycle timestamps.</p></div>
           </div>
           <div class="flow" aria-label="Controlled ingestion sequence">
-            <span>Approved source</span><b>→</b><span>Validate bytes</span><b>→</b><span>Scan or record override</span><b>→</b><span>Parse</span><b>→</b><span>Embed inactive</span><b>→</b><span>Independent review</span><b>→</b><span>Activate</span>
+            <span>Approved source</span><b>→</b><span>Validate bytes</span><b>→</b><span>Scan or record override</span><b>→</b><span>Parse</span><b>→</b><span>Embed inactive</span><b>→</b><span>Role and control checks</span><b>→</b><span>Activate or review</span>
           </div>
         </div>
       </article>

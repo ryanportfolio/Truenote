@@ -38,6 +38,10 @@ export function canApproveDocumentVersion(
   );
 }
 
+export function shouldAutoActivateDocumentUpload(role: UserRole): boolean {
+  return role === "senior_manager" || role === "super_user";
+}
+
 /** Pure, fail-closed approval policy used by the route and negative tests. */
 export function evaluateDocumentApproval(
   input: DocumentApprovalInput,

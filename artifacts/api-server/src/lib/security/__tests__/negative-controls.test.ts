@@ -10,6 +10,7 @@ import {
   canApproveDocumentVersion,
   evaluateDocumentApproval,
   evaluateDocumentPurge,
+  shouldAutoActivateDocumentUpload,
 } from "../document-policy.js";
 
 function user(
@@ -85,6 +86,13 @@ describe("negative security controls", () => {
     expect(canApproveDocumentVersion("super_user", "pending_review")).toBe(true);
     expect(canApproveDocumentVersion("manager", "pending_review")).toBe(false);
     expect(canApproveDocumentVersion("super_user", "active")).toBe(false);
+  });
+
+  it("auto-activates only senior-manager and super-user uploads", () => {
+    expect(shouldAutoActivateDocumentUpload("senior_manager")).toBe(true);
+    expect(shouldAutoActivateDocumentUpload("super_user")).toBe(true);
+    expect(shouldAutoActivateDocumentUpload("manager")).toBe(false);
+    expect(shouldAutoActivateDocumentUpload("csr")).toBe(false);
   });
 
   it("denies unsafe scans, blocking findings, and stale sources", () => {
