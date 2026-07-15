@@ -71,7 +71,7 @@ Claude Code cannot run migrations. For any schema change, give the Replit Agent 
 - ❌ NO `drizzle-kit` commands (`drizzle-kit push`, `generate`, etc.).
 - ❌ Do NOT label the SQL a "production migration" or instruct the user to run it against production.
 
-Replit's publish flow diffs the dev database directly against production and applies the difference automatically when the user republishes.
+Replit's publish flow diffs the dev database against production when the user republishes. Treat promotion as object-dependent and verify the production definition after publishing; see the confirmed limitation below.
 
 **Prompt template (copy/paste):**
 
@@ -87,3 +87,7 @@ Then stop. No schema.ts edits, no index declarations, no migration commands.
 ### 2026-07-15: Replit publish does not promote row data
 
 Replit Agent SQL runs against the development database. Publishing can carry the dev schema difference into the deployed database, but `INSERT`/`UPDATE` row data stays in development. Any bootstrap data required by the published app must be created through an authorized deployed-runtime workflow; never assume development seed rows will appear after publish.
+
+### 2026-07-15: Replit publish can omit constraint bodies and database functions
+
+Production verification showed that Publish promoted `source_origin_uri` nullability but left two redefined `CHECK` constraints unchanged and did not install `append_security_event(...)`; the missing function surfaced as PostgreSQL `42883` from otherwise valid application calls. After every constraint, trigger, or function change, inspect the production definition instead of inferring success from development DDL or a successful publish. If Publish omits an object, an authorized operator must apply the exact reviewed DDL through the Production Database SQL runner; its console auto-wraps selected multi-statement batches and rejects explicit `BEGIN`/`COMMIT`, so prefer one atomic `ALTER TABLE ... DROP CONSTRAINT ..., ADD CONSTRAINT ...` statement per constraint and one `CREATE OR REPLACE FUNCTION` statement per function.
