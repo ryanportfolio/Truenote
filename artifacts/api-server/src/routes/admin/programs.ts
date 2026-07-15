@@ -94,8 +94,8 @@ const CreateBody = z.object({
  * Duplicate detection has two layers:
  *   1. An application-level pre-flight (case-insensitive SELECT). Gives
  *      a friendly 409 in the common case.
- *   2. A unique index on lower(name) at the DB level (see
- *      REPLIT_HANDOFF.md Section B3) closes the TOCTOU race: two
+ *   2. The programs_name_lower_uidx index on lower(name) closes the
+ *      TOCTOU race: two
  *      simultaneous POSTs that both pass the pre-flight will collide
  *      on insert. We catch the 23505 unique-violation and map it to
  *      the same 409.

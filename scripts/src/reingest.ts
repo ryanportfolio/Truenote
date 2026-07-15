@@ -133,7 +133,7 @@ async function backfillCitationSnapshots(
     .catch((error: unknown) => {
       if (isMissingCitationSnapshotsColumn(error)) {
         throw new Error(
-          "query_log.citation_snapshots is missing; apply REPLIT_HANDOFF B7 before reingest"
+          "query_log.citation_snapshots is missing; apply the required database DDL before reingest"
         );
       }
       throw error;

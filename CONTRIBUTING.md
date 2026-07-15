@@ -81,7 +81,3 @@ Keep a pull request focused. In its description, include:
 - deployment, DDL, configuration, or evidence work still required.
 
 Do not commit `.env` files, credentials, database exports, customer content, generated logs, or copied production errors.
-
-## License status
-
-No open-source license has been selected yet. External contributors should wait for a license and contribution terms before submitting code intended for reuse.

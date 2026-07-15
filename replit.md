@@ -80,9 +80,10 @@ not to push the schema file at it.
 
 ## Database schema — current state
 
-The canonical DDL lives in `REPLIT_HANDOFF.md` Sections B (Phase 1), B2
-(Phase 2A auth), and B3 (Phase 2C.1 programs). When the dev DB needs to
-be recreated from scratch, run them in order: B → B2 → B3.
+The current schema shape and invariants are documented in
+`.claude/reference/data-model.md`. Reviewed lifecycle, classification,
+audit, and SIEM DDL lives under `docs/security/`. Compare those sources
+with the development database before any repair or recreation work.
 
 Tables (high level):
 - `programs`, `documents`, `document_versions`, `chunks` — Phase 1 RAG
@@ -165,8 +166,8 @@ flow. You can — but treat it as a higher-risk path:
    two-sandbox model
 2. `.claude/reference/pitfalls.md` — project-specific gotchas, grows
    over time
-3. `REPLIT_HANDOFF.md` — canonical DDL and secrets checklist
-4. `.claude/reference/data-model.md` — schema and invariants
+3. `.claude/reference/data-model.md` — schema and invariants
+4. `docs/security/` — reviewed control DDL and security evidence
 5. `.claude/reference/{retrieval,ingestion,secrets,eval}.md` — topical
    reference
 

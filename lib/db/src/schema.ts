@@ -32,7 +32,7 @@ const vector1536 = customType<{ data: number[]; driverData: string }>({
 });
 
 // chunks.content_tsv exists in the DB as a GENERATED ALWAYS column (see the
-// DDL in REPLIT_HANDOFF.md) but is intentionally NOT declared in the Drizzle
+// DDL documented in .claude/reference/data-model.md) but is intentionally NOT declared in the Drizzle
 // schema. We only ever reference it from raw SQL in lib/retrieval/query.ts;
 // keeping it out of Drizzle avoids any risk that the ORM tries to handle it
 // on inserts.
