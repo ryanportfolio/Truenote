@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Evidence-backed summary of Truenote security capabilities with confirmed repository, CI, and database verification.">
+  <meta name="description" content="Evidence-backed summary of Truenote security controls across identity, content, retrieval, AI data handling, ZDR routing, browser protection, audit, resilience, and delivery.">
   <title>Truenote Security Capabilities</title>
   <style>
     :root {
@@ -176,11 +176,11 @@
     <div class="shell hero-inner">
       <p class="eyebrow">Truenote security architecture · capabilities brief</p>
       <h1>Security controls Truenote has today</h1>
-      <p class="lede">An evidence-backed view of Truenote's safeguards across governance, ingestion, access, AI safety, confidentiality and integrity, audit, and lifecycle management.</p>
+      <p class="lede">An evidence-backed view of Truenote's safeguards across identity, ingestion, retrieval, AI data handling, answer integrity, browser protection, audit, resilience, and secure delivery.</p>
       <div class="hero-meta">
         <span>Current as of July 15, 2026</span>
         <span>Repository-backed controls</span>
-        <span>Seven security domains</span>
+        <span>Nine security domains</span>
         <span>Verification references included</span>
       </div>
     </div>
@@ -202,10 +202,10 @@
       <div class="intro">
         <div class="callout">
           <strong>Truenote has a layered security control foundation.</strong>
-          Program and classification boundaries are enforced before retrieval. Content stays inactive through scanning, parsing, and independent approval. Answers require valid citations or become refusals. Security events are hash-chained and support durable signed SIEM delivery. Required CI checks exercise the negative paths.</div>
+          Program and classification boundaries are enforced before retrieval. Content stays inactive through validation, parsing, and independent approval. Answer and utility model calls use pinned provider routes with Zero Data Retention requested, data collection denied, and provider fallback disabled. Answers require valid citations or become refusals. Security events are hash-chained and support durable signed SIEM delivery. Required CI checks exercise negative paths.</div>
         <aside class="scope">
           <strong>Document boundary</strong>
-          <p>Only controls with direct repository or CI verification, or owner-confirmed database acceptance, are included. This is not a certification, authorization, deployed-configuration attestation, or vendor assurance statement.</p>
+          <p>Only controls with direct repository or CI evidence, or owner-confirmed database acceptance, are included. ZDR statements describe the request policy Truenote sends to OpenRouter. They do not cover direct embedding or parsing providers. This is not a certification, authorization, deployed-configuration attestation, or vendor assurance statement.</p>
         </aside>
       </div>
     </section>
@@ -215,13 +215,16 @@
       <div class="grid">
         <article class="card"><p class="number">01</p><h3>Controlled content lifecycle</h3><p>Uploads pass through source validation, scanning, parsing, review, activation, retirement, revocation, and retention states. New content does not activate automatically.</p></article>
         <article class="card"><p class="number">02</p><h3>Independent approval</h3><p>Senior managers or super users approve. The uploader cannot approve the same version. Approval checks the source, scan verdict, findings, and document state.</p></article>
-        <article class="card"><p class="number">03</p><h3>Policy-enforced retrieval</h3><p>Program and classification filters run in SQL before vector or keyword ranking. The model never decides which content a user may receive.</p></article>
-        <article class="card"><p class="number">04</p><h3>Cite or refuse</h3><p>Every non-refusal answer must contain valid inline citations to retrieved chunks. Missing, unknown, or ungrounded citations produce a refusal.</p></article>
-        <article class="card"><p class="number">05</p><h3>Data-loss prevention</h3><p>File signatures, EICAR, secrets, SSNs, payment-card patterns, and prompt-injection language are checked without retaining matched sensitive values.</p></article>
-        <article class="card"><p class="number">06</p><h3>Identity safeguards</h3><p>Local credentials use Argon2id, session tokens are stored only as SHA-256 hashes, and role and program constraints are enforced server-side.</p></article>
-        <article class="card"><p class="number">07</p><h3>Durable security audit</h3><p>Security-sensitive lifecycle, authentication, denial, and rate-limit actions produce correlated, append-only receipts. SIEM delivery uses HMAC signatures, retry leases, exponential backoff, and dead-letter state.</p></article>
-        <article class="card"><p class="number">08</p><h3>Security-gated delivery</h3><p>GitHub CI runs TypeScript, unit tests, CodeQL, Gitleaks, high-severity dependency audit, and CycloneDX SBOM generation.</p></article>
-        <article class="card"><p class="number">09</p><h3>Browser request defense</h3><p>Credentialed mutations enforce trusted origins and reject foreign, opaque, malformed, cross-site, and same-site sibling origins. CSP restricts active content.</p></article>
+        <article class="card"><p class="number">03</p><h3>Hybrid, policy-enforced retrieval</h3><p>Vector, full-text, and typo-tolerant retrieval run inside program, lifecycle, and classification filters before reranking. The model never decides which content a user may receive.</p></article>
+        <article class="card"><p class="number">04</p><h3>Generation ZDR policy</h3><p>Every answer route requests ZDR, denies provider data collection, pins one approved provider, and disables provider fallback. No direct-provider answer escape hatch exists.</p></article>
+        <article class="card"><p class="number">05</p><h3>Cite or refuse</h3><p>Every non-refusal answer must contain valid inline citations to retrieved chunks. Missing, unknown, sensitive, or ungrounded output produces a refusal.</p></article>
+        <article class="card"><p class="number">06</p><h3>Data-loss prevention</h3><p>File signatures, EICAR, secrets, SSNs, payment-card patterns, and prompt-injection language are checked without retaining matched sensitive values.</p></article>
+        <article class="card"><p class="number">07</p><h3>Identity and session safeguards</h3><p>Passwords use Argon2id. Random session and reset tokens are stored only as SHA-256 hashes. Password changes and resets revoke existing sessions atomically.</p></article>
+        <article class="card"><p class="number">08</p><h3>Durable security audit</h3><p>Security-sensitive lifecycle, authentication, denial, and rate-limit actions produce correlated, append-only receipts. SIEM delivery uses HMAC signatures, retry leases, exponential backoff, and dead-letter state.</p></article>
+        <article class="card"><p class="number">09</p><h3>Browser and API defense</h3><p>Credentialed mutations enforce trusted origins. CSP, frame denial, MIME protection, referrer restrictions, permission restrictions, CORS policy, and production HSTS reduce browser attack paths.</p></article>
+        <article class="card"><p class="number">10</p><h3>Bounded provider failure</h3><p>Embedding, parsing, reranking, generation, rewrite, naming, and evaluation calls use explicit timeouts and retry caps. The complete ask path has a fail-closed deadline.</p></article>
+        <article class="card"><p class="number">11</p><h3>Quality and safety evaluation</h3><p>Durable evaluation runs measure retrieval, reranking, citations, refusals, answer accuracy, latency, route fallback, and optional claim-level faithfulness against open and held-out questions.</p></article>
+        <article class="card"><p class="number">12</p><h3>Security-gated delivery</h3><p>GitHub CI runs TypeScript, unit tests, CodeQL, Gitleaks, high-severity dependency audit, and CycloneDX SBOM generation.</p></article>
       </div>
     </section>
 
@@ -239,12 +242,32 @@
           <div class="capability"><h3>AI risk coverage</h3><p>Implemented safeguards address prompt injection, cross-program leakage, knowledge-base poisoning, unsafe output, uncontrolled source onboarding, secret exposure, and query abuse.</p></div>
           <div class="capability"><h3>Named responsibility domains</h3><p>Control ownership is separated across content governance, IAM, Security operations, platform/database operations, data governance, and repository ownership.</p></div>
           <div class="capability"><h3>Evidence classification</h3><p>Control status distinguishes database acceptance, CI-verified behavior, implemented code, deployed configuration, and third-party responsibilities.</p></div>
+          <div class="capability"><h3>Server-owned policy</h3><p>Clients cannot choose their program scope, clearance, model provider, lifecycle state, approval identity, or retention override. Authorized server and database paths resolve those decisions.</p></div>
+          <div class="capability"><h3>Fail-closed defaults</h3><p>Unknown classifications, malformed principals, missing control schema, invalid citations, exhausted model routes, and unsafe content resolve to denial, quarantine, service unavailability, or refusal.</p></div>
         </div>
       </article>
 
       <article class="domain-area">
         <div>
-          <div class="area-label">02 · Content security</div>
+          <div class="area-label">02 · Identity</div>
+          <h3 class="area-title">Identity, credentials, and sessions</h3>
+          <p class="domain-summary">Credential storage, session handling, password recovery, role checks, and account administration reduce identity theft and privilege misuse.</p>
+        </div>
+        <div class="capabilities">
+          <div class="capability"><h3>Argon2id password storage</h3><p>Local passwords use Argon2id with explicit memory, time, and parallelism parameters. Verification failures return the same invalid-credentials response.</p></div>
+          <div class="capability"><h3>Login timing defense</h3><p>Unknown or inactive users still trigger a dummy Argon2 verification, reducing the timing difference that could reveal whether an account exists.</p></div>
+          <div class="capability"><h3>Hashed session tokens</h3><p>Sessions use 256-bit random browser tokens. Only each token's SHA-256 hash is persisted. Cookies are HTTP-only, SameSite=Lax, and secure in production.</p></div>
+          <div class="capability"><h3>Transactional session revocation</h3><p>Password changes and resets update the credential, revoke every existing session, and issue one replacement session in the same database transaction.</p></div>
+          <div class="capability"><h3>One-time recovery links</h3><p>Password reset and invite links use random, hashed, expiring tokens. Consumption is row-locked, single-use, and paired with account-state checks.</p></div>
+          <div class="capability"><h3>Anti-enumeration and throttling</h3><p>Forgot-password requests return a uniform response, rate-limit requests, and do not issue tokens for unknown, inactive, or demo accounts.</p></div>
+          <div class="capability"><h3>Server-side role enforcement</h3><p>Super user, senior manager, manager, and CSR permissions are checked on protected routes. Database constraints bind non-global users to a program.</p></div>
+          <div class="capability"><h3>Safer bulk invitations</h3><p>CSV imports create CSR accounts only, normalize and deduplicate emails, assign random throwaway passwords, force password setup, and require configured email delivery.</p></div>
+        </div>
+      </article>
+
+      <article class="domain-area">
+        <div>
+          <div class="area-label">03 · Content security</div>
           <h3 class="area-title">Data ingestion and knowledge base</h3>
           <p class="domain-summary">Source governance, content validation, independent approval, and immutable provenance protect the knowledge base before content becomes searchable.</p>
         </div>
@@ -263,7 +286,7 @@
 
       <article class="domain-area">
         <div>
-          <div class="area-label">03 · Authorization</div>
+          <div class="area-label">04 · Authorization</div>
           <h3 class="area-title">Retrieval and access control</h3>
           <p class="domain-summary">Program and sensitivity policies are enforced before retrieved content can enter model context or reach a user.</p>
         </div>
@@ -272,47 +295,79 @@
           <div class="capability"><h3>Classification clearance</h3><p>Public, Internal, Confidential, and Restricted levels are compared against the authenticated user's server-owned clearance.</p></div>
           <div class="capability"><h3>Consistent read enforcement</h3><p>The same program, lifecycle, and classification rules protect ask retrieval, knowledge-base reads, citation lookup, highlights, and durable citation history.</p></div>
           <div class="capability"><h3>Immediate revocation behavior</h3><p>Revoked versions stop participating in retrieval and are removed from citation access rather than remaining available through historical source links.</p></div>
+          <div class="capability"><h3>Hybrid retrieval</h3><p>Vector similarity and PostgreSQL full-text search run in parallel. A trigram fallback handles keyword zero-hits, then a reranker selects final context.</p></div>
+          <div class="capability"><h3>Scoped context expansion</h3><p>Neighboring chunks can restore procedure context only within the same approved document version, program, lifecycle, and classification boundary.</p></div>
+          <div class="capability"><h3>Confidence gate</h3><p>Low reranker confidence refuses before generation. Candidate and final-context counts stay bounded and are recorded in evaluation configuration.</p></div>
+          <div class="capability"><h3>Owned citation access</h3><p>Citation-target reads re-check query ownership, program, source index, document version, lifecycle, and source offsets before returning evidence.</p></div>
         </div>
       </article>
 
       <article class="domain-area">
         <div>
-          <div class="area-label">04 · AI safety</div>
-          <h3 class="area-title">Prompt, query, and output safety</h3>
-          <p class="domain-summary">Layered input, context, generation, and output controls keep answers grounded while limiting abuse and unsafe automation.</p>
+          <div class="area-label">05 · AI data handling</div>
+          <h3 class="area-title">Zero Data Retention and model routing</h3>
+          <p class="domain-summary">Truenote constrains where answer-generation traffic goes and sends an explicit privacy policy with every OpenRouter model request.</p>
         </div>
         <div class="capabilities">
-          <div class="capability"><h3>Input screening</h3><p>Ask requests containing payment-card data, SSNs, or credential-shaped secrets are blocked before retrieval and generation.</p></div>
+          <div class="capability"><h3>ZDR requested per call</h3><p>Every OpenRouter answer request sets <code>zdr: true</code> and <code>data_collection: "deny"</code>. The application does not rely on an unstated provider default.</p></div>
+          <div class="capability"><h3>One provider per route</h3><p>Each approved route pins exactly one reviewed provider with <code>provider.only</code> and sets <code>allow_fallbacks: false</code>, preventing OpenRouter from silently choosing another host.</p></div>
+          <div class="capability"><h3>Server-owned allowlist</h3><p>Administrators can order reviewed route presets but cannot supply arbitrary model IDs, providers, request bodies, or routing policies.</p></div>
+          <div class="capability"><h3>ZDR-preserving route cascade</h3><p>If a route errors, returns empty text, or fails citation validation, Truenote advances only to another approved route carrying the same ZDR and data-collection controls.</p></div>
+          <div class="capability"><h3>No direct generation fallback</h3><p>Exhausting every approved OpenRouter route returns a safe refusal. No direct-provider answer path can bypass the per-request ZDR policy.</p></div>
+          <div class="capability"><h3>Auxiliary calls use the same boundary</h3><p>Follow-up rewriting and session naming use one pinned OpenRouter utility route with ZDR requested, data collection denied, and provider fallback disabled.</p></div>
+          <div class="capability"><h3>Local degradation</h3><p>If an auxiliary model call fails, Truenote falls back to the original question or a locally derived title rather than sending data through an unapproved provider.</p></div>
+          <div class="capability"><h3>Explicit coverage boundary</h3><p>This request policy covers OpenRouter-hosted answer, rewrite, and naming calls. Direct embedding and parsing providers are separate data-processing paths.</p></div>
+        </div>
+      </article>
+
+      <article class="domain-area">
+        <div>
+          <div class="area-label">06 · Answer safety</div>
+          <h3 class="area-title">Prompt, query, and output controls</h3>
+          <p class="domain-summary">Input, retrieved context, generation, and output checks keep answers grounded while limiting unsafe disclosure and automation.</p>
+        </div>
+        <div class="capabilities">
+          <div class="capability"><h3>Input screening</h3><p>Ask requests containing payment-card data, SSNs, or credential-shaped secrets are blocked before retrieval and generation and are not written to query history.</p></div>
           <div class="capability"><h3>Retrieved-content boundaries</h3><p>The generation prompt labels retrieved text as untrusted evidence, rejects embedded instructions, and prohibits prompt disclosure, credential disclosure, role changes, and tool calls.</p></div>
-          <div class="capability"><h3>Output validation</h3><p>Generated text is screened for sensitive content and checked for valid inline citation IDs. Validation failure becomes a refusal.</p></div>
-          <div class="capability"><h3>Abuse controls</h3><p>Postgres-backed per-user and per-program ask limits, question-length bounds, provider deadlines, and an overall fail-closed request deadline constrain scraping and resource exhaustion.</p></div>
+          <div class="capability"><h3>Citation allowlist</h3><p>The model receives short source aliases. Returned citations must map back to chunks supplied in the current request; unknown or out-of-range citations fail validation.</p></div>
+          <div class="capability"><h3>Sensitive-output refusal</h3><p>Generated text is screened again for credential, payment-card, and SSN patterns. Sensitive output becomes the standard refusal even when citations are otherwise valid.</p></div>
+          <div class="capability"><h3>Refusal contract</h3><p>An empty response, missing citation, malformed citation, unknown source, low-confidence retrieval result, or exhausted route chain cannot render as a normal answer.</p></div>
           <div class="capability"><h3>No action-taking path</h3><p>Generation receives excerpts and a question, not application tools. Returned text cannot directly execute workflows, database changes, or external actions.</p></div>
-          <div class="capability"><h3>Approved model routing</h3><p>Answer generation walks only a server-owned route allowlist with ZDR requested and provider fallback disabled. Exhaustion returns a defensive refusal.</p></div>
         </div>
       </article>
 
       <article class="domain-area">
         <div>
-          <div class="area-label">05 · System protection</div>
-          <h3 class="area-title">Confidentiality, integrity, and availability</h3>
-          <p class="domain-summary">Identity, content-integrity, answer-integrity, and workload controls protect the knowledge base and the services around it.</p>
+          <div class="area-label">07 · Application protection</div>
+          <h3 class="area-title">Browser, API, and workload defenses</h3>
+          <p class="domain-summary">Request-origin checks, browser policy, rate limits, queues, deadlines, and integrity checks protect the application around the model.</p>
         </div>
         <div class="capabilities">
-          <div class="capability"><h3>Confidentiality controls</h3><p>Passwords use Argon2id, session tokens are stored only as SHA-256 hashes, cookies are HTTP-only and secure in production, CORS is allowlisted, and browser mutations enforce trusted origins.</p></div>
+          <div class="capability"><h3>Trusted mutation origins</h3><p>Credentialed writes require an exact trusted origin and consistent Fetch Metadata. Foreign, opaque, malformed, cross-site, and same-site sibling origins are rejected.</p></div>
+          <div class="capability"><h3>Content Security Policy</h3><p>Production policy restricts scripts, styles, images, fonts, connections, forms, frames, objects, base URLs, and frame ancestors and upgrades insecure requests.</p></div>
+          <div class="capability"><h3>Defensive browser headers</h3><p>Responses set MIME sniffing protection, frame denial, same-origin referrer policy, camera, location, microphone, payment and USB restrictions, cross-origin opener isolation, and production HSTS.</p></div>
+          <div class="capability"><h3>Credentialed CORS policy</h3><p>Cross-origin browser access is disabled by default. When configured, exact normalized origins are allowlisted and credentials are allowed only for those origins.</p></div>
           <div class="capability"><h3>Content integrity</h3><p>Source files are SHA-256 addressed, document history is versioned, activation is constrained, and privileged lifecycle changes produce immutable audit receipts.</p></div>
           <div class="capability"><h3>Answer integrity</h3><p>Retrieval confidence gates generation. Every non-refusal answer must resolve its citations against the actual retrieved chunks.</p></div>
-          <div class="capability"><h3>Workload protection</h3><p>Ingestion runs in a background queue. Ask traffic uses distributed limits, bounded candidate counts, provider timeouts, and a whole-request deadline.</p></div>
+          <div class="capability"><h3>Distributed ask throttling</h3><p>Postgres-backed limits apply independently per authenticated user and per program and return a bounded retry interval when capacity is exhausted.</p></div>
+          <div class="capability"><h3>Authentication throttling</h3><p>Login and password-recovery paths use separate sliding-window limits to bound password verification and email-trigger abuse.</p></div>
+          <div class="capability"><h3>Background job isolation</h3><p>Document ingestion and evaluation work run outside request handlers through pg-boss. Durable rows and reconciliation recover jobs after insert or queue-send crashes.</p></div>
+          <div class="capability"><h3>Bounded external calls</h3><p>Every provider class has a configured timeout and retry cap. Abort signals stop work, and the overall ask deadline returns the standard refusal.</p></div>
+          <div class="capability"><h3>Read-only demo accounts</h3><p>When demo mode is enabled, published demo users can read but every mutating method is denied by server middleware.</p></div>
+          <div class="capability"><h3>Minimal public health response</h3><p>The unauthenticated health endpoint returns only service availability and does not expose database, provider, secret, user, or control-state details.</p></div>
         </div>
       </article>
 
       <article class="domain-area">
         <div>
-          <div class="area-label">06 · Observability</div>
+          <div class="area-label">08 · Observability</div>
           <h3 class="area-title">Logging, monitoring, and audit</h3>
           <p class="domain-summary">Correlated query receipts, an append-only security ledger, durable SIEM delivery, and negative tests make security activity traceable.</p>
         </div>
         <div class="capabilities">
           <div class="capability"><h3>Question and answer receipts</h3><p>Query records bind the authenticated user, program, session, question, answer, refusal state, cited chunks, immutable citation snapshots, latency, and pipeline timing.</p></div>
+          <div class="capability"><h3>Immutable citation history</h3><p>Successful answer receipts freeze ordered document, version, excerpt, and source-position evidence. Re-ingestion cannot silently rewrite an earlier answer's cited text.</p></div>
+          <div class="capability"><h3>Revocation-aware history</h3><p>Superseded sources remain labeled as historical evidence, while revoked, rejected, quarantined, failed, or deleted versions are removed from citation access.</p></div>
           <div class="capability"><h3>Append-only security ledger</h3><p>Security events include actor, role, program, action, outcome, resource, request ID, source IP, details, previous hash, and event hash. Mutation is blocked by a database trigger.</p></div>
           <div class="capability"><h3>Durable SIEM transport</h3><p>A database trigger creates outbox rows in the same transaction as security events. The worker signs exact bodies, uses lease-fenced claims, retries, dead-lettering, and exposes super-user health.</p></div>
           <div class="capability"><h3>Redacted diagnostics</h3><p>Operational errors retain route, user, program, request, provider, and correlation data while recursively removing credential-shaped content.</p></div>
@@ -323,9 +378,9 @@
 
       <article class="domain-area">
         <div>
-          <div class="area-label">07 · Operations</div>
-          <h3 class="area-title">Lifecycle and operations</h3>
-          <p class="domain-summary">Formal lifecycle transitions, delivery gates, retention controls, and maintained architecture records support secure operation over time.</p>
+          <div class="area-label">09 · Assurance</div>
+          <h3 class="area-title">Lifecycle, evaluation, and secure delivery</h3>
+          <p class="domain-summary">Formal lifecycle transitions, repeatable evaluation, retained build evidence, and recovery-aware jobs support secure operation over time.</p>
         </div>
         <div class="capabilities">
           <div class="capability"><h3>Controlled lifecycle changes</h3><p>Approval, rejection, rescan, activation, retirement, revocation, and permanent purge have explicit role, state, reason, retention, and audit requirements.</p></div>
@@ -333,6 +388,12 @@
           <div class="capability"><h3>Security delivery gates</h3><p>The repository includes CodeQL, secret scanning, dependency auditing, SBOM generation, Dependabot configuration, and a consolidated security regression suite.</p></div>
           <div class="capability"><h3>Evidence-carrying DDL</h3><p>Forward-only SQL defines lifecycle constraints, source governance, clearance, rate limits, append-only audit, and SIEM outbox behavior with post-commit acceptance queries.</p></div>
           <div class="capability"><h3>Traceable control evidence</h3><p>Control records connect owners, source files, CI receipts, DDL hashes, and acceptance tests to the safeguards they support.</p></div>
+          <div class="capability"><h3>Full-pipeline evaluation</h3><p>Program-scoped evaluation runs execute embedding, hybrid retrieval, reranking, generation, and citation scoring against expected documents, phrases, and refusal cases.</p></div>
+          <div class="capability"><h3>Held-out safety questions</h3><p>Protected questions remain separate from the tuning set. Reports show open and held-out pass rates so improvements cannot hide evaluation overfitting.</p></div>
+          <div class="capability"><h3>Claim-level faithfulness</h3><p>An opt-in judge decomposes answers into factual claims and reports unsupported claims against the exact excerpts supplied to generation.</p></div>
+          <div class="capability"><h3>Durable baselines</h3><p>Completed runs retain model routes, retrieval settings, question snapshots, question-set hash, results, and one approved baseline per program.</p></div>
+          <div class="capability"><h3>Lease-fenced evaluation work</h3><p>Only one run per program may be active. Durable queue reconciliation, lease tokens, cancellation fencing, and bounded run sizes protect results from duplicate or stale workers.</p></div>
+          <div class="capability"><h3>Dependency maintenance</h3><p>Dependabot checks npm and GitHub Actions dependencies weekly, while the security workflow audits production dependencies and generates a machine-readable SBOM.</p></div>
         </div>
       </article>
     </section>
@@ -346,10 +407,16 @@
           <tbody>
             <tr><td>Database-enforced control foundation</td><td><span class="tag verified">Verified</span></td><td>Owner-confirmed acceptance in heliumdb development covers required lifecycle, source-governance, classification, approval-separation, rate-limit, and hash-chained audit objects. Acceptance returned zero unsafe active versions and zero broken audit-chain links.</td><td class="evidence"><code>docs/security/p0-p1-security-controls.sql</code></td></tr>
             <tr><td>Program and clearance isolation</td><td><span class="tag verified">Verified</span></td><td>Negative tests deny cross-program and above-clearance access. Retrieval binds program and classification limits in SQL before ranking, then applies a second fail-closed scope check.</td><td class="evidence"><code>artifacts/api-server/src/lib/retrieval/query.ts</code><code>artifacts/api-server/src/lib/security/classification.ts</code><code>artifacts/api-server/src/lib/security/__tests__/negative-controls.test.ts</code></td></tr>
+            <tr><td>Hybrid retrieval boundary</td><td><span class="tag verified">Verified</span></td><td>Vector, full-text, trigram fallback, reranking, and neighbor expansion retain program, active-version, lifecycle, and classification predicates. Scope tests confirm leaked candidates are dropped fail-closed.</td><td class="evidence"><code>artifacts/api-server/src/lib/retrieval/query.ts</code><code>artifacts/api-server/src/lib/retrieval/__tests__/program-scope.test.ts</code><code>artifacts/api-server/src/lib/retrieval/__tests__/expand-neighbors.test.ts</code></td></tr>
             <tr><td>Controlled ingestion and approval</td><td><span class="tag verified">Verified</span></td><td>CI covers file validation, EICAR, sensitive-content findings, self-approval denial, unsafe scan states, stale sources, and inactive-until-approved behavior.</td><td class="evidence"><code>artifacts/api-server/src/lib/ingestion/run.ts</code><code>artifacts/api-server/src/routes/documents.ts</code><code>artifacts/api-server/src/lib/security/__tests__/content-scan.test.ts</code><code>artifacts/api-server/src/lib/security/__tests__/negative-controls.test.ts</code></td></tr>
+            <tr><td>OpenRouter ZDR routing policy</td><td><span class="tag verified">Verified</span></td><td>Tests confirm every approved answer route pins one provider, requests ZDR, denies data collection, disables provider fallback, rejects arbitrary routes, preserves the policy across route cascade, and has no direct-provider escape hatch.</td><td class="evidence"><code>artifacts/api-server/src/lib/generation/model-routing.ts</code><code>artifacts/api-server/src/lib/generation/answer.ts</code><code>artifacts/api-server/src/lib/generation/utility-model.ts</code><code>artifacts/api-server/src/lib/generation/__tests__/model-routing.test.ts</code><code>artifacts/api-server/src/lib/generation/__tests__/answer.test.ts</code></td></tr>
             <tr><td>Citation and refusal contract</td><td><span class="tag verified">Verified</span></td><td>Generation tests reject missing, malformed, out-of-range, and unknown citations. A response without at least one valid source becomes the standard refusal.</td><td class="evidence"><code>artifacts/api-server/src/lib/generation/answer.ts</code><code>artifacts/api-server/src/lib/generation/__tests__/answer.test.ts</code></td></tr>
+            <tr><td>Sensitive input and output handling</td><td><span class="tag verified">Verified</span></td><td>Tests cover credential, private-key, SSN, payment-card, EICAR, and prompt-injection detection. Sensitive model output is refused even when it includes a valid citation.</td><td class="evidence"><code>artifacts/api-server/src/lib/security/content-scan.ts</code><code>artifacts/api-server/src/lib/security/__tests__/content-scan.test.ts</code><code>artifacts/api-server/src/lib/generation/__tests__/answer.test.ts</code></td></tr>
+            <tr><td>Immutable citation receipts</td><td><span class="tag verified">Verified</span></td><td>Tests confirm ordered source snapshots, raw-markdown anchors, ownership and version requirements, stale-offset rejection, superseded labels, and removal of revoked or deleted evidence.</td><td class="evidence"><code>artifacts/api-server/src/lib/citations.ts</code><code>artifacts/api-server/src/lib/__tests__/citations.test.ts</code></td></tr>
             <tr><td>Browser mutation and CSP defense</td><td><span class="tag verified">Verified</span></td><td>CI passes ten browser-security tests covering trusted origins, foreign and malformed origins, cross-site requests, same-site sibling origins, and Content Security Policy.</td><td class="evidence"><code>artifacts/api-server/src/middleware/browser-security.ts</code><code>artifacts/api-server/src/middleware/__tests__/browser-security.test.ts</code></td></tr>
             <tr><td>Security audit and durable SIEM logic</td><td><span class="tag verified">Verified</span></td><td>CI passes signing, lease-fenced claiming, successful completion, retry scheduling, maximum-attempt dead-lettering, health reporting, and DDL-structure tests.</td><td class="evidence"><code>artifacts/api-server/src/lib/security/audit.ts</code><code>artifacts/api-server/src/lib/security/siem-outbox.ts</code><code>artifacts/api-server/src/lib/security/__tests__/siem-outbox.test.ts</code><code>docs/security/p1-siem-delivery-outbox.sql</code></td></tr>
+            <tr><td>Redacted diagnostics and bounded providers</td><td><span class="tag verified">Verified</span></td><td>Tests confirm recursive credential redaction, safe serialization, provider deadline defaults, bounded overrides, abort handling, and retry caps.</td><td class="evidence"><code>artifacts/api-server/src/lib/observability/error-log.ts</code><code>artifacts/api-server/src/lib/observability/__tests__/error-log.test.ts</code><code>artifacts/api-server/src/lib/deadlines.ts</code><code>artifacts/api-server/src/lib/__tests__/deadlines.test.ts</code></td></tr>
+            <tr><td>Evaluation integrity</td><td><span class="tag verified">Verified</span></td><td>CI covers scoring, citation matching, expected-document rank, stage attribution, claim faithfulness, durable queue recovery, lease-fenced persistence, summaries, and protected evaluation splits.</td><td class="evidence"><code>artifacts/api-server/src/lib/eval/runner.ts</code><code>artifacts/api-server/src/lib/eval/persistence.ts</code><code>artifacts/api-server/src/lib/eval/queue.ts</code><code>artifacts/api-server/src/lib/eval/__tests__</code></td></tr>
             <tr><td>CI security gates</td><td><span class="tag verified">Verified</span></td><td>The required workflow passes workspace TypeScript checks, 281 unit tests, CodeQL security analysis, Gitleaks secret scanning, high-severity production dependency audit, and CycloneDX SBOM generation.</td><td class="evidence"><code>.github/workflows/security.yml</code><code>.github/dependabot.yml</code></td></tr>
           </tbody>
         </table>
@@ -363,10 +430,15 @@
         <article class="card"><p class="number">01</p><h3>Database safety gates passed</h3><p>Required control objects, columns, constraints, and triggers were present in heliumdb development. Acceptance found no active version outside the approved lifecycle and no broken audit-chain link.</p></article>
         <article class="card"><p class="number">02</p><h3>Unauthorized retrieval denied</h3><p>Tests reject cross-program content, above-clearance content, and malformed principals before protected knowledge can reach ranking, generation, citation lookup, or document reads.</p></article>
         <article class="card"><p class="number">03</p><h3>Unsafe activation denied</h3><p>Tests reject self-approval, unsafe scan state, stale or retired sources, blocking sensitive-content findings, and activation without the required clean and approved state.</p></article>
-        <article class="card"><p class="number">04</p><h3>Ungrounded answers refused</h3><p>Generation tests confirm that missing or invalid citations cannot produce a normal answer. Known citations must resolve to the chunks actually supplied to the model.</p></article>
-        <article class="card"><p class="number">05</p><h3>Browser boundaries enforced</h3><p>Ten tests confirm same-origin mutations work while foreign, opaque, malformed, cross-site, and sibling-origin requests are rejected. CSP restricts active browser content.</p></article>
-        <article class="card"><p class="number">06</p><h3>Audit delivery logic passed</h3><p>Seven SIEM outbox tests confirm signed payloads, bounded claims, retry backoff, lease fencing, dead-letter state, successful completion, and the delivery-health DDL structure.</p></article>
-        <article class="card"><p class="number">07</p><h3>Security pipeline passed</h3><p>The merged security workflow completed TypeScript checks, 281 unit tests, CodeQL, Gitleaks, production dependency audit, and CycloneDX SBOM generation.</p></article>
+        <article class="card"><p class="number">04</p><h3>ZDR routing policy passed</h3><p>Tests confirm answer routes request ZDR, deny data collection, pin one provider, disable provider fallback, reject arbitrary routes, and return a refusal without a direct-provider escape hatch.</p></article>
+        <article class="card"><p class="number">05</p><h3>Ungrounded answers refused</h3><p>Generation tests confirm that missing or invalid citations cannot produce a normal answer. Known citations must resolve to chunks supplied to the model.</p></article>
+        <article class="card"><p class="number">06</p><h3>Sensitive content blocked</h3><p>Tests detect credential, private-key, SSN, payment-card, EICAR, and prompt-injection patterns. Sensitive generated text is refused even with an otherwise valid citation.</p></article>
+        <article class="card"><p class="number">07</p><h3>Citation history preserved</h3><p>Tests preserve ordered source receipts across re-ingestion, label superseded evidence, reject stale anchors, and remove revoked or deleted source access.</p></article>
+        <article class="card"><p class="number">08</p><h3>Browser boundaries enforced</h3><p>Ten tests confirm same-origin mutations work while foreign, opaque, malformed, cross-site, and sibling-origin requests are rejected. CSP restricts active browser content.</p></article>
+        <article class="card"><p class="number">09</p><h3>Audit delivery logic passed</h3><p>Seven SIEM outbox tests confirm signed payloads, bounded claims, retry backoff, lease fencing, dead-letter state, successful completion, and delivery-health DDL structure.</p></article>
+        <article class="card"><p class="number">10</p><h3>Failure bounds passed</h3><p>Tests confirm provider timeout and retry limits, abort propagation, route-chain cancellation, error redaction, and recovery after queue initialization failures.</p></article>
+        <article class="card"><p class="number">11</p><h3>Evaluation integrity passed</h3><p>Tests cover retrieval and reranking attribution, citation scoring, faithfulness, durable job recovery, lease fencing, cancellation, and open-versus-held-out reporting.</p></article>
+        <article class="card"><p class="number">12</p><h3>Security pipeline passed</h3><p>The merged security workflow completed TypeScript checks, 281 unit tests, CodeQL, Gitleaks, production dependency audit, and CycloneDX SBOM generation.</p></article>
       </div>
     </section>
 
