@@ -6,7 +6,7 @@
 
 ### 1. The dev session (where Claude runs) — local desktop OR Claude Code Cloud
 
-**Local desktop** (the usual case since 2026-07-04): the user runs Claude Code on Windows with the clone at `C:\Users\Home\CoreWise\kbase`. Package manager is pnpm via corepack (`corepack pnpm install`, `pnpm -r run check`, `pnpm -r run test`). Local installs are for VERIFICATION ONLY — they never substitute for the Replit install path below, because Replit's environment is what actually serves the app.
+**Local desktop** (the usual case since 2026-07-04): the user runs Claude Code from a local Windows checkout. Package manager is pnpm via corepack (`corepack pnpm install`, `pnpm -r run check`, `pnpm -r run test`). Local installs are for VERIFICATION ONLY — they never substitute for the Replit install path below, because Replit's environment is what actually serves the app.
 
 **Claude Code cloud sandbox** (web sessions): ephemeral per session, NOT Replit. Persistence is not guaranteed — commit anything worth keeping. Do NOT run installs just to enable a one-shot check; Replit's deploy log is the authoritative type-check there.
 

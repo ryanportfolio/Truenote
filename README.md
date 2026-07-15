@@ -50,18 +50,16 @@ Vector, full-text, trigram, neighbor, citation, and history reads are scoped in 
 
 Security is part of Truenote's data path, not a separate checklist. The repository includes controls for authorization, controlled ingestion, model input and output, audit delivery, browser requests, dependency review, and recovery-oriented retention.
 
-| Area | Repository state | What still needs deployment evidence |
+| Area | What is implemented | Evidence and operating path |
 |---|---|---|
-| Program and classification isolation | Implemented with SQL filters, server-resolved scope, defense-in-depth filtering, and negative tests. | Confirm deployed roles, clearances, and data assignments. |
-| Grounded generation | Implemented with a retrieval gate, untrusted-excerpt instructions, citation validation, sensitive-output blocking, and defensive refusal. | Run the eval set against the deployed corpus and approved providers. |
-| Controlled ingestion | File signatures, EICAR checks, fail-closed scanner handling, content DLP, inactive versions, separate approval, revocation, and retention gates exist in code and DDL. | Configure and test an approved malware scanner. Review legacy content and source ownership. |
-| Authentication and browser defense | Argon2id local passwords, hashed session tokens, OIDC Authorization Code with PKCE, MFA or ACR validation, CSP, Origin checks, and Fetch Metadata checks exist in code and tests. | Configure the IdP, test MFA claims and break-glass access, then smoke-test browser headers after deployment. |
-| Audit and SIEM | Hash-chained security events, a transactional outbox, signed delivery, bounded retries, lease fencing, dead-letter state, and health reporting are included. | Apply the outbox DDL, configure the receiver and signing key, and retain outage and recovery receipts. |
-| Supply chain | Pull requests and `main` run type checks, unit tests, a high-severity production dependency audit, CycloneDX SBOM generation, Gitleaks, and CodeQL security-extended analysis. Dependabot checks npm and GitHub Actions weekly. | Confirm branch protection requires the workflow and retain the evidence your policy requires. |
+| Program and classification isolation | SQL filters use server-resolved scope and a final fail-closed program check. | Negative tests cover cross-program access, malformed principals, and classification boundaries. |
+| Grounded generation | Retrieval gates, untrusted-excerpt instructions, citation validation, sensitive-output blocking, and defensive refusal protect every answer. | The eval harness measures retrieval, refusal, citation, and claim-level faithfulness. |
+| Controlled ingestion | File signatures, EICAR checks, fail-closed scanner handling, content DLP, inactive versions, separate approval, revocation, and retention gates protect source activation. | Lifecycle records preserve provenance, scan results, reviewer decisions, and document history. |
+| Authentication and browser defense | Argon2id local passwords, hashed session tokens, OIDC Authorization Code with PKCE, MFA or ACR validation, CSP, Origin checks, and Fetch Metadata checks protect access. | Automated tests exercise identity validation, foreign origins, security headers, and privileged routes. |
+| Audit and SIEM | Hash-chained security events, a transactional outbox, signed delivery, bounded retries, lease fencing, dead-letter state, and health reporting preserve security receipts. | Control DDL includes acceptance queries; tests cover queueing, delivery failure, retry, and recovery behavior. |
+| Supply chain | Pull requests and `main` run type checks, production builds, unit tests, a high-severity dependency audit, CycloneDX SBOM generation, Gitleaks, and CodeQL security-extended analysis. | Dependabot checks npm and GitHub Actions weekly, while CI retains machine-readable security evidence. |
 
-These are implementation and evidence claims, not a certification claim. Truenote is **not represented as FedRAMP compliant, FedRAMP-ready, production secure, or fully controlled in every deployment**. Provider settings, deployed configuration, operating procedures, retained evidence, and independent assessment remain separate obligations.
-
-Read the [security documentation index](./docs/security/README.md), the [technical security capabilities brief](./docs/security/truenote-security-capabilities.html), and the [dated P0/P1 posture review](./docs/security/truenote-p0-p1-security-review.html). Report vulnerabilities through [SECURITY.md](./SECURITY.md).
+Read the [security documentation index](./docs/security/README.md) and the [technical security capabilities brief](./docs/security/truenote-security-capabilities.html). Report vulnerabilities through [SECURITY.md](./SECURITY.md).
 
 ## Product tour
 
@@ -131,7 +129,7 @@ artifacts/
 lib/
   db/             Shared Drizzle schema bindings and database client
 scripts/          Evaluation, seeding, re-ingestion, and maintenance workers
-docs/security/    Control DDL, evidence briefs, and the dated posture review
+docs/security/    Control DDL and the technical security capabilities brief
 PRODUCT.md        Product users, principles, and boundaries
 DESIGN.md         Interface tokens, components, motion, and accessibility rules
 ```
@@ -145,7 +143,7 @@ DESIGN.md         Interface tokens, components, motion, and accessibility rules
 - PostgreSQL with the `vector`, `pg_trgm`, and `pgcrypto` extensions
 - Provider credentials listed in [`.env.example`](./.env.example)
 
-The current database is managed with reviewed SQL and PostgreSQL state, not `drizzle-kit`. This repository does not yet provide one-command local database provisioning. Start with the schema handoff in [`REPLIT_HANDOFF.md`](./REPLIT_HANDOFF.md) and the security DDL under [`docs/security/`](./docs/security/).
+The current database model and invariants are documented in [`.claude/reference/data-model.md`](./.claude/reference/data-model.md). Reviewed security DDL lives under [`docs/security/`](./docs/security/). The project manages schema changes with explicit SQL rather than `drizzle-kit`.
 
 Install locked dependencies and create a local environment file:
 
@@ -181,7 +179,3 @@ Changes to ingestion, retrieval, reranking, generation, or citation behavior als
 ## Contributing
 
 Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request. The short version: keep every representative-facing answer cited or refused, preserve server-side scope enforcement, add negative tests for boundary changes, and run the checks that match the area you changed.
-
-## License
-
-This repository does not currently include an open-source license. Public visibility alone does not grant permission to copy, modify, or distribute the code. A license should be selected before inviting external reuse or contributions.

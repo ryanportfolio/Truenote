@@ -48,3 +48,6 @@ yarn-error.log*
 /rag-donor/
 /rag-donor.tar.gz
 
+# Replit upload/paste scratch artifacts
+/attached_assets/
+

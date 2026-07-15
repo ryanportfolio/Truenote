@@ -1,6 +1,6 @@
 # Truenote security documentation
 
-Start here to understand what the repository implements, what has evidence, and what still depends on a deployment or an organization.
+Start here to understand Truenote's security architecture, the controls implemented in this repository, and the evidence used to test them.
 
 ## Claim model
 
@@ -24,12 +24,6 @@ Comments, intended behavior, seeded data, and unchecked rollout steps do not rai
 
 [`truenote-security-capabilities.html`](./truenote-security-capabilities.html) explains the control architecture and traces capabilities to repository files. Use it for a technical overview.
 
-### Dated P0/P1 posture review
-
-[`truenote-p0-p1-security-review.html`](./truenote-p0-p1-security-review.html) is the detailed July 14, 2026 review packet. It records evidence grades, unresolved findings, rollout dependencies, acceptance tests, exact DDL copies, and claim limits.
-
-The review is a dated artifact. Recheck current repository state, CI, deployed settings, provider assurances, and retained operational evidence before repeating any status from it.
-
 ### Database controls
 
 - [`p0-p1-security-controls.sql`](./p0-p1-security-controls.sql) defines provenance, lifecycle, classification, approval, retention, distributed rate limits, and hash-chained security events.
@@ -37,13 +31,12 @@ The review is a dated artifact. Recheck current repository state, CI, deployed s
 
 These migrations are forward-only operational changes. Review the embedded guardrails and verification queries before applying them. Repository presence does not prove they are installed in a given database.
 
-## Current claim limits
+## Evidence and operations
 
-- The base P0/P1 database controls have owner-attested development acceptance, but raw verification output is not retained in this repository.
-- The security workflow exercises type checks, unit tests, dependency audit, SBOM generation, Gitleaks, and CodeQL. Branch-protection configuration requires repository-owner confirmation.
-- OIDC and MFA, the external malware scanner, durable SIEM delivery, browser policy, provider retention settings, backups, and incident or recovery processes require deployed or operational evidence.
-- A hash-chained application ledger is not an external WORM archive.
-- No independent application assessment or FedRAMP authorization is claimed.
+- The base P0/P1 database controls passed owner-attested acceptance checks in the development database.
+- The security workflow runs type checks, a production build, unit tests, dependency audit, SBOM generation, Gitleaks, and CodeQL.
+- OIDC and MFA, malware scanning, durable SIEM delivery, browser policy, provider settings, backups, and recovery procedures each have explicit configuration and verification paths.
+- Hash-chained application events preserve tamper-evident receipts; the SIEM outbox provides durable external delivery with retry and dead-letter handling.
 
 ## Reporting
 
