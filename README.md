@@ -87,7 +87,7 @@ Each document version moves through a controlled, asynchronous pipeline:
 2. Validate the file signature and check for EICAR.
 3. Send raw bytes to the configured malware scanner. Missing or failed scanning quarantines the upload.
 4. Parse PDFs and images with LandingAI ADE, DOCX with Mammoth, and text formats directly.
-5. Scan parsed content for secrets, private keys, SSNs, payment cards, and prompt-injection markers. Blocking findings quarantine before embedding.
+5. Scan parsed content for sensitive information and prompt-injection markers. Blocking findings quarantine the upload before embedding.
 6. Split content near 500 tokens without breaking tables or lists. Add a document and heading path to each chunk.
 7. Embed and index clean chunks.
 8. Keep the version inactive until a different authorized reviewer approves it.
