@@ -4,7 +4,7 @@
 
 ## Flow
 
-1. **Upload + provenance** — manager POSTs to `/api/documents` with title, approved `source_id`, original source URI, and classification. Server stores raw bytes, computes SHA-256, and creates an inactive `submitted` version.
+1. **Upload + provenance** — manager POSTs to `/api/documents` with title, approved `source_id`, classification, and an optional original source URI. Server stores raw bytes, computes SHA-256, and creates an inactive `submitted` version.
 2. **Boundary + malware scan** — validate magic bytes and EICAR, then call the organization-approved scanner. Missing, failed, infected, or insecure scanner results quarantine the version before any parser receives bytes.
 3. **Hash dedupe** — if `file_sha256` matches an existing ready version, reuse its `parsed_markdown` instead of re-parsing. Saves cost on accidental re-uploads.
 4. **Parse** — call LandingAI ADE Parse v2 (`dpt-3-pro-latest`, `lib/parsing/landing-parse.ts`) for PDFs and images; `mammoth` for DOCX; passthrough for text/markdown. Parse returns reading-order markdown with any figures/screenshots **described inline** (`<figure><description>…</description></figure>`), so OCR text and image content arrive in one call.

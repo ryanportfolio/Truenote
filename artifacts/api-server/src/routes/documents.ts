@@ -358,10 +358,10 @@ documentsRouter.post(
         res.status(400).json({ ok: false, error: "Choose an approved content source." });
         return;
       }
-      if (sourceOriginUri.length === 0 || sourceOriginUri.length > 2048) {
+      if (sourceOriginUri.length > 2048) {
         res.status(400).json({
           ok: false,
-          error: "Enter the original source location (for example, its SharePoint URL)."
+          error: "Original source location must be 2,048 characters or fewer."
         });
         return;
       }
@@ -478,7 +478,7 @@ documentsRouter.post(
           'submitted',
           ${classification},
           ${sourceId}::uuid,
-          ${sourceOriginUri},
+          ${sourceOriginUri || null},
           ${String(source["owner_name"])},
           ${file.originalname.slice(0, 255)},
           'pending'

@@ -42,6 +42,7 @@ export function UploadForm({
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [sourceId, setSourceId] = useState("");
+  const [includeSourceOrigin, setIncludeSourceOrigin] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
@@ -137,6 +138,7 @@ export function UploadForm({
         return;
       }
       form.reset();
+      setIncludeSourceOrigin(false);
       onUploaded?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -208,20 +210,36 @@ export function UploadForm({
           </select>
         </label>
       </div>
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium">Original source location</span>
-        <input
-          type="text"
-          name="sourceOriginUri"
-          required
-          maxLength={2048}
-          placeholder="https://company.sharepoint.com/sites/operations/policy.pdf"
-          className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-        <span className="text-xs text-muted-foreground">
-          Record where the source-of-truth came from. Truenote does not fetch this address.
-        </span>
-      </label>
+      <div className="rounded-md border border-border bg-secondary/50 p-3">
+        <label className="flex cursor-pointer items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={includeSourceOrigin}
+            onChange={(event) => setIncludeSourceOrigin(event.currentTarget.checked)}
+            className="mt-0.5 h-4 w-4 cursor-pointer rounded-sm border-input text-primary focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          />
+          <span className="flex flex-col gap-1">
+            <span className="font-medium">Add original source location</span>
+            <span className="text-xs text-muted-foreground">
+              Optional. Record where the source-of-truth came from. Truenote does not fetch
+              this address.
+            </span>
+          </span>
+        </label>
+        {includeSourceOrigin ? (
+          <label className="mt-3 flex flex-col gap-1 text-sm">
+            <span className="font-medium">Original source location</span>
+            <input
+              type="text"
+              name="sourceOriginUri"
+              required
+              maxLength={2048}
+              placeholder="https://company.sharepoint.com/sites/operations/policy.pdf"
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </label>
+        ) : null}
+      </div>
       <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium">File</span>
         <input
