@@ -23,6 +23,10 @@ import {
   type SecurityFinding
 } from "../security/content-scan.js";
 import { getMalwareScanningPolicy } from "../security/malware-policy.js";
+import {
+  evaluateDocumentApproval,
+  shouldAutoActivateDocumentUpload
+} from "../security/document-policy.js";
 
 export interface RunIngestionInput {
   documentVersionId: string;
@@ -55,7 +59,7 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
  * Ingestion pipeline (one document version):
  *
  *   parse_status: pending → parsing → ready | failed
- *   lifecycle: submitted → scanning → pending_review → active (human approval)
+ *   lifecycle: submitted → scanning → pending_review → active
  *
  *   1. mark `parsing`
  *   2. fetch file from object storage
@@ -69,8 +73,8 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
  *   7. chunk via the structural chunker (target 500 tokens)
  *   8. embed all chunks (batched 100/req)
  *   9. insert chunks rows with denormalized program_id
- *  10. leave version inactive in `pending_review`; an authorized reviewer
- *      activates it through the approval endpoint
+ *  10. activate senior-manager and super-user uploads immediately; leave
+ *      uploads from other roles inactive in `pending_review`
  *
  * On any error, parse_status is set to "failed" and the error rethrown.
  */
@@ -328,7 +332,7 @@ async function runClaimedIngestion(
         metadata
       };
     });
-    // 9–10. Delete-then-insert chunks AND move to review, all atomically. The
+    // 9–10. Delete-then-insert chunks and resolve activation, all atomically. The
     // single transaction prevents three known footguns:
     //   (a) a retry doubling the chunks: if a previous run of this job
     //       committed the transaction but the worker died before pg-boss
@@ -338,6 +342,40 @@ async function runClaimedIngestion(
     //       Deleting first makes the whole transaction idempotent — the
     //       second run replaces rather than duplicates.
     await db.transaction(async (tx) => {
+      interface AutoApprovalRow {
+        document_id: string;
+        uploaded_by: string | null;
+        uploader_role: string | null;
+        uploader_active: boolean | null;
+        scan_status: string;
+        source_id: string | null;
+        source_active: boolean | null;
+        source_approved_at: Date | string | null;
+      }
+      const approvalResult = await tx.execute(sql`
+        SELECT
+          dv.document_id::text,
+          dv.uploaded_by,
+          uploader.role::text AS uploader_role,
+          uploader.is_active AS uploader_active,
+          dv.scan_status,
+          dv.source_id::text,
+          source.is_active AS source_active,
+          source.approved_at AS source_approved_at
+        FROM document_versions dv
+        JOIN documents d ON d.id = dv.document_id
+        LEFT JOIN users uploader ON uploader.id::text = dv.uploaded_by
+        LEFT JOIN content_sources source ON source.id = dv.source_id
+        WHERE dv.id = ${versionId}::uuid
+        FOR UPDATE OF dv, d
+      `);
+      const approvalRow = approvalResult.rows[0] as unknown as
+        | AutoApprovalRow
+        | undefined;
+      if (!approvalRow) {
+        throw new Error(`Document version not found during activation: ${versionId}`);
+      }
+
       await tx.delete(chunks).where(eq(chunks.documentVersionId, versionId));
       await tx.insert(chunks).values(chunkRows);
       await tx.execute(sql`
@@ -347,6 +385,59 @@ async function runClaimedIngestion(
             scan_findings = ${JSON.stringify(allFindings)}::jsonb,
             is_active = false
         WHERE id = ${versionId}::uuid
+      `);
+
+      const uploaderRole = approvalRow.uploader_role;
+      const autoActivate =
+        approvalRow.uploader_active === true &&
+        (uploaderRole === "senior_manager" || uploaderRole === "super_user") &&
+        shouldAutoActivateDocumentUpload(uploaderRole);
+      if (!autoActivate || !approvalRow.uploaded_by) return;
+
+      const approval = evaluateDocumentApproval({
+        lifecycleState: "pending_review",
+        parseStatus: "ready",
+        scanStatus: approvalRow.scan_status,
+        sourceId: approvalRow.source_id,
+        sourceActive: approvalRow.source_active,
+        sourceApprovedAt: approvalRow.source_approved_at,
+        findings: allFindings,
+        acknowledgeFindings: true
+      });
+      if (!approval.allowed) return;
+
+      await tx.execute(sql`
+        UPDATE document_versions
+        SET is_active = false,
+            lifecycle_state = 'retired',
+            retired_at = now()
+        WHERE document_id = ${approvalRow.document_id}::uuid
+          AND id <> ${versionId}::uuid
+          AND is_active = true
+      `);
+      const activated = await tx.execute(sql`
+        UPDATE document_versions
+        SET approved_by = ${approvalRow.uploaded_by}::uuid,
+            approved_at = now(),
+            approval_notes = 'Automatically activated for privileged uploader.',
+            lifecycle_state = 'active',
+            activated_at = now(),
+            is_active = true
+        WHERE id = ${versionId}::uuid
+          AND lifecycle_state = 'pending_review'
+        RETURNING id
+      `);
+      if (activated.rows.length !== 1) {
+        throw new Error(`Document activation state changed: ${versionId}`);
+      }
+      await tx.execute(sql`
+        UPDATE documents
+        SET current_version_id = ${versionId}::uuid,
+            lifecycle_state = 'active',
+            retired_at = NULL,
+            retired_by = NULL,
+            retirement_reason = NULL
+        WHERE id = ${approvalRow.document_id}::uuid
       `);
     });
   } catch (err) {

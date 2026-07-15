@@ -9,4 +9,12 @@ describe("UploadForm original source location", () => {
     expect(html).toContain("Add original source location");
     expect(html).not.toContain('name="sourceOriginUri"');
   });
+
+  it("accepts multiple documents in one selection", () => {
+    const html = renderToStaticMarkup(<UploadForm sources={[]} />);
+
+    expect(html).toContain('name="file"');
+    expect(html).toContain('multiple=""');
+    expect(html).toContain("Select or drop up to 20 documents");
+  });
 });

@@ -11,8 +11,8 @@
 5. **Content DLP** — scan parsed text for private keys, API-key patterns, SSNs, payment cards, and prompt-injection markers. Blocking PII/secret findings quarantine before embedding. Findings store rule/count only, never matched content.
 6. **Chunk** — semantic chunker over the markdown. Target ~500 tokens. Hard rules: never split inside a markdown table, never split mid-list, prefer header boundaries. Each chunk gets a contextual `[Doc Title > Heading > Subheading]` header before storage, so embedding and `content_tsv` carry provenance.
 7. **Embed** — `text-embedding-3-small` for each clean chunk. Insert into `chunks` with `embedding`, `content_tsv`, and denormalized `program_id`.
-8. **Pending review** — atomically store chunks, set `parse_status='ready'`, `lifecycle_state='pending_review'`, and keep `is_active=false`.
-9. **Approve + activate** — a senior manager or super user reviews provenance, parsed text, classification, and findings. Authorized reviewers may approve their own uploads. The approval transaction retires the prior active version and activates the reviewed version. No ingestion worker activates content.
+8. **Resolve activation** — atomically store chunks and set `parse_status='ready'`. Uploads by active senior managers and super users activate immediately after the same source, scan-state, findings, and document-state checks used by manual approval. Other roles remain inactive in `pending_review`.
+9. **Activate safely** — activation retires the prior active version and records the privileged uploader as approver. Blocking findings still quarantine before this point; a stale source or unacceptable scan state leaves the document pending review.
 
 ## Why LandingAI ADE (not LlamaParse / a Python microservice)
 
@@ -20,7 +20,7 @@ LandingAI ADE Parse v2 handles PDFs + images + scanned docs + tables uniformly v
 
 ## Admin preview is mandatory
 
-After parse completes, render provenance, scanner findings, classification, and parsed markdown. An authorized reviewer must explicitly approve before the document goes live. **Most KB quality bugs are bad parses caught too late.**
+After parse completes, render provenance, scanner findings, classification, and parsed markdown. Senior-manager and super-user uploads are trusted to activate after automated controls pass. Uploads by other roles require an authorized reviewer.
 
 ## Pitfalls
 
@@ -28,6 +28,7 @@ After parse completes, render provenance, scanner findings, classification, and 
 - Sync Parse is capped at **50 MiB / 100 pages per PDF**. Truenote's 20 MB upload cap fits the size bound; a >100-page PDF exceeds the page bound and currently surfaces as an ingestion failure (async Parse Jobs = submit+poll, deferred). Watch for it if long scanned manuals get uploaded.
 - Don't run ingestion synchronously in the request handler. Use a background job (a simple `pg-boss` queue). LandingAI Parse can take 30s+ on a long PDF; `DOCUMENT_PARSE_TIMEOUT_MS` bounds it (default 120s, 2 retries with 429 backoff).
 - Re-uploading a document creates a NEW version. Do not overwrite. The old version stays for audit / rollback.
+- The upload form batches up to 20 files as independent single-file API requests with concurrency capped at 3. Each file keeps its own result, retry state, version, and ingestion job.
 - Scanner absence is never treated as clean. With enforcement on it quarantines; with the audited super-user override it records `disabled` and continues through local checks without creating an approval warning.
 - Blocking PII/secret findings stop before embeddings. Prompt-injection findings are non-blocking but require explicit reviewer acknowledgment; the generation prompt treats excerpts as untrusted data.
 - Normal removal retires and preserves evidence. Revocation removes retrieval/citation access immediately. Permanent purge is super-user-only and retention-gated.
