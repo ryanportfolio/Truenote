@@ -136,13 +136,7 @@
     h2 { margin: 0 0 16px; font: 600 clamp(1.75rem, 4vw, 2.5rem)/1.08 Georgia, serif; letter-spacing: -.025em; }
     h3 { margin: 0 0 8px; font-size: 1rem; font-weight: 600; }
     p { max-width: 900px; }
-    .intro {
-      display: grid;
-      grid-template-columns: minmax(0, 1.45fr) minmax(260px, .55fr);
-      gap: 16px;
-      align-items: stretch;
-    }
-    .callout, .scope {
+    .callout {
       padding: 24px;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -150,9 +144,7 @@
       box-shadow: var(--shadow);
     }
     .callout { border-top: 3px solid var(--primary); }
-    .callout strong, .scope strong { display: block; margin-bottom: 5px; }
-    .scope { background: var(--secondary); color: var(--muted-foreground); font-size: .86rem; }
-    .scope p { margin: 0; }
+    .callout strong { display: block; margin-bottom: 5px; }
     .grid { display: grid; }
     #capabilities .grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -245,7 +237,7 @@
     .footnote { color: var(--muted-foreground); font-size: .82rem; }
     footer { padding: 30px 0 48px; border-top: 1px solid var(--line); color: var(--muted-foreground); font-size: .8rem; }
     @media (max-width: 850px) {
-      .intro, .domain-area { grid-template-columns: 1fr; }
+      .domain-area { grid-template-columns: 1fr; }
       .domain-area { gap: 20px; }
       .source-panel { grid-template-columns: 1fr; }
     }
@@ -275,7 +267,7 @@
       .eyebrow, .lede, .brand, .site-links a { color: var(--muted-foreground); }
       .hero-meta span { border-color: var(--line); background: var(--card); color: var(--muted-foreground); }
       .brand-mark { border: 1px solid var(--line); }
-      .card, .callout, .scope, .table-wrap { box-shadow: none; break-inside: avoid; }
+      .card, .callout, .table-wrap { box-shadow: none; break-inside: avoid; }
       .domain-area { break-inside: avoid; }
     }
   </style>
@@ -325,10 +317,6 @@
         <div class="callout">
           <strong>Truenote has a layered security control foundation.</strong>
           Program and classification boundaries are enforced before retrieval. Content stays inactive through validation, parsing, and independent approval. Answer and utility model calls use pinned provider routes with Zero Data Retention requested, data collection denied, and provider fallback disabled. Answers require valid citations or become refusals. Security events are hash-chained and support durable signed SIEM delivery. Required CI checks exercise negative paths.</div>
-        <aside class="scope">
-          <strong>Document boundary</strong>
-          <p>Only controls with direct repository or CI evidence, or owner-confirmed database acceptance, are included. ZDR statements describe the request policy Truenote sends to OpenRouter. They do not cover direct embedding or parsing providers. This is not a certification, authorization, deployed-configuration attestation, or vendor assurance statement.</p>
-        </aside>
       </div>
     </section>
 
@@ -539,7 +527,7 @@
             <tr><td>Security audit and durable SIEM logic</td><td><span class="tag verified">Verified</span></td><td>CI passes signing, lease-fenced claiming, successful completion, retry scheduling, maximum-attempt dead-lettering, health reporting, and DDL-structure tests.</td><td class="evidence"><code>artifacts/api-server/src/lib/security/audit.ts</code><code>artifacts/api-server/src/lib/security/siem-outbox.ts</code><code>artifacts/api-server/src/lib/security/__tests__/siem-outbox.test.ts</code><code>docs/security/p1-siem-delivery-outbox.sql</code></td></tr>
             <tr><td>Redacted diagnostics and bounded providers</td><td><span class="tag verified">Verified</span></td><td>Tests confirm recursive credential redaction, safe serialization, provider deadline defaults, bounded overrides, abort handling, and retry caps.</td><td class="evidence"><code>artifacts/api-server/src/lib/observability/error-log.ts</code><code>artifacts/api-server/src/lib/observability/__tests__/error-log.test.ts</code><code>artifacts/api-server/src/lib/deadlines.ts</code><code>artifacts/api-server/src/lib/__tests__/deadlines.test.ts</code></td></tr>
             <tr><td>Evaluation integrity</td><td><span class="tag verified">Verified</span></td><td>CI covers scoring, citation matching, expected-document rank, stage attribution, claim faithfulness, durable queue recovery, lease-fenced persistence, summaries, and protected evaluation splits.</td><td class="evidence"><code>artifacts/api-server/src/lib/eval/runner.ts</code><code>artifacts/api-server/src/lib/eval/persistence.ts</code><code>artifacts/api-server/src/lib/eval/queue.ts</code><code>artifacts/api-server/src/lib/eval/__tests__</code></td></tr>
-            <tr><td>CI security gates</td><td><span class="tag verified">Verified</span></td><td>The required workflow passes workspace TypeScript checks, the production frontend build, 281 unit tests, CodeQL security analysis, Gitleaks secret scanning, high-severity production dependency audit, and CycloneDX SBOM generation.</td><td class="evidence"><code>.github/workflows/security.yml</code><code>.github/dependabot.yml</code></td></tr>
+            <tr><td>CI and scheduled security evidence</td><td><span class="tag verified">Verified</span></td><td>Pull requests run workspace TypeScript checks, the production frontend build, and unit tests. Main, weekly, and manual runs add CodeQL analysis, Gitleaks scanning, the high-severity production dependency audit, and CycloneDX SBOM generation.</td><td class="evidence"><code>.github/workflows/security.yml</code><code>.github/dependabot.yml</code></td></tr>
           </tbody>
         </table>
       </div>

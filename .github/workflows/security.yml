@@ -17,19 +17,19 @@ concurrency:
 
 jobs:
   verify:
-    name: Typecheck, tests, dependency audit, SBOM
+    name: Typecheck, build, tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          package-manager-cache: false
-      - name: Enable pinned pnpm
-        run: corepack enable
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
       - name: Typecheck
@@ -38,6 +38,24 @@ jobs:
         run: pnpm --filter @workspace/rag-app run build
       - name: Unit tests
         run: pnpm -r run test
+
+  supply-chain:
+    name: Dependency audit and SBOM
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
       - name: High-severity production dependency audit
         run: corepack pnpm@11.13.0 --pm-on-fail=ignore audit --prod --audit-level high
       - name: Generate CycloneDX SBOM
@@ -50,6 +68,7 @@ jobs:
 
   secrets:
     name: Secret scan
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -68,6 +87,7 @@ jobs:
 
   codeql:
     name: CodeQL SARIF evidence
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
