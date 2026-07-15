@@ -344,7 +344,6 @@ export function LoginPage({
               alt=""
               className="archive-layer-image"
             />
-            <span className="archive-tab-glint" />
           </div>
         </div>
       </section>
