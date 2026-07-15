@@ -3,22 +3,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0040AB">
   <meta name="description" content="Evidence-backed summary of Truenote security controls across identity, content, retrieval, AI data handling, ZDR routing, browser protection, audit, resilience, and delivery.">
-  <title>Truenote Security Capabilities</title>
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://truenote.org/security/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Truenote">
+  <meta property="og:title" content="Security at Truenote | Evidence-backed controls">
+  <meta property="og:description" content="Review Truenote's implemented safeguards for identity, approved content, retrieval, model routing, citations, browser protection, audit, and secure delivery.">
+  <meta property="og:url" content="https://truenote.org/security/">
+  <meta property="og:image" content="https://truenote.org/visuals/luminous-archive.webp">
+  <meta property="og:image:type" content="image/webp">
+  <meta property="og:image:alt" content="The Truenote luminous archive, with layered documents gathering around an evidence core">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Security at Truenote | Evidence-backed controls">
+  <meta name="twitter:description" content="Implemented safeguards for identity, approved content, retrieval, model routing, citations, browser protection, audit, and secure delivery.">
+  <meta name="twitter:image" content="https://truenote.org/visuals/luminous-archive.webp">
+  <meta name="twitter:image:alt" content="The Truenote luminous archive, with layered documents gathering around an evidence core">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2c10 0 14 4 14 14s-4 14-14 14S2 26 2 16 6 2 16 2z' fill='%230040AB'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-family='Georgia, serif' font-size='18' font-weight='600' fill='%23FDFDFC'%3ET%3C/text%3E%3C/svg%3E">
+  <title>Security at Truenote | Evidence-backed controls</title>
   <style>
     :root {
-      --ink: #14252a;
-      --muted: #52646a;
-      --paper: #f4f6f2;
-      --card: #fffefb;
-      --line: #d5ddd8;
-      --navy: #173e4a;
-      --teal: #08726f;
-      --teal-soft: #e1f2ee;
-      --blue-soft: #e6eef3;
-      --good: #1e6947;
-      --good-soft: #e4f3e8;
-      --shadow: 0 16px 42px rgba(20, 48, 55, .08);
+      --ink: #21201C;
+      --muted: #5C5A50;
+      --paper: #E8E6DE;
+      --card: #FDFDFC;
+      --secondary: #F9F9F8;
+      --line: #DAD9D6;
+      --primary: #0040AB;
+      --accent: #005DE5;
+      --primary-soft: color-mix(in oklch, var(--primary) 10%, var(--card));
+      --good: #39594D;
+      --good-soft: color-mix(in oklch, var(--good) 13%, var(--card));
+      --shadow: 0 1px 2px rgb(33 32 28 / .06);
     }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
@@ -26,61 +43,86 @@
       margin: 0;
       background: var(--paper);
       color: var(--ink);
-      font: 16px/1.58 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: 16px/1.6 Verdana, Geneva, sans-serif;
     }
-    a { color: var(--teal); text-underline-offset: 3px; }
-    a:focus-visible, summary:focus-visible { outline: 3px solid #f0bd5a; outline-offset: 3px; }
+    a { color: var(--primary); text-underline-offset: 3px; }
+    a:focus-visible, summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
     code { font-family: Consolas, "Liberation Mono", monospace; }
     .shell { width: min(1140px, calc(100% - 34px)); margin: auto; }
     .hero {
       overflow: hidden;
-      border-bottom: 1px solid rgba(255,255,255,.15);
+      border-bottom: 1px solid rgb(253 253 252 / .18);
       background:
-        radial-gradient(circle at 87% 18%, rgba(75, 207, 187, .2), transparent 30%),
-        radial-gradient(circle at 8% 88%, rgba(240, 189, 90, .12), transparent 27%),
-        linear-gradient(135deg, #102f39, #164c57 58%, #0b6765);
-      color: white;
+        radial-gradient(circle at 87% 18%, oklch(64% .075 176 / .28), transparent 30%),
+        radial-gradient(circle at 8% 88%, oklch(66.5% .145 43 / .2), transparent 27%),
+        var(--primary);
+      color: var(--card);
     }
-    .hero-inner { padding: 76px 0 60px; }
+    .hero-inner { padding: 24px 0 60px; }
+    .site-nav { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 58px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--card); font: 600 1.125rem/1 Georgia, serif; text-decoration: none; }
+    .brand-mark { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 42% 58% 48% 52%; background: var(--card); color: var(--primary); }
+    .site-links { display: flex; align-items: center; gap: 18px; }
+    .site-links a { color: var(--card); font-size: .8rem; font-weight: 500; }
+    .site-nav a:focus-visible { outline-color: var(--card); }
     .eyebrow {
       margin: 0;
-      color: #9fe1d5;
+      color: var(--card);
       font-size: .76rem;
-      font-weight: 800;
+      font-weight: 600;
       letter-spacing: .13em;
       text-transform: uppercase;
     }
     h1 {
       max-width: 900px;
       margin: 13px 0 20px;
-      font: 700 clamp(2.35rem, 6vw, 5rem)/.98 Georgia, serif;
+      font: 600 clamp(2.35rem, 6vw, 5rem)/.98 Georgia, serif;
       letter-spacing: -.045em;
     }
-    .lede { max-width: 850px; margin: 0; color: #d6e8e8; font-size: clamp(1rem, 2vw, 1.22rem); }
+    .lede { max-width: 850px; margin: 0; color: rgb(253 253 252 / .86); font-size: clamp(1rem, 2vw, 1.22rem); }
     .hero-meta { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 28px; }
     .hero-meta span {
       padding: 6px 10px;
-      border: 1px solid rgba(255,255,255,.2);
+      border: 1px solid rgb(253 253 252 / .25);
       border-radius: 999px;
-      background: rgba(255,255,255,.08);
-      color: #e6f2f1;
+      background: rgb(253 253 252 / .1);
+      color: var(--card);
       font-size: .79rem;
     }
+    .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 26px; }
+    .repo-cta {
+      display: inline-flex;
+      align-items: center;
+      min-height: 42px;
+      padding: 10px 18px;
+      border: 1px solid var(--primary);
+      border-radius: 999px;
+      background: var(--primary);
+      color: var(--card);
+      font-size: .88rem;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .hero .repo-cta { border-color: var(--card); background: var(--card); color: var(--primary); }
+    .repo-cta:hover { background: var(--accent); }
+    .hero .repo-cta:hover { background: var(--secondary); }
+    .repo-cta:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+    .hero .repo-cta:focus-visible { outline-color: var(--card); }
     nav {
       position: sticky;
       top: 0;
       z-index: 10;
       overflow-x: auto;
       border-bottom: 1px solid var(--line);
-      background: rgba(244, 246, 242, .95);
+      background: rgb(232 230 222 / .95);
       backdrop-filter: blur(12px);
     }
     nav .shell { display: flex; gap: 22px; padding: 12px 0; white-space: nowrap; }
-    nav a { color: var(--muted); font-size: .8rem; font-weight: 750; text-decoration: none; }
+    nav a { color: var(--muted); font-size: .8rem; font-weight: 600; text-decoration: none; }
     main { padding: 48px 0 84px; }
     section { margin-bottom: 66px; scroll-margin-top: 70px; }
-    h2 { margin: 0 0 16px; font: 700 clamp(1.75rem, 4vw, 2.5rem)/1.08 Georgia, serif; letter-spacing: -.025em; }
-    h3 { margin: 0 0 8px; font-size: 1rem; }
+    h2 { margin: 0 0 16px; font: 600 clamp(1.75rem, 4vw, 2.5rem)/1.08 Georgia, serif; letter-spacing: -.025em; }
+    h3 { margin: 0 0 8px; font-size: 1rem; font-weight: 600; }
     p { max-width: 900px; }
     .intro {
       display: grid;
@@ -95,7 +137,7 @@
       background: var(--card);
       box-shadow: var(--shadow);
     }
-    .callout { border-color: #9bc9c0; background: linear-gradient(145deg, #fffefb, var(--teal-soft)); }
+    .callout { border-color: color-mix(in oklch, var(--primary) 32%, var(--line)); background: linear-gradient(145deg, var(--card), var(--primary-soft)); }
     .callout strong, .scope strong { display: block; margin-bottom: 5px; }
     .scope { color: var(--muted); font-size: .88rem; }
     .scope p { margin: 0; }
@@ -107,10 +149,10 @@
       border: 1px solid var(--line);
       border-radius: 12px;
       background: var(--card);
-      box-shadow: 0 8px 24px rgba(20, 48, 55, .045);
+      box-shadow: var(--shadow);
     }
     .card p { margin: 0; color: var(--muted); font-size: .91rem; }
-    .number { margin: 0 0 8px; color: var(--teal); font: 700 1.75rem/1 Georgia, serif; }
+    .number { margin: 0 0 8px; color: var(--primary); font: 600 1.75rem/1 Georgia, serif; }
     .domain-area {
       display: grid;
       grid-template-columns: 240px 1fr;
@@ -119,8 +161,8 @@
       border-top: 1px solid var(--line);
     }
     .domain-area:last-child { border-bottom: 1px solid var(--line); }
-    .area-label { color: var(--teal); font-size: .73rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-    .area-title { margin: 7px 0 9px; font: 700 1.42rem/1.1 Georgia, serif; }
+    .area-label { color: var(--primary); font-size: .73rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+    .area-title { margin: 7px 0 9px; font: 600 1.42rem/1.1 Georgia, serif; }
     .domain-summary { margin: 0; color: var(--muted); font-size: .87rem; }
     .capabilities { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .capability {
@@ -132,40 +174,43 @@
     .capability p { margin: 0; color: var(--muted); font-size: .88rem; }
     .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 19px 0 0; }
     .flow span { padding: 7px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); font-size: .8rem; }
-    .flow b { color: var(--teal); }
+    .flow b { color: var(--primary); }
     .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
     table { width: 100%; border-collapse: collapse; background: var(--card); font-size: .87rem; }
     th, td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
     tr:last-child td { border-bottom: 0; }
-    th { background: #e9efeb; color: #405159; font-size: .72rem; letter-spacing: .07em; text-transform: uppercase; }
-    .tag { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: .69rem; font-weight: 800; white-space: nowrap; }
+    th { background: var(--muted); color: var(--ink); font-size: .72rem; letter-spacing: .07em; text-transform: uppercase; }
+    .tag { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: .69rem; font-weight: 600; white-space: nowrap; }
     .verified { color: var(--good); background: var(--good-soft); }
-    .evidence code { display: block; margin: 3px 0; color: #53656b; overflow-wrap: anywhere; font-size: .77rem; }
-    .receipts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 18px; }
-    .receipt { padding: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
-    .receipt strong { display: block; margin-bottom: 4px; }
-    .receipt p { margin: 0; color: var(--muted); font-size: .84rem; }
+    .evidence code { display: block; margin: 3px 0; color: var(--muted); overflow-wrap: anywhere; font-size: .77rem; }
+    .source-panel { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 24px; padding: 24px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); box-shadow: var(--shadow); }
+    .source-panel h3 { margin-bottom: 6px; }
+    .source-panel p { margin: 0; color: var(--muted); font-size: .88rem; }
+    .source-action { display: grid; justify-items: start; gap: 7px; }
     .footnote { color: var(--muted); font-size: .82rem; }
     footer { padding: 30px 0 48px; border-top: 1px solid var(--line); color: var(--muted); font-size: .8rem; }
     @media (max-width: 850px) {
       .intro, .domain-area { grid-template-columns: 1fr; }
       .card { grid-column: span 6; }
-      .receipts { grid-template-columns: 1fr; }
+      .source-panel { grid-template-columns: 1fr; }
     }
     @media (max-width: 590px) {
-      .hero-inner { padding: 56px 0 44px; }
+      .hero-inner { padding: 18px 0 44px; }
+      .site-nav { align-items: flex-start; margin-bottom: 44px; }
+      .site-links { gap: 12px; }
       .card { grid-column: span 12; min-height: 0; }
       .capabilities { grid-template-columns: 1fr; }
     }
     @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
     @media print {
       nav { display: none; }
-      body { background: white; }
+      body { background: var(--card); }
       .shell { width: 100%; }
-      .hero { background: white; color: var(--ink); }
+      .hero { background: var(--card); color: var(--ink); }
       .hero-inner { padding: 30px 0; }
-      .eyebrow, .lede { color: var(--muted); }
-      .hero-meta span { border-color: var(--line); background: white; color: var(--muted); }
+      .eyebrow, .lede, .brand, .site-links a { color: var(--muted); }
+      .hero-meta span { border-color: var(--line); background: var(--card); color: var(--muted); }
+      .brand-mark { border: 1px solid var(--line); }
       .card, .callout, .scope, .table-wrap { box-shadow: none; break-inside: avoid; }
       .domain-area { break-inside: avoid; }
     }
@@ -174,14 +219,27 @@
 <body>
   <header class="hero">
     <div class="shell hero-inner">
-      <p class="eyebrow">Truenote security architecture · capabilities brief</p>
+      <div class="site-nav">
+        <a class="brand" href="/" aria-label="Truenote home">
+          <span class="brand-mark" aria-hidden="true">T</span>
+          <span>Truenote</span>
+        </a>
+        <div class="site-links">
+          <a href="/about/">About</a>
+          <a href="/">Sign in</a>
+        </div>
+      </div>
+      <p class="eyebrow">Truenote security architecture</p>
       <h1>Security controls Truenote has today</h1>
       <p class="lede">An evidence-backed view of Truenote's safeguards across identity, ingestion, retrieval, AI data handling, answer integrity, browser protection, audit, resilience, and secure delivery.</p>
       <div class="hero-meta">
         <span>Current as of July 15, 2026</span>
         <span>Repository-backed controls</span>
         <span>Nine security domains</span>
-        <span>Verification references included</span>
+        <span>Source evidence included</span>
+      </div>
+      <div class="hero-actions">
+        <a class="repo-cta" href="https://github.com/ryanportfolio/kbase" target="_blank" rel="noreferrer">View source repository</a>
       </div>
     </div>
   </header>
@@ -193,7 +251,7 @@
       <a href="#security-domains">Security domains</a>
       <a href="#evidence">Evidence</a>
       <a href="#acceptance">Acceptance results</a>
-      <a href="#receipts">Verification receipts</a>
+      <a href="#source">Source repository</a>
     </div>
   </nav>
 
@@ -224,7 +282,7 @@
         <article class="card"><p class="number">09</p><h3>Browser and API defense</h3><p>Credentialed mutations enforce trusted origins. CSP, frame denial, MIME protection, referrer restrictions, permission restrictions, CORS policy, and production HSTS reduce browser attack paths.</p></article>
         <article class="card"><p class="number">10</p><h3>Bounded provider failure</h3><p>Embedding, parsing, reranking, generation, rewrite, naming, and evaluation calls use explicit timeouts and retry caps. The complete ask path has a fail-closed deadline.</p></article>
         <article class="card"><p class="number">11</p><h3>Quality and safety evaluation</h3><p>Durable evaluation runs measure retrieval, reranking, citations, refusals, answer accuracy, latency, route fallback, and optional claim-level faithfulness against open and held-out questions.</p></article>
-        <article class="card"><p class="number">12</p><h3>Security-gated delivery</h3><p>GitHub CI runs TypeScript, unit tests, CodeQL, Gitleaks, high-severity dependency audit, and CycloneDX SBOM generation.</p></article>
+        <article class="card"><p class="number">12</p><h3>Security-gated delivery</h3><p>GitHub CI runs TypeScript, the production frontend build, unit tests, CodeQL, Gitleaks, high-severity dependency audit, and CycloneDX SBOM generation.</p></article>
       </div>
     </section>
 
@@ -417,7 +475,7 @@
             <tr><td>Security audit and durable SIEM logic</td><td><span class="tag verified">Verified</span></td><td>CI passes signing, lease-fenced claiming, successful completion, retry scheduling, maximum-attempt dead-lettering, health reporting, and DDL-structure tests.</td><td class="evidence"><code>artifacts/api-server/src/lib/security/audit.ts</code><code>artifacts/api-server/src/lib/security/siem-outbox.ts</code><code>artifacts/api-server/src/lib/security/__tests__/siem-outbox.test.ts</code><code>docs/security/p1-siem-delivery-outbox.sql</code></td></tr>
             <tr><td>Redacted diagnostics and bounded providers</td><td><span class="tag verified">Verified</span></td><td>Tests confirm recursive credential redaction, safe serialization, provider deadline defaults, bounded overrides, abort handling, and retry caps.</td><td class="evidence"><code>artifacts/api-server/src/lib/observability/error-log.ts</code><code>artifacts/api-server/src/lib/observability/__tests__/error-log.test.ts</code><code>artifacts/api-server/src/lib/deadlines.ts</code><code>artifacts/api-server/src/lib/__tests__/deadlines.test.ts</code></td></tr>
             <tr><td>Evaluation integrity</td><td><span class="tag verified">Verified</span></td><td>CI covers scoring, citation matching, expected-document rank, stage attribution, claim faithfulness, durable queue recovery, lease-fenced persistence, summaries, and protected evaluation splits.</td><td class="evidence"><code>artifacts/api-server/src/lib/eval/runner.ts</code><code>artifacts/api-server/src/lib/eval/persistence.ts</code><code>artifacts/api-server/src/lib/eval/queue.ts</code><code>artifacts/api-server/src/lib/eval/__tests__</code></td></tr>
-            <tr><td>CI security gates</td><td><span class="tag verified">Verified</span></td><td>The required workflow passes workspace TypeScript checks, 281 unit tests, CodeQL security analysis, Gitleaks secret scanning, high-severity production dependency audit, and CycloneDX SBOM generation.</td><td class="evidence"><code>.github/workflows/security.yml</code><code>.github/dependabot.yml</code></td></tr>
+            <tr><td>CI security gates</td><td><span class="tag verified">Verified</span></td><td>The required workflow passes workspace TypeScript checks, the production frontend build, 281 unit tests, CodeQL security analysis, Gitleaks secret scanning, high-severity production dependency audit, and CycloneDX SBOM generation.</td><td class="evidence"><code>.github/workflows/security.yml</code><code>.github/dependabot.yml</code></td></tr>
           </tbody>
         </table>
       </div>
@@ -438,16 +496,20 @@
         <article class="card"><p class="number">09</p><h3>Audit delivery logic passed</h3><p>Seven SIEM outbox tests confirm signed payloads, bounded claims, retry backoff, lease fencing, dead-letter state, successful completion, and delivery-health DDL structure.</p></article>
         <article class="card"><p class="number">10</p><h3>Failure bounds passed</h3><p>Tests confirm provider timeout and retry limits, abort propagation, route-chain cancellation, error redaction, and recovery after queue initialization failures.</p></article>
         <article class="card"><p class="number">11</p><h3>Evaluation integrity passed</h3><p>Tests cover retrieval and reranking attribution, citation scoring, faithfulness, durable job recovery, lease fencing, cancellation, and open-versus-held-out reporting.</p></article>
-        <article class="card"><p class="number">12</p><h3>Security pipeline passed</h3><p>The merged security workflow completed TypeScript checks, 281 unit tests, CodeQL, Gitleaks, production dependency audit, and CycloneDX SBOM generation.</p></article>
+        <article class="card"><p class="number">12</p><h3>Security pipeline passed</h3><p>The merged security workflow completed TypeScript checks, the production frontend build, 281 unit tests, CodeQL, Gitleaks, production dependency audit, and CycloneDX SBOM generation.</p></article>
       </div>
     </section>
 
-    <section id="receipts">
-      <h2>Verification history</h2>
-      <div class="receipts">
-        <article class="receipt"><strong>PR 108</strong><p>Database-enforced lifecycle, identity, ingestion, classification, approval, audit, and rate-limit foundation.</p><a href="https://github.com/ryanportfolio/kbase/pull/108">Open pull request</a></article>
-        <article class="receipt"><strong>PR 111</strong><p>Trusted mutation-origin enforcement, Content Security Policy, and browser negative tests.</p><a href="https://github.com/ryanportfolio/kbase/pull/111">Open pull request</a></article>
-        <article class="receipt"><strong>PR 112</strong><p>Durable SIEM delivery, consolidated negative-security tests, and successful security CI.</p><a href="https://github.com/ryanportfolio/kbase/pull/112">Open pull request</a></article>
+    <section id="source">
+      <h2>Inspect the implementation</h2>
+      <div class="source-panel">
+        <div>
+          <h3>Security claims connect to source</h3>
+          <p>The evidence table above identifies the implementation, tests, workflow, and database-control files behind each verified claim. The repository provides the complete code and change history.</p>
+        </div>
+        <div class="source-action">
+          <a class="repo-cta" href="https://github.com/ryanportfolio/kbase" target="_blank" rel="noreferrer">View source repository</a>
+        </div>
       </div>
     </section>
   </main>

@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 import { readdir, readFile, writeFile } from "node:fs/promises";
@@ -7,6 +7,77 @@ import { promisify } from "node:util";
 
 const brotli = promisify(brotliCompress);
 const gzipFile = promisify(gzip);
+
+const securityPagePath = path.resolve(
+  __dirname,
+  "../../docs/security/truenote-security-capabilities.html"
+);
+
+async function loadSecurityPage(): Promise<{ html: string; css: string }> {
+  const source = await readFile(securityPagePath, "utf8");
+  const styleMatch = source.match(/<style>([\s\S]*?)<\/style>/);
+  const css = styleMatch?.[1];
+  if (!styleMatch || css === undefined) {
+    throw new Error("Security page must contain one embedded style block.");
+  }
+
+  return {
+    html: source.replace(
+      styleMatch[0],
+      '<link rel="stylesheet" href="/security/styles.css">'
+    ),
+    css: css.trim()
+  };
+}
+
+/**
+ * Keep the reviewable standalone document as the only content source while
+ * publishing CSP-compatible assets at /security/ in development and builds.
+ */
+function publishSecurityPage(): Plugin {
+  return {
+    name: "publish-security-page",
+    configureServer(server): void {
+      server.middlewares.use((req, res, next) => {
+        const pathname = req.url?.split("?", 1)[0];
+        if (
+          pathname !== "/security" &&
+          pathname !== "/security/" &&
+          pathname !== "/security/styles.css"
+        ) {
+          next();
+          return;
+        }
+
+        void loadSecurityPage()
+          .then(({ html, css }) => {
+            res.statusCode = 200;
+            res.setHeader(
+              "Content-Type",
+              pathname === "/security/styles.css"
+                ? "text/css; charset=utf-8"
+                : "text/html; charset=utf-8"
+            );
+            res.end(pathname === "/security/styles.css" ? css : html);
+          })
+          .catch(next);
+      });
+    },
+    async generateBundle(): Promise<void> {
+      const { html, css } = await loadSecurityPage();
+      this.emitFile({
+        type: "asset",
+        fileName: "security/index.html",
+        source: html
+      });
+      this.emitFile({
+        type: "asset",
+        fileName: "security/styles.css",
+        source: css
+      });
+    }
+  };
+}
 
 /**
  * Replit currently serves production assets without transport compression.
@@ -52,7 +123,7 @@ const API_PORT = Number(process.env.API_PORT) || 5000;
 const FRONTEND_PORT = Number(process.env.PORT) || 5173;
 
 export default defineConfig({
-  plugins: [react(), precompressAssets()],
+  plugins: [react(), publishSecurityPage(), precompressAssets()],
   base: "/",
   resolve: {
     alias: {

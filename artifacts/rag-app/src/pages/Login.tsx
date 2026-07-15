@@ -283,6 +283,9 @@ export function LoginPage({
                 <a href="/about/" className="auth-about">
                   About Truenote
                 </a>
+                <a href="/security/" className="auth-about">
+                  Security
+                </a>
               </div>
             </div>
           </form>
