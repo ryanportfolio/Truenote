@@ -130,7 +130,9 @@ SET
   ),
   lifecycle_state = CASE WHEN dv.is_active THEN 'active' ELSE 'retired' END,
   scan_status = CASE
-    WHEN dv.scan_status IN ('clean', 'infected', 'unavailable', 'error') THEN dv.scan_status
+    WHEN dv.scan_status IN (
+      'clean', 'infected', 'unavailable', 'error', 'disabled'
+    ) THEN dv.scan_status
     ELSE 'legacy_accepted'
   END,
   scan_completed_at = COALESCE(dv.scan_completed_at, dv.uploaded_at, now()),
@@ -191,7 +193,7 @@ BEGIN
     ALTER TABLE document_versions ADD CONSTRAINT document_versions_scan_status_check CHECK (
       scan_status IN (
         'pending', 'running', 'clean', 'infected', 'unavailable',
-        'error', 'legacy_accepted'
+        'error', 'legacy_accepted', 'disabled'
       )
     );
   END IF;
@@ -203,7 +205,7 @@ BEGIN
         lifecycle_state = 'active'
         AND approved_at IS NOT NULL
         AND source_id IS NOT NULL
-        AND scan_status IN ('clean', 'legacy_accepted')
+        AND scan_status IN ('clean', 'legacy_accepted', 'disabled')
       )
     );
   END IF;

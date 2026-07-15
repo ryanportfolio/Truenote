@@ -3,7 +3,10 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../lib/db-client.js";
 import { isMissingErrorLogTable } from "../../lib/observability/error-log.js";
+import { appendSecurityEvent } from "../../lib/security/audit.js";
 import {
+  authedUser,
+  blockDemoWrites,
   requireAuth,
   requireFreshPassword,
   requireSuperUser
@@ -11,7 +14,12 @@ import {
 
 export const errorsRouter = Router();
 
-errorsRouter.use(requireAuth, requireFreshPassword, requireSuperUser);
+errorsRouter.use(
+  requireAuth,
+  requireFreshPassword,
+  requireSuperUser,
+  blockDemoWrites
+);
 
 const Query = z.object({
   hours: z.coerce.number().int().min(1).max(24 * 30).default(24),
@@ -148,6 +156,43 @@ errorsRouter.get("/", async (req, res, next) => {
   } catch (error) {
     if (isMissingErrorLogTable(error)) {
       res.json(emptyResponse(hours, false));
+      return;
+    }
+    next(error);
+  }
+});
+
+errorsRouter.delete("/", async (req, res, next) => {
+  try {
+    const user = authedUser(req);
+    const deletedCount = await db.transaction(async (tx) => {
+      const result = await tx.execute(sql`
+        WITH deleted AS (
+          DELETE FROM error_log
+          RETURNING 1
+        )
+        SELECT COUNT(*)::int AS deleted_count
+        FROM deleted
+      `);
+      const count = Number(
+        (result.rows[0] as { deleted_count?: unknown } | undefined)?.deleted_count ?? 0
+      );
+      await appendSecurityEvent(
+        {
+          action: "error_log.clear",
+          outcome: "success",
+          actor: user,
+          resourceType: "error_log",
+          details: { deletedCount: count }
+        },
+        tx as unknown as Parameters<typeof appendSecurityEvent>[1]
+      );
+      return count;
+    });
+    res.json({ deletedCount });
+  } catch (error) {
+    if (isMissingErrorLogTable(error)) {
+      res.status(503).json({ error: "Error-log storage is not installed yet" });
       return;
     }
     next(error);

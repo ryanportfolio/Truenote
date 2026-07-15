@@ -15,6 +15,7 @@ import { modelRoutingRouter } from "./admin/model-routing.js";
 import { evaluationsRouter } from "./admin/evaluations.js";
 import { observabilityRouter } from "./admin/observability.js";
 import { errorsRouter } from "./admin/errors.js";
+import { securityRouter } from "./admin/security.js";
 import { oidcRouter } from "./oidc.js";
 
 export function registerRoutes(app: Express): void {
@@ -37,6 +38,7 @@ export function registerRoutes(app: Express): void {
   app.use("/api/admin/evaluations", evaluationsRouter);
   app.use("/api/admin/observability", observabilityRouter);
   app.use("/api/admin/errors", errorsRouter);
+  app.use("/api/admin/security", securityRouter);
   app.use("/api/documents", documentsRouter);
   app.use("/api/kb", kbRouter);
   app.use("/api/sessions", sessionsRouter);

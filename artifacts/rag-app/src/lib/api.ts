@@ -33,6 +33,7 @@ import type {
   QueryLogFilter,
   QueryLogListResponse,
   ResetPasswordResponse,
+  SecurityDashboardResponse,
   SessionDetailResponse,
   SessionListResponse,
   ResetUserPasswordResponse,
@@ -630,6 +631,33 @@ export async function listErrors(input: {
     withDefaults()
   );
   return asJson<ErrorLogResponse>(response);
+}
+
+export async function clearErrorLog(): Promise<{ deletedCount: number }> {
+  const response = await fetch(
+    "/api/admin/errors",
+    withDefaults({ method: "DELETE" })
+  );
+  return asJson<{ deletedCount: number }>(response);
+}
+
+export async function getSecurityDashboard(): Promise<SecurityDashboardResponse> {
+  const response = await fetch("/api/admin/security", withDefaults());
+  return asJson<SecurityDashboardResponse>(response);
+}
+
+export async function updateMalwareScanning(
+  enabled: boolean
+): Promise<SecurityDashboardResponse> {
+  const response = await fetch(
+    "/api/admin/security/malware-scanning",
+    withDefaults({
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled })
+    })
+  );
+  return asJson<SecurityDashboardResponse>(response);
 }
 
 /**

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, BookOpen, Bug, Building2, Cpu, FileText, Flag, FlaskConical, MessageSquare, Users } from "lucide-react";
+import { Activity, BookOpen, Bug, Building2, Cpu, FileText, Flag, FlaskConical, MessageSquare, ShieldCheck, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { hasAtLeastRole } from "@/types/api";
 import type { CurrentUser, UserRole } from "@/types/api";
@@ -28,6 +28,7 @@ const NAV: ReadonlyArray<{
   { href: "/admin/programs", label: "Programs", icon: Building2, minRole: "super_user" },
   { href: "/admin/observability", label: "Timing", icon: Activity, minRole: "super_user" },
   { href: "/admin/errors", label: "Errors", icon: Bug, minRole: "super_user" },
+  { href: "/admin/security", label: "Security", icon: ShieldCheck, minRole: "super_user" },
   { href: "/admin/model-routing", label: "Models", icon: Cpu, minRole: "super_user" },
   { href: "/admin/evaluations", label: "Evaluations", icon: FlaskConical, minRole: "super_user" }
 ];

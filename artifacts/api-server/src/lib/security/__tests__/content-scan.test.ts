@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  disabledMalwareScanResult,
   hasBlockingFindings,
   scanTextForSensitiveContent,
   validateFileSignature
@@ -20,6 +21,19 @@ describe("validateFileSignature", () => {
     );
     expect(findings.some((finding) => finding.ruleId === "malware.eicar_test_file")).toBe(true);
     expect(hasBlockingFindings(findings)).toBe(true);
+  });
+});
+
+describe("disabledMalwareScanResult", () => {
+  it("records an explicit non-clean, non-blocking reviewer finding", () => {
+    const result = disabledMalwareScanResult();
+    expect(result.status).toBe("disabled");
+    expect(result.findings).toEqual([
+      expect.objectContaining({
+        ruleId: "malware.scanning_disabled",
+        blocking: false
+      })
+    ]);
   });
 });
 

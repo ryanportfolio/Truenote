@@ -18,10 +18,28 @@ export interface SecurityFinding {
 }
 
 export interface MalwareScanResult {
-  status: "clean" | "infected" | "unavailable" | "error";
+  status: "clean" | "infected" | "unavailable" | "error" | "disabled";
   engine: string | null;
   scanId: string | null;
   findings: SecurityFinding[];
+}
+
+export function disabledMalwareScanResult(): MalwareScanResult {
+  return {
+    status: "disabled",
+    engine: null,
+    scanId: null,
+    findings: [
+      {
+        category: "malware",
+        ruleId: "malware.scanning_disabled",
+        severity: "high",
+        count: 1,
+        message: "External malware scanning was disabled by a super user.",
+        blocking: false
+      }
+    ]
+  };
 }
 
 const EICAR_MARKER = "EICAR-STANDARD-ANTIVIRUS-TEST-FILE";

@@ -109,6 +109,18 @@ describe("negative security controls", () => {
       evaluateDocumentApproval({ ...base, sourceActive: false }).allowed,
     ).toBe(false);
     expect(evaluateDocumentApproval(base)).toEqual({ allowed: true });
+    const disabledScan = {
+      ...base,
+      scanStatus: "disabled",
+      findings: [{ ruleId: "malware.scanning_disabled", blocking: false }]
+    };
+    expect(evaluateDocumentApproval(disabledScan).allowed).toBe(false);
+    expect(
+      evaluateDocumentApproval({
+        ...disabledScan,
+        acknowledgeFindings: true
+      })
+    ).toEqual({ allowed: true });
   });
 
   it("denies purge without title match, retirement, or elapsed retention", () => {

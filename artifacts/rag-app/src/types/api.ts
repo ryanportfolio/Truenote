@@ -792,3 +792,39 @@ export interface ErrorLogResponse {
   sources: string[];
   items: ErrorLogItem[];
 }
+
+export interface SecurityDashboardResponse {
+  malwareScanning: {
+    enabled: boolean;
+    persistenceReady: boolean;
+    disabledStatusReady: boolean;
+    scannerConfigured: boolean;
+    scannerTransportSecure: boolean;
+    updatedAt: string | null;
+    updatedByName: string | null;
+    updatedByEmail: string | null;
+  };
+  summary: {
+    quarantined: number;
+    unavailable: number;
+    errors: number;
+    infected: number;
+    disabled: number;
+  };
+  scans: Array<{
+    versionId: string;
+    title: string;
+    programName: string;
+    lifecycleState: string;
+    scanStatus: string;
+    findings: SecurityFinding[];
+    occurredAt: string | null;
+  }>;
+  controlEvents: Array<{
+    id: string;
+    occurredAt: string | null;
+    action: string;
+    actorEmail: string | null;
+    details: unknown;
+  }>;
+}

@@ -54,7 +54,7 @@ Security is part of Truenote's data path, not a separate checklist. The reposito
 |---|---|---|
 | Program and classification isolation | SQL filters use server-resolved scope and a final fail-closed program check. | Negative tests cover cross-program access, malformed principals, and classification boundaries. |
 | Grounded generation | Retrieval gates, untrusted-excerpt instructions, citation validation, sensitive-output blocking, and defensive refusal protect every answer. | The eval harness measures retrieval, refusal, citation, and claim-level faithfulness. |
-| Controlled ingestion | File signatures, EICAR checks, fail-closed scanner handling, content DLP, inactive versions, separate approval, revocation, and retention gates protect source activation. | Lifecycle records preserve provenance, scan results, reviewer decisions, and document history. |
+| Controlled ingestion | File signatures, EICAR checks, default-on scanner enforcement, content DLP, inactive versions, separate approval, revocation, and retention gates protect source activation. | Lifecycle records preserve provenance, scan results, audited temporary scanner overrides, reviewer decisions, and document history. |
 | Authentication and browser defense | Argon2id local passwords, hashed session tokens, OIDC Authorization Code with PKCE, MFA or ACR validation, CSP, Origin checks, and Fetch Metadata checks protect access. | Automated tests exercise identity validation, foreign origins, security headers, and privileged routes. |
 | Audit and SIEM | Hash-chained security events, a transactional outbox, signed delivery, bounded retries, lease fencing, dead-letter state, and health reporting preserve security receipts. | Control DDL includes acceptance queries; tests cover queueing, delivery failure, retry, and recovery behavior. |
 | Supply chain | Pull requests and `main` run type checks, production builds, unit tests, a high-severity dependency audit, CycloneDX SBOM generation, Gitleaks, and CodeQL security-extended analysis. | Dependabot checks npm and GitHub Actions weekly, while CI retains machine-readable security evidence. |
@@ -85,7 +85,7 @@ Each document version moves through a controlled, asynchronous pipeline:
 
 1. Store the original bytes and SHA-256 digest.
 2. Validate the file signature and check for EICAR.
-3. Send raw bytes to the configured malware scanner. Missing or failed scanning quarantines the upload.
+3. Send raw bytes to the configured malware scanner. Enforcement defaults on; missing or failed scanning quarantines the upload. A super user can temporarily disable the external scanner through an audited Security control while file validation, content checks, and independent approval remain active.
 4. Parse PDFs and images with LandingAI ADE, DOCX with Mammoth, and text formats directly.
 5. Scan parsed content for sensitive information and prompt-injection markers. Blocking findings quarantine the upload before embedding.
 6. Split content near 500 tokens without breaking tables or lists. Add a document and heading path to each chunk.
