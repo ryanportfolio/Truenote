@@ -1,10 +1,11 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { NextFunction, Request, Response } from "express";
 import {
+  addScriptNonceToHtml,
   contentSecurityPolicy,
+  strictTransportSecurityPolicy,
   trustedMutationOriginMiddleware,
 } from "../browser-security.js";
 
@@ -147,41 +148,55 @@ describe("trustedMutationOriginMiddleware", () => {
 });
 
 describe("contentSecurityPolicy", () => {
-  it("locks active content to self while preserving required inline style attributes", () => {
-    const policy = contentSecurityPolicy("production");
+  const nonce = "dGVzdC1ub25jZS0xMjM0NTY=";
+
+  it("uses a nonce-based strict policy and enforces Trusted Types", () => {
+    const policy = contentSecurityPolicy(nonce, "production");
     expect(policy).toContain("default-src 'self'");
     expect(policy).toContain("object-src 'none'");
     expect(policy).toContain("frame-ancestors 'none'");
+    expect(policy).toContain(`script-src 'nonce-${nonce}' 'strict-dynamic' 'self'`);
     expect(policy).toContain("script-src-attr 'none'");
     expect(policy).toContain("style-src-attr 'unsafe-inline'");
+    expect(policy).toContain("require-trusted-types-for 'script'");
     expect(policy).toContain("upgrade-insecure-requests");
     expect(policy).not.toContain("script-src 'self' 'unsafe-inline'");
   });
 
-  it("contains the exact LF and CRLF hashes of the source JSON-LD block", async () => {
-    const indexPath = fileURLToPath(
-      new URL("../../../../rag-app/index.html", import.meta.url),
-    );
-    const html = await readFile(indexPath, "utf8");
-    const body = html.match(
-      /<script type="application\/ld\+json">([\s\S]*?)<\/script>/,
-    )?.[1];
-    expect(body).toBeDefined();
-    const variants = new Set([
-      (body ?? "").replace(/\r\n/g, "\n"),
-      (body ?? "").replace(/\r?\n/g, "\r\n"),
-    ]);
-    for (const variant of variants) {
-      const hash = createHash("sha256").update(variant).digest("base64");
-      expect(contentSecurityPolicy("production")).toContain(
-        `'sha256-${hash}'`,
+  it("adds the response nonce to every shipped static script", async () => {
+    const paths = [
+      "../../../../rag-app/index.html",
+      "../../../../rag-app/public/about/index.html",
+      "../../../../rag-app/public/about/appendix.html",
+    ];
+    for (const relativePath of paths) {
+      const htmlPath = fileURLToPath(new URL(relativePath, import.meta.url));
+      const html = addScriptNonceToHtml(await readFile(htmlPath, "utf8"), nonce);
+      const scripts = html.match(/<script\b[^>]*>/gi) ?? [];
+      expect(scripts.length).toBeGreaterThan(0);
+      expect(scripts.every((script) => script.includes(`nonce="${nonce}"`))).toBe(
+        true,
       );
     }
   });
 
   it("does not upgrade local development requests", () => {
-    expect(contentSecurityPolicy("development")).not.toContain(
+    expect(contentSecurityPolicy(nonce, "development")).not.toContain(
       "upgrade-insecure-requests",
+    );
+  });
+
+  it("rejects an unsafe nonce before constructing a response header", () => {
+    expect(() => contentSecurityPolicy('bad"; script-src *', "production")).toThrow(
+      "CSP script nonce must be base64 or base64url encoded.",
+    );
+  });
+});
+
+describe("strictTransportSecurityPolicy", () => {
+  it("meets the strong HSTS preload requirements", () => {
+    expect(strictTransportSecurityPolicy()).toBe(
+      "max-age=63072000; includeSubDomains; preload",
     );
   });
 });

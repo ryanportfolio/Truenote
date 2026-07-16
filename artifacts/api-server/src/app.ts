@@ -1,8 +1,10 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { attachCurrentUser } from "./middleware/current-user.js";
 import { registerRoutes } from "./routes/index.js";
@@ -11,11 +13,22 @@ import { robotsHeaderForSpaPath } from "./lib/seo.js";
 import { securityAuditMiddleware } from "./middleware/security-audit.js";
 import { SecurityControlsNotReadyError } from "./lib/security/errors.js";
 import {
+  addScriptNonceToHtml,
   contentSecurityPolicy,
+  strictTransportSecurityPolicy,
   trustedMutationOriginMiddleware,
 } from "./middleware/browser-security.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+async function sendHtmlWithNonce(res: Response, filePath: string): Promise<void> {
+  const html = await readFile(filePath, "utf8");
+  const scriptNonce = res.locals.cspNonce;
+  if (typeof scriptNonce !== "string") {
+    throw new Error("CSP script nonce is missing from the response.");
+  }
+  res.type("html").send(addScriptNonceToHtml(html, scriptNonce));
+}
 
 export function createApp(): Express {
   const app = express();
@@ -23,6 +36,8 @@ export function createApp(): Express {
 
   app.disable("x-powered-by");
   app.use((_req: Request, res: Response, next: NextFunction) => {
+    const scriptNonce = randomBytes(16).toString("base64");
+    res.locals.cspNonce = scriptNonce;
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "same-origin");
@@ -31,9 +46,9 @@ export function createApp(): Express {
       "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
     );
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-    res.setHeader("Content-Security-Policy", contentSecurityPolicy());
+    res.setHeader("Content-Security-Policy", contentSecurityPolicy(scriptNonce));
     if (process.env.NODE_ENV === "production") {
-      res.setHeader("Strict-Transport-Security", "max-age=31536000");
+      res.setHeader("Strict-Transport-Security", strictTransportSecurityPolicy());
     }
     next();
   });
@@ -82,10 +97,33 @@ export function createApp(): Express {
         maxAge: "1y"
       })
     );
-    // Resolve real directory indexes such as /about/ before the SPA fallback.
-    // Unknown paths still fall through because only physical index.html files
-    // are served here.
-    app.use(express.static(dist, { index: "index.html", maxAge: 0 }));
+    const serveHtml = (filePath: string) =>
+      (_req: Request, res: Response, next: NextFunction): void => {
+        void sendHtmlWithNonce(res, filePath).catch(next);
+      };
+    app.get(
+      ["/about", "/about/", "/about/index.html"],
+      serveHtml(path.join(dist, "about/index.html")),
+    );
+    app.get(
+      "/about/appendix.html",
+      serveHtml(path.join(dist, "about/appendix.html")),
+    );
+    app.get(
+      ["/security", "/security/", "/security/index.html"],
+      serveHtml(path.join(dist, "security/index.html")),
+    );
+
+    // HTML is transformed above or by the SPA fallback so its script nonces
+    // match the response policy. Other public files remain static.
+    const servePublicFile = express.static(dist, { index: false, maxAge: 0 });
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.path.endsWith(".html")) {
+        next();
+        return;
+      }
+      servePublicFile(req, res, next);
+    });
   }
 
   // CORS — explicit allowlist. Two facts shape this:
@@ -131,13 +169,13 @@ export function createApp(): Express {
   // In production the Vite dev server is not running, so the api-server
   // serves the pre-built frontend from rag-app/dist and handles SPA routing.
   if (process.env.NODE_ENV === "production") {
-    app.get("*", (req: Request, res: Response) => {
+    app.get("*", (req: Request, res: Response, next: NextFunction) => {
       // HTML must revalidate so a new deploy can point at its new hashed
       // assets immediately. The assets themselves remain immutable above.
       res.setHeader("Cache-Control", "no-cache");
       const robotsHeader = robotsHeaderForSpaPath(req.path);
       if (robotsHeader) res.setHeader("X-Robots-Tag", robotsHeader);
-      res.sendFile(path.join(dist, "index.html"));
+      void sendHtmlWithNonce(res, path.join(dist, "index.html")).catch(next);
     });
   }
 
