@@ -8,7 +8,7 @@
 
 Truenote turns SOPs, policy documents, screenshots, and tables into a controlled knowledge base. Customer service representatives ask a question and receive a grounded answer with clickable source excerpts. If the evidence is weak or the answer fails citation checks, Truenote refuses instead of guessing.
 
-![Truenote, an evidence-centered knowledge assistant](./artifacts/rag-app/public/about/assets/truenote-linkedin-thumbnail-v2.png)
+[![Truenote, an evidence-centered knowledge assistant](./artifacts/rag-app/public/about/assets/truenote-linkedin-thumbnail-v2.png)](https://truenote.org/about/)
 
 ## Why Truenote
 
