@@ -103,8 +103,12 @@
 
   slides.forEach((slide, index) => {
     const button = document.createElement("button");
+    const number = document.createElement("span");
+    const title = document.createElement("strong");
     button.type = "button";
-    button.innerHTML = `<span>${String(index + 1).padStart(2, "0")}</span><strong>${slide.dataset.title}</strong>`;
+    number.textContent = String(index + 1).padStart(2, "0");
+    title.textContent = slide.dataset.title ?? "";
+    button.append(number, title);
     button.addEventListener("click", () => {
       current = index;
       toggleOverview(false);

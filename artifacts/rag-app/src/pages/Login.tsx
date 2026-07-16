@@ -178,7 +178,7 @@ export function LoginPage({
 
             {demoAccounts.length > 0 && localLoginMode !== "disabled" ? (
               <fieldset className="auth-demo">
-                <legend>Choose your view</legend>
+                <legend>Demo Accounts:</legend>
                 <div className="auth-demo-grid">
                   {demoAccounts.map((account) => {
                     const selected = selectedDemo === account.email;

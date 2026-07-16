@@ -1,13 +1,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-// Git may materialize index.html with LF or CRLF depending on the build host.
-// Both hashes represent the same static JSON-LD block with only line endings
-// changed; allowing both keeps the production policy portable and exact.
-const JSON_LD_SCRIPT_HASHES = [
-  "'sha256-AjnjJ19PVMR54X+Ngxi+l6KID4BwmKiWNCakhZjrlb0='",
-  "'sha256-mzwEHf+hexf5p9PXIB+clKkWnHKVaog3paHjZ9ztzug='",
-].join(" ");
+const CSP_NONCE_PATTERN = /^[A-Za-z0-9+/_-]+={0,2}$/;
 
 function normalizeHttpOrigin(value: string | undefined): string | null {
   if (value === undefined || value.trim() === "") return null;
@@ -107,11 +101,18 @@ export function trustedMutationOriginMiddleware(
 /**
  * Enforced CSP for API and production SPA responses.
  *
- * The only inline script is the static JSON-LD block in rag-app/index.html;
- * its exact hash is covered by a regression test. React's four dynamic style
- * attributes require style-src-attr, while style elements remain self-only.
+ * Every served HTML script receives the per-response nonce. `strict-dynamic`
+ * makes that nonce, rather than a same-origin host allowlist, the trust root.
+ * React's dynamic style attributes require style-src-attr, while style
+ * elements remain self-only.
  */
-export function contentSecurityPolicy(nodeEnv = process.env.NODE_ENV): string {
+export function contentSecurityPolicy(
+  scriptNonce: string,
+  nodeEnv = process.env.NODE_ENV,
+): string {
+  if (!CSP_NONCE_PATTERN.test(scriptNonce)) {
+    throw new Error("CSP script nonce must be base64 or base64url encoded.");
+  }
   const directives = [
     "default-src 'self'",
     "base-uri 'self'",
@@ -124,13 +125,29 @@ export function contentSecurityPolicy(nodeEnv = process.env.NODE_ENV): string {
     "manifest-src 'self'",
     "media-src 'self'",
     "object-src 'none'",
-    `script-src 'self' ${JSON_LD_SCRIPT_HASHES}`,
+    `script-src 'nonce-${scriptNonce}' 'strict-dynamic' 'self'`,
     "script-src-attr 'none'",
     "style-src 'self'",
     "style-src-attr 'unsafe-inline'",
     "style-src-elem 'self'",
+    "require-trusted-types-for 'script'",
     "worker-src 'self' blob:",
   ];
   if (nodeEnv === "production") directives.push("upgrade-insecure-requests");
   return directives.join("; ");
+}
+
+/** Add one response nonce to every script tag in a trusted static HTML file. */
+export function addScriptNonceToHtml(html: string, scriptNonce: string): string {
+  if (!CSP_NONCE_PATTERN.test(scriptNonce)) {
+    throw new Error("CSP script nonce must be base64 or base64url encoded.");
+  }
+  return html.replace(
+    /<script\b(?![^>]*\bnonce\s*=)/gi,
+    `<script nonce="${scriptNonce}"`,
+  );
+}
+
+export function strictTransportSecurityPolicy(): string {
+  return "max-age=63072000; includeSubDomains; preload";
 }

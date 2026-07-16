@@ -330,7 +330,7 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
           Upload one email per row, or a CSV or Excel (.xlsx) file with an email
           column. Each user joins the current program and is emailed a private
-          link to set their own password — you don&apos;t distribute anything.
+          link to set their own password.
         </p>
       </div>
 
