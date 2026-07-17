@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 const securityPolicy = readFileSync(
@@ -78,11 +78,73 @@ describe("public security reporting surface", () => {
     );
     assert.ok(pciReadiness.includes("<h2>Completed safeguards</h2>"));
     assert.ok(pciReadiness.includes("<h2>Checks that passed</h2>"));
-    assert.ok(
+    assert.ok(pciReadiness.includes("<h2>Open the complete public evidence set</h2>"));
+    assert.equal(pciReadiness.includes("Evidence boundary:"), false);
+    assert.equal(
       pciReadiness.includes(
         "It is not a claim that Truenote is PCI DSS compliant, certified, or independently assessed"
-      )
+      ),
+      false
     );
+    assert.equal(
+      (pciReadiness.match(/class="evidence-link"/g) ?? []).length,
+      31
+    );
+    assert.equal(
+      (pciReadiness.match(/target="_blank" rel="noreferrer"/g) ?? []).length,
+      31
+    );
+    const evidenceHrefs = [
+      ...pciReadiness.matchAll(/class="evidence-link" href="([^"]+)"/g)
+    ].map((match) => match[1] ?? "");
+    assert.equal(new Set(evidenceHrefs).size, 31);
+    for (const href of evidenceHrefs) {
+      const repositoryPath = href.split("/blob/main/")[1];
+      if (repositoryPath) {
+        assert.ok(
+          existsSync(new URL(`../../${repositoryPath}`, import.meta.url)),
+          `public evidence target does not exist: ${repositoryPath}`
+        );
+      }
+    }
+    for (const evidencePath of [
+      "secure-development-lifecycle.md",
+      "threat-model.md",
+      "secure-development-training-curriculum.md",
+      "change-control.md",
+      "manual-change-record-template.md",
+      "evidence-index.md",
+      "provider-input-firewall.md",
+      "provider-input-firewall.ts",
+      "provider-input-firewall.test.ts",
+      "ask-sensitive-input-handling.md",
+      "ask-content-policy.ts",
+      "ask-content-policy.test.ts",
+      "model-output-sensitive-data-handling.md",
+      "generation/answer.ts",
+      "generation/__tests__/answer.test.ts",
+      "retrieval/query.ts",
+      "retrieval/__tests__/program-scope.test.ts",
+      "security/__tests__/negative-controls.test.ts",
+      "security/content-scan.ts",
+      "security/__tests__/content-scan.test.ts",
+      "middleware/browser-security.ts",
+      "middleware/__tests__/browser-security.test.ts",
+      "security/audit.ts",
+      "security/siem-outbox.ts",
+      "security/__tests__/siem-outbox.test.ts",
+      "p1-siem-delivery-outbox.sql",
+      "actions/workflows/security.yml",
+      ".github/workflows/security.yml",
+      "verify-pci-evidence.ts",
+      "verify-pci-evidence.test.ts",
+      "public-security-page.test.ts"
+    ]) {
+      assert.ok(
+        pciReadiness.includes(evidencePath),
+        `missing public evidence link: ${evidencePath}`
+      );
+    }
     for (const publicSource of [securityOverview, pciReadiness]) {
       for (const internalOnlyText of [
         "Implemented, unverified",
