@@ -185,6 +185,25 @@ function looksLikePaymentCard(candidate: string): boolean {
   return sum % 10 === 0;
 }
 
+/** Redacts detected secret/PII values without returning the matched text. */
+export function redactSensitiveText(text: string): string {
+  let redacted = text.replace(
+    /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|$)/g,
+    "[REDACTED_SECRET_PRIVATE_KEY]"
+  );
+  for (const rule of TEXT_RULES) {
+    if (rule.category === "prompt_injection") continue;
+    const label = rule.ruleId.replace(/[^a-z0-9]+/gi, "_").toUpperCase();
+    redacted = redacted.replace(
+      new RegExp(rule.pattern.source, rule.pattern.flags),
+      `[REDACTED_${label}]`
+    );
+  }
+  return redacted.replace(/\b(?:\d[ -]*?){13,19}\b/g, (candidate) =>
+    looksLikePaymentCard(candidate) ? "[REDACTED_PII_PAYMENT_CARD]" : candidate
+  );
+}
+
 /** Findings contain rule/count only, never matching sensitive text. */
 export function scanTextForSensitiveContent(text: string): SecurityFinding[] {
   const findings: SecurityFinding[] = [];

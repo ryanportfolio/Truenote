@@ -111,6 +111,7 @@ function markdownTableCell(value: string): string {
   )
     .replace(/\s+/g, " ")
     .trim()
+    .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|");
 }
 

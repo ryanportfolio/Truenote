@@ -32,7 +32,7 @@ Reports are especially useful when they show that Truenote can:
 - return a representative-facing answer without a valid retrieved citation;
 - retrieve or expose content from another program or above the user's classification;
 - accept client-supplied scope, role, or clearance as authoritative;
-- activate content without required scanning and separate approval;
+- activate content without required scanning and role-authorized activation or review;
 - disclose secrets, payment-card data, SSNs, prompts, or unredacted provider errors;
 - bypass OIDC validation, session controls, CSRF defenses, rate limits, retention gates, or audit recording;
 - lose, duplicate, or falsely mark SIEM delivery during retries and worker races.

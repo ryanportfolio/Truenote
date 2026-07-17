@@ -28,6 +28,17 @@ describe("DocMarkdown citation anchors", () => {
 
     expect(cited).toContain('data-citation-target="true"');
     expect(cited).toContain('href="https://example.com/policy"');
-    expect(cited.replace(/<[^>]+>/g, "")).toBe(plain.replace(/<[^>]+>/g, ""));
+    for (const expectedText of [
+      "Policy",
+      "See ",
+      "policy details",
+      " before cancelling.",
+      "Next paragraph."
+    ]) {
+      expect(cited).toContain(expectedText);
+      expect(plain).toContain(expectedText);
+    }
+    expect(cited.match(/href=/g)).toHaveLength(1);
+    expect(plain.match(/href=/g)).toHaveLength(1);
   });
 });

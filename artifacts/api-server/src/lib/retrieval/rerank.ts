@@ -1,5 +1,6 @@
 import { CohereClient } from "cohere-ai";
 import { getDeadlineConfig } from "../deadlines.js";
+import { protectProviderText, protectProviderTexts } from "../security/provider-input-firewall.js";
 
 let _cohere: CohereClient | null = null;
 
@@ -43,16 +44,24 @@ export function getRerankModel(): string {
   return process.env.COHERE_RERANK_MODEL || DEFAULT_RERANK_MODEL;
 }
 
-export async function rerankWithCohere(input: RerankInput): Promise<RerankResult> {
+export interface RerankDeps {
+  /** Injected for tests. Defaults to the shared Cohere client. */
+  client?: CohereClient;
+}
+
+export async function rerankWithCohere(
+  input: RerankInput,
+  deps: RerankDeps = {}
+): Promise<RerankResult> {
   if (input.documents.length === 0) return { results: [] };
-  const c = client();
+  const c = deps.client ?? client();
   const top = Math.min(input.topN ?? 8, input.documents.length);
   const { rerank } = getDeadlineConfig();
   const response = await c.rerank(
     {
       model: getRerankModel(),
-      query: input.question,
-      documents: input.documents,
+      query: protectProviderText(input.question).text,
+      documents: protectProviderTexts(input.documents),
       topN: top
     },
     {

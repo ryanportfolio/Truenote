@@ -29,6 +29,7 @@ import {
   type EvalRunListItem
 } from "../../lib/eval/persistence.js";
 import { recordAppError } from "../../lib/observability/error-log.js";
+import { workloadRateLimitMiddleware } from "../../middleware/workload-rate-limit.js";
 
 export const evaluationsRouter = Router();
 
@@ -390,7 +391,7 @@ evaluationsRouter.get("/runs", async (req, res, next) => {
   }
 });
 
-evaluationsRouter.post("/runs", async (req, res, next) => {
+evaluationsRouter.post("/runs", workloadRateLimitMiddleware("evaluation_run"), async (req, res, next) => {
   try {
     const parsed = RunBody.safeParse(req.body);
     if (!parsed.success) {

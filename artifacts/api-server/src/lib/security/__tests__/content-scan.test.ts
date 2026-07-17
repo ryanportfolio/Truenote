@@ -2,9 +2,36 @@ import { describe, expect, it } from "vitest";
 import {
   disabledMalwareScanResult,
   hasBlockingFindings,
+  redactSensitiveText,
   scanTextForSensitiveContent,
   validateFileSignature
 } from "../content-scan.js";
+
+describe("redactSensitiveText", () => {
+  it("redacts detected SSNs, payment cards, and API keys without retaining values", () => {
+    const input =
+      "SSN 123-45-6789 card 4242 4242 4242 4242 key sk-proj-abcdefghijklmnopqrstuvwxyz";
+    const redacted = redactSensitiveText(input);
+
+    expect(redacted).not.toContain("123-45-6789");
+    expect(redacted).not.toContain("4242 4242 4242 4242");
+    expect(redacted).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz");
+    expect(redacted).toContain("[REDACTED_");
+  });
+
+  it("redacts an entire private-key block rather than only its header", () => {
+    const redacted = redactSensitiveText(
+      "failure\n-----BEGIN PRIVATE KEY-----\nc2Vuc2l0aXZlLWtleS1ib2R5\n" +
+        "-----END PRIVATE KEY-----\nafter"
+    );
+
+    expect(redacted).toContain("[REDACTED_SECRET_PRIVATE_KEY]");
+    expect(redacted).not.toContain("c2Vuc2l0aXZlLWtleS1ib2R5");
+    expect(redacted).not.toContain("BEGIN PRIVATE KEY");
+    expect(redacted).not.toContain("END PRIVATE KEY");
+    expect(redacted).toContain("after");
+  });
+});
 
 describe("validateFileSignature", () => {
   it("accepts a matching PDF signature and rejects mislabeled bytes", () => {

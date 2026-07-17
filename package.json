@@ -7,13 +7,6 @@
     "pnpm": ">=10"
   },
   "packageManager": "pnpm@10.26.1",
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"],
-    "overrides": {
-      "form-data@2.5.5": "2.5.6",
-      "form-data@4.0.5": "4.0.6"
-    }
-  },
   "scripts": {
     "build": "pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
@@ -24,6 +17,7 @@
     "worker": "pnpm --filter @workspace/scripts run worker",
     "seed": "pnpm --filter @workspace/scripts run seed",
     "check": "pnpm -r run check",
-    "test": "pnpm -r run test"
+    "test": "pnpm -r run test",
+    "verify:pci-evidence": "corepack pnpm --filter @workspace/scripts run verify:pci-evidence"
   }
 }

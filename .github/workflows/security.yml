@@ -2,11 +2,23 @@ name: Security and quality
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
   schedule:
     - cron: "17 6 * * 1"
   workflow_dispatch:
+    inputs:
+      managed_release_gate:
+        description: Run the strict vulnerability-management release gate
+        required: true
+        type: boolean
+        default: false
+      branch_enforcement_gate:
+        description: Validate the current branch-enforcement evidence record
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -32,6 +44,19 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
+      - name: Verify pull-request change record
+        if: github.event_name == 'pull_request'
+        run: corepack pnpm --filter @workspace/scripts run verify:change-record -- --event "$GITHUB_EVENT_PATH" --allow-pending
+      - name: Verify PCI evidence integrity
+        run: pnpm run verify:pci-evidence
+      - name: Verify vulnerability baseline structure
+        run: corepack pnpm --filter @workspace/scripts run verify:vulnerabilities
+      - name: Verify managed-release vulnerability readiness
+        if: github.event_name == 'workflow_dispatch' && inputs.managed_release_gate
+        run: corepack pnpm --filter @workspace/scripts run verify:vulnerabilities:release
+      - name: Verify branch-enforcement evidence
+        if: github.event_name == 'workflow_dispatch' && inputs.branch_enforcement_gate
+        run: corepack pnpm --filter @workspace/scripts run verify:branch-enforcement -- docs/compliance/pci/branch-enforcement-evidence-current.json
       - name: Typecheck
         run: pnpm -r run check
       - name: Frontend production build
@@ -41,7 +66,6 @@ jobs:
 
   supply-chain:
     name: Dependency audit and SBOM
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -68,7 +92,6 @@ jobs:
 
   secrets:
     name: Secret scan
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -86,13 +109,13 @@ jobs:
           GITLEAKS_ENABLE_COMMENTS: "false"
 
   codeql:
-    name: CodeQL SARIF evidence
-    if: github.event_name != 'pull_request'
+    name: CodeQL analysis and SARIF evidence
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
       actions: read
       contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -106,7 +129,7 @@ jobs:
         with:
           category: /language:javascript-typescript
           output: codeql-results
-          upload: never
+          upload: always
           upload-database: false
       - name: Retain CodeQL SARIF evidence
         if: always()

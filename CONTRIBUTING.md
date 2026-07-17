@@ -9,7 +9,9 @@ Read:
 - [`PRODUCT.md`](./PRODUCT.md) for users and product boundaries;
 - [`DESIGN.md`](./DESIGN.md) for frontend behavior and accessibility;
 - [`CLAUDE.md`](./CLAUDE.md) for engineering and verification rules;
-- [`docs/security/README.md`](./docs/security/README.md) for security claim limits.
+- [`docs/security/README.md`](./docs/security/README.md) for security claim limits;
+- [`docs/compliance/pci/README.md`](./docs/compliance/pci/README.md) when a
+  change can affect sensitive data, providers, the CDE, or PCI evidence.
 
 Keep these invariants intact:
 
@@ -79,5 +81,12 @@ Keep a pull request focused. In its description, include:
 - files and boundaries affected;
 - exact verification commands and results;
 - deployment, DDL, configuration, or evidence work still required.
+
+Complete the repository pull-request change record. A `not yet determined` CDE
+impact, an unaccepted blocking scanner finding, a required approval without
+evidence, or an unknown secure rollback path blocks merge. Security-sensitive
+bespoke/custom software changes require review by someone other than the author.
+These rules become enforced controls only when the repository branch rules name
+the required checks and reviewers.
 
 Do not commit `.env` files, credentials, database exports, customer content, generated logs, or copied production errors.

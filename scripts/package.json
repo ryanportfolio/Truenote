@@ -9,7 +9,20 @@
     "sweep-orphans": "tsx src/sweep-orphans.ts",
     "eval": "tsx src/eval.ts",
     "reingest": "tsx src/reingest.ts",
-    "check": "tsc --noEmit"
+    "verify:pci-evidence": "tsx src/verify-pci-evidence.ts",
+    "verify:change-record": "tsx src/verify-pr-change-record.ts",
+    "verify:pci-scope-decision": "tsx src/verify-pci-scope-decision.ts",
+    "verify:pci-governance-adoption": "tsx src/verify-pci-governance-adoption.ts",
+    "verify:production-controls": "tsx src/verify-production-control-evidence.ts",
+    "verify:branch-enforcement": "tsx src/verify-branch-enforcement.ts",
+    "verify:vulnerabilities": "tsx src/verify-vulnerability-baseline.ts",
+    "verify:vulnerabilities:release": "tsx src/verify-vulnerability-baseline.ts --strict",
+    "verify:vulnerability-source-receipt": "tsx src/verify-vulnerability-source-receipt.ts",
+    "import:codeql": "tsx src/import-codeql-sarif.ts",
+    "security:ai-canary": "tsx src/ai-security-canary.ts",
+    "check": "tsc --noEmit",
+    "test": "tsx --test src/*.test.ts",
+    "test:provider-firewall": "tsx --test src/provider-input-firewall.test.ts"
   },
   "dependencies": {
     "@workspace/api-server": "workspace:*",

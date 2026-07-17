@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "recordId": "TN-PCI-ROLES-<YYYY>-<NNN>",
+  "effectiveAt": "<UTC timestamp>",
+  "nextReviewDate": "<YYYY-MM-DD>",
+  "preparedByPrincipalId": "<stable corporate record-keeper principal ID>",
+  "roles": [
+    { "id": "pci_scope_owner", "assigneePrincipalId": "<stable assignee principal ID>", "delegatePrincipalId": "<stable delegate principal ID>", "appointmentReference": "<controlled appointment reference>", "assigneeAcknowledgementReference": "<controlled acknowledgement reference>", "delegateAcknowledgementReference": "<controlled acknowledgement reference>", "acceptedAt": "<UTC timestamp>" },
+    { "id": "qsa_or_compliance_accepting_entity", "assigneePrincipalId": "<stable assignee principal ID>", "delegatePrincipalId": "<stable delegate principal ID>", "appointmentReference": "<controlled appointment reference>", "assigneeAcknowledgementReference": "<controlled acknowledgement reference>", "delegateAcknowledgementReference": "<controlled acknowledgement reference>", "acceptedAt": "<UTC timestamp>" },
+    { "id": "engineering_owner", "assigneePrincipalId": "<stable assignee principal ID>", "delegatePrincipalId": "<stable delegate principal ID>", "appointmentReference": "<controlled appointment reference>", "assigneeAcknowledgementReference": "<controlled acknowledgement reference>", "delegateAcknowledgementReference": "<controlled acknowledgement reference>", "acceptedAt": "<UTC timestamp>" },
+    { "id": "product_security", "assigneePrincipalId": "<stable assignee principal ID>", "delegatePrincipalId": "<stable delegate principal ID>", "appointmentReference": "<controlled appointment reference>", "assigneeAcknowledgementReference": "<controlled acknowledgement reference>", "delegateAcknowledgementReference": "<controlled acknowledgement reference>", "acceptedAt": "<UTC timestamp>" },
+    { "id": "independent_code_reviewer", "assigneePrincipalId": "<stable assignee principal ID>", "delegatePrincipalId": "<stable delegate principal ID>", "appointmentReference": "<controlled appointment reference>", "assigneeAcknowledgementReference": "<controlled acknowledgement reference>", "delegateAcknowledgementReference": "<controlled acknowledgement reference>", "acceptedAt": "<UTC timestamp>" },
+    { "id": "change_authority", "assigneePrincipalId": "<stable assignee principal ID>", "delegatePrincipalId": "<stable delegate principal ID>", "appointmentReference": "<controlled appointment reference>", "assigneeAcknowledgementReference": "<controlled acknowledgement reference>", "delegateAcknowledgementReference": "<controlled acknowledgement reference>", "acceptedAt": "<UTC timestamp>" },
+    { "id": "platform_database_owner", "assigneePrincipalId": "<stable assignee principal ID>", "delegatePrincipalId": "<stable delegate principal ID>", "appointmentReference": "<controlled appointment reference>", "assigneeAcknowledgementReference": "<controlled acknowledgement reference>", "delegateAcknowledgementReference": "<controlled acknowledgement reference>", "acceptedAt": "<UTC timestamp>" },
+    { "id": "iam_owner", "assigneePrincipalId": "<stable assignee principal ID>", "delegatePrincipalId": "<stable delegate principal ID>", "appointmentReference": "<controlled appointment reference>", "assigneeAcknowledgementReference": "<controlled acknowledgement reference>", "delegateAcknowledgementReference": "<controlled acknowledgement reference>", "acceptedAt": "<UTC timestamp>" },
+    { "id": "security_operations_siem_owner", "assigneePrincipalId": "<stable assignee principal ID>", "delegatePrincipalId": "<stable delegate principal ID>", "appointmentReference": "<controlled appointment reference>", "assigneeAcknowledgementReference": "<controlled acknowledgement reference>", "delegateAcknowledgementReference": "<controlled acknowledgement reference>", "acceptedAt": "<UTC timestamp>" },
+    { "id": "data_content_owner", "assigneePrincipalId": "<stable assignee principal ID>", "delegatePrincipalId": "<stable delegate principal ID>", "appointmentReference": "<controlled appointment reference>", "assigneeAcknowledgementReference": "<controlled acknowledgement reference>", "delegateAcknowledgementReference": "<controlled acknowledgement reference>", "acceptedAt": "<UTC timestamp>" },
+    { "id": "vendor_risk_owner", "assigneePrincipalId": "<stable assignee principal ID>", "delegatePrincipalId": "<stable delegate principal ID>", "appointmentReference": "<controlled appointment reference>", "assigneeAcknowledgementReference": "<controlled acknowledgement reference>", "delegateAcknowledgementReference": "<controlled acknowledgement reference>", "acceptedAt": "<UTC timestamp>" }
+  ],
+  "unresolvedItems": ["<remove only after resolution>"],
+  "decision": "pending",
+  "signoffs": [
+    { "role": "executive_appointing_authority", "principalId": "<stable corporate principal ID>", "decision": "pending", "decidedAt": "<UTC timestamp>", "evidenceReference": "<controlled approval reference>" },
+    { "role": "compliance_accepting_entity", "principalId": "<stable corporate principal ID>", "decision": "pending", "decidedAt": "<UTC timestamp>", "evidenceReference": "<controlled approval reference>" }
+  ]
+}
+

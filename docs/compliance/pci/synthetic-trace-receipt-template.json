@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "TN-SYNTHETIC-TRACE-<YYYY>-<NNN>",
+  "provisionalRecordId": "TN-PCI-SCOPE-<YYYY>-<NNN>",
+  "provisionalRecordSha256": "<SHA-256 of exact provisional JSON bytes>",
+  "authorizationReference": "<restricted authorization reference>",
+  "environmentReference": "<restricted environment reference>",
+  "testAccountReference": "<restricted test-account reference>",
+  "flowIds": [],
+  "startedAt": "<canonical UTC timestamp>",
+  "completedAt": "<canonical UTC timestamp>",
+  "result": "pending",
+  "coverageGaps": ["<remove only after reconciliation>"],
+  "operatorPrincipalId": "<stable corporate principal ID>",
+  "reviewerPrincipalId": "<different stable corporate principal ID>",
+  "reviewedAt": "<canonical UTC timestamp>",
+  "restrictedArtifactReference": "<restricted detailed artifact reference>"
+}

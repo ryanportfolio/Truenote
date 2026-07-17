@@ -41,7 +41,7 @@ import { enforceAskRateLimit } from "../lib/security/distributed-rate-limit.js";
 import { recordSecurityEventBestEffort } from "../lib/security/audit.js";
 import { clientIpFrom } from "../lib/auth/rate-limit.js";
 import { getUserMaxClassification } from "../lib/security/classification.js";
-import { scanTextForSensitiveContent } from "../lib/security/content-scan.js";
+import { blockingAskContentFindings } from "../lib/security/ask-content-policy.js";
 
 export type { LinkedSource } from "../lib/citations.js";
 
@@ -75,15 +75,7 @@ function allowAskContent(
 ): boolean {
   // History is client-supplied and reaches the rewrite provider, so inspect it
   // with the current question. Record rule metadata only, never matched text.
-  const text = [
-    question,
-    ...history.flatMap((turn) => [turn.question, turn.answer])
-  ].join("\n");
-  const findings = scanTextForSensitiveContent(text).filter(
-    (finding) =>
-      finding.blocking &&
-      (finding.category === "pii" || finding.category === "secret")
-  );
+  const findings = blockingAskContentFindings(question, history);
   if (findings.length === 0) return true;
   recordSecurityEventBestEffort({
     action: "ask.sensitive_input_blocked",

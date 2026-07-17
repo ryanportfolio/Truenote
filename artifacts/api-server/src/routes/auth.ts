@@ -32,6 +32,7 @@ import {
   DEMO_WRITE_BLOCKED_MESSAGE,
   requireAuth
 } from "../middleware/current-user.js";
+import { workloadRateLimitMiddleware } from "../middleware/workload-rate-limit.js";
 import { isDemoEmail } from "../lib/auth/demo-accounts.js";
 import { getMinPasswordLength } from "../lib/config.js";
 import { getEmailSender } from "../lib/email/sender.js";
@@ -266,7 +267,7 @@ authRouter.post("/logout", async (req, res, next) => {
  * the actor doesn't get logged out by their own password change. Stolen
  * cookies on the old password are dead instantly.
  */
-authRouter.post("/change-password", requireAuth, async (req, res, next) => {
+authRouter.post("/change-password", requireAuth, workloadRateLimitMiddleware("password_change"), async (req, res, next) => {
   try {
     const user = authedUser(req);
     // Demo credentials are published on /api/config — that is the login

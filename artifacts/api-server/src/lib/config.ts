@@ -25,7 +25,7 @@ export function getMinPasswordLength(): number {
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed < HARD_FLOOR || parsed > HARD_CEILING) {
     console.warn(
-      `[config] MIN_PASSWORD_LENGTH=${JSON.stringify(raw)} is out of range ` +
+      `[config] MIN_PASSWORD_LENGTH is out of range ` +
         `[${HARD_FLOOR}, ${HARD_CEILING}]; using default ${DEFAULT_MIN}.`
     );
     cached = DEFAULT_MIN;

@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "recordId": "TN-PCI-SCOPE-<YYYY>-<NNN>",
+  "decisionDate": "<YYYY-MM-DD>",
+  "decisionStage": "pending",
+  "supersedesRecordId": null,
+  "provisionalRecordSha256": null,
+  "preparedBy": "<preparer identity>",
+  "preparedByPrincipalId": "<stable corporate principal ID>",
+  "scope": {
+    "cdeRelationship": "pending",
+    "validationPath": "pending",
+    "canImpactCdeSecurity": null,
+    "rationale": "<approved rationale>",
+    "accountableParties": {
+      "assessedEntityReference": "<controlled assessed-entity record reference>",
+      "applicationOperatorReference": "<controlled application-operator record reference>",
+      "customerCdeOwnerReference": "<controlled customer CDE-owner record reference>"
+    },
+    "infrastructureInventories": {
+      "administrativeAndSupportPaths": {
+        "status": "pending",
+        "rationale": "<approved present-or-none rationale>",
+        "evidenceReceipts": [
+          {
+            "reference": "<restricted inventory evidence reference>",
+            "sha256": "<SHA-256 of restricted artifact bytes>",
+            "artifactType": "pending",
+            "inventoryCategory": "administrative_and_support_paths",
+            "environmentReference": "<same restricted environment reference as syntheticTestAuthorization>",
+            "architectureReleaseReference": "<same restricted release reference as evidence>",
+            "reviewerPrincipalId": "<stable corporate reviewer principal ID>",
+            "reviewedAt": "<UTC timestamp>"
+          }
+        ]
+      },
+      "networkAndManagementPaths": {
+        "status": "pending",
+        "rationale": "<approved present-or-none rationale>",
+        "evidenceReceipts": [
+          {
+            "reference": "<restricted inventory evidence reference>",
+            "sha256": "<SHA-256 of restricted artifact bytes>",
+            "artifactType": "pending",
+            "inventoryCategory": "network_and_management_paths",
+            "environmentReference": "<same restricted environment reference as syntheticTestAuthorization>",
+            "architectureReleaseReference": "<same restricted release reference as evidence>",
+            "reviewerPrincipalId": "<stable corporate reviewer principal ID>",
+            "reviewedAt": "<UTC timestamp>"
+          }
+        ]
+      },
+      "dataStores": {
+        "status": "pending",
+        "rationale": "<approved present-or-none rationale>",
+        "evidenceReceipts": [
+          {
+            "reference": "<restricted inventory evidence reference>",
+            "sha256": "<SHA-256 of restricted artifact bytes>",
+            "artifactType": "pending",
+            "inventoryCategory": "data_stores",
+            "environmentReference": "<same restricted environment reference as syntheticTestAuthorization>",
+            "architectureReleaseReference": "<same restricted release reference as evidence>",
+            "reviewerPrincipalId": "<stable corporate reviewer principal ID>",
+            "reviewedAt": "<UTC timestamp>"
+          }
+        ]
+      },
+      "backupsAndRecoveryCopies": {
+        "status": "pending",
+        "rationale": "<approved present-or-none rationale>",
+        "evidenceReceipts": [
+          {
+            "reference": "<restricted inventory evidence reference>",
+            "sha256": "<SHA-256 of restricted artifact bytes>",
+            "artifactType": "pending",
+            "inventoryCategory": "backups_and_recovery_copies",
+            "environmentReference": "<same restricted environment reference as syntheticTestAuthorization>",
+            "architectureReleaseReference": "<same restricted release reference as evidence>",
+            "reviewerPrincipalId": "<stable corporate reviewer principal ID>",
+            "reviewedAt": "<UTC timestamp>"
+          }
+        ]
+      }
+    },
+    "inScopeComponents": [],
+    "outOfScopeComponents": [],
+    "connectedSystems": [],
+    "flowDecisions": [
+      { "id": "TN-FLOW-01", "decision": "pending", "rationale": "<rationale>", "evidenceReference": "<restricted evidence reference>" },
+      { "id": "TN-FLOW-02", "decision": "pending", "rationale": "<rationale>", "evidenceReference": "<restricted evidence reference>" },
+      { "id": "TN-FLOW-03", "decision": "pending", "rationale": "<rationale>", "evidenceReference": "<restricted evidence reference>" },
+      { "id": "TN-FLOW-04", "decision": "pending", "rationale": "<rationale>", "evidenceReference": "<restricted evidence reference>" },
+      { "id": "TN-FLOW-05", "decision": "pending", "rationale": "<rationale>", "evidenceReference": "<restricted evidence reference>" }
+    ]
+  },
+  "panPolicy": {
+    "policy": "pending",
+    "allowedPaths": [],
+    "prohibitedPaths": [],
+    "enforcementReferences": []
+  },
+  "segmentation": {
+    "reliedUpon": null,
+    "boundaries": [],
+    "controlReference": null,
+    "testApplicability": "pending",
+    "testPlanReference": null
+  },
+  "providers": [
+    { "id": "application_hosting", "name": "<provider/service>", "decision": "pending", "rationale": "<rationale>", "responsibilityReference": "<reference>" },
+    { "id": "database", "name": "<provider/service>", "decision": "pending", "rationale": "<rationale>", "responsibilityReference": "<reference>" },
+    { "id": "object_storage", "name": "<provider/service>", "decision": "pending", "rationale": "<rationale>", "responsibilityReference": "<reference>" },
+    { "id": "source_and_ci", "name": "<provider/service>", "decision": "pending", "rationale": "<rationale>", "responsibilityReference": "<reference>" },
+    { "id": "model_gateway", "name": "<provider/service>", "decision": "pending", "rationale": "<rationale>", "responsibilityReference": "<reference>" },
+    { "id": "embeddings", "name": "<provider/service>", "decision": "pending", "rationale": "<rationale>", "responsibilityReference": "<reference>" },
+    { "id": "reranking", "name": "<provider/service>", "decision": "pending", "rationale": "<rationale>", "responsibilityReference": "<reference>" },
+    { "id": "document_parsing", "name": "<provider/service>", "decision": "pending", "rationale": "<rationale>", "responsibilityReference": "<reference>" },
+    { "id": "malware_scanning", "name": "<provider/service>", "decision": "pending", "rationale": "<rationale>", "responsibilityReference": "<reference>" },
+    { "id": "email", "name": "<provider/service>", "decision": "pending", "rationale": "<rationale>", "responsibilityReference": "<reference>" },
+    { "id": "identity_provider", "name": "<provider/service>", "decision": "pending", "rationale": "<rationale>", "responsibilityReference": "<reference>" },
+    { "id": "siem", "name": "<provider/service>", "decision": "pending", "rationale": "<rationale>", "responsibilityReference": "<reference>" }
+  ],
+  "requirements": [
+    { "id": "6.4.2", "applicability": "pending", "rationale": "<rationale>", "controlPlanReference": null },
+    { "id": "6.4.3", "applicability": "pending", "rationale": "<rationale>", "controlPlanReference": null },
+    { "id": "11.4", "applicability": "pending", "rationale": "<rationale>", "controlPlanReference": null }
+  ],
+  "evidence": {
+    "dataFlowReference": "<restricted evidence reference>",
+    "scopeInventoryReference": "<restricted evidence reference>",
+    "syntheticTraceReference": null,
+    "architectureReleaseReference": "<restricted evidence reference>",
+    "qsaOrAssessorDirectionReference": "<restricted evidence reference>"
+  },
+  "syntheticTestAuthorization": {
+    "status": "pending",
+    "environmentReference": "<restricted environment reference>",
+    "testAccountReference": "<restricted test-account reference>",
+    "authorizedFlowIds": [],
+    "syntheticDataOnly": null,
+    "panProhibited": null,
+    "destructiveTestingProhibited": null,
+    "authorizationReference": "<restricted authorization reference>",
+    "issuedAt": "<UTC timestamp>",
+    "expiresAt": "<UTC timestamp>",
+    "traceFlowIds": [],
+    "traceReceiptReference": null,
+    "traceReceiptSha256": null,
+    "startedAt": null,
+    "completedAt": null
+  },
+  "unresolvedQuestions": ["<remove only after resolution>"],
+  "decision": "pending",
+  "signoffs": [
+    { "role": "pci_scope_owner", "identity": "<approver>", "principalId": "<stable corporate principal ID>", "decision": "pending", "decidedAt": "<UTC timestamp>", "evidenceReference": "<restricted approval reference>" },
+    { "role": "compliance_accepting_entity", "identity": "<approver>", "principalId": "<stable corporate principal ID>", "decision": "pending", "decidedAt": "<UTC timestamp>", "evidenceReference": "<restricted approval reference>" }
+  ]
+}

@@ -16,6 +16,7 @@ import {
   requireSeniorManagerOrAbove,
   requireSuperUser
 } from "../middleware/current-user.js";
+import { workloadRateLimitMiddleware } from "../middleware/workload-rate-limit.js";
 import { canAccessProgram, hasAtLeastRole } from "../lib/auth/current-user.js";
 import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
 import { purgeCitationSnapshotsForDocument } from "../lib/citations.js";
@@ -343,6 +344,7 @@ documentsRouter.post(
 
 documentsRouter.post(
   "/upload",
+  workloadRateLimitMiddleware("document_ingestion"),
   upload.single("file"),
   async (req, res, next) => {
     try {
@@ -842,12 +844,14 @@ documentsRouter.post(
   }
 );
 
-documentsRouter.post("/:versionId/rescan", async (req, res, next) => {
+documentsRouter.post("/:versionId/rescan", workloadRateLimitMiddleware("document_ingestion"), async (req, res, next) => {
   try {
     const user = authedUser(req);
     const maxClassification = await getUserMaxClassification(user.id);
     const versionId = req.params.versionId;
-    if (!UUID_RE.test(versionId)) throw new DocumentControlError(404, "Not found");
+    if (typeof versionId !== "string" || !UUID_RE.test(versionId)) {
+      throw new DocumentControlError(404, "Not found");
+    }
     const programId = await effectiveDocumentProgram(req, res);
     if (programId === null) return;
     const result = await db.execute(sql`

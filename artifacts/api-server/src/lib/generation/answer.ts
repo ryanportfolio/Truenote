@@ -13,6 +13,7 @@ import {
   type ApprovedModelRoute
 } from "./model-routing.js";
 import { scanTextForSensitiveContent } from "../security/content-scan.js";
+import { protectProviderText } from "../security/provider-input-firewall.js";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
@@ -166,14 +167,16 @@ async function callGenerationModel(
     signal?: AbortSignal;
   }
 ): Promise<{ text: string | null; usage: ProviderTokenUsage | null }> {
+  const protectedSystemPrompt = protectProviderText(systemPrompt).text;
+  const protectedUserPrompt = protectProviderText(userPrompt).text;
   const request = {
     model,
     ...(options.reasoningEffort === "none"
       ? { temperature: 0 }
       : { reasoning_effort: options.reasoningEffort }),
     messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt }
+      { role: "system", content: protectedSystemPrompt },
+      { role: "user", content: protectedUserPrompt }
     ]
   } satisfies OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
 

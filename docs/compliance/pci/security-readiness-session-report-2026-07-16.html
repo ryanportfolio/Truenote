@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>TrueNote security readiness session record | 2026-07-16</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --panel-soft: #f9fafb;
+      --text: #172033;
+      --muted: #58657a;
+      --line: #d8dee8;
+      --accent: #2357d9;
+      --accent-soft: #eaf0ff;
+      --done: #166534;
+      --done-soft: #e8f6ec;
+      --ready: #1d4ed8;
+      --ready-soft: #e8efff;
+      --pending: #8a4b08;
+      --pending-soft: #fff3dc;
+      --blocked: #a32121;
+      --blocked-soft: #feecec;
+      --external: #6b35a5;
+      --external-soft: #f3eaff;
+      --shadow: 0 14px 40px rgba(23, 32, 51, 0.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1420;
+        --panel: #171e2d;
+        --panel-soft: #1b2435;
+        --text: #edf2f8;
+        --muted: #aeb9ca;
+        --line: #344056;
+        --accent: #8aa9ff;
+        --accent-soft: #243458;
+        --done: #8be1a5;
+        --done-soft: #183b27;
+        --ready: #a9bfff;
+        --ready-soft: #23355b;
+        --pending: #f3c47a;
+        --pending-soft: #4b3519;
+        --blocked: #ffaaaa;
+        --blocked-soft: #4b2227;
+        --external: #d4afff;
+        --external-soft: #3b2854;
+        --shadow: none;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.6 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--accent); text-underline-offset: 3px; }
+    code {
+      padding: 0.12rem 0.32rem;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: var(--panel-soft);
+      overflow-wrap: anywhere;
+      font-size: 0.88em;
+    }
+    .skip {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      padding: 0.7rem 1rem;
+      background: var(--panel);
+      z-index: 10;
+    }
+    .skip:focus { left: 1rem; top: 1rem; }
+    header {
+      color: #fff;
+      background: linear-gradient(125deg, #122650 0%, #214fc4 64%, #3978ef 100%);
+      padding: 3.8rem 1.4rem 3rem;
+    }
+    .wrap { width: min(1180px, 100%); margin: 0 auto; }
+    .eyebrow {
+      margin: 0 0 0.7rem;
+      color: #cbd8ff;
+      font-size: 0.77rem;
+      font-weight: 750;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0; max-width: 900px; font-size: clamp(2rem, 5vw, 3.6rem); line-height: 1.08; }
+    .lede { max-width: 880px; margin: 1rem 0 0; color: #e8eeff; font-size: 1.08rem; }
+    .meta { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 1.4rem; }
+    .meta span {
+      padding: 0.34rem 0.62rem;
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.09);
+      font-size: 0.78rem;
+    }
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 94%, transparent);
+      backdrop-filter: blur(12px);
+    }
+    nav .wrap { display: flex; gap: 1rem; padding: 0.75rem 1.4rem; overflow-x: auto; }
+    nav a { color: var(--text); font-size: 0.8rem; font-weight: 650; text-decoration: none; white-space: nowrap; }
+    main { padding: 2rem 1.4rem 4rem; }
+    section { margin: 0 0 2.4rem; scroll-margin-top: 5rem; }
+    h2 { margin: 0 0 0.9rem; font-size: clamp(1.45rem, 3vw, 2rem); line-height: 1.2; }
+    h3 { margin: 1.35rem 0 0.55rem; font-size: 1.08rem; }
+    p { margin: 0.55rem 0; }
+    ul, ol { margin: 0.55rem 0; padding-left: 1.35rem; }
+    li + li { margin-top: 0.35rem; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.8rem; }
+    .card, .panel {
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+    .card { padding: 1rem; }
+    .card .number { margin: 0; color: var(--accent); font-size: 1.7rem; font-weight: 800; line-height: 1.1; }
+    .card .label { margin: 0.3rem 0 0; color: var(--muted); font-size: 0.8rem; }
+    .panel { padding: 1.15rem; }
+    .truth {
+      border-left: 5px solid var(--pending);
+      background: var(--pending-soft);
+      box-shadow: none;
+    }
+    .truth strong { color: var(--pending); }
+    .status {
+      display: inline-block;
+      padding: 0.2rem 0.48rem;
+      border-radius: 999px;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .done { color: var(--done); background: var(--done-soft); }
+    .ready { color: var(--ready); background: var(--ready-soft); }
+    .pending { color: var(--pending); background: var(--pending-soft); }
+    .blocked { color: var(--blocked); background: var(--blocked-soft); }
+    .external { color: var(--external); background: var(--external-soft); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+    table { width: 100%; border-collapse: collapse; min-width: 820px; }
+    th, td { padding: 0.75rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); background: var(--panel-soft); font-size: 0.71rem; letter-spacing: 0.06em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    .id { font-weight: 750; white-space: nowrap; }
+    .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; }
+    .grade { border-left: 4px solid var(--accent); }
+    .muted { color: var(--muted); }
+    .small { font-size: 0.82rem; }
+    details {
+      margin-top: 0.75rem;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+    summary { cursor: pointer; padding: 0.8rem 1rem; font-weight: 700; }
+    details > div { padding: 0 1rem 1rem; }
+    .checklist { list-style: none; padding: 0; }
+    .checklist li { position: relative; padding-left: 1.7rem; }
+    .checklist li::before { position: absolute; left: 0; font-weight: 800; }
+    .checklist .yes::before { content: "✓"; color: var(--done); }
+    .checklist .no::before { content: "○"; color: var(--pending); }
+    footer { padding: 1.5rem; border-top: 1px solid var(--line); color: var(--muted); background: var(--panel); }
+    @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } .two { grid-template-columns: 1fr; } }
+    @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } header { padding-top: 2.5rem; } }
+    @media print {
+      nav { display: none; }
+      body { background: #fff; color: #111; font-size: 10pt; }
+      header { background: #fff; color: #111; padding: 0 0 1rem; }
+      header .lede, .eyebrow { color: #333; }
+      .meta span { border-color: #aaa; background: #fff; }
+      main { padding: 0; }
+      .card, .panel, details, .table-wrap { box-shadow: none; break-inside: avoid; }
+      a { color: #111; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#content">Skip to content</a>
+  <header>
+    <div class="wrap">
+      <p class="eyebrow">Security and PCI DSS readiness</p>
+      <h1>TrueNote security readiness session record</h1>
+      <p class="lede">The organized source of truth for what the security team reported, what the repository already proved, what changed in this session, what passed verification, and what still needs named owners or outside evidence.</p>
+      <div class="meta">
+        <span>Recorded 2026-07-16</span>
+        <span>Last updated 2026-07-17</span>
+        <span>Repository foundation</span>
+        <span>PCI Requirement 6 priority</span>
+        <span>PCI DSS v4.0.1 basis</span>
+        <span>Not a PCI compliance claim</span>
+        <span>Living continuity ledger</span>
+      </div>
+    </div>
+  </header>
+
+  <nav aria-label="Report sections">
+    <div class="wrap">
+      <a href="#snapshot">Snapshot</a>
+      <a href="#tracker">Work tracker</a>
+      <a href="#feedback">Feedback disposition</a>
+      <a href="#completed">Completed work</a>
+      <a href="#pci">PCI map</a>
+      <a href="#review">Internal review</a>
+      <a href="#verification">Verification</a>
+      <a href="#next">Next actions</a>
+      <a href="#evidence">Evidence index</a>
+      <a href="#maintenance">Maintenance</a>
+    </div>
+  </nav>
+
+  <main id="content" class="wrap">
+    <section id="snapshot">
+      <h2>Current snapshot</h2>
+      <div class="panel" style="margin-bottom: 1rem">
+        <h3>Stakeholder objective</h3>
+        <p>Prepare TrueNote and its evidence for a possible RAIC presentation with Dennis. Working hypothesis: if approved, TrueNote would join or affect the company’s existing assessed Cardholder Data Environment rather than seek a standalone product certification. Requested decision: define scope, owners, assurance path, and the evidence needed for the existing PCI assessment.</p>
+        <p class="small muted">Normative engineering basis: <a href="https://www.pcisecuritystandards.org/document_library/?class=pcidss&amp;doc=pci_dss">PCI DSS v4.0.1, published June 2024</a>, accessed 2026-07-17. This repository mapping is non-authoritative; the compliance-accepting entity and QSA decide applicability and sufficiency.</p>
+      </div>
+      <div class="grid">
+        <div class="card"><p class="number">51</p><p class="label">Retained CodeQL results accounted for; scanner scores are not final risk ratings</p></div>
+        <div class="card"><p class="number">76/76</p><p class="label">Current scripts tests passing</p></div>
+        <div class="card"><p class="number">39</p><p class="label">PCI Markdown evidence files structurally checked</p></div>
+        <div class="card"><p class="number">26</p><p class="label">Threats mapped across nine trust boundaries</p></div>
+      </div>
+      <div class="panel truth" style="margin-top: 1rem">
+        <strong>Current truth:</strong> the repository has a much stronger PCI Requirement 6 foundation, pre-persistence blocking for deterministic high-risk ask input, a tested pre-provider input firewall, fail-closed model-output screening, repeatable CodeQL intake, an 11-category vulnerability-source register, machine-checked source-execution metadata/indexing, a two-stage fail-closed CDE/PAN/applicability format, a 28-exercise structured production-result format, an internal AI regression harness, a controlled PCI decision-meeting and governance-adoption format, and a tool-neutral Requirement 6.5 procedure with an adoption record, manual change record, and assessor sampling register. The scope format separates bounded provisional synthetic-test authorization from trace-backed final scope acceptance and requires controlled accountable-party references, canonical component/system IDs, and category/environment/release-bound reviewed receipts no older than 90 days for administrative/support paths, network/management paths, data stores, and backup/recovery copies. Dependency checks reject contradictory absence claims, and repository-safe text checks reject common raw topology/contact/account/credential forms, including wrapped or port-qualified IP addresses. The governance format requires eleven exact roles plus delegates, critical role separation, appointment and acknowledgement references, independent executive/compliance approval, exact-byte links to six approved policies, communication, training, and controlled exceptions. The production format prevents skipped required work from being labeled not applicable and requires the exact final scope to pass separately. The change-control adoption format captures the exact procedure, authority, system of record, access/audit model, retention, population sources, reconciliation cadence, emergency rules, approvals, and initial evidence milestones. The operating format covers reason, impact, authorization, tests, 6.5.1 through 6.5.6, secure recovery, deployment, post-change verification, emergency handling, population reconciliation, and closure without depending on GitHub. Restricted bytes and identities still require external resolution and authentication; the schemas and templates do not invent an external decision, role appointment, policy approval, live enforcement receipt, production observation, or proof of absence. It does not yet prove PCI compliance, authorization to run the trace, an approved final scope decision, production effectiveness, authentic source executions, an adopted change process, independent penetration testing, or a true external AI red team. The strict vulnerability gate correctly reports six blocker groups: 51 missing finding owners, 51 missing due dates, 51 pending dispositions, 11 missing source owners, nine missing source evidence sets, and 11 non-operating sources. Advanced GitHub branch evidence remains available only as an owner-deferred optional artifact.
+      </div>
+      <div class="panel truth" style="margin-top: 1rem">
+        <strong>Earliest incomplete gate:</strong> P0 remains open until the authorized PCI decision meeting appoints and acknowledges the required roles, adopts the six named policies, resolves the assessed entity, application operator, customer CDE owner, administrative/support paths, network/management paths, data stores, and backup/recovery copies; issues a bounded provisional synthetic-test authorization; executes only its named synthetic non-PAN flows; reconciles the trace; and approves the final CDE/PAN/provider/applicability record. Production integrations must also be verified. Requirement 6.5 separately needs adoption of the tool-neutral procedure, a named authority and system of record, a reconciled production-change register, and an authentic normal sample. If an emergency occurred in the review period, sample it; if none occurred, retain reconciled zero-event evidence and an approved tabletop. Advanced GitHub hardening is owner-deferred and is not the current acceptance path. The repository JSON and Markdown templates authorize nothing. Later assurance work does not close this prerequisite gate.
+      </div>
+      <p class="small muted">Repository work was persisted on a feature branch and draft PR. No merge, deployment, database migration, production scan, provider call, or paid model run was performed.</p>
+    </section>
+
+    <section id="tracker">
+      <h2>Living work tracker</h2>
+      <p>Work status describes progress. Evidence grade describes assurance and remains authoritative. “Done” never upgrades production or third-party claims.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Workstream</th><th>Work status</th><th>Evidence grade</th><th>What is true now</th><th>Next action or owner</th></tr></thead>
+          <tbody>
+            <tr><td class="id">TN-WORK-01</td><td>Security feedback assessment</td><td><span class="status done">Done</span></td><td>Verified</td><td>PDF claims, evidence limits, and PCI wording were reviewed. Sender described it as AI-graded; metadata identifies Perplexity Computer. It was not authored by the user or TrueNote team.</td><td>Use the claim-by-claim disposition below when replying.</td></tr>
+            <tr><td class="id">TN-WORK-02</td><td>Pre-provider PII firewall</td><td><span class="status done">Done in repo</span></td><td>Implemented, unverified</td><td>Deterministic checks protect OpenAI embeddings, Cohere query/doc reranking, and OpenRouter answer/utility text calls.</td><td>Product Security decides contextual name/address policy. Platform captures deployed canaries.</td></tr>
+            <tr><td class="id">TN-WORK-03</td><td>OpenRouter guardrails</td><td><span class="status ready">Configured evidence</span></td><td>Implemented, unverified</td><td>Owner-supplied screenshots show sensitive-info redaction and prompt-injection guardrails configured. Exact PNG bytes are now retained in the repository and SHA-256-bound in the evidence record.</td><td>Vendor-risk/AppSec verifies the active production revision, route/key assignment, fail behavior, and runtime redaction.</td></tr>
+            <tr><td class="id">TN-WORK-20</td><td>Model-output sensitive-data handling</td><td><span class="status done">Done in repo</span></td><td>Implemented, unverified</td><td>Complete generated answers are scanned before acceptance, response, or query-history persistence. Credential/private-key, SSN, and valid payment-card candidates invalidate the route; diagnostics retain only a redacted marker and route-chain failure returns the canned refusal. One portable test covers all four classes; the focused generation suite passes 26/26.</td><td>Product Security and the data/content owner decide email, phone, IP, name, and address output policy. Platform runs authorized synthetic deployed canaries across every route and verifies API, history, logs, diagnostics, telemetry, and report exclusion.</td></tr>
+            <tr><td class="id">TN-WORK-21</td><td>Ask-input pre-persistence blocking</td><td><span class="status done">Done in repo</span></td><td>Implemented, unverified</td><td>The current question and every client-supplied history question/answer are checked for credential/private-key, SSN, and valid payment-card findings after rate-limit metadata accounting but before session creation, rewrite, retrieval, provider calls, query history, citation persistence, session naming, or response assembly. Denial audit data contains rule/category/count only. Three focused tests pass.</td><td>Product Security decides contextual/encoded PII policy. Platform runs synthetic deployed canaries and verifies no request body reaches provider, history, proxy/APM, application logs, audit detail, SIEM, or response. Repository ordering does not prove infrastructure logging behavior.</td></tr>
+            <tr><td class="id">TN-WORK-04</td><td>AI adversarial regression</td><td><span class="status ready">Ready to run</span></td><td>Implemented, unverified</td><td>An opt-in eight-case runner and evidence-safe report format are tested without live model calls.</td><td>Authorize a released synthetic target, run it, remediate failures, and retain retest.</td></tr>
+            <tr><td class="id">TN-WORK-05</td><td>True AI red team</td><td><span class="status external">External target</span></td><td>Third-party evidence required</td><td>Scope, rules, deliverables, and closure criteria are documented. Internal regression is not independent testing.</td><td>Security/PCI commissions an external firm for the enterprise-assurance target.</td></tr>
+            <tr><td class="id">TN-WORK-06</td><td>PCI CDE scope and PAN policy</td><td><span class="status blocked">Authorization and decision needed</span></td><td>Operational evidence required</td><td>Known data paths and five stable flow IDs are mapped. An eleven-test format requires exact per-flow decisions; controlled assessed-entity, application-operator, and customer-CDE-owner references; canonical components/systems; typed/hash-bound reviewer receipt metadata for present-or-none admin/support paths, network/management paths, data stores, and backup/recovery copies; contradiction and repository-safe-text checks; and bounded provisional environment/accounts/synthetic-only/PAN/non-destructive limits, stable authorizer principals, distinct approval artifacts, issuance, and maximum 30-day expiry. Final structural acceptance requires exact provisional and safe trace-receipt bytes, verifier-computed hashes, receipt-to-prior ID/hash binding, preserved scope/authorization, complete flow coverage, receipt review before final decisions, non-reused approval artifacts, compatible CDE paths, and duplicate-key-free JSON. End-to-end CLI tests prove mandatory stage/final-input behavior. The unfilled templates fail and authorize nothing.</td><td>PCI scope owner and compliance-accepting entity resolve all party and infrastructure references and restricted receipt bytes, authenticate the bounded provisional record, execute only authorized flows, reconcile the trace, and then sign final scope with PCI/QSA direction.</td></tr>
+            <tr><td class="id">TN-WORK-07</td><td>Requirement 6.2 secure development</td><td><span class="status ready">Curriculum and forms ready</span></td><td>Operational evidence required</td><td>SDLC, threat model, negative tests, review expectations, change evidence, a decision meeting pack, fail-closed role/policy adoption templates, a Truenote-specific PCI 6.2.2 curriculum/assessment, an annual training record, and a representative released-change review record now exist. The curriculum covers roles, current languages/frameworks, secure design/coding, vulnerability tools, critical questions, and a practical assessment.</td><td>Authorized leaders approve the curriculum and policy, appoint roles, deliver and authenticate role/tool-specific annual training, then populate one authentic sampled-change record with controlled receipts and signoffs. Prepared content and blank forms prove no completion.</td></tr>
+            <tr><td class="id">TN-WORK-08</td><td>Requirement 6.3 vulnerability management</td><td><span class="status blocked">Release blocked; workshop ready</span></td><td>Operational evidence required</td><td>All 51 retained CodeQL results have safe IDs. Eleven required source categories are machine-checked. Intake rejects false closure, stale scans, mixed provenance, and unregistered history. A Product Security workshop now maps every child ID, defines the seven mutable management fields and valid active decisions, blocks active closure, preserves the baseline as the single source, and separates finding from source blockers.</td><td>Product Security runs the workshop, assigns every finding/source owner, approves dates/dispositions/SLA/cadence, authenticates external receipts/artifacts/reconciliation, and retains closure/retest. The strict gate must reach zero finding blockers; source blockers close separately.</td></tr>
+            <tr><td class="id">TN-WORK-09</td><td>Requirement 6.4.2 public web protection</td><td><span class="status blocked">Applicability decision</span></td><td>Gap</td><td>CSP and browser request defenses exist; automated public-facing attack prevention and deployed evidence are not established.</td><td>QSA confirms scope; Platform supplies applicable 6.4.2 control and evidence.</td></tr>
+            <tr><td class="id">TN-WORK-10</td><td>Requirement 6.5 change control</td><td><span class="status ready">Adoption package ready</span></td><td>Gap</td><td>A tool-neutral adoption record, practical procedure, full manual production-change record, and population register now cover exact procedure identity, authority, system of record, access/audit, retention, population sources, reconciliation cadence, reason, security/CDE impact, significant-change decision, approval, 6.2.3 non-author review, 6.2.4 and negative tests, 6.5.1-6.5.6, role accountability, PAN/test-data handling, deployment, secure recovery, post-change verification, emergency handling, and closure. GitHub PR/branch artifacts are optional supporting evidence.</td><td>Authorized leaders complete the adoption record, approve the exact procedure, name the change authority/system of record/retention period, reconcile the register, and complete one authentic normal sample. If an emergency occurred in the review period, sample it; if none occurred, retain reconciled zero-event evidence and run an approved tabletop. Advanced GitHub hardening remains owner-deferred unless Security/PCI requests it or relevant CDE integration requires it.</td></tr>
+            <tr><td class="id">TN-WORK-11</td><td>Production control evidence</td><td><span class="status ready">Structured gate ready</span></td><td>Operational evidence required</td><td>A read-only SQL verifier, runbook, 28 stable exercise declarations, JSON result template, combined final-scope/result CLI, and four adversarial tests exist. Required/pass cannot be replaced by not-run; not-applicable needs approved rationale. SQL now checks a separately named runtime role and exact approved function search paths.</td><td>PCI scope owner identifies the assessed production environment; authorized platform/database operators execute the applicable exercises, retain authentic restricted artifacts, and obtain independent review. Structural validation is not production-effectiveness evidence.</td></tr>
+            <tr><td class="id">TN-WORK-12</td><td>App/API and segmentation testing</td><td><span class="status external">Assurance target</span></td><td>Third-party evidence required</td><td>Engagement scope is documented. No report was reviewed. PCI permits qualified internal or external testers with organizational independence; company assurance target is an external firm.</td><td>PCI/Security selects qualified independent testers, remediates, and obtains retest.</td></tr>
+            <tr><td class="id">TN-WORK-13</td><td>Operational controls and providers</td><td><span class="status pending">Evidence missing</span></td><td>Operational evidence required</td><td>Repository logic exists, but each provider, IAM, SIEM, backup, incident, and hosting control needs its own production evidence.</td><td>Use the canonical roles and provider matrices; do not collapse OpenRouter proof into all-provider assurance.</td></tr>
+            <tr><td class="id">TN-WORK-14</td><td>Component inventory, dependencies, and patching</td><td><span class="status pending">Evidence missing</span></td><td>Operational evidence required</td><td>Lockfile, dependency workflow, and SBOM generation are defined; complete deployed inventory, hosted result, triage, SLA, and patch receipts are not.</td><td>Engineering/Product Security retains the released SBOM, advisories, decisions, patches, and retests.</td></tr>
+            <tr><td class="id">TN-WORK-15</td><td>Secrets and private-report intake</td><td><span class="status pending">Evidence missing</span></td><td>Operational evidence required</td><td>Gitleaks and <code>SECURITY.md</code> paths exist. Current hosted results, private intake records, owners, and closure samples remain unverified.</td><td>Product Security operates both sources and samples detection through retest.</td></tr>
+            <tr><td class="id">TN-WORK-16</td><td>Provider/platform advisories</td><td><span class="status pending">Evidence missing</span></td><td>Operational evidence required</td><td>Required sources are documented, but no complete OpenRouter/OpenAI/Cohere/LandingAI/Replit/Neon/GitHub/IdP/SIEM/email advisory register was reviewed.</td><td>Vendor-risk and Platform assign each provider source, review cadence, and evidence record.</td></tr>
+            <tr><td class="id">TN-WORK-17</td><td>Requirement 6.4.3 payment-page scripts</td><td><span class="status blocked">Applicability decision</span></td><td>Operational evidence required</td><td>No signed decision establishes whether TrueNote supplies or affects a payment page. Script authorization, integrity, and inventory evidence therefore remain unresolved.</td><td>PCI scope owner/QSA decides applicability; Platform implements evidence if applicable.</td></tr>
+            <tr><td class="id">TN-WORK-18</td><td>Public security contact discovery</td><td><span class="status ready">Ready to deploy</span></td><td>Implemented, unverified</td><td>The existing login link reaches the production-built <code>/security/</code> capabilities brief, which now links directly to a dedicated <code>/security/report/</code> policy. Both routes are in the sitemap. The overview, reporting actions, repository policy, RFC 9116 contact, README workflow badge, and portable tests now target the current <code>ryanportfolio/Truenote</code> repository. Four portable tests, the production build, and an exact 390px local render cover discovery, safe-reporting content, accessible structure, claim limits, annual expiry, emitted assets, and responsive layout. No email, owner identity, SLA, or operating intake claim was invented.</td><td>Product Security approves the repository/owner, deploys both routes and the discovery record, verifies public responses/content types/body hashes, enables and monitors private reporting, runs a harmless synthetic intake through closure, and owns annual expiry.</td></tr>
+            <tr><td class="id">TN-WORK-19</td><td>PCI governance adoption</td><td><span class="status ready">Repository gate ready</span></td><td>Operational evidence required</td><td>A decision meeting pack, eleven-role assignment record, six-policy adoption record, duplicate-key-safe verifier, CLI, and six adversarial tests now enforce dependency order, role/delegate separation, exact policy bytes, independent signoffs, chronology, communication/training, and bounded exceptions. Blank templates fail by design.</td><td>The compliance-accepting entity convenes the meeting, assigns authenticated principals and evidence references, approves the role record, approves exact policy bytes, communicates the policies, completes training, and retains signed records in restricted storage.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="feedback">
+      <h2>Security-team feedback and our disposition</h2>
+      <div class="two">
+        <div class="panel">
+          <h3>What we agree with</h3>
+          <ul>
+            <li>No reviewed evidence proves a true independent AI red team, application penetration test, or segmentation test.</li>
+            <li>Repository code and internal tests do not prove deployed effectiveness, live monitoring, incident handling, or production scale.</li>
+            <li>PCI is the primary integration concern if TrueNote enters or can affect the existing CDE.</li>
+            <li>Requirement 6 evidence needs an operating SDLC, vulnerability process, and change-control receipts, not policy files alone.</li>
+            <li>Public words such as “verified” need an explicit evidence scope so buyers do not read them as external assurance.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>What needs qualification or correction</h3>
+          <ul>
+            <li>“No real-time PII redaction firewall” is no longer accurate for the repository. OpenRouter guardrail configuration exists, local synchronous checks protect OpenAI embeddings, Cohere query/document reranking, and OpenRouter generation/rewrite/naming text, and generated answers fail closed on deterministic credential/private-key, SSN, and valid payment-card findings. LandingAI/raw files, names, addresses, contextual or obfuscated PII, broader output policy, deployment, and independent bypass testing remain open.</li>
+            <li>A dedicated branded “prompt firewall” is not itself a PCI requirement. The control objectives, coverage, safe failure, monitoring, bypass testing, and evidence matter.</li>
+            <li>PCI is not a universal standalone product certification or universal statute. The likely path is inclusion in the customer’s existing assessed CDE, with scope and validation decided by the compliance-accepting entity and QSA.</li>
+            <li>“Never tested” or “never audited” is stronger than public evidence supports. The defensible statement is “no independent report was reviewed.”</li>
+            <li>Static repository inspection can support “implemented in reviewed source,” but not “correctly built” across runtime, configuration, and adversarial conditions.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="panel" style="margin-top: 0.9rem">
+        <h3>Provenance clarification</h3>
+        <p>The assessment PDF was supplied by the user’s company security team and described by the sender as AI-graded. It was not authored by the TrueNote team or the user. Metadata identifies the author as Perplexity Computer. Treat it as an AI-assisted public-source gap assessment, not a professional audit, PCI assessment, certification, or independent attestation.</p>
+      </div>
+      <details>
+        <summary>Complete PDF claim and recommendation disposition</summary>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Page/topic</th><th>Disposition</th><th>Evidence grade</th><th>Defensible response and remaining proof</th></tr></thead>
+            <tbody>
+              <tr><td class="id">PDF-S01</td><td>p.1 control engineering A-</td><td>Partly agree</td><td>Implemented, unverified</td><td>Controls exist in reviewed source and tests. “Correctly built” across production, configuration, and adversarial conditions is unproven.</td></tr>
+              <tr><td class="id">PDF-S02</td><td>p.1 AI attack testing F</td><td>Agree on assurance gap</td><td>Third-party evidence required</td><td>No independent AI red-team report was reviewed. Internal eight-case regression exists but is not an external red team.</td></tr>
+              <tr><td class="id">PDF-S03</td><td>p.1 AI safety filtering D</td><td>Outdated and overbroad</td><td>Implemented, unverified</td><td>OpenRouter configuration, exact local text-provider input-firewall paths, and generated-output blocking for credentials/private keys, SSNs, and valid payment cards exist. Raw-file/LandingAI, contextual PII, broader output policy, deployment, and bypass coverage remain open.</td></tr>
+              <tr><td class="id">PDF-S04</td><td>p.1 PCI F</td><td>Agree on readiness; reject universal certification claim</td><td>Operational evidence required</td><td>PCI scope and operating evidence are incomplete. Likely path is inclusion in the existing assessed CDE, as decided by the compliance-accepting entity and QSA.</td></tr>
+              <tr><td class="id">PDF-S05</td><td>p.1 independent audit F</td><td>Agree on evidence gap</td><td>Third-party evidence required</td><td>No outside report was reviewed. Public evidence cannot prove an audit never happened.</td></tr>
+              <tr><td class="id">PDF-S06</td><td>p.1 transparency B-</td><td>Repository gap fixed; deployment still unverified</td><td>Implemented, unverified</td><td><code>SECURITY.md</code>, the production-built <code>/security/</code> capabilities brief, a dedicated <code>/security/report/</code> policy, direct overview/sitemap discovery, and an RFC 9116 record now exist with four portable tests. Public deployment, approved owner identity, GitHub intake operation, and synthetic closure remain unverified.</td></tr>
+              <tr><td class="id">PDF-C01</td><td>p.2 server-side access control</td><td>Already implemented</td><td>Implemented, unverified</td><td>Repository authorization/scoping controls and negative tests exist; deployed policy and independent authorization review remain.</td></tr>
+              <tr><td class="id">PDF-C02</td><td>p.2 hybrid/scoped search</td><td>Already implemented</td><td>Implemented, unverified</td><td>Hybrid retrieval and scoping exist. Accuracy/relevance remain evaluation outcomes, not architecture claims.</td></tr>
+              <tr><td class="id">PDF-C03</td><td>p.2 citations/refusal</td><td>Already implemented</td><td>Implemented, unverified</td><td>Citation and refusal contracts are tested. Released-environment adversarial evidence remains.</td></tr>
+              <tr><td class="id">PDF-C04</td><td>p.2 provider keeps no copy</td><td>Qualify</td><td>Configuration required</td><td>ZDR/no-fallback behavior is requested in code. Provider eligibility, DPA, routing, retention, and subprocessors require vendor evidence.</td></tr>
+              <tr><td class="id">PDF-C05</td><td>p.2 passwords/sessions</td><td>Already implemented</td><td>Implemented, unverified</td><td>Repository controls exist. Production IdP/MFA, token lifecycle, session settings, and access review remain.</td></tr>
+              <tr><td class="id">PDF-C06</td><td>p.2 SSN/PAN detection</td><td>Already implemented</td><td>Implemented, unverified</td><td>Detection and local redaction exist for exact classes. Detection is not PCI scope, tokenization, or complete DLP.</td></tr>
+              <tr><td class="id">PDF-C07</td><td>p.2 prompt defenses untested</td><td>Partly resolved</td><td>Implemented, unverified</td><td>Internal tests and harness now exist. Creative, multilingual, encoded, indirect-injection, and independent testing remain.</td></tr>
+              <tr><td class="id">PDF-C08</td><td>p.2 chained audit/SIEM</td><td>Already implemented in repo</td><td>Operational evidence required</td><td>Hash chaining and outbox logic exist. Production coverage, delivery, alerts, staffing, retention, and external anchoring remain.</td></tr>
+              <tr><td class="id">PDF-C09</td><td>p.2 web hardening</td><td>Qualify</td><td>Implemented, unverified</td><td>Browser/CSRF/session defenses exist. This is not proof against all web, API, upload, SSRF, injection, or business-logic attacks.</td></tr>
+              <tr><td class="id">PDF-C10</td><td>p.2 timeouts/usage caps</td><td>Partly resolved</td><td>Implemented, unverified</td><td>Distributed high-amplification workload limits exist locally. Threshold approval, load, edge/read abuse, and multi-replica evidence remain.</td></tr>
+              <tr><td class="id">PDF-C11</td><td>p.2 held-back quality tests</td><td>Already implemented</td><td>Implemented, unverified</td><td>Evaluation structure exists. Dataset governance, thresholds, leakage control, released regression history, and security suites remain.</td></tr>
+              <tr><td class="id">PDF-C12</td><td>p.2 scans every change</td><td>Defined, not enforced</td><td>Gap</td><td>Workflow defines tests, audit, SBOM, secrets, and CodeQL on pull requests. Approved change-control enforcement, authentic operating results, triage, SLA, and closure evidence remain absent. Additional GitHub rules are optional and owner-deferred.</td></tr>
+              <tr><td class="id">PDF-B01</td><td>p.3 real-attacker AI testing</td><td>Agree</td><td>Third-party evidence required</td><td>Internal regression reduces risk but does not replace the company’s external red-team assurance target.</td></tr>
+              <tr><td class="id">PDF-B02</td><td>p.3 PCI readiness</td><td>Agree with corrected path</td><td>Operational evidence required</td><td>Clear CDE scope, Requirement 6 operation, production evidence, and applicable testing through the existing assessment.</td></tr>
+              <tr><td class="id">PDF-B03</td><td>p.3 dedicated safety layer</td><td>Partly resolved</td><td>Implemented, unverified</td><td>Exact local and OpenRouter controls exist. Evaluate outcomes and gaps, not whether a branded component exists.</td></tr>
+              <tr><td class="id">PDF-B04</td><td>p.3 neutral review</td><td>Agree as assurance target</td><td>Third-party evidence required</td><td>Scope to actual application, AI, provider, CDE, and segmentation boundaries.</td></tr>
+              <tr><td class="id">PDF-B05</td><td>p.3 “verified” language</td><td>Agree</td><td>Verified</td><td>Evidence grades now distinguish repository tests, configuration, operation, provider evidence, and third-party assurance.</td></tr>
+              <tr><td class="id">PDF-B06</td><td>p.3 operations evidence</td><td>Agree</td><td>Operational evidence required</td><td>Capture deployed architecture, monitoring, on-call/escalation, incidents, backup/restore, access review, capacity, and changes.</td></tr>
+              <tr><td class="id">PDF-R01</td><td>p.3 hire AI red team and publish</td><td>Accept with publication limit</td><td>Third-party evidence required</td><td>Commission external testing; publish a remediated summary/attestation, not detailed exploit paths by default.</td></tr>
+              <tr><td class="id">PDF-R02</td><td>p.3 build inbound/outbound screening</td><td>Partly complete</td><td>Implemented, unverified</td><td>Input controls exist on named text paths. Finish output, raw-file, contextual, observability, safe-failure, and bypass coverage.</td></tr>
+              <tr><td class="id">PDF-R03</td><td>p.3 obtain PCI certification</td><td>Correct</td><td>Operational evidence required</td><td>Determine entity role, scope, validation method, and shared responsibilities with customer/acquirer/QSA; do not assume standalone product certification.</td></tr>
+              <tr><td class="id">PDF-R04</td><td>p.3 security audit/pentest and publish</td><td>Accept with scope/publication limit</td><td>Third-party evidence required</td><td>Obtain qualified independent testing and retest. Share detailed findings privately; publish safe attestation/summary after remediation.</td></tr>
+              <tr><td class="id">PDF-R05</td><td>p.3 qualify “verified”</td><td>Accepted</td><td>Verified</td><td>Use exact evidence grades and same-sentence scope limits.</td></tr>
+              <tr><td class="id">PDF-R06</td><td>p.3 prove deployment/monitoring/incidents</td><td>Accepted with wording limit</td><td>Operational evidence required</td><td>Define actual monitoring and escalation coverage; do not claim 24/7 staffing unless contracted and evidenced.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+
+    <section id="completed">
+      <h2>Completed repository work</h2>
+      <div class="two">
+        <div class="panel grade">
+          <h3>Provider input protection</h3>
+          <ul class="checklist">
+            <li class="yes">Added deterministic redaction for private/API keys, SSNs, Luhn-valid payment cards, email, structured phone numbers, IPv4, and IPv6.</li>
+            <li class="yes">Wired protection before OpenAI embeddings, Cohere query/doc reranking, OpenRouter answers, and OpenRouter utility prompts.</li>
+            <li class="yes">Rescans redacted text and fails closed if a blocking scanner rule remains.</li>
+            <li class="yes">Portable injected-client tests capture the exact downstream payloads.</li>
+            <li class="no">Names, addresses, contextual/obfuscated PII, deployed receipts, and independent bypass testing remain open.</li>
+          </ul>
+        </div>
+        <div class="panel grade">
+          <h3>AI adversarial evidence</h3>
+          <ul class="checklist">
+            <li class="yes">Built eight fixed synthetic cases for sensitive input, override/exfiltration, citations, scope, and PII reflection.</li>
+            <li class="yes">Requires explicit synthetic confirmation and an environment-provided session token.</li>
+            <li class="yes">Sanitized reports exclude prompts, answers, canaries, and tokens.</li>
+            <li class="yes">Harness tests use fake transport, so no live provider call or cost occurred.</li>
+            <li class="no">A released-environment run and outside creative red team remain required.</li>
+          </ul>
+        </div>
+        <div class="panel grade">
+          <h3>Code and configuration remediation</h3>
+          <ul class="checklist">
+            <li class="yes">Fixed Markdown pipe escaping order.</li>
+            <li class="yes">Removed a risky test-only HTML tag-stripping regex.</li>
+            <li class="yes">Hardened compressed static-asset paths with a flat basename allowlist and fixed root.</li>
+            <li class="yes">Made production email configuration fail closed and development output single-line JSON.</li>
+            <li class="yes">Redacted console error/config output, including complete PEM private-key blocks.</li>
+            <li class="yes">Moved pnpm overrides/build allowlist into the supported workspace settings.</li>
+          </ul>
+        </div>
+        <div class="panel grade">
+          <h3>Availability and abuse controls</h3>
+          <ul class="checklist">
+            <li class="yes">Classified all 40 CodeQL rate-limit result locations by route/cost/risk.</li>
+            <li class="yes">Added Postgres-backed per-user workload buckets for document processing, evaluations, invitations, user administration, credential reset, and password changes.</li>
+            <li class="yes">Fails closed on missing schema, emits <code>Retry-After</code>, and records audit evidence.</li>
+            <li class="yes">Preserves call-center shared-IP access by avoiding a low universal per-IP cap.</li>
+            <li class="no">Approved production thresholds, edge/read controls, load tests, and multi-replica receipts remain open.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>PCI process and evidence package</h3>
+      <div class="panel">
+        <ul>
+          <li>Created a Requirement 6 control matrix, scope/data-flow record, SDLC, vulnerability-management procedure, change-control procedure, roles matrix, provider responsibility matrix, evidence index, and implementation status.</li>
+          <li>Added a fail-closed CDE scope/PAN/applicability JSON record and nine-test validator. Independent handoff review first found a circular dependency between final scope acceptance and the trace needed to support it, then found floating-final, partial-flow, generic-exit, chronology, lifetime, identity-evidence, self-asserted receipt-hash, and no-impact/CDE-path weaknesses. The corrected two-stage format authorizes only a maximum-30-day synthetic-only, non-PAN, non-destructive trace for exact in-scope stable flows and requires exact-byte prior/receipt hashing inside the verifier, complete receipt coverage and chronology, preserved decisions, stable principals, non-reused approval artifacts, explicit CLI stage/final-input intent, and end-to-end CLI exit tests. Both repository templates are deliberately invalid and authorize nothing.</li>
+          <li>The first scope-template CLI dry runs exposed pnpm forwarding the literal <code>--</code> separator and changing into the package directory. Both external-record CLIs now skip the separator and resolve repository-relative paths from the original invocation directory.</li>
+          <li>Added a populated pre-release change record and PR template covering CDE/security impact, verification, findings, deployment, rollback, and approval.</li>
+          <li>Added a seven-test structural change-record gate and wired it into pull-request CI. It rejects removed/placeholder fields, unresolved CDE impact, author self-review, incomplete significant-change handling, missing emergency authority/deadline, and unsafe approval combinations. Pull-request mode permits only an explicit pending decision with a specifically explained unassigned reviewer; strict invocation still requires approval and a real distinct reviewer.</li>
+          <li>Added an application/CDE threat model with 26 threats, nine trust boundaries, evidence grades, release blockers, owners, and review triggers.</li>
+          <li>Added a strictly read-only production catalog verifier, controlled runbook, result template, definition hashes, and binary acceptance fields.</li>
+          <li>Added an independent testing plan for app/API, AI, and segmentation scope, including rules of engagement, tester independence, remediation, and retest.</li>
+          <li>Expanded hosted workflow definitions for PR, main, weekly, and manual evidence, including tests, build, dependency audit, SBOM, Gitleaks, CodeQL upload, and retained SARIF.</li>
+          <li>Added an explicit <code>managed_release_gate</code> manual workflow input that runs the strict vulnerability release gate without falsely blocking every ordinary PR against the untriaged baseline.</li>
+          <li>Added a fail-closed branch-enforcement declaration format, CLI, intentionally failing template, four mutation-oriented tests, and an opt-in <code>branch_enforcement_gate</code> hosted path. It requires exact official API endpoints, HTTP 200, complete pagination, request/body/bundle hashes, exact check contexts and one integration identity, all-path CODEOWNERS source/hash/owners, active protections, no bypasses/gaps, and separated signoffs.</li>
+          <li>Internal review found that a boolean receipt alone could be fabricated, same-named checks could be misleading, CODEOWNER review would cover nothing without CODEOWNERS, endpoint substring matching was unsafe, and no hosted consumer existed. Exact endpoint/status/pagination/hash fields, context/integration binding, local CODEOWNERS coverage/hash checks, adversarial tests, and the manual hosted gate were added. The result remains structural declared metadata, not authenticated GitHub proof.</li>
+          <li>Initial source inspection found no public-directory file for the advertised <code>/security/</code> route, so a static reporting page, external styles, RFC 9116 discovery record, safe private GitHub intake/fallback guidance, sensitive-data and testing boundaries, explicit non-assurance wording, one-year expiry, four portable tests, and a deployed-intake acceptance procedure were added. Production-build inspection then exposed that Vite already generated the security-capabilities brief at <code>/security/</code> and overwrote that page. The reporting policy was moved to <code>/security/report/</code>, linked from the existing brief, added to the sitemap, and verified in the emitted build. No unapproved email or SLA was invented.</li>
+        </ul>
+      </div>
+
+      <h3>Vulnerability evidence and repeatable SARIF intake</h3>
+      <div class="panel">
+        <ul>
+          <li>Imported and reconciled all 51 retained CodeQL results: 50 high-scored and one medium-scored result across eight rule groups.</li>
+          <li>Created schema-v3 safe evidence with stable <code>TN-CQL-*</code> IDs, a versioned one-way location fingerprint, severity totals, exact rule-to-<code>TN-VULN</code> mapping, run/artifact identity, and explicit commit binding.</li>
+          <li>Raw SARIF paths, messages, snippets, locations, customer data, and exploit detail remain outside the repository.</li>
+          <li>The importer verifies the expected raw SARIF hash and CodeQL driver, rejects unmapped, duplicate, suppressed, absent, and non-failing results, and refuses automatic closure.</li>
+          <li>A second internal independent-context review closed four more intake gaps: active results cannot be marked closed, historical closure must be bound to the exact Closed section, stale runs cannot replace newer evidence, and every result-bearing SARIF run needs the selected provenance.</li>
+          <li>Terminal removed findings remain in <code>historicalFindings</code>, preserving decisions, exception expiry, fingerprints, and non-reusable IDs. Reappearance fails closed.</li>
+          <li>Writes are atomic and compare the starting baseline bytes immediately before replacement, protecting concurrent reviewer/owner edits.</li>
+          <li>The structural gate passes. The separate strict release gate fails honestly on missing accountability evidence.</li>
+          <li>Added an 11-category safe source-coverage register for advisories, dependency audit, SBOM, secrets, CodeQL, private reports, provider/platform notices, dynamic/external scanning, penetration/AI testing, incidents, and internal tests. Structural verification passes; operating readiness does not.</li>
+          <li>Added a repository-safe source-execution metadata validator and empty append-only history index. Structural acceptance requires current register/owner binding, non-future/non-placeholder chronology, consistent finding/reconciliation counts, declared artifact/manifest hashes, no coverage gaps, and operator separation from reviewer/approver. Duplicate IDs/hashes and unexplained overlapping windows fail. Tests do not authenticate artifacts, identities, execution, or reconciliation.</li>
+          <li>An internal independent-context review found no P1 and confirmed the earlier rejected-receipt CLI issue was fixed. Five remaining P2 receipt issues covered future/placeholders, canonical binding, reconciliation manifests/counts, history uniqueness/overlap, and claim limits; these were then hardened. This is not third-party assurance.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="pci">
+      <h2>PCI DSS work map</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Area</th><th>Evidence grade</th><th>What is ready</th><th>What blocks acceptance</th></tr></thead>
+          <tbody>
+            <tr><td>6.1 Policies, roles, procedures</td><td><span class="status pending">Operational evidence required</span></td><td>Draft package, roles, review cadence, and acceptance tests.</td><td>Named owners, approval, effective date, communication, and proof of use.</td></tr>
+            <tr><td>6.2 Secure bespoke/custom development</td><td><span class="status ready">Implemented, unverified</span></td><td>Security invariants, negative tests, provider firewall, threat model, PR/change evidence, and a Truenote-specific annual curriculum/assessment.</td><td>Approved standards/curriculum, completed training records, independent review assignment, hosted/released proof.</td></tr>
+            <tr><td>6.3 Vulnerability management</td><td><span class="status pending">Operational evidence required</span></td><td>Repeatable safe intake, exact baseline, 11-source register, validated execution-receipt format, triage, structural CI gate, strict release gate.</td><td>51 finding owners/dates/dispositions, 11 source owners, nine missing evidence sets, 11 operating cadences, approved SLA/cadence, authentic hosted receipts, closure/retest.</td></tr>
+            <tr><td>6.4.2 public-facing web applications</td><td><span class="status blocked">Gap</span></td><td>CSP, Origin and Fetch Metadata checks, browser negative tests, and a machine-checked applicability record format.</td><td>Approved applicability record; if applicable, an automated technical solution to detect and prevent web attacks plus deployed configuration/effectiveness evidence. Requirement 6.4.2 is the effective v4.x control after 31 March 2025.</td></tr>
+            <tr><td>6.4.3 payment-page scripts</td><td><span class="status pending">Operational evidence required</span></td><td>Scope/data-flow and machine-checked applicability record formats identify the decision point.</td><td>Signed applicability decision; if applicable, script authorization, integrity assurance, and inventory with justification.</td></tr>
+            <tr><td>6.5 Secure change control</td><td><span class="status blocked">Gap</span></td><td>Tool-neutral procedure, complete manual change record, population register, secure recovery/post-change verification rules, and optional PR/branch supporting artifacts.</td><td>No approved procedure, named change authority, system of record, retention period, reconciled register, or complete authenticated normal sample. Emergency evidence needs an applicable sample, or reconciled zero-event evidence plus an approved tabletop.</td></tr>
+            <tr><td>11.4 penetration/segmentation dependency</td><td><span class="status pending">Operational evidence required</span></td><td>Internal negative tests and defined external engagement scope.</td><td>PCI minimum permits qualified internal or external testers with organizational independence. Company assurance target is an external firm. Both require scoped results, remediation, and retest.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small muted">The compliance-accepting entity and QSA determine actual applicability and evidence sufficiency. This table is an engineering gap map.</p>
+    </section>
+
+    <section id="review">
+      <h2>Internal independent-context review, not third-party assurance</h2>
+      <p>Separate agents reviewed repository artifacts without sharing the implementation task. This is an internal independent-context review dated 2026-07-16, not an outside audit, penetration test, PCI assessment, or third-party assurance. The first intake review reported six material P1/P2 issues; all six were fixed.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Finding</th><th>Risk</th><th>Fix applied</th><th>Regression evidence</th></tr></thead>
+          <tbody>
+            <tr><td>Removed findings disappeared; IDs could be reused</td><td>Closure/exception evidence loss and identity collision</td><td>Schema v3 retains terminal removed records as history, reserves IDs, monitors exception expiry, and rejects reappearance.</td><td>Synthetic removal, history, replacement-ID, and reappearance assertions.</td></tr>
+            <tr><td>Rule/count text not bound to the claimed register ID</td><td>A finding group could point to the wrong or nonexistent <code>TN-VULN</code> record</td><td>Verifier now requires the exact register ID, rule ID, and active count in the same Markdown row.</td><td>Wrong-register mutation test fails.</td></tr>
+            <tr><td>Noncanonical timestamps used lexical comparisons</td><td>Artifact chronology or exception expiry could be misread</td><td>Only canonical UTC timestamps are accepted; chronology uses numeric time comparisons.</td><td>Noncanonical timestamp mutation test fails.</td></tr>
+            <tr><td>Direct writes could overwrite concurrent owner edits</td><td>Management decisions could be lost or the baseline corrupted</td><td>Same-directory temporary file, flush, atomic rename, and pre-replacement original-byte comparison.</td><td>Filesystem regression preserves a newer reviewer edit and proves normal atomic replacement.</td></tr>
+            <tr><td>Suppressed, absent, or non-failing SARIF results were counted</td><td>“Active” counts could misrepresent actionable results</td><td>Importer fails closed on suppressions, absent/unsupported baseline states, and non-failing kinds.</td><td>Synthetic suppression and absent-state assertions.</td></tr>
+            <tr><td>Wrong tool/artifact/commit could be misattributed</td><td>Evidence might be assigned to the wrong scan or commit</td><td>Require CodeQL driver, expected raw artifact SHA-256, exact run receipt or matching SARIF provenance, and matching repository/run URL.</td><td>Wrong-tool and provenance-mismatch assertions; retained SARIF dry run verifies expected hash and receipt.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Second CodeQL intake review</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Finding</th><th>Risk</th><th>Fix applied</th><th>Regression evidence</th></tr></thead>
+          <tbody>
+            <tr><td>Still-reported findings could be marked closed</td><td>Strict release gate could accept a false closure while CodeQL still reports the location</td><td>Active baseline records now reject <code>closed</code>; closure occurs only through reviewed removal reconciliation.</td><td>Builder and structural-verifier assertions reject active closure.</td></tr>
+            <tr><td>Historical evidence matched the register anywhere</td><td>An open group row could masquerade as a closed child-finding record</td><td>Closed/not-affected history now requires the exact <code>TN-CQL</code> child and <code>TN-VULN</code> parent in the Closed items section; historical exceptions have a separate section.</td><td>Wrong-section mutation fails; exact closure row passes.</td></tr>
+            <tr><td>Older scan evidence could replace newer state</td><td>Replay or stale evidence could roll back management state and source identity</td><td>Non-idempotent imports require a newer run ID, a new artifact ID, and later availability time.</td><td>Older run and stale timestamp mutations fail.</td></tr>
+            <tr><td>One SARIF run could lend provenance to another</td><td>Results from an unbound run could be attributed to the claimed commit</td><td>Every result-bearing run must use the selected binding; SARIF provenance must match on each such run.</td><td>Two-run mixed-provenance mutation fails.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Branch-enforcement evidence review</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Finding</th><th>Risk</th><th>Disposition</th><th>Remaining evidence boundary</th></tr></thead>
+          <tbody>
+            <tr><td>User-entered booleans and hashes could self-attest enforcement</td><td>A fabricated structurally valid record could be mistaken for live proof</td><td>Added exact response endpoint/status/time/request/pagination/body-hash metadata, distinct review, restricted bundle reference, and explicit claim limits.</td><td>Validator still does not parse or authenticate restricted response bodies. Reviewers must reconcile them and retain denial tests.</td></tr>
+            <tr><td>Human-readable job labels were not GitHub check identities</td><td>A same-named check from another source could be declared</td><td>Every required job now records its exact check context and a positive integration ID; all four must use one reviewed GitHub Actions integration.</td><td>Actual API-returned contexts/integration and check-run receipts require external review.</td></tr>
+            <tr><td>No CODEOWNERS file exists</td><td>Enabling required code-owner review would protect no repository path</td><td>Acceptance of the optional branch-evidence artifact requires <code>.github/CODEOWNERS</code>, its source hash, declared owners, and a final active all-path <code>*</code> rule read by the CLI.</td><td>This optional artifact remains owner-deferred. If it is resumed, accountable owners must be appointed and the real file added; none was invented.</td></tr>
+            <tr><td>Endpoint substring matching accepted misleading hosts; error and partial responses were not modeled</td><td>A hostile URL, 403/404, or incomplete pagination could look like evidence</td><td>Only exact relative paths or <code>https://api.github.com</code> URLs pass; each response requires GET, HTTP 200, current capture, request ID, positive page count, complete pagination, and body hash.</td><td>Organization and overlapping rulesets still need human reconciliation against complete bodies.</td></tr>
+            <tr><td>No workflow consumed the future record</td><td>A safe record could exist without hosted validation</td><td>Added an opt-in manual workflow gate targeting the controlled current-record path; semantic workflow tests require the exact step and condition.</td><td>It intentionally remains off until a real record exists. Deleting or omitting evidence does not close the gap.</td></tr>
+            <tr><td>Signoffs and 30-day freshness remain governance declarations</td><td>Strings can be forged and settings can change immediately after capture</td><td>Capturer cannot approve; engineering/security signoffs must be distinct and current. Documentation requires recapture after settings changes and immutable external approvals.</td><td>Corporate identity authentication, approved cadence, artifact resolution, and change-linked recapture remain external controls.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="panel" style="margin-top: 0.9rem">
+        <h3>General lessons</h3>
+        <ul>
+          <li>A safe inventory is not vulnerability management until people own dates, decisions, exceptions, and retests.</li>
+          <li>A finding disappearing from a scanner is evidence to investigate, not permission to close it.</li>
+          <li>Stable IDs and retained history matter as much as current counts because auditors sample decisions over time.</li>
+          <li>Evidence metadata needs provenance and concurrency protection. A structurally valid JSON file can still be misleading if it came from the wrong run or overwrote a newer decision.</li>
+          <li>Internal tests can verify implementation behavior. They cannot become “independent” by changing their label.</li>
+          <li>Security claims should state the evidence boundary in the same sentence: repository test, configuration screenshot, deployed receipt, provider attestation, or third-party report.</li>
+          <li>“Required code-owner review” is not meaningful evidence until CODEOWNERS actually covers every applicable path.</li>
+          <li>A historical settings result must not be presented as current after live authentication fails. Record both events and keep current state unverified.</li>
+          <li>Branch-setting metadata can be machine-checked, but effective enforcement needs complete authenticated API bodies, ruleset reconciliation, and denied merge/push tests.</li>
+          <li>A link and sitemap entry do not prove a public route exists. Retain the physical source, portable content/discovery tests, deployed response evidence, and an operating intake sample.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="verification">
+      <h2>Verification record</h2>
+      <div class="grid">
+        <div class="card"><p class="number">62</p><p class="label">Frontend tests current to integrated worktree</p></div>
+        <div class="card"><p class="number">255</p><p class="label">API tests current to integrated worktree</p></div>
+        <div class="card"><p class="number">74</p><p class="label">Scripts tests current to integrated worktree</p></div>
+        <div class="card"><p class="number">394</p><p class="label">Current tests passed across all three suites</p></div>
+      </div>
+      <div class="table-wrap" style="margin-top: 0.9rem">
+        <table>
+          <thead><tr><th>Check</th><th>Result</th><th>Scope limit</th></tr></thead>
+          <tbody>
+            <tr><td>Scripts TypeScript</td><td><span class="status done">Pass</span></td><td>Current repository scripts.</td></tr>
+            <tr><td>API TypeScript</td><td><span class="status done">Pass</span></td><td>Current API source; not a deployed build receipt.</td></tr>
+            <tr><td>Frontend tests</td><td><span class="status done">62/62 pass</span></td><td>Current integrated worktree, 14 test files.</td></tr>
+            <tr><td>API tests</td><td><span class="status done">258/258 pass</span></td><td>Current integrated worktree, 47 test files. Includes three pure ask-content policy cases plus the complete prior API suite.</td></tr>
+            <tr><td>Ask sensitive-input policy</td><td><span class="status done">3/3 pass</span></td><td>Verifies deterministic question blocking without raw findings, scanning of every client-supplied history field, and explicit email/phone/IP/name/address non-coverage. Source ordering places the decision before persistent/provider side effects; deployed infrastructure logging remains unverified.</td></tr>
+            <tr><td>Scripts tests</td><td><span class="status done">76/76 pass</span></td><td>Current to latest scripts state across 18 suites. Includes AI harness, provider input/output firewall proof, public security reporting/discovery, staged PCI scope, governance adoption, behavioral branch declarations, structured production-result applicability, threat model, SARIF importer, atomic write, anti-replay, provenance, closure, source coverage/execution metadata/index, change-record, and workflow mutation gates.</td></tr>
+            <tr><td>Model-output handling</td><td><span class="status done">Portable 1/1; focused API 26/26 pass</span></td><td>Credential/API-key, complete private-key, SSN, and valid payment-card candidates with otherwise valid citations produce no accepted payload and retain only a redacted diagnostic marker. API generation tests cover route fallback/refusal behavior. Deployed operation and broader contextual output policy remain unverified.</td></tr>
+            <tr><td>Frontend production build</td><td><span class="status done">Pass</span></td><td>Vite emitted the existing <code>/security/</code> capabilities brief, dedicated <code>/security/report/</code> page and styles, and RFC 9116 discovery record without route collision.</td></tr>
+            <tr><td>PR change-record gate</td><td><span class="status done">7/7 pass</span></td><td>Structural cases, template presence, overlapping-comment removal, and honest pending/unassigned handling. Strict mode still requires approval and a real distinct reviewer. Neither mode proves field truth, actual review, organizational independence, deployment, or post-deployment acceptance.</td></tr>
+            <tr><td>PCI scope decision gate</td><td><span class="status done">11/11 pass</span></td><td>Validates exact-byte provisional and safe trace-receipt inputs with internally computed hashes, receipt-to-prior ID/hash and stable ID/year binding, mandatory stage/final-input intent, duplicate-key rejection, preserved scope/authorization, controlled assessed-entity/application-operator/customer-CDE-owner references, canonical component/system IDs, and typed/hash-bound reviewer/timestamp metadata for present-or-none admin/support-path, network/management-path, data-store, and backup/recovery inventories. Inventory receipts bind exact category, bounded environment, architecture release, reviewer, and review time and must be no older than 90 days at both stages. It rejects dependency-contradicted absence, unsupported raw-topology fields, empty or malformed receipt metadata, common raw topology/contact/account/credential rationale content including compressed/wrapped/port-qualified IPs, floating/mutated finals, forged/ambiguous receipt bytes, unsafe/expired authorization, future/backdated/placeholders/unresolved/self-approval, invalid PAN/segmentation/11.4 decisions, and incomplete provider/requirement/flow coverage. End-to-end CLI paths pass. Restricted inventory bytes remain externally resolved evidence. Templates intentionally fail; tests create neither authorization nor external approval.</td></tr>
+            <tr><td>PCI governance adoption gate</td><td><span class="status done">6/6 pass</span></td><td>Validates eleven exact roles and delegates, appointment/acknowledgement references, critical separation across assignees and delegates, annual review timing, distinct executive/compliance approval, exact-byte hashes for six named policies, status/adoption markers, role-linked signers, chronology, communication/training, and bounded exception ownership/approval. It rejects duplicate JSON keys and unsafe exception rationale content. Blank templates intentionally fail and do not prove appointments, signatures, communication, training, or policy adoption.</td></tr>
+            <tr><td>Branch-enforcement evidence gate</td><td><span class="status done">6/6 pass</span></td><td>Structurally validates current declarations plus all six behavioral scenarios and rejects missing/duplicate/misresulted cases, incomplete all-four-check coverage, configuration/ruleset drift, reused targets/receipts, bad chronology, self-review, and signoff before testing. Template intentionally fails; no current record/CODEOWNERS/live receipts exist, and restricted bytes/signers/scenario facts remain externally authenticated.</td></tr>
+            <tr><td>Production-control result gate</td><td><span class="status done">4/4 pass</span></td><td>Structurally validates 28 exact exercise declarations, exact final-scope bytes plus separate final-stage acceptance, release/environment binding, required/pass versus approved not-applicable/not-run, authorization, operator/reviewer separation, evidence hashes, dependencies, and open-finding rejection. Template intentionally fails; assessed-production environment, artifact authenticity, signer identity, and production origin remain external evidence.</td></tr>
+            <tr><td>Public security-reporting gate</td><td><span class="status done">4/4 pass</span></td><td>Validates canonical <code>/security/report/</code> private-report discovery, login-to-overview-to-report and dual-sitemap linkage, sensitive-data and safe-testing guidance, absence of invented email/SLA, accessible external-CSS structure, assurance boundaries, and a current RFC 9116 expiry within one year. Production build and exact 390px render passed; public deployment and operating intake remain unverified.</td></tr>
+            <tr><td>Security-workflow semantic gate</td><td><span class="status done">2/2 pass</span></td><td>Rejects commented, misplaced, job-disabled, PR-excluded, wrong-event, missing manual strict-release mode, non-uploading, or conditionally retained evidence steps; targeted semantics, not a general YAML evaluator.</td></tr>
+            <tr><td>Vulnerability structural gate</td><td><span class="status done">Pass</span></td><td>51 active fingerprints, eight exact CodeQL groups, 11 exact required source categories with safe evidence-path checks, and zero currently indexed source receipts.</td></tr>
+            <tr><td>Source-execution metadata/index gate</td><td><span class="status done">5/5 pass</span></td><td>Checks internally consistent zero-result declarations, unsafe fields/source mismatch/totals, operator self-review/self-approval, partial/gapped/unreconciled acceptance, future/wrong-year/placeholders/unowned/register mismatch, duplicate IDs/artifacts, and overlapping unsuperseded history. Structural validation does not authenticate evidence.</td></tr>
+            <tr><td>Vulnerability managed-release gate</td><td><span class="status blocked">Expected fail</span></td><td><code>missingOwner: 51</code>, <code>missingDue: 51</code>, <code>pendingDisposition: 51</code>, <code>missingSourceOwner: 11</code>, <code>missingSourceEvidence: 9</code>, <code>nonOperatingSource: 11</code>.</td></tr>
+            <tr><td>PCI evidence integrity</td><td><span class="status done">Pass</span></td><td>39 Markdown files, 19 public grades, one read-only SQL artifact, two hash-bound OpenRouter screenshots, 26 threats, 51 fingerprints, and 11 source categories.</td></tr>
+            <tr><td>Session continuity HTML</td><td><span class="status done">Pass</span></td><td>Standard-library parse, 11 unique IDs, required continuity markers, and all 94 links/anchors checked: 11 internal, 82 local artifacts, one official external source.</td></tr>
+            <tr><td>Public security HTML</td><td><span class="status done">Pass</span></td><td>Standard-library HTML parse, 19 evidence-grade/path checks, current <code>ryanportfolio/Truenote</code> public links, calibrated hosted-evidence wording, and four reporting/discovery cases.</td></tr>
+            <tr><td>Patch whitespace</td><td><span class="status done">Pass</span></td><td>Line-ending conversion warnings only.</td></tr>
+            <tr><td>Full integrated rerun</td><td><span class="status done">Pass</span></td><td>Initial Vite/esbuild startup inside the filesystem sandbox was denied. Bounded reruns outside that boundary passed frontend 62/62 and the latest API suite 258/258; scripts passed 76/76. Relevant TypeScript checks and the frontend production build passed.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small muted">Safe baseline SHA-256: <code>B815FDE6079C9607BDE1A7A1FF134827A4CD86708BD26C2F170A3BB0F49F3BFE</code>. Raw retained SARIF SHA-256: <code>E2A19E1B4D0DBEDA2787BA1D38C53E261085562D957A652962D70C70DACD2ABD</code>.</p>
+    </section>
+
+    <section id="next">
+      <h2>What still needs to happen</h2>
+      <ol>
+        <li><strong>Convene the PCI decision meeting and adopt governance in dependency order.</strong> Use the <a href="./pci-decision-meeting-pack.md">meeting pack</a>. First populate and authenticate the <a href="./pci-role-assignment-record-template.json">role assignment record</a>; then approve exact bytes for the six named policies through the <a href="./pci-policy-adoption-record-template.json">policy adoption record</a>. Complete communication and training before claiming the controls operate.</li>
+        <li><strong>Authorize trace, then decide CDE scope.</strong> Authenticate a bounded provisional JSON record for the exact environment, test accounts, stable flow IDs, synthetic-only/PAN/non-destructive limits, and expiry. Execute only that exercise, reconcile the trace, close every question, then issue the separate final CDE/PAN/provider/segmentation/applicability record with distinct approvals and QSA/assessor direction.</li>
+        <li><strong>Operate the secure-development lifecycle.</strong> Complete the <a href="./secure-development-training-record-template.md">annual training record</a>, then use the <a href="./secure-development-review-record-template.md">sampled-change review record</a> for one security-relevant released change. Bind the real requirements, threats, non-author review, hosted checks, findings, approval, deployment, and production verification.</li>
+        <li><strong>Operationalize vulnerability management.</strong> Approve severity/SLA and source-cadence policy, assign all 51 findings and all 11 source categories, collect the nine missing evidence sets through authentic validated execution receipts, record due dates and dispositions, and make the strict gate pass through real decisions and retained executions.</li>
+        <li><strong>Rerun hosted scanners.</strong> Retain CodeQL, Gitleaks, dependency audit, and SBOM artifacts tied to the approved commit. Use the safe importer and reconcile every added, removed, or changed finding.</li>
+        <li><strong>Capture production evidence.</strong> Execute the read-only database verifier, workload limit tests, SIEM delivery/dead-letter exercise, OpenRouter assignment/redaction canary, IdP/MFA review, backup/restore, access review, and incident tabletop.</li>
+        <li><strong>Run the deployed AI regression.</strong> Use an authorized synthetic environment and retain only the sanitized report, hashes, approvals, failures, remediation, and retest.</li>
+        <li><strong>Commission independent testing.</strong> Complete app/API penetration, AI red-team, and segmentation scope with an independent firm. Retain the detailed report privately and share a safe attestation or executive summary after remediation.</li>
+        <li><strong>Operate public security intake.</strong> Approve and deploy <code>/security/</code>, <code>/security/report/</code>, and <code>/.well-known/security.txt</code>; verify public status/content type/body hashes; enable and monitor private GitHub reporting; run a harmless synthetic report through acknowledgement and closure; and assign annual expiry review.</li>
+      </ol>
+      <div class="panel" style="margin-top: 1rem">
+        <strong>Deferred by owner:</strong> no additional GitHub branch-proof hardening for now. The tool-neutral change-control procedure is the active Requirement 6.5 path. Revisit advanced branch receipts only if Security/PCI requests them or before a relevant CDE integration. This priority decision does not close the Requirement 6.5 Gap; adoption and authentic samples are still required.
+      </div>
+      <div class="panel truth" style="margin-top: 1rem">
+        <strong>Deployment learning:</strong> a successful Replit publish is not proof of production database definitions or row state. Verify exact constraints, functions, triggers, privileges, and hashes using the read-only production procedure, then separately bootstrap required runtime rows under approved change control.
+      </div>
+    </section>
+
+    <section id="evidence">
+      <h2>Evidence to show the security team</h2>
+      <div class="two">
+        <div class="panel">
+          <h3>Start here</h3>
+          <ul>
+            <li><a href="./README.md">PCI readiness evidence pack</a></li>
+            <li><a href="./requirement-6-control-matrix.md">Requirement 6 control matrix</a></li>
+            <li><a href="./implementation-status.md">Implementation status</a></li>
+            <li><a href="./pci-decision-meeting-pack.md">PCI decision meeting pack</a></li>
+            <li><a href="./pci-governance-adoption-records.md">PCI governance adoption records guide</a></li>
+            <li><a href="./secure-development-review-record-template.md">Requirement 6.2 sampled-change review record</a></li>
+            <li><a href="./secure-development-training-record-template.md">Requirement 6.2 annual training record</a></li>
+            <li><a href="./verification-record-2026-07-16.md">Repository verification record</a></li>
+            <li><a href="./change-record-2026-07-16-security-readiness.md">Populated change record</a></li>
+            <li><a href="../../security/truenote-security-capabilities.html">Public technical security capabilities brief</a></li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Primary blocker evidence</h3>
+          <ul>
+            <li><a href="./scope-and-data-flow.md">CDE scope and data flow</a></li>
+            <li><a href="./provider-input-firewall.md">Pre-provider firewall evidence</a></li>
+            <li><a href="./ask-sensitive-input-handling.md">Ask sensitive-input handling</a></li>
+            <li><a href="./model-output-sensitive-data-handling.md">Model-output sensitive-data handling</a></li>
+            <li><a href="./openrouter-guardrail-evidence.md">OpenRouter guardrail evidence</a></li>
+            <li><a href="./ai-adversarial-regression.md">AI adversarial regression</a></li>
+            <li><a href="./independent-testing-plan.md">Independent testing plan</a></li>
+            <li><a href="./vulnerability-register.md">Vulnerability register</a></li>
+            <li><a href="./codeql-intake-runbook.md">CodeQL intake runbook</a></li>
+            <li><a href="./codeql-baseline-2026-07-16.json">Safe 51-finding baseline</a></li>
+            <li><a href="./vulnerability-source-register-2026-07-16.json">Required vulnerability-source register</a></li>
+            <li><a href="./vulnerability-source-execution-record.md">Validated source-execution receipt</a></li>
+            <li><a href="./vulnerability-source-receipt-index-2026-07-16.json">Safe source-receipt history index</a></li>
+          </ul>
+        </div>
+      </div>
+      <details>
+        <summary>Full repository artifact index</summary>
+        <div>
+          <h3>PCI process and governance</h3>
+          <ul>
+            <li><a href="./secure-development-lifecycle.md">Secure development lifecycle</a></li>
+            <li><a href="./secure-development-review-record-template.md">Sampled secure-development review record</a></li>
+            <li><a href="./secure-development-training-curriculum.md">Truenote secure-development curriculum and assessment</a></li>
+            <li><a href="./secure-development-training-record-template.md">Annual secure-development training record</a></li>
+            <li><a href="./vulnerability-management.md">Vulnerability management</a></li>
+            <li><a href="./vulnerability-triage-workshop.md">51-finding vulnerability triage workshop</a></li>
+            <li><a href="./change-control.md">Change control</a></li>
+            <li><a href="./change-control-adoption-record-template.md">Change-control adoption record</a></li>
+            <li><a href="./manual-change-record-template.md">Tool-neutral PCI change record</a></li>
+            <li><a href="./change-register-template.md">PCI change population register</a></li>
+            <li><a href="./pci-decision-meeting-pack.md">PCI decision meeting pack</a></li>
+            <li><a href="./pci-governance-adoption-records.md">PCI governance adoption records guide</a></li>
+            <li><a href="./pci-role-assignment-record-template.json">Intentionally failing PCI role assignment template</a></li>
+            <li><a href="./pci-policy-adoption-record-template.json">Intentionally failing PCI policy adoption template</a></li>
+            <li><a href="./branch-enforcement-evidence.md">Branch-enforcement evidence and acceptance test</a></li>
+            <li><a href="./public-security-reporting.md">Public security reporting and discovery</a></li>
+            <li><a href="./pci-scope-decision-record.md">PCI scope and PAN decision record</a></li>
+            <li><a href="./pci-scope-decision-record-template.json">Intentionally failing PCI scope decision template</a></li>
+            <li><a href="./synthetic-trace-receipt-template.json">Intentionally failing safe synthetic-trace receipt template</a></li>
+            <li><a href="./roles-and-responsibilities.md">Roles and responsibilities</a></li>
+            <li><a href="./third-party-responsibility-matrix.md">Third-party responsibility matrix</a></li>
+            <li><a href="./evidence-index.md">Evidence index</a></li>
+            <li><a href="./threat-model.md">Application/CDE threat model</a></li>
+            <li><a href="./threat-review-record-template.md">Threat review template</a></li>
+          </ul>
+          <h3>Vulnerability and scanner evidence</h3>
+          <ul>
+            <li><a href="./codeql-triage-2026-07-16.md">CodeQL technical triage</a></li>
+            <li><a href="./rate-limit-route-assessment-2026-07-16.md">Rate-limit route assessment</a></li>
+            <li><a href="../../../scripts/src/codeql-sarif-baseline.ts">Safe SARIF importer logic</a></li>
+            <li><a href="../../../scripts/src/import-codeql-sarif.ts">CodeQL importer CLI</a></li>
+            <li><a href="../../../scripts/src/vulnerability-baseline.ts">Vulnerability verifier/release gate</a></li>
+            <li><a href="../../../scripts/src/codeql-sarif-baseline.test.ts">Importer regression tests</a></li>
+            <li><a href="../../../scripts/src/pci-governance-adoption.ts">PCI governance adoption verifier</a></li>
+            <li><a href="../../../scripts/src/verify-pci-governance-adoption.ts">PCI governance adoption CLI</a></li>
+            <li><a href="../../../scripts/src/pci-governance-adoption.test.ts">PCI governance adoption tests</a></li>
+          </ul>
+          <h3>Runtime evidence preparation</h3>
+          <ul>
+            <li><a href="./production-evidence-capture-runbook.md">Production evidence runbook</a></li>
+            <li><a href="./production-control-verification.sql">Read-only production SQL verifier</a></li>
+            <li><a href="./production-control-verification-record-template.json">Intentionally failing structured production-result template</a></li>
+            <li><a href="./production-control-verification-record-template.md">Production result template</a></li>
+          </ul>
+          <h3>Implementation</h3>
+          <ul>
+            <li><a href="../../../artifacts/api-server/src/lib/security/provider-input-firewall.ts">Provider input firewall</a></li>
+            <li><a href="./ask-sensitive-input-handling.md">Ask sensitive-input ordering and production acceptance test</a></li>
+            <li><a href="./model-output-sensitive-data-handling.md">Model-output sensitive-data handling and production acceptance test</a></li>
+            <li><a href="../../../scripts/src/provider-input-firewall.test.ts">Portable firewall tests</a></li>
+            <li><a href="../../../scripts/src/ai-security-regression.ts">AI regression evaluator</a></li>
+            <li><a href="../../../scripts/src/ai-security-canary.ts">AI regression CLI</a></li>
+            <li><a href="../../../scripts/src/ai-security-regression.test.ts">AI regression tests</a></li>
+            <li><a href="../../../scripts/src/branch-enforcement-evidence.ts">Behavioral branch-enforcement declaration verifier</a></li>
+            <li><a href="../../../scripts/src/production-control-evidence.ts">Structured production-control result verifier</a></li>
+            <li><a href="../../../scripts/src/verify-production-control-evidence.ts">Combined final-scope/production-result CLI</a></li>
+            <li><a href="../../../scripts/src/production-control-evidence.test.ts">Production-control result tests</a></li>
+            <li><a href="../../../.github/workflows/security.yml">Security workflow</a></li>
+            <li><a href="../../../.github/pull_request_template.md">Pull-request change template</a></li>
+          </ul>
+        </div>
+      </details>
+    </section>
+
+    <section id="maintenance">
+      <h2>How to keep this organized</h2>
+      <p><strong>Continuity rule:</strong> this file is the durable source of truth across long-running work, task handoffs, and context compaction. Before a work tranche ends, record new decisions, fixes, evidence, verification results, blockers, and next actions here.</p>
+      <div class="panel">
+        <ol>
+          <li>Update the work tracker whenever a status changes. Do not change “blocked” to “done” without linking the acceptance evidence.</li>
+          <li>Update exact test counts, hashes, run IDs, commit IDs, artifact IDs, dates, and evidence grades after each reviewed tranche.</li>
+          <li>Keep raw scanner output, exploit detail, customer content, credentials, PAN, prompts, production dumps, and detailed third-party reports in restricted storage. Link only safe IDs.</li>
+          <li>Record owner, decision, date, environment, released commit, result, exception state, and retest for every operational artifact.</li>
+          <li>Keep evidence grades exact: Verified; Implemented, unverified; Configuration required; Operational evidence required; Third-party evidence required; Gap; Not applicable.</li>
+          <li>Never call internal tests an independent audit or red team. Never call this package PCI compliant, certified, validated, assessor-approved, or production-proven until the responsible external parties provide that evidence.</li>
+        </ol>
+      </div>
+      <h3>Source-of-truth rule</h3>
+      <div class="panel">
+        <ul>
+          <li>This ledger summarizes continuity and decisions.</li>
+          <li>The <a href="./requirement-6-control-matrix.md">Requirement 6 matrix</a> owns PCI evidence grades and acceptance gaps.</li>
+          <li>The <a href="./evidence-index.md">evidence index</a> owns artifact state and handling boundaries.</li>
+          <li>The <a href="./verification-record-2026-07-16.md">verification record</a> owns exact checks, dates, counts, and scope limits.</li>
+          <li>The <a href="./roles-and-responsibilities.md">roles matrix</a> owns assignments and delegates.</li>
+          <li>If summary prose conflicts with a canonical record, correct this ledger rather than silently promoting the claim.</li>
+        </ul>
+      </div>
+      <h3>Assurance glossary</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Term</th><th>Meaning here</th><th>Must not be substituted for</th></tr></thead>
+          <tbody>
+            <tr><td>Internal regression</td><td>Repository or deployed synthetic tests run by the product team</td><td>AI red team, penetration test, or independent audit</td></tr>
+            <tr><td>Internal independent-context review</td><td>Separate reviewer context inside this engineering effort</td><td>Third-party assurance or organizational independence under PCI</td></tr>
+            <tr><td>Penetration test</td><td>Qualified scoped attack testing with remediation and retest</td><td>PCI assessment, AI red team, or scanner execution</td></tr>
+            <tr><td>AI red team</td><td>Creative adversarial testing of AI-specific attack paths</td><td>PCI Requirement 11.4 by name or ordinary fixed-case regression</td></tr>
+            <tr><td>PCI assessment evidence</td><td>Evidence accepted through the applicable SAQ/ROC/AOC path</td><td>Standalone product certification</td></tr>
+            <tr><td>Verified</td><td>Named acceptance evidence passed within the stated scope</td><td>Production effectiveness, external assurance, or compliance unless explicitly stated</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Append-only tranche log</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Tranche</th><th>Decision/change</th><th>Verification</th><th>Still unresolved</th></tr></thead>
+          <tbody>
+            <tr><td>2026-07-16</td><td>A</td><td>Reviewed security-team PDF; separated supported findings, overstatements, existing proof, and PCI priority.</td><td>PDF extraction/render review plus repository evidence review.</td><td>CDE scope, owners, third-party and production evidence.</td></tr>
+            <tr><td>2026-07-16</td><td>B</td><td>Implemented provider firewall, security fixes, workload limits, threat model, PCI pack, production verifier, AI harness, and safe CodeQL intake.</td><td>Frontend/API retained runs; current scripts tests/typechecks; evidence gates.</td><td>Released/deployed receipts and external assurance.</td></tr>
+            <tr><td>2026-07-16</td><td>C</td><td>Fixed six first-review SARIF issues: history/IDs, register binding, timestamps, atomic writes, actionable states, and source identity.</td><td>25/25 scripts tests at that tranche.</td><td>Finding ownership/disposition and hosted rescan.</td></tr>
+            <tr><td>2026-07-16</td><td>D</td><td>Fixed active false closure, closed-section binding, stale scan replacement, and mixed-run provenance; normalized ledger claims and PCI basis.</td><td>28/28 current scripts tests, scripts/API typechecks, 51-finding structural gate.</td><td>Change-control enforcement, all non-CodeQL sources, external and operational evidence.</td></tr>
+            <tr><td>2026-07-16</td><td>E</td><td>Implemented machine-checked PR change records, explicit PCI DSS 6.5.1-6.5.6 coverage, semantic workflow-step validation, and manual hosted strict-release mode.</td><td>34/34 current scripts tests; change-record cases 5/5; workflow cases 2/2; hosted evidence structure gate passed.</td><td>Branch protection, named authority, actual approvals, production records, and external evidence.</td></tr>
+            <tr><td>2026-07-16</td><td>F</td><td>Expanded Requirement 6.3 from CodeQL-only inventory to 11 machine-checked vulnerability source categories with strict operating blockers.</td><td>37/37 current scripts tests; source-coverage cases 3/3; structural vulnerability and PCI evidence gates passed.</td><td>All source owners, nine missing evidence sets, operating cadence, hosted intake, and finding closure.</td></tr>
+            <tr><td>2026-07-16</td><td>G</td><td>Added machine-checked source-execution metadata and safe history indexing; an internal independent-context review then drove future/placeholder, canonical binding, reconciliation-manifest/count, duplicate/overlap, rejected-receipt, and claim-limit hardening.</td><td>42/42 current scripts tests; receipt/index cases 5/5; scripts TypeScript and structural vulnerability gates passed.</td><td>Authentic receipts/artifacts/reconciliation, accountable identities, approved cadence/scope, and assessor acceptance.</td></tr>
+            <tr><td>2026-07-16</td><td>H</td><td>Converted the earliest P0 CDE/PAN/provider/applicability decision into a fail-closed JSON format and CLI without fabricating the external decision.</td><td>46/46 current scripts tests; scope-decision cases 4/4; unfilled template expected to fail.</td><td>Real PCI scope/compliance/QSA decisions, authenticated references, synthetic trace, and any required segmentation test.</td></tr>
+            <tr><td>2026-07-16</td><td>I</td><td>Added a fail-closed branch-enforcement evidence format, CODEOWNERS prerequisite, exact check-context/integration binding, official API response metadata, adversarial tests, and opt-in hosted validation. Internal review findings were fixed or explicitly bounded without inventing live state.</td><td>50/50 current scripts tests; branch cases 4/4; scripts/API TypeScript; 27-file PCI evidence gate. Template expected to fail.</td><td>Valid GitHub authentication, appointed CODEOWNERS/reviewers, live settings, parsed/reconciled API bodies, accepted current record, denied merge/push receipts, and a fully approved merge.</td></tr>
+            <tr><td>2026-07-16</td><td>J</td><td>Initial public-directory inspection treated the advertised <code>/security/</code> route as missing and added a safe reporting page, RFC 9116 record, exact private GitHub intake, portable tests, and deployed-operation acceptance procedure. This was an incomplete build-path conclusion corrected in tranche K.</td><td>54/54 current scripts tests; public reporting cases 4/4; frontend/scripts TypeScript; 28 PCI Markdown files and 19 public evidence grades.</td><td>Production-build route reconciliation plus owner/repository approval, public responses, GitHub private-report enablement/monitoring, harmless synthetic closure, and annual expiry ownership.</td></tr>
+            <tr><td>2026-07-16</td><td>K</td><td>Production-build inspection found that Vite already publishes the security-capabilities brief at <code>/security/</code> and would overwrite the first reporting-page location. Moved the dedicated policy to <code>/security/report/</code>, linked it from the capabilities brief, added direct sitemap/RFC 9116 discovery, corrected all evidence paths and claims, tightened the Cohere request test, and verified exact responsive rendering.</td><td>Frontend 62/62, API 255/255, scripts 54/54, 371 current tests total; frontend/API/scripts TypeScript; frontend production build; exact 390px render with 390px document width.</td><td>Owner/repository approval, deployed public responses and body hashes, GitHub private-report enablement/monitoring, harmless synthetic report through closure, and annual expiry ownership.</td></tr>
+            <tr><td>2026-07-16</td><td>L</td><td>Internal independent-context handoff review, not third-party or organizationally independent review, found the scope/trace deadlock; follow-up reviewers found floating finals, partial traces, generic CLI exits, overlong authorization, weak identity aliases, self-asserted hashes, artifact reuse, backdating, contradictory no-impact claims, receipt/prior byte ambiguity, final decisions before receipt review, and duplicate-key parser ambiguity. Replaced these with fail-closed stages, stable flow/receipt IDs, exact prior and safe-receipt byte hashing inside the verifier, receipt-to-prior hash binding, immutable preservation, receipt coverage/review chronology, 30-day maximum, stable principal/artifact separation, compatible CDE-path rules, duplicate-key rejection, mandatory CLI stage/final-input intent, and end-to-end CLI tests. Split scope-trace authorization from unrelated production-runbook exercises.</td><td>Scripts TypeScript passed; scripts 59/59 across 16 suites; staged scope cases 9/9 including real CLI subprocesses and duplicate-key cases. Provisional success reports <code>structurallyFinalAccepted=false</code>; both repository templates remain expected failures.</td><td>Real environment/test-account references, accountable authorization, bounded trace execution/reconciliation, authenticated restricted artifacts/principals, final external acceptance, and any applicable independent segmentation result.</td></tr>
+            <tr><td>2026-07-16</td><td>M</td><td>Closed the repository-schema gap for PCI scope ownership and infrastructure completeness. Both stages now require controlled references for the assessed entity, TrueNote application operator, and customer CDE owner. Administrative/support paths, network/management paths, data stores, and backup/recovery copies require explicit <code>present</code> or <code>none_verified</code> decisions with substantive safe rationales and typed/hash-bound restricted evidence-receipt metadata. Internal independent-context review, not third-party or organizationally independent review, caught a contradictory absence fixture, self-asserted absence claim, permissive alias grammar, missing backup category, insufficient receipt applicability binding, unbounded receipt age, and IP wrapper/port bypasses. Canonical scope/system IDs, component/flow/provider dependency checks, inventory-versus-absence receipt types, exact category/environment/architecture-release binding, 90-day freshness, reviewer separation/timestamps, stricter aliases, common raw topology/contact/account/credential rejection, and explicit backup coverage fixed those findings. Final acceptance preserves the exact provisional scope.</td><td>Scripts TypeScript passed; scripts 61/61 across 16 suites; staged scope cases 11/11 including real CLI subprocesses, contradiction, receipt, freshness, applicability, and unsafe-metadata cases. JSON template remains intentionally invalid and authorizes nothing.</td><td>Accountable parties must populate and authenticate the controlled references, resolve every restricted artifact hash to reviewed bytes, authorize the bounded trace, and provide final external scope acceptance.</td></tr>
+            <tr><td>2026-07-16</td><td>N</td><td>Added a PCI decision meeting pack plus fail-closed role-assignment and policy-adoption records. The role record covers eleven exact roles and delegates, appointment and acknowledgement references, critical separation, annual review, and distinct executive/compliance approvals. The policy record binds exact bytes for six named repository policies to the approved role record and requires role-matched signers, chronology, communication, training, and controlled exceptions. Internal independent-context review, not third-party or organizationally independent review, drove strict opaque evidence references and expanded sensitive-data rejection for exception rationales.</td><td>Scripts TypeScript passed; scripts 67/67 across 17 suites; governance cases 6/6; frontend retained 62/62; API retained 255/255; 384 current tests total; 30 PCI Markdown files. Both governance templates remain intentionally invalid.</td><td>The authorized organization must appoint the principals, authenticate restricted references/signatures, approve exact policy bytes, communicate the policies, complete training, and retain the signed evidence. Repository validation alone does not establish adoption.</td></tr>
+            <tr><td>2026-07-16</td><td>O</td><td>Converted branch-control acceptance from settings-only declarations into six mandatory behavioral scenarios: denied unapproved PR, all-four-check missing-check denial, stale-review denial, direct-push denial, force-push denial, and allowed fully approved merge. Receipts bind the captured configuration/ruleset and must precede signoff. Added a structured production-result gate with 28 exact catalog/workload/SIEM/firewall/AI/OpenRouter exercises, exact final-scope/release/environment binding, required/pass versus approved not-applicable/not-run semantics, dependency rules, and distinct execution/review. Internal independent-context review, not third-party or organizationally independent review, also found and corrected the catalog SQL checking the evidence operator instead of the runtime role and accepting any fixed function search path.</td><td>Scripts TypeScript passed; scripts 73/73 across 18 suites; branch cases 6/6; production-result cases 4/4; frontend retained 62/62; API retained 255/255; 390 current tests total. PCI evidence gate passed after updating the SQL source hash. Both result templates remain intentionally invalid.</td><td>Branch API/receipt bytes, GitHub facts, signers, and live enforcement still need external authentication. PCI must identify the assessed production environment; operators must execute authorized exercises and retain authentic restricted artifacts. Structural gates do not prove production effectiveness or PCI compliance.</td></tr>
+            <tr><td>2026-07-16</td><td>P</td><td>Owner clarified that advanced GitHub branch-proof hardening is not a current priority. Stopped the schema expansion, restored the practical version 2 baseline, and recorded the deferral without closing the Requirement 6.5 Gap. Shifted local effort to PCI Requirement 6.2 and added two staff-usable operating forms: one annual secure-development training record and one representative released-change review record covering requirements, threats, current training, non-author review, hosted tests/scanners, findings, approvals, deployment, and production verification. Re-audited two prior scope-record P2 findings and confirmed current code already blocks a final decision dated before the provisional decision or trace completion and trims/case-normalizes approval references before uniqueness checks.</td><td>Scripts TypeScript passed; scripts 73/73 across 18 suites, including scope cases 11/11 and branch cases 6/6; PCI evidence gate passed for 32 Markdown files, 19 public grades, one read-only SQL artifact, 26 threats, 51 fingerprints, and 11 source categories. HTML ledger has 11 unique IDs and 85 resolved links: 11 internal, 73 local, and one official external source. <code>git diff --check</code> passed with line-ending warnings only.</td><td>Authorized staff must adopt the SDLC, appoint roles, complete and authenticate annual training, and populate one real released-change sample. Advanced branch receipts remain deferred unless Security/PCI requests them or relevant CDE integration requires them.</td></tr>
+            <tr><td>2026-07-16</td><td>Q</td><td>Audited generated-answer handling against the security team's PII-firewall concern. No missing runtime code path was found: complete non-streamed answers already fail closed on blocking secret/private-key, SSN, and valid payment-card findings before accepted response or query-history persistence. Added a portable four-class regression and a dedicated evidence/production-acceptance record. Corrected the feedback disposition to distinguish implemented deterministic output blocking from broader contextual output policy and deployed proof.</td><td>Portable provider boundary suite 7/7; focused API generation suite 26/26; API and scripts TypeScript passed; full scripts 74/74 across 18 suites; PCI evidence gate passed for 33 Markdown files, 19 public grades, one SQL artifact, 26 threats, 51 fingerprints, and 11 source categories. HTML ledger has 11 unique IDs and 87 resolved links: 11 internal, 75 local, and one official external source.</td><td>Product Security/data owner must decide email, phone, IP, name, and address output policy. Platform must run authorized synthetic canaries against every deployed route and verify absence from responses, history, logs, diagnostics, telemetry, and reports. This remains internal repository proof, not a red team or production receipt.</td></tr>
+            <tr><td>2026-07-16</td><td>R</td><td>Ran a post-change evidence-consistency sweep. Updated current-state counts and scope language in the provider-firewall record, populated change record, implementation status, evidence index, and PDF feedback disposition. Preserved earlier tranche counts as historical snapshots. Current documents now distinguish six input-boundary cases from one output-blocking case and no longer describe deterministic output blocking as wholly open.</td><td>PCI evidence gate passed for 33 Markdown files; HTML ledger retained 11 unique IDs and 87 resolved links with no missing targets or em dash characters; <code>git diff --check</code> passed with line-ending warnings only. Two over-compressed HTML-validator invocations had the same PowerShell syntax typo; the expanded known-good command passed, and no product/test failure occurred. Keep the expanded form for future ledger checks.</td><td>Operational claims still require released/deployed canaries, accountable policy decisions, controlled evidence, and independent testing. Count consistency does not upgrade any evidence grade.</td></tr>
+            <tr><td>2026-07-16</td><td>S</td><td>Audited raw ask-input ordering. Confirmed deterministic high-risk input is checked before session creation, rewrite, retrieval, providers, query history, citation persistence, session naming, and response assembly. Extracted the decision into a pure helper and added tests for current questions, every client-supplied history field, raw-free findings, and explicit contextual-class non-coverage. Added a production acceptance procedure covering providers, persistence, application/error logs, proxy/APM, audit/SIEM, and API response.</td><td>Focused policy cases 3/3; API TypeScript passed; complete API suite passed 258/258 across 47 files outside the filesystem sandbox. An initial repository-root Vitest command discovered scripts/frontend under the wrong config, and the correct API-workspace command then hit the known sandboxed esbuild config-read limitation; neither was a product failure. The bounded outside-sandbox API run passed. Final PCI evidence verification passed across 34 Markdown files; the HTML ledger has 11 unique IDs and 89 resolved links: 11 internal, 77 local, and one official external source.</td><td>Product Security must decide email, phone, IP, name, address, encoded, and contextual PII handling. Platform must prove the released route and surrounding request/proxy/APM/logging stack do not retain or transmit blocked synthetic canaries.</td></tr>
+            <tr><td>2026-07-16</td><td>T</td><td>Closed the continuity weakness in the owner-supplied OpenRouter evidence. The two configuration screenshots had been described accurately but still lived only in temporary clipboard storage. Copied the exact PNG bytes into the PCI evidence directory, recorded full SHA-256 hashes, embedded them in the guardrail record, and updated the evidence index and verification/change records. Extended the PCI verifier so screenshot replacement or a stale recorded hash fails the evidence gate.</td><td>The copied hashes exactly match the supplied temporary files: prompt injection <code>F91D...D98D8</code>; sensitive information <code>FDCD...F73C</code>. Scripts TypeScript and all 74 scripts tests passed. The PCI gate passed across 34 Markdown files, 19 public grades, one read-only SQL artifact, two hash-bound vendor screenshots, 26 threats, 51 fingerprints, and 11 source categories.</td><td>These images prove retained configuration-screen bytes, not an active production assignment or effective transaction. Vendor-risk/AppSec still needs a dated configuration export, key/project-to-guardrail assignment, synthetic downstream receipt, failure-mode result, reviewer, and retest record.</td></tr>
+            <tr><td>2026-07-16</td><td>U</td><td>Advanced PCI Requirement 6.2.2 from a blank annual record to an approval-ready Truenote curriculum. Added current role assignments, TypeScript/React/Express/PostgreSQL and AI/provider-specific secure design/coding topics, hands-on vulnerability-tool demonstrations, twelve knowledge questions with four critical items, a practical released-change exercise, automatic safety-fail conditions, scoring, remediation, and operating-evidence requirements. The current PCI SSC document library and official 6.2.2 assessment language were checked before drafting.</td><td>The curriculum is linked from the SDLC, training record, README, evidence index, Requirement 6 matrix, implementation status, and this ledger. The PCI gate passed across 35 Markdown files, 19 public grades, one read-only SQL artifact, two hash-bound vendor screenshots, 26 threats, 51 fingerprints, and 11 source categories. The HTML ledger has 11 unique IDs and 90 resolved links: 11 internal, 78 local, and one official external source.</td><td>Product Security and PCI/Engineering authority must approve exact curriculum bytes and role mapping, deliver it, retain assessments/certificates in the restricted system, reconcile every in-scope participant, remediate failures, and repeat within 12 months. Prepared content is not training completion.</td></tr>
+            <tr><td>2026-07-16</td><td>V</td><td>Operationalized the next Requirement 6.3 step without inventing people or decisions. Added a Product Security triage workshop that preserves the existing safe CodeQL baseline as the sole management source, maps all 51 child IDs to eight groups, defines the exact seven mutable fields and four valid active decisions, prohibits active-result closure, separates the 40 rate-limit child decisions, and specifies meeting preconditions, evidence, hashes, approvals, retests, strict-blocker interpretation, and acceptance.</td><td>The structural vulnerability gate passed for 51 fingerprints, eight CodeQL groups, 11 source categories, and zero indexed source receipts. The strict gate then failed as expected on exactly six operational blocker groups: 51 missing owners, 51 missing due dates, 51 pending dispositions, 11 missing source owners, nine missing source evidence sets, and 11 non-operating sources. The PCI gate passed across 36 Markdown files and the HTML ledger resolved all 91 links: 11 internal, 79 local, and one official external source.</td><td>Product Security must run the workshop with accountable principals, approve the SLA, edit only management fields, retain restricted decisions and pre/post hashes, and obtain zero finding-management blockers. Source owners and authentic operating receipts remain a separate Requirement 6.3 workstream.</td></tr>
+            <tr><td>2026-07-16</td><td>W</td><td>Persisted the complete session package to GitHub. Created <code>codex/pci-security-readiness-2026-07-16</code>, explicitly staged the 135 intended security, test, PCI, screenshot, and ledger files, excluded and then ignored the local pnpm store, committed primary package <code>b18f78e</code>, and pushed it through the repository redirect to <code>ryanportfolio/Truenote</code>. The master HTML remains the single status ledger; linked Markdown, JSON, SQL, code, and screenshots are supporting evidence rather than competing trackers.</td><td>The primary commit reported 18,860 insertions and 156 deletions. The worktree was clean after commit and the remote branch tracks origin. GitHub CLI authentication succeeded. Repository/collaborator inspection returned only <code>@ryanportfolio</code>, and recent pull requests had no distinct review identities.</td><td>No Dennis handle, second collaborator, self-review, bot review, or fictional identity was assumed. Later hosted execution showed that making the structural PR gate require final approval blocked honest pending records; tranche AA separates structural PR validation from strict approval without claiming review occurred.</td></tr>
+            <tr><td>2026-07-17</td><td>X</td><td>Re-centered PCI Requirement 6.5 on the process the assessor actually needs instead of additional GitHub hardening. Rewrote the procedure as tool-neutral, added a full manual production-change record, added a population register for sampling/reconciliation, made PR/branch artifacts optional, and preserved the honest Gap until adoption and real samples exist. Draft PR #136 remains repository persistence only. Also clarified four historical review labels as internal independent-context review, not third-party or organizationally independent assurance. Independent documentation review then corrected a stale GitHub prerequisite, separated 6.2.3 non-author review from 6.5.4 role-overlap accountability, made emergency sampling conditional on actual events, and labeled the draft two-business-day and quarterly targets as organization-chosen rather than PCI-prescribed.</td><td>PCI DSS v4.0.1 document library and PCI SSC significant-change guidance rechecked on 2026-07-17. Final PCI evidence verification passed across 38 PCI Markdown files. The HTML ledger parsed with 11 unique IDs and 93 resolved links: 11 internal, 81 local, and one official external source. <code>git diff --check</code> passed with line-ending warnings only. No approval, authority, production record, deployment, recovery result, or assessor acceptance was invented.</td><td>Authorized leaders approve the procedure, name the authority/system of record/retention period, reconcile the production-change population, and complete one authentic normal sample. If an emergency occurred in the review period, sample it; if none occurred, retain reconciled zero-event evidence plus an approved tabletop. Advanced GitHub hardening stays deferred unless Security/PCI requests it or relevant CDE integration requires it.</td></tr>
+            <tr><td>2026-07-17</td><td>Y</td><td>Converted the next Requirement 6.5 external decision into a fillable, tool-neutral adoption record. It binds the exact procedure, authority/delegates, system-of-record access and audit behavior, production-change population sources, organization-defined reconciliation cadence and retention, 6.2.3 non-author review, normal/emergency handling, approvals, and initial operating-evidence milestones. Updated the authorized PCI decision meeting order and current role evidence, replacing stale GitHub prerequisites with controlled identity, system-of-record, and production evidence. No second status tracker was created.</td><td>Final PCI evidence verification passed across 39 PCI Markdown files. The HTML ledger parsed with 11 unique IDs and 94 resolved links: 11 internal, 82 local, and one official external source. <code>git diff --check</code> passed with line-ending warnings only. The adoption record remains intentionally unfilled and proves no approval or operation.</td><td>Authorized leaders complete and authenticate the adoption record, then reconcile the first production-change population and sample one normal change. Emergency evidence follows actual events or a zero-event reconciliation plus approved tabletop. Requirement 6.5 remains Gap until operating evidence is reviewed.</td></tr>
+            <tr><td>2026-07-17</td><td>Z</td><td>Refreshed the public security and vulnerability-reporting surfaces after the repository moved. The security overview, both repository calls to action, private-reporting link, repository security-policy link, RFC 9116 contact, README workflow badge, PCI reporting record, and portable tests now target <code>ryanportfolio/Truenote</code>. Replaced public wording that treated branch enforcement as a current prerequisite with precise hosted-execution, retained-result, alert-ingestion, disposition, and release-linkage evidence limits. The deferred optional branch-evidence tool remains untouched.</td><td>Public reporting tests passed 4/4. The frontend production build emitted the current security overview, reporting page, and RFC 9116 record. PCI evidence verification retained 39 Markdown files and 19 public evidence grades. Both HTML documents parsed; the continuity ledger retained 11 unique IDs and 94 resolved links: 11 internal, 82 local, and one official external source. <code>git diff --check</code> passed with line-ending warnings only.</td><td>Public deployment, private-report enablement/monitoring, harmless synthetic intake through closure, body-hash/content-type receipts, and annual expiry ownership remain operational evidence. The new URLs and local build do not prove the intake is enabled or monitored.</td></tr>
+            <tr><td>2026-07-17</td><td>AA</td><td>Investigated PR #136 failures from GitHub rather than weakening checks. Refreshed local GitHub CLI authentication. Identified one real CodeQL overlapping-comment sanitization defect, six CodeQL analyzer mismatches on routes already protected by the tested Postgres-backed workload middleware, one analyzer mismatch on the application-wide Origin/Fetch-Metadata plus SameSite CSRF design, one Gitleaks false positive caused by a synthetic private-key test literal, and a PR verifier that incorrectly required final approval while the record truthfully remained pending. Implemented iterative comment removal, a regression for overlapping comments, a scanner-safe generated PEM fixture, separate structural PR versus strict approval behavior, and one exact historical Gitleaks fingerprint because the scanner correctly continues examining the complete PR commit range.</td><td>Focused change-record tests passed 7/7. Focused API security tests passed 20/20 across browser mutation defense, distributed workload enforcement/mount order, and error-log/private-key redaction. Complete local verification passed frontend 62/62, API 258/258, scripts 76/76, all workspace typechecks, frontend production build, PCI evidence integrity, HTML 11-ID/94-link validation, and patch checks. Hosted run <code>29605288079</code> confirmed the sanitizer alert closed. CodeQL alerts 1 and 3 through 8 were dismissed as false positives with bounded evidence comments that keep TN-VULN-2026-001, TN-VULN-2026-004, and production evidence open. Final hosted run <code>29605689042</code> for commit <code>b559bf6</code> passed typecheck/build/tests, Secret scan, dependency audit/SBOM, CodeQL analysis/SARIF retention, and the external CodeQL gate.</td><td>All PR checks were green for <code>b559bf6</code>. Any later commit, including a documentation-only update, requires its own current check run before merge. The seven GitHub technical dispositions do not close the 51-finding PCI management baseline, supply independent testing, or prove production operation.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">TrueNote security readiness session record. Repository and local-test evidence only. Update alongside the PCI evidence pack and verification record.</div>
+  </footer>
+</body>
+</html>

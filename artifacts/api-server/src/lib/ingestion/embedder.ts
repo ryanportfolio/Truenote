@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { protectProviderTexts } from "../security/provider-input-firewall.js";
 
 const EMBEDDING_MODEL = "text-embedding-3-small";
 
@@ -51,7 +52,7 @@ export class OpenAIEmbedder implements Embedder {
     if (texts.length === 0) return [];
     const result = new Array<number[]>(texts.length);
     for (let i = 0; i < texts.length; i += this.batchSize) {
-      const batch = texts.slice(i, i + this.batchSize);
+      const batch = protectProviderTexts(texts.slice(i, i + this.batchSize));
       const response = await this.client.embeddings.create(
         {
           model: EMBEDDING_MODEL,

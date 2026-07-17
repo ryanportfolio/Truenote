@@ -35,6 +35,7 @@ import {
 import { resolveAppBaseUrl } from "../../lib/email/links.js";
 import { renderInviteEmail } from "../../lib/email/templates.js";
 import { recordAppError } from "../../lib/observability/error-log.js";
+import { workloadRateLimitMiddleware } from "../../middleware/workload-rate-limit.js";
 
 // Read once at module load — same convention as routes/auth.ts so the
 // admin-supplied-password floor stays in lockstep with change-password.
@@ -216,7 +217,7 @@ const CreateBody = z.object({
  * that exposes a plaintext password — admins are expected to communicate
  * it out-of-band to the new user.
  */
-usersRouter.post("/", async (req, res, next) => {
+usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), async (req, res, next) => {
   try {
     const actor = authedUser(req);
     const parsed = CreateBody.safeParse(req.body);
@@ -355,7 +356,7 @@ usersRouter.post("/", async (req, res, next) => {
  * up-front (creating nothing) if email delivery isn't wired in
  * production — otherwise we'd mint accounts no one can ever log into.
  */
-usersRouter.post("/bulk", async (req, res, next) => {
+usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), async (req, res, next) => {
   try {
     const actor = authedUser(req);
     const parsed = BulkUserEmailsSchema.safeParse(req.body);
@@ -382,9 +383,9 @@ usersRouter.post("/bulk", async (req, res, next) => {
     //   - baseUrl null: only happens in production when APP_BASE_URL is
     //     unset (resolveAppBaseUrl refuses to trust request headers there);
     //     without it we can't build a link at all.
-    //   - no real email provider in production: getEmailSender would fall
-    //     back to the console logger, so the invite links would vanish into
-    //     server stdout instead of reaching users.
+    //   - no real email provider in production: getEmailSender fails closed;
+    //     checking here also prevents accounts from being created before that
+    //     delivery failure is discovered.
     // Both are operator-fixable Replit Secrets, hence 503 + "an
     // administrator" rather than a 4xx the importing manager could act on.
     const baseUrl = resolveAppBaseUrl(req);
@@ -590,7 +591,7 @@ usersRouter.patch("/:id", async (req, res, next) => {
   try {
     const actor = authedUser(req);
     const id = req.params.id;
-    if (!UUID_RE.test(id)) {
+    if (typeof id !== "string" || !UUID_RE.test(id)) {
       res.status(400).json({ error: "Invalid user id" });
       return;
     }
@@ -772,11 +773,11 @@ usersRouter.patch("/:id", async (req, res, next) => {
  * closes it. The Argon2 hash runs BEFORE the tx so the row lock is never held
  * across it.
  */
-usersRouter.post("/:id/reset-password", async (req, res, next) => {
+usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_administration"), async (req, res, next) => {
   try {
     const actor = authedUser(req);
     const id = req.params.id;
-    if (!UUID_RE.test(id)) {
+    if (typeof id !== "string" || !UUID_RE.test(id)) {
       res.status(400).json({ error: "Invalid user id" });
       return;
     }

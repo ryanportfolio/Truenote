@@ -5,6 +5,13 @@ packages:
   - "artifacts/*"
   - "scripts"
 
+allowBuilds:
+  esbuild: true
+
+overrides:
+  "form-data@2.5.5": "2.5.6"
+  "form-data@4.0.5": "4.0.6"
+
 catalog:
   typescript: ^5.6.2
   tsx: ^4.19.1
