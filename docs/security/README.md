@@ -24,6 +24,15 @@ Comments, intended behavior, seeded data, and unchecked rollout steps do not rai
 
 [`truenote-security-capabilities.html`](./truenote-security-capabilities.html) explains the control architecture and traces capabilities to repository files. Use it for a technical overview.
 
+### PCI DSS readiness ledger
+
+The living
+[`security-readiness session ledger`](../compliance/pci/security-readiness-session-report-2026-07-16.html)
+is also published from that same source at `/security/pci/`. It records completed
+Requirement 6 work, exact repository verification, open owner decisions, and
+independent-assurance gaps. It is a readiness record, not a compliance or
+certification claim.
+
 ### Database controls
 
 - [`p0-p1-security-controls.sql`](./p0-p1-security-controls.sql) defines provenance, lifecycle, classification, approval, retention, distributed rate limits, and hash-chained security events.

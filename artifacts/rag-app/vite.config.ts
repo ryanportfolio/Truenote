@@ -12,22 +12,49 @@ const securityPagePath = path.resolve(
   __dirname,
   "../../docs/security/truenote-security-capabilities.html"
 );
+const pciPagePath = path.resolve(
+  __dirname,
+  "../../docs/compliance/pci/security-readiness-session-report-2026-07-16.html"
+);
+const repositoryFileRoot = "https://github.com/ryanportfolio/Truenote/blob/main";
 
-async function loadSecurityPage(): Promise<{ html: string; css: string }> {
-  const source = await readFile(securityPagePath, "utf8");
+async function loadStandalonePage(
+  sourcePath: string,
+  stylesheetHref: string,
+  transform: (source: string) => string = (source) => source
+): Promise<{ html: string; css: string }> {
+  const source = transform(await readFile(sourcePath, "utf8"));
   const styleMatch = source.match(/<style>([\s\S]*?)<\/style>/);
   const css = styleMatch?.[1];
   if (!styleMatch || css === undefined) {
-    throw new Error("Security page must contain one embedded style block.");
+    throw new Error(`${sourcePath} must contain one embedded style block.`);
   }
 
   return {
-    html: source.replace(
-      styleMatch[0],
-      '<link rel="stylesheet" href="/security/styles.css">'
-    ),
+    html: source.replace(styleMatch[0], `<link rel="stylesheet" href="${stylesheetHref}">`),
     css: css.trim()
   };
+}
+
+async function loadSecurityPage(): Promise<{ html: string; css: string }> {
+  return loadStandalonePage(securityPagePath, "/security/styles.css");
+}
+
+function publishablePciLinks(source: string): string {
+  return source.replace(/href="((?:\.\.?\/)[^"]+)"/g, (_match, href: string) => {
+    const repositoryPath = path.posix.normalize(
+      path.posix.join("docs/compliance/pci", href)
+    );
+    return `href="${repositoryFileRoot}/${repositoryPath}"`;
+  });
+}
+
+async function loadPciPage(): Promise<{ html: string; css: string }> {
+  return loadStandalonePage(
+    pciPagePath,
+    "/security/pci/styles.css",
+    publishablePciLinks
+  );
 }
 
 /**
@@ -40,31 +67,37 @@ function publishSecurityPage(): Plugin {
     configureServer(server): void {
       server.middlewares.use((req, res, next) => {
         const pathname = req.url?.split("?", 1)[0];
-        if (
-          pathname !== "/security" &&
-          pathname !== "/security/" &&
-          pathname !== "/security/styles.css"
-        ) {
+        const securityRequest =
+          pathname === "/security" ||
+          pathname === "/security/" ||
+          pathname === "/security/styles.css";
+        const pciRequest =
+          pathname === "/security/pci" ||
+          pathname === "/security/pci/" ||
+          pathname === "/security/pci/styles.css";
+        if (!securityRequest && !pciRequest) {
           next();
           return;
         }
 
-        void loadSecurityPage()
+        void (pciRequest ? loadPciPage() : loadSecurityPage())
           .then(({ html, css }) => {
+            const stylesheetRequest = pathname?.endsWith("/styles.css") ?? false;
             res.statusCode = 200;
             res.setHeader(
               "Content-Type",
-              pathname === "/security/styles.css"
+              stylesheetRequest
                 ? "text/css; charset=utf-8"
                 : "text/html; charset=utf-8"
             );
-            res.end(pathname === "/security/styles.css" ? css : html);
+            res.end(stylesheetRequest ? css : html);
           })
           .catch(next);
       });
     },
     async generateBundle(): Promise<void> {
       const { html, css } = await loadSecurityPage();
+      const { html: pciHtml, css: pciCss } = await loadPciPage();
       this.emitFile({
         type: "asset",
         fileName: "security/index.html",
@@ -74,6 +107,16 @@ function publishSecurityPage(): Plugin {
         type: "asset",
         fileName: "security/styles.css",
         source: css
+      });
+      this.emitFile({
+        type: "asset",
+        fileName: "security/pci/index.html",
+        source: pciHtml
+      });
+      this.emitFile({
+        type: "asset",
+        fileName: "security/pci/styles.css",
+        source: pciCss
       });
     }
   };
