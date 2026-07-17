@@ -113,6 +113,15 @@ function publishSecurityPage(): Plugin {
         fileName: "security/pci/index.html",
         source: pciHtml
       });
+      // Replit's deployed SPA fallback currently intercepts nested index.html
+      // requests beneath /security. Keep the conventional directory asset for
+      // static hosts, and emit a top-level copy for the API server's explicit
+      // /security/pci route.
+      this.emitFile({
+        type: "asset",
+        fileName: "security-pci.html",
+        source: pciHtml
+      });
       this.emitFile({
         type: "asset",
         fileName: "security/pci/styles.css",

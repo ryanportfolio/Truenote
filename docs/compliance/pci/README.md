@@ -117,9 +117,10 @@ and evidence sufficiency.
     requests it or relevant CDE integration approaches; the tool-neutral change
     process is the current Requirement 6.5 path.
 21. [`public-security-reporting.md`](./public-security-reporting.md) records the
-   public `/security/` overview and `/security/report/` policy, RFC 9116
-   discovery record, portable tests, production-build output, claim boundaries,
-   annual expiry obligation, and deployed intake acceptance test.
+   public `/security/` overview, direct GitHub reporting discovery through RFC
+   9116, portable tests, production observations, claim boundaries, annual
+   expiry obligation, and intake acceptance test. The broken
+   `/security/report/` link was retired in favor of PCI Readiness.
 22. [`change-control-adoption-record-template.md`](./change-control-adoption-record-template.md)
     gives the authorized PCI decision meeting one tool-neutral record for the
     procedure hash, authority, system of record, access/audit model, retention,
