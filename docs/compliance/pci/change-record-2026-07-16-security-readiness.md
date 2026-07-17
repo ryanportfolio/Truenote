@@ -137,7 +137,7 @@ The dated result is retained in
 | Requirement 6.5 adoption record | Added a decision-ready, tool-neutral adoption template and updated the PCI decision pack and roles matrix so GitHub is not a prerequisite. No authority, system-of-record decision, approval, or operating evidence is claimed |
 | Security-readiness continuity ledger | Passed: HTML parser, 11 unique IDs, required continuity markers, and all 94 links/anchors: 11 internal, 82 local artifacts, and one official external source |
 | Security workflow invariant check | PR trigger, hosted PCI and vulnerability-baseline verifiers, CodeQL permission/upload, and unconditional SARIF retention present |
-| Public security brief checks | HTML parser passed; exact grade vocabulary, explicit scopes, and public evidence paths passed |
+| Public security brief and reporting links | HTML parser passed; exact grade vocabulary, explicit scopes, and public evidence paths passed. Public repository, private-reporting, repository-policy, RFC 9116, README badge, and test targets now use `ryanportfolio/Truenote`; stale branch-prerequisite wording was replaced by exact hosted-evidence limitations |
 | Patch whitespace | `git diff --check` passed; line-ending conversion warnings only |
 
 Local verification does not prove current-main integration, hosted workflow

@@ -292,14 +292,14 @@
       <h1>Security controls Truenote has today</h1>
       <p class="lede">An evidence-backed view of Truenote's safeguards across identity, ingestion, retrieval, AI data handling, answer integrity, browser protection, audit, resilience, and secure delivery.</p>
       <div class="hero-meta">
-        <span>Current as of July 16, 2026</span>
+        <span>Current as of July 17, 2026</span>
         <span>Repository-backed controls</span>
         <span>Nine security domains</span>
         <span>Source evidence included</span>
       </div>
       <div class="hero-actions">
         <a class="repo-cta" href="/security/report/">Report a security concern</a>
-        <a class="repo-cta" href="https://github.com/ryanportfolio/kbase" target="_blank" rel="noreferrer">View source repository</a>
+        <a class="repo-cta" href="https://github.com/ryanportfolio/Truenote" target="_blank" rel="noreferrer">View source repository</a>
       </div>
     </div>
   </header>
@@ -320,7 +320,7 @@
       <div class="intro">
         <div class="callout">
           <strong>Truenote has a layered security control foundation.</strong>
-          Program and classification boundaries are enforced before retrieval. Content passes source, file, scan, parsing, and role checks before activation. Answer and utility model calls use pinned provider routes with Zero Data Retention requested, data collection denied, and provider fallback disabled. Answers require valid citations or become refusals. Security events are hash-chained and support durable signed SIEM delivery. Repository CI tests exercise negative paths; required branch enforcement still needs live configuration evidence.</div>
+          Program and classification boundaries are enforced before retrieval. Content passes source, file, scan, parsing, and role checks before activation. Answer and utility model calls use pinned provider routes with Zero Data Retention requested, data collection denied, and provider fallback disabled. Answers require valid citations or become refusals. Security events are hash-chained and support durable signed SIEM delivery. Repository tests exercise negative paths. Hosted execution and retained scanner results for the current package remain unverified.</div>
       </div>
     </section>
 
@@ -338,7 +338,7 @@
         <article class="card"><p class="number">09</p><h3>Browser and API defense</h3><p>Credentialed mutations enforce trusted origins. CSP, frame denial, MIME protection, referrer restrictions, permission restrictions, CORS policy, and production HSTS reduce browser attack paths.</p></article>
         <article class="card"><p class="number">10</p><h3>Bounded provider failure</h3><p>Embedding, parsing, reranking, generation, rewrite, naming, and evaluation calls use explicit timeouts and retry caps. The complete ask path has a fail-closed deadline.</p></article>
         <article class="card"><p class="number">11</p><h3>Quality and safety evaluation</h3><p>Durable evaluation runs measure retrieval, reranking, citations, refusals, answer accuracy, latency, route fallback, and optional claim-level faithfulness against open and held-out questions.</p></article>
-        <article class="card"><p class="number">12</p><h3>Security delivery workflow</h3><p>GitHub CI is configured for TypeScript, the production frontend build, unit tests, CodeQL, Gitleaks, high-severity dependency audit, and CycloneDX SBOM generation. Current pull-request behavior and required branch enforcement remain unverified.</p></article>
+        <article class="card"><p class="number">12</p><h3>Security delivery workflow</h3><p>GitHub CI is configured for TypeScript, the production frontend build, unit tests, CodeQL, Gitleaks, high-severity dependency audit, and CycloneDX SBOM generation. Current hosted execution, retained results, and finding closure remain unverified.</p></article>
       </div>
     </section>
 
@@ -540,7 +540,7 @@
             <tr><td>Redacted diagnostics and bounded providers</td><td><span class="tag verified">Verified</span><span class="grade-scope">Repository tests</span></td><td>Tests confirm recursive credential, complete private-key, SSN, and payment-card redaction; a single-line safe-error helper used by covered console paths; structured serialization; provider deadline defaults; bounded overrides; abort handling; and retry caps.</td><td class="evidence"><code>artifacts/api-server/src/lib/observability/error-log.ts</code><code>artifacts/api-server/src/lib/observability/__tests__/error-log.test.ts</code><code>artifacts/api-server/src/lib/deadlines.ts</code><code>artifacts/api-server/src/lib/__tests__/deadlines.test.ts</code></td></tr>
             <tr><td>Evaluation integrity</td><td><span class="tag verified">Verified</span><span class="grade-scope">Repository tests</span></td><td>Tests cover scoring, citation matching, expected-document rank, stage attribution, claim faithfulness, durable queue recovery, lease-fenced persistence, summaries, and protected evaluation splits.</td><td class="evidence"><code>artifacts/api-server/src/lib/eval/runner.ts</code><code>artifacts/api-server/src/lib/eval/persistence.ts</code><code>artifacts/api-server/src/lib/eval/queue.ts</code><code>artifacts/api-server/src/lib/eval/__tests__</code></td></tr>
             <tr><td>Application and PCI-impact threat model</td><td><span class="tag implemented">Implemented, unverified</span><span class="grade-scope">Engineering review</span></td><td>Twenty-six threats cover nine trust boundaries and map concrete abuse cases to current repository controls, exact evidence grades, residual owners, release/CDE blockers, review triggers, and sign-off criteria. Product Security, PCI/QSA, deployed-architecture, and independent review remain missing. The model records deterministic direct-provider redaction as implemented while retaining contextual PII, runtime, policy, and independent-test gaps.</td><td class="evidence"><code>docs/compliance/pci/threat-model.md</code><code>docs/compliance/pci/threat-review-record-template.md</code><code>docs/compliance/pci/scope-and-data-flow.md</code><code>docs/compliance/pci/independent-testing-plan.md</code></td></tr>
-            <tr><td>CI and scheduled security evidence</td><td><span class="tag implemented">Implemented, unverified</span><span class="grade-scope">Repository workflow</span></td><td>The workflow now configures pull requests, main, weekly, and manual runs to verify PCI evidence and package-manager security settings, execute TypeScript checks, the production frontend build, unit tests, CodeQL analysis with alert upload and retained SARIF, Gitleaks scanning, the high-severity production dependency audit, and CycloneDX SBOM generation. Hosted execution, alert ingestion, finding disposition, and required branch enforcement still need live evidence.</td><td class="evidence"><code>scripts/src/verify-pci-evidence.ts</code><code>pnpm-workspace.yaml</code><code>.github/workflows/security.yml</code><code>.github/dependabot.yml</code><code>docs/compliance/pci/vulnerability-register.md</code><code>docs/compliance/pci/evidence-index.md</code></td></tr>
+            <tr><td>CI and scheduled security evidence</td><td><span class="tag implemented">Implemented, unverified</span><span class="grade-scope">Repository workflow</span></td><td>The workflow now configures pull requests, main, weekly, and manual runs to verify PCI evidence and package-manager security settings, execute TypeScript checks, the production frontend build, unit tests, CodeQL analysis with alert upload and retained SARIF, Gitleaks scanning, the high-severity production dependency audit, and CycloneDX SBOM generation. Hosted execution, alert ingestion, finding disposition, and release-linked results still need live evidence.</td><td class="evidence"><code>scripts/src/verify-pci-evidence.ts</code><code>pnpm-workspace.yaml</code><code>.github/workflows/security.yml</code><code>.github/dependabot.yml</code><code>docs/compliance/pci/vulnerability-register.md</code><code>docs/compliance/pci/evidence-index.md</code></td></tr>
             <tr><td>Vulnerability baseline accountability</td><td><span class="tag implemented">Operational evidence required</span><span class="grade-scope">Repeatable safe intake; strict gate failing</span></td><td>A tested SARIF importer excludes raw scanner detail; verifies expected artifact identity, CodeQL origin, explicit commit binding, exact register mapping, and result state; preserves safe IDs/management decisions; retains terminal removed history; and guards atomic writes against concurrent edits. All 51 retained active results reconcile. The strict gate still fails because all 51 lack named owners and due dates and retain pending dispositions; hosted use, approval, remediation, and retest remain required.</td><td class="evidence"><code>docs/compliance/pci/codeql-intake-runbook.md</code><code>docs/compliance/pci/codeql-baseline-2026-07-16.json</code><code>scripts/src/codeql-sarif-baseline.ts</code><code>scripts/src/codeql-sarif-baseline.test.ts</code><code>scripts/src/vulnerability-baseline.ts</code></td></tr>
           </tbody>
         </table>
@@ -562,7 +562,7 @@
         <article class="card"><p class="number">09</p><h3>Audit delivery logic passed</h3><p>Seven SIEM outbox tests confirm signed payloads, bounded claims, retry backoff, lease fencing, dead-letter state, successful completion, and delivery-health DDL structure.</p></article>
         <article class="card"><p class="number">10</p><h3>Failure bounds passed</h3><p>Tests confirm provider timeout and retry limits, abort propagation, route-chain cancellation, error redaction, and recovery after queue initialization failures.</p></article>
         <article class="card"><p class="number">11</p><h3>Evaluation integrity passed</h3><p>Tests cover retrieval and reranking attribution, citation scoring, faithfulness, durable job recovery, lease fencing, cancellation, and open-versus-held-out reporting.</p></article>
-        <article class="card"><p class="number">12</p><h3>Historical security workflow receipt</h3><p>A prior merged workflow completed TypeScript checks, the production frontend build, 281 unit tests, CodeQL, Gitleaks, production dependency audit, and CycloneDX SBOM generation. The current local PCI/workload changes and updated pull-request behavior require a new hosted run and enforced branch rules.</p></article>
+        <article class="card"><p class="number">12</p><h3>Historical security workflow receipt</h3><p>A prior merged workflow completed TypeScript checks, the production frontend build, 281 unit tests, CodeQL, Gitleaks, production dependency audit, and CycloneDX SBOM generation. The current PCI and security package requires a new hosted run with retained results linked to the exact commit.</p></article>
       </div>
     </section>
 
@@ -574,7 +574,7 @@
           <p>The evidence table above identifies the implementation, tests, workflow, and database-control files behind each verified claim. The repository provides the complete code and change history.</p>
         </div>
         <div class="source-action">
-          <a class="repo-cta" href="https://github.com/ryanportfolio/kbase" target="_blank" rel="noreferrer">View source repository</a>
+          <a class="repo-cta" href="https://github.com/ryanportfolio/Truenote" target="_blank" rel="noreferrer">View source repository</a>
         </div>
       </div>
     </section>

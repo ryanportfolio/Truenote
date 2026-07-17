@@ -26,7 +26,7 @@ address, company identity, response SLA, or disclosure commitment.
 - The sitemap lists both `/security/` and `/security/report/`.
 
 The primary reporting action opens GitHub private vulnerability reporting for
-`ryanportfolio/kbase`. If that facility is unavailable, the page tells the
+`ryanportfolio/Truenote`. If that facility is unavailable, the page tells the
 reporter to request a private channel from the repository owner without
 disclosing vulnerability details.
 

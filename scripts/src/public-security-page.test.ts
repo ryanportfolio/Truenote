@@ -42,7 +42,7 @@ describe("public security reporting surface", () => {
     );
     assert.ok(
       securityHtml.includes(
-        'href="https://github.com/ryanportfolio/kbase/security/advisories/new"'
+        'href="https://github.com/ryanportfolio/Truenote/security/advisories/new"'
       )
     );
     assert.ok(securityHtml.includes("Open a private GitHub report"));
@@ -87,7 +87,7 @@ describe("public security reporting surface", () => {
   it("publishes a current RFC 9116 discovery record", () => {
     assert.ok(
       securityTxt.includes(
-        "Contact: https://github.com/ryanportfolio/kbase/security/advisories/new"
+        "Contact: https://github.com/ryanportfolio/Truenote/security/advisories/new"
       )
     );
     assert.ok(

@@ -1,4 +1,4 @@
-Contact: https://github.com/ryanportfolio/kbase/security/advisories/new
+Contact: https://github.com/ryanportfolio/Truenote/security/advisories/new
 Expires: 2027-07-15T23:59:59Z
 Preferred-Languages: en
 Canonical: https://truenote.org/.well-known/security.txt

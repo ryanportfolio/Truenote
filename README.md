@@ -1,6 +1,6 @@
 # Truenote
 
-[![Security and quality](https://github.com/ryanportfolio/kbase/actions/workflows/security.yml/badge.svg)](https://github.com/ryanportfolio/kbase/actions/workflows/security.yml)
+[![Security and quality](https://github.com/ryanportfolio/Truenote/actions/workflows/security.yml/badge.svg)](https://github.com/ryanportfolio/Truenote/actions/workflows/security.yml)
 
 [Website](https://truenote.org/)
 
@@ -57,7 +57,7 @@ Security is part of Truenote's data path, not a separate checklist. The reposito
 | Controlled ingestion | File signatures, EICAR checks, default-on scanner enforcement, content DLP, inactive versions, role-authorized activation or review, revocation, and retention gates protect source activation. | Lifecycle records preserve provenance, scan results, audited temporary scanner overrides, reviewer decisions, and document history. |
 | Authentication and browser defense | Argon2id local passwords, hashed session tokens, OIDC Authorization Code with PKCE, MFA or ACR validation, CSP, Origin checks, and Fetch Metadata checks protect access. | Automated tests exercise identity validation, foreign origins, security headers, and privileged routes. |
 | Audit and SIEM | Hash-chained security events, a transactional outbox, signed delivery, bounded retries, lease fencing, dead-letter state, and health reporting preserve security receipts. | Control DDL includes acceptance queries; tests cover queueing, delivery failure, retry, and recovery behavior. |
-| Supply chain | Pull requests, `main`, weekly, and manual runs execute PCI/vulnerability evidence checks, type checks, the production build, unit tests, high-severity dependency audit, CycloneDX SBOM generation, Gitleaks, and CodeQL security-extended analysis. | A safe baseline accounts for all 51 retained CodeQL results; the strict managed-release gate honestly remains blocked by missing owners, dates, and dispositions. Alert upload, branch enforcement, and new pull-request behavior still require live verification. |
+| Supply chain | Pull requests, `main`, weekly, and manual runs execute PCI/vulnerability evidence checks, type checks, the production build, unit tests, high-severity dependency audit, CycloneDX SBOM generation, Gitleaks, and CodeQL security-extended analysis. | A safe baseline accounts for all 51 retained CodeQL results; the strict managed-release gate honestly remains blocked by missing owners, dates, and dispositions. Alert upload, current hosted execution, and release-linked results still require live verification. |
 
 Read the [security documentation index](./docs/security/README.md), the [PCI DSS readiness evidence pack](./docs/compliance/pci/README.md), and the [technical security capabilities brief](./docs/security/truenote-security-capabilities.html). Report vulnerabilities through [SECURITY.md](./SECURITY.md).
 
