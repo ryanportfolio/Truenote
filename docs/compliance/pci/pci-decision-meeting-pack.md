@@ -45,6 +45,7 @@ Distribute these artifacts at least one business day before the meeting:
 8. [`third-party-responsibility-matrix.md`](./third-party-responsibility-matrix.md)
 9. [`production-evidence-capture-runbook.md`](./production-evidence-capture-runbook.md)
 10. [`independent-testing-plan.md`](./independent-testing-plan.md)
+11. [`change-control-adoption-record-template.md`](./change-control-adoption-record-template.md)
 
 Before starting, confirm:
 
@@ -72,8 +73,9 @@ Use this dependency order. Do not jump directly to final scope acceptance.
 | 5 | Review infrastructure and providers | Typed/hash-bound `present` or `none_verified` receipt metadata for admin/support paths, network/management paths, data stores, and backup/recovery copies; all 12 provider classifications | Empty inventory, contradictory or unreviewed absence claim, or unresolved responsibility |
 | 6 | Decide 6.4.2, 6.4.3, and 11.4 applicability | Exact applicability, rationale, and control/test-plan references | Applicability depends on missing architecture or assessor direction |
 | 7 | Adopt Requirement 6 governance | Controlled policy-adoption record bound to approved document bytes and the role record | Draft document, missing communication/training plan, unresolved item, or absent approval |
-| 8 | Authorize bounded synthetic trace | Valid `provisional_test_authorization` JSON and restricted authorization evidence | Target/account/flow mismatch, PAN or live-data use, destructive action, or expiry over 30 days |
-| 9 | Assign operational closure work | Action register for vulnerability sources/findings, branch enforcement, production evidence, and independent testing | Owner, due date, or acceptance test missing |
+| 8 | Adopt the Requirement 6.5 operating choices | Completed change-control adoption record covering authority, system of record, access/audit, population sources, reconciliation cadence, retention, normal change, emergency handling, and initial evidence milestones | Any choice is blank, unsupported, falsely described as PCI-prescribed, or lacks approval |
+| 9 | Authorize bounded synthetic trace | Valid `provisional_test_authorization` JSON and restricted authorization evidence | Target/account/flow mismatch, PAN or live-data use, destructive action, or expiry over 30 days |
+| 10 | Assign operational closure work | Action register for vulnerability sources/findings, change-control samples, production evidence, and independent testing | Owner, due date, or acceptance test missing |
 
 ## Required meeting outputs
 
@@ -83,12 +85,13 @@ system:
 1. role-assignment record and exact-byte hash;
 2. policy-adoption record and exact-byte hash;
 3. meeting minutes reference, attendee/delegation evidence, and decision log;
-4. provisional PCI scope record and exact-byte hash;
-5. safe action register with stable IDs, owner principal IDs, due dates, and
+4. change-control adoption record and exact-byte procedure hash;
+5. provisional PCI scope record and exact-byte hash;
+6. safe action register with stable IDs, owner principal IDs, due dates, and
    binary acceptance tests;
-6. approved synthetic-trace execution window or an explicit no-authorization
+7. approved synthetic-trace execution window or an explicit no-authorization
    outcome; and
-7. reconvene trigger and facilitator.
+8. reconvene trigger and facilitator.
 
 Do not create a final scope-acceptance record during this meeting unless an
 already authorized trace has completed, its safe receipt has been independently
@@ -114,10 +117,13 @@ The controlled minutes must record:
 |---|---|---|
 | Assign all 51 retained findings and approve due dates/dispositions using the [`triage workshop`](./vulnerability-triage-workshop.md) | Product Security | Strict vulnerability gate reports zero finding-management blockers; any remaining blockers are source-only and separately assigned |
 | Assign and operate all 11 vulnerability-source categories | Product Security plus source owners | Authenticated receipts and strict source gate pass |
-| Enable and behaviorally verify branch enforcement | Engineering/Security | Accepted branch record plus denied and allowed operation receipts |
+| Adopt and operate tool-neutral change control | Change authority, Engineering, Product Security, and PCI scope owner | Approved adoption record, reconciled population, one authentic normal sample, and emergency sample if an event occurred or zero-event reconciliation plus an approved tabletop if none occurred |
 | Execute authorized production-control verification | Platform/database, SIEM, IAM, and provider owners | Reviewed result record with hashes and closed findings |
 | Commission applicable independent PCI/application/segmentation testing | PCI scope owner/Product Security | Qualified independent report, remediation, and retest |
 | Commission external AI red-team assurance target | Product Security | Independent report, remediation, and retest |
+
+Additional GitHub branch evidence is owner-deferred. It is not a prerequisite for
+the tool-neutral Requirement 6.5 adoption or operating-evidence path.
 
 ## Close or reconvene
 

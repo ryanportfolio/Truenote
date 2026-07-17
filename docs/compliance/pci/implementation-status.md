@@ -248,7 +248,11 @@
   operational receipts remain a **Gap**.
 - Re-centered Requirement 6.5 on a tool-neutral operating process rather than
   GitHub enforcement. Added a complete manual production-change record and a
-  population register for assessor sampling. The procedure now covers the full
+  population register for assessor sampling. Added an adoption record for the
+  authorized decision meeting to approve the exact procedure, authority, system
+  of record, access/audit model, retention, population sources, reconciliation
+  cadence, emergency rules, and initial evidence milestones. The procedure now
+  covers the full
   reason/impact/approval/test/recovery/deployment/verification/closure lifecycle,
   significant-change triggers, 6.5.1 through 6.5.6, emergency changes, an
   organization-approved reconciliation cadence, and authentic evidence
@@ -299,7 +303,8 @@ workstream; the PR is not treated as the Requirement 6.5 operating record.
    policy, verify both routes plus the RFC 9116 record and content types from the
    public origin, enable/monitor GitHub private reporting, run a harmless
    synthetic intake through closure, and assign annual expiry review.
-9. Approve the tool-neutral change procedure, name its authority/system of record,
+9. Complete the change-control adoption record, approve the exact tool-neutral
+   procedure, name its authority/system of record,
    reconcile the production-change register, and complete one normal sample
    through approval, deployment, secure recovery readiness, production
    verification, and closure. If an emergency occurred in the review period,

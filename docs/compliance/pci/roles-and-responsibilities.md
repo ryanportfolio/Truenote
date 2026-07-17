@@ -15,7 +15,7 @@ No populated record or appointment is supplied by this repository.
 | QSA/compliance-accepting entity | Determine assessment/validation expectations and evidence sufficiency | External/unassigned | Engagement or written direction |
 | Engineering owner | Maintain secure development process, component inventory, and delivery gates | Unassigned | Appointment and sampled change evidence |
 | Product Security | Own threat review, vulnerability process, secure-development training, and external testing | Unassigned | Appointment, register, training, test reports |
-| Independent code reviewer | Review security-sensitive bespoke/custom changes independently of author | Unassigned | GitHub identity/team, CODEOWNERS/branch rule, review records |
+| Independent code reviewer | Review bespoke/custom software changes independently of the originating author | Unassigned | Controlled identity/appointment and authentic review records; GitHub is optional supporting evidence |
 | Change authority | Approve production and emergency changes | Unassigned | Appointment and change records |
 | Platform/database owner | Own Replit/Neon configuration, production definitions, backup/restore, and recovery evidence | Unassigned | Read-only catalog-query output/definitions, configuration exports, and exercise results |
 | IAM owner | Own IdP/MFA, break-glass, access reviews, and joiner/mover/leaver evidence | Unassigned | IdP exports and review records |
@@ -36,5 +36,5 @@ No populated record or appointment is supplied by this repository.
 ## Acceptance test
 
 Every row has a named person/team and delegate, affected people acknowledge their
-responsibilities, GitHub/production permissions reflect the assignments, and a
-sampled control execution matches the documented separation.
+responsibilities, system-of-record and production permissions reflect the
+assignments, and a sampled control execution matches the documented separation.

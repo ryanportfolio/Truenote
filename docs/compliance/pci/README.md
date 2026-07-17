@@ -120,6 +120,11 @@ and evidence sufficiency.
    public `/security/` overview and `/security/report/` policy, RFC 9116
    discovery record, portable tests, production-build output, claim boundaries,
    annual expiry obligation, and deployed intake acceptance test.
+22. [`change-control-adoption-record-template.md`](./change-control-adoption-record-template.md)
+    gives the authorized PCI decision meeting one tool-neutral record for the
+    procedure hash, authority, system of record, access/audit model, retention,
+    population sources, reconciliation cadence, emergency rules, approvals, and
+    initial operating-evidence milestones.
 
 ## Evidence rule
 
