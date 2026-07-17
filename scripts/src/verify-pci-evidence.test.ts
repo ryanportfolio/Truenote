@@ -130,7 +130,7 @@ jobs:
 });
 
 describe("verifyPublicEvidenceGrades", () => {
-  it("requires exact evidence vocabulary and a scope in the same cell", () => {
+  it("requires exact evidence vocabulary and a scope in the same evidence item", () => {
     const valid = `<td><span class="tag verified">Verified</span><span class="grade-scope">Repository tests</span></td>`;
     assert.deepEqual(verifyPublicEvidenceGrades(valid), {
       checked: 1,
@@ -144,6 +144,12 @@ describe("verifyPublicEvidenceGrades", () => {
         "unsupported evidence grade: Mostly verified",
         "evidence grade lacks an adjacent scope label: Mostly verified"
       ]
+    });
+
+    const validCard = `<article><span class="tag verified">Verified</span><span class="grade-scope">Repository tests</span></article>`;
+    assert.deepEqual(verifyPublicEvidenceGrades(validCard), {
+      checked: 1,
+      issues: []
     });
 
     const consistentLedger = `<section id="verification">

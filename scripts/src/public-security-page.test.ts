@@ -23,6 +23,10 @@ const securityOverview = readFileSync(
   "utf8"
 );
 const pciReadiness = readFileSync(
+  new URL("../../docs/security/truenote-pci-security-capabilities.html", import.meta.url),
+  "utf8"
+);
+const internalPciLedger = readFileSync(
   new URL(
     "../../docs/compliance/pci/security-readiness-session-report-2026-07-16.html",
     import.meta.url
@@ -48,7 +52,7 @@ describe("public security reporting surface", () => {
     assert.ok(securityOverview.includes('href="/security/pci/"'));
     assert.ok(
       securityOverview.includes(
-        "which safeguards are in place, how we tested them, and what still needs independent review"
+        "This page includes only safeguards that have completed repository evidence"
       )
     );
     assert.equal(securityOverview.includes("living PCI DSS readiness record"), false);
@@ -66,14 +70,47 @@ describe("public security reporting surface", () => {
         '<link rel="canonical" href="https://truenote.org/security/pci/">'
       )
     );
-    assert.ok(
-      pciReadiness.includes("Not a compliance or certification claim")
-    );
-    assert.ok(pciReadiness.includes("<h1>Truenote PCI security readiness</h1>"));
+    assert.ok(pciReadiness.includes("<h1>PCI-focused safeguards in Truenote</h1>"));
     assert.ok(
       pciReadiness.includes(
-        "what still needs operational proof or independent review before a PCI assessment"
+        "PCI DSS includes secure-software requirements"
       )
+    );
+    assert.ok(pciReadiness.includes("<h2>Completed safeguards</h2>"));
+    assert.ok(pciReadiness.includes("<h2>Checks that passed</h2>"));
+    assert.ok(
+      pciReadiness.includes(
+        "It is not a claim that Truenote is PCI DSS compliant, certified, or independently assessed"
+      )
+    );
+    for (const publicSource of [securityOverview, pciReadiness]) {
+      for (const internalOnlyText of [
+        "Implemented, unverified",
+        "Operational evidence required",
+        "Third-party evidence required",
+        "Earliest incomplete gate",
+        "what still needs",
+        "Requirement 6",
+        "TN-WORK-",
+        "P0 remains open"
+      ]) {
+        assert.equal(
+          publicSource.includes(internalOnlyText),
+          false,
+          `public page leaked internal status text: ${internalOnlyText}`
+        );
+      }
+    }
+    assert.ok(internalPciLedger.includes("Earliest incomplete gate"));
+    assert.ok(internalPciLedger.includes("TN-WORK-"));
+    assert.ok(
+      viteConfig.includes(
+        '"../../docs/security/truenote-pci-security-capabilities.html"'
+      )
+    );
+    assert.equal(
+      viteConfig.includes("security-readiness-session-report-2026-07-16.html"),
+      false
     );
     assert.ok(viteConfig.includes('fileName: "security/pci/index.html"'));
     assert.ok(viteConfig.includes('fileName: "security-pci.html"'));
@@ -105,6 +142,8 @@ describe("public security reporting surface", () => {
     assert.ok(securityOverview.includes('<nav aria-label="Document sections">'));
     assert.ok(securityOverview.includes("focus-visible"));
     assert.ok(securityOverview.includes("@media (max-width: 590px)"));
+    assert.ok(securityOverview.includes("<h2>Verified safeguards</h2>"));
+    assert.ok(securityOverview.includes("<h2>Security delivery checks</h2>"));
     assert.ok(viteConfig.includes("loadStandalonePage"));
     assert.ok(viteConfig.includes("<link rel=\"stylesheet\""));
   });

@@ -14,9 +14,8 @@ const securityPagePath = path.resolve(
 );
 const pciPagePath = path.resolve(
   __dirname,
-  "../../docs/compliance/pci/security-readiness-session-report-2026-07-16.html"
+  "../../docs/security/truenote-pci-security-capabilities.html"
 );
-const repositoryFileRoot = "https://github.com/ryanportfolio/Truenote/blob/main";
 
 async function loadStandalonePage(
   sourcePath: string,
@@ -40,21 +39,8 @@ async function loadSecurityPage(): Promise<{ html: string; css: string }> {
   return loadStandalonePage(securityPagePath, "/security/styles.css");
 }
 
-function publishablePciLinks(source: string): string {
-  return source.replace(/href="((?:\.\.?\/)[^"]+)"/g, (_match, href: string) => {
-    const repositoryPath = path.posix.normalize(
-      path.posix.join("docs/compliance/pci", href)
-    );
-    return `href="${repositoryFileRoot}/${repositoryPath}"`;
-  });
-}
-
 async function loadPciPage(): Promise<{ html: string; css: string }> {
-  return loadStandalonePage(
-    pciPagePath,
-    "/security/pci/styles.css",
-    publishablePciLinks
-  );
+  return loadStandalonePage(pciPagePath, "/security/pci/styles.css");
 }
 
 /**

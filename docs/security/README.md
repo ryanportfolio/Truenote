@@ -22,16 +22,23 @@ Comments, intended behavior, seeded data, and unchecked rollout steps do not rai
 
 ### Security capabilities brief
 
-[`truenote-security-capabilities.html`](./truenote-security-capabilities.html) explains the control architecture and traces capabilities to repository files. Use it for a technical overview.
+[`truenote-security-capabilities.html`](./truenote-security-capabilities.html) is
+the public `/security/` source. It includes only completed safeguards with passed
+repository checks and keeps each claim inside its stated evidence scope.
 
-### PCI DSS readiness ledger
+### Public PCI safeguards brief
+
+[`truenote-pci-security-capabilities.html`](./truenote-pci-security-capabilities.html)
+is the public `/security/pci/` source. It explains PCI DSS secure-software
+expectations in plain language and lists only completed safeguards and passed
+checks. It is not a compliance, certification, or independent-assessment claim.
+
+### Internal PCI session ledger
 
 The living
 [`security-readiness session ledger`](../compliance/pci/security-readiness-session-report-2026-07-16.html)
-is also published from that same source at `/security/pci/`. It records completed
-Requirement 6 work, exact repository verification, open owner decisions, and
-independent-assurance gaps. It is a readiness record, not a compliance or
-certification claim.
+retains completed work, exact verification, pending decisions, evidence grades,
+owners, blockers, and next actions. It is not published as a Truenote web page.
 
 ### Database controls
 
@@ -53,7 +60,7 @@ These migrations are forward-only operational changes. Review the embedded guard
 ## PCI DSS readiness
 
 [`../compliance/pci/README.md`](../compliance/pci/README.md) maps the current
-repository and missing operational evidence to PCI DSS Requirement 6 and related
+repository and missing operational evidence to PCI DSS secure-software controls and related
 scope, provider, change-control, and penetration-testing dependencies. It is a
 draft readiness package for the existing CDE assessment process, not a compliance
 or certification claim. The

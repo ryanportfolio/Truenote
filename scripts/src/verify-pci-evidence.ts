@@ -398,13 +398,15 @@ export function verifyPublicEvidenceGrades(html: string): {
     }
 
     const start = tag.index ?? 0;
-    const cellEnd = html.indexOf("</td>", start);
-    const nextCell = html.indexOf("<td", start + tag[0].length);
-    const withinSameCell =
-      cellEnd !== -1 && (nextCell === -1 || cellEnd < nextCell)
-        ? html.slice(start + tag[0].length, cellEnd)
+    const itemEnds = [html.indexOf("</td>", start), html.indexOf("</article>", start)]
+      .filter((index) => index !== -1);
+    const itemEnd = itemEnds.length > 0 ? Math.min(...itemEnds) : -1;
+    const nextTag = html.indexOf('<span class="tag ', start + tag[0].length);
+    const withinSameItem =
+      itemEnd !== -1 && (nextTag === -1 || itemEnd < nextTag)
+        ? html.slice(start + tag[0].length, itemEnd)
         : "";
-    if (!/<span class="grade-scope">[^<]+<\/span>/.test(withinSameCell)) {
+    if (!/<span class="grade-scope">[^<]+<\/span>/.test(withinSameItem)) {
       issues.push(`evidence grade lacks an adjacent scope label: ${grade}`);
     }
   }
