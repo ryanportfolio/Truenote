@@ -4,15 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Living, evidence-bounded record of Truenote PCI DSS Requirement 6 readiness work, verification, open decisions, and independent-assurance gaps.">
+  <meta name="description" content="A plain-language view of Truenote security safeguards, how they were tested, and what still needs operational or independent verification before PCI review.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://truenote.org/security/pci/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Truenote">
-  <meta property="og:title" content="PCI DSS readiness at Truenote">
-  <meta property="og:description" content="Review completed security work, repository verification, open PCI decisions, and evidence still requiring accountable owners or independent testing.">
+  <meta property="og:title" content="Truenote PCI readiness">
+  <meta property="og:description" content="See which security safeguards Truenote has implemented, how they were tested, and what still needs operational proof or independent review.">
   <meta property="og:url" content="https://truenote.org/security/pci/">
-  <title>TrueNote security readiness session record | 2026-07-16</title>
+  <title>Truenote PCI readiness | Safeguards, testing, and remaining work</title>
   <style>
     :root {
       color-scheme: light dark;
@@ -204,16 +204,13 @@
   <header>
     <div class="wrap">
       <p class="eyebrow"><a href="/security/">Security</a> / PCI DSS readiness</p>
-      <h1>TrueNote security readiness session record</h1>
-      <p class="lede">The organized source of truth for what the security team reported, what the repository already proved, what changed in this session, what passed verification, and what still needs named owners or outside evidence.</p>
+      <h1>Truenote PCI security readiness</h1>
+      <p class="lede">A clear view of the safeguards Truenote has built, how they were tested, and what still needs operational proof or independent review before a PCI assessment.</p>
       <div class="meta">
-        <span>Recorded 2026-07-16</span>
-        <span>Last updated 2026-07-17</span>
-        <span>Repository foundation</span>
-        <span>PCI Requirement 6 priority</span>
-        <span>PCI DSS v4.0.1 basis</span>
-        <span>Not a PCI compliance claim</span>
-        <span>Living continuity ledger</span>
+        <span>Current as of July 17, 2026</span>
+        <span>PCI DSS v4.0.1 reference</span>
+        <span>Secure software and change controls</span>
+        <span>Not a compliance or certification claim</span>
       </div>
     </div>
   </header>
@@ -235,11 +232,11 @@
 
   <main id="content" class="wrap">
     <section id="snapshot">
-      <h2>Current snapshot</h2>
+      <h2>Where things stand</h2>
       <div class="panel" style="margin-bottom: 1rem">
-        <h3>Stakeholder objective</h3>
-        <p>Prepare TrueNote and its evidence for a possible RAIC presentation with Dennis. Working hypothesis: if approved, TrueNote would join or affect the company’s existing assessed Cardholder Data Environment rather than seek a standalone product certification. Requested decision: define scope, owners, assurance path, and the evidence needed for the existing PCI assessment.</p>
-        <p class="small muted">Normative engineering basis: <a href="https://www.pcisecuritystandards.org/document_library/?class=pcidss&amp;doc=pci_dss">PCI DSS v4.0.1, published June 2024</a>, accessed 2026-07-17. This repository mapping is non-authoritative; the compliance-accepting entity and QSA decide applicability and sufficiency.</p>
+        <h3>Why this work exists</h3>
+        <p>Truenote may be reviewed as software that could operate within or affect an existing cardholder data environment. This record shows the safeguards already built, the evidence available today, and the decisions and independent testing still required.</p>
+        <p class="small muted"><a href="https://www.pcisecuritystandards.org/document_library/?class=pcidss&amp;doc=pci_dss">PCI DSS v4.0.1</a> is the reference. Final scope and sufficiency are decided by the organization responsible for compliance and its qualified assessor.</p>
       </div>
       <div class="grid">
         <div class="card"><p class="number">51</p><p class="label">Retained CodeQL results accounted for; scanner scores are not final risk ratings</p></div>
@@ -762,6 +759,7 @@
             <tr><td>2026-07-17</td><td>AC</td><td>Made this same master continuity ledger the single source for a new public Security subpage at <code>/security/pci/</code>; no second PCI tracker was created. Extended the Vite security-page publisher to emit CSP-compatible external CSS for the PCI page and rewrite repository-relative evidence links to the current public GitHub repository. Added a canonical URL, Security backlink, Security-overview discovery link, sitemap entry, mobile navigation reflow, documentation, and portable assertions while preserving the explicit non-compliance claim.</td><td>Public security tests passed 4/4 and the complete scripts suite passed 76/76 across 18 suites. Scripts and frontend TypeScript passed. The PCI evidence gate passed across 39 Markdown files and 19 public evidence grades. The frontend production build emitted <code>security/pci/index.html</code> and <code>security/pci/styles.css</code>; output inspection confirmed no inline style block, the canonical URL, the Security-overview link, no remaining repository-relative evidence links, and a rewritten GitHub evidence link. The in-app browser could not reach the host loopback preview, so no visual browser pass is claimed.</td><td>Deployment is not proved until the public origin serves <code>/security/pci/</code> with the expected status, content type, body, CSS, navigation, and narrow-screen layout. Product Security must accept the public disclosure level and claim wording. Future ledger edits still require the build and public-surface checks because this source now feeds the public route.</td></tr>
             <tr><td>2026-07-17</td><td>AD</td><td>Merged the public PCI page through PR <code>#140</code> after all hosted checks passed, then tested the actual <code>truenote.org</code> origin. The current deployment serves the intended Security overview, including the reporting link, but does not contain the new PCI link. Requests to <code>/security/report/</code> and <code>/security/pci/</code> return HTTP 200 while serving the generic application shell rather than the reviewed nested pages; both expose the homepage title and <code>https://truenote.org/</code> canonical URL. A 200 response alone is therefore not valid route evidence.</td><td>PR <code>#140</code> merged as <code>cc82b51260944a6ba68a69da4fe0013a17aeb863</code> after typecheck/build/tests, Secret scan, dependency audit/SBOM, CodeQL analysis/SARIF retention, and CodeQL passed. Live inspection found the intended <code>/security/</code> title and canonical with a 50,946-byte body. Both nested URLs returned the same 5,902-byte homepage shell and root canonical, proving the public origin is not serving the locally verified nested build output.</td><td>The authorized Replit operator must sync merged <code>main</code>, run the existing frontend production build, confirm <code>dist/security/report/index.html</code>, <code>dist/security/pci/index.html</code>, and <code>dist/security/pci/styles.css</code>, publish, then repeat content-aware public-origin checks. No DDL, data migration, configuration change, or Replit Agent database action is required.</td></tr>
             <tr><td>2026-07-17</td><td>AE</td><td>Rechecked the public origin after the owner republished PR <code>#140</code>. The Security overview updated and exposed PCI Readiness, but both <code>/security/report/</code> and <code>/security/pci/</code> still returned the generic SPA shell. Direct requests showed that both nested stylesheets existed while both nested <code>index.html</code> requests fell through; the known <code>/about/</code> directory route still worked. Retired the broken reporting destination from Security navigation and the sitemap, replaced its position with PCI Readiness, and changed RFC 9116 policy discovery to the maintained GitHub security policy while retaining the direct private-advisory contact. Added a Replit-resilient PCI delivery path: Vite emits a top-level <code>security-pci.html</code> copy and the production API server explicitly maps all three PCI URL forms to it before the SPA fallback.</td><td>The focused public-security suite passed 4/4, API TypeScript passed, and the PCI evidence gate passed. The exact frontend production build passed across 1,924 modules and emitted both the conventional nested PCI HTML and the 126.37 kB top-level alias. A production-mode local HTTP probe of <code>/security/pci/</code> returned HTTP 200, <code>text/html</code>, the expected TrueNote security-readiness title, the <code>https://truenote.org/security/pci/</code> canonical, and a 126,367-byte body instead of the SPA shell.</td><td>Merge and republish this follow-up, then require the expected PCI title and canonical URL on the live origin; status 200 alone is insufficient. Confirm the Security overview has no <code>/security/report/</code> link, the sitemap omits it, RFC 9116 points directly to GitHub, and <code>/security/pci/styles.css</code> loads. No DDL, data migration, dependency install, or Replit Agent database action is required.</td></tr>
+            <tr><td>2026-07-17</td><td>AF</td><td>Rewrote the public PCI entry point for readers who do not know internal audit terminology. Replaced “living record,” unexplained “Requirement 6 work,” “verification,” and “external-evidence gates” with a direct explanation of which safeguards exist, how they were tested, and what still needs independent review. Reframed the PCI page title, description, opening, status chips, and stakeholder context around public outcomes; removed internal names and presentation context from the opening while preserving the detailed evidence below and the explicit non-compliance boundary.</td><td>Focused public-security tests passed 4/4 with regression assertions that reject the old jargon. The PCI evidence gate passed across 39 Markdown files and 19 public evidence grades. The frontend production build passed across 1,924 modules and emitted the revised Security overview plus the revised PCI page and top-level deployment alias.</td><td>After this follow-up is merged and published, verify the live overview uses the plain-language link sentence and the PCI page opens with the revised title, explanation, and non-compliance wording. Detailed standards references remain in the evidence sections for security and compliance readers.</td></tr>
           </tbody>
         </table>
       </div>
