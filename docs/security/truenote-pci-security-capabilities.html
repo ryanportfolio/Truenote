@@ -190,31 +190,28 @@
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
-      margin: 24px 0 0;
+      margin: 12px 0 0;
       padding: 0;
       list-style: none;
     }
-    .evidence-list a {
-      display: block;
+    .evidence-group { margin-top: 30px; }
+    .evidence-group h3 { margin: 0; font-size: 1rem; }
+    .evidence-group > p { margin: 4px 0 0; color: var(--muted); font-size: 0.84rem; }
+    .evidence-link {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
       min-height: 100%;
       padding: 16px 18px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: var(--card);
-      font-size: 0.86rem;
-      font-weight: 600;
       text-decoration: none;
+      box-shadow: var(--shadow);
     }
-    .evidence-list span { display: block; margin-top: 3px; color: var(--muted); font-size: 0.75rem; font-weight: 400; }
-    .boundary {
-      padding: 22px 24px;
-      border-left: 4px solid var(--primary);
-      border-radius: 8px;
-      background: var(--soft);
-      color: var(--muted);
-      font-size: 0.86rem;
-    }
-    .boundary strong { color: var(--ink); }
+    .evidence-link:hover { border-color: var(--primary); background: var(--soft); }
+    .evidence-title { color: var(--ink); font-size: 0.86rem; font-weight: 600; }
+    .evidence-description { display: block; margin-top: 4px; color: var(--muted); font-size: 0.75rem; font-weight: 400; }
+    .evidence-action { display: inline-flex; align-items: center; gap: 5px; margin-top: 12px; color: var(--primary); font-size: 0.74rem; font-weight: 700; }
     footer { padding: 30px 0 48px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.8rem; }
     @media (max-width: 880px) {
       .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -297,20 +294,67 @@
     </section>
 
     <section id="evidence">
-      <h2>Inspect the evidence</h2>
-      <p>These public repository records describe the completed safeguards and the tests used to verify them.</p>
-      <ul class="evidence-list">
-        <li><a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/secure-development-lifecycle.md">Secure development lifecycle<span>Security responsibilities, review, testing, and release evidence</span></a></li>
-        <li><a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/threat-model.md">Threat model<span>Trust boundaries, abuse cases, controls, and test references</span></a></li>
-        <li><a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/provider-input-firewall.md">Provider input firewall<span>Supported data patterns, provider boundaries, and acceptance tests</span></a></li>
-        <li><a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/change-control.md">Change-control procedure<span>Authorization, testing, deployment, recovery, and closure</span></a></li>
-        <li><a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/evidence-index.md">Security evidence index<span>Implementation, test, workflow, and documentation references</span></a></li>
-        <li><a href="https://github.com/ryanportfolio/Truenote/actions/workflows/security.yml">Security workflow results<span>Hosted build, test, scanning, dependency, and CodeQL checks</span></a></li>
-      </ul>
-    </section>
+      <h2>Open the complete public evidence set</h2>
+      <p>Every completed safeguard and passed check named above is represented below. Each card opens the exact public repository document, implementation, test, or workflow record in a new tab.</p>
 
-    <section aria-label="Evidence boundary">
-      <div class="boundary"><strong>Evidence boundary:</strong> this page describes completed repository safeguards and passed checks. It is not a claim that Truenote is PCI DSS compliant, certified, or independently assessed, and it does not attest to a customer’s deployed cardholder data environment.</div>
+      <div class="evidence-group">
+        <h3>Secure development and change management</h3>
+        <p>Processes, design analysis, staff guidance, and release records.</p>
+        <ul class="evidence-list">
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/secure-development-lifecycle.md" target="_blank" rel="noreferrer"><span class="evidence-title">Secure development lifecycle</span><span class="evidence-description">Security responsibilities from design and threat review through release verification.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/threat-model.md" target="_blank" rel="noreferrer"><span class="evidence-title">Application and PCI-impact threat model</span><span class="evidence-description">Trust boundaries, abuse cases, mapped controls, and test references.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/secure-development-training-curriculum.md" target="_blank" rel="noreferrer"><span class="evidence-title">Secure-development curriculum</span><span class="evidence-description">Truenote-specific secure design, coding, tooling, and assessment material.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/change-control.md" target="_blank" rel="noreferrer"><span class="evidence-title">Change-control procedure</span><span class="evidence-description">Authorization, review, testing, deployment, recovery, and closure workflow.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/manual-change-record-template.md" target="_blank" rel="noreferrer"><span class="evidence-title">Production-change record format</span><span class="evidence-description">Complete reason, impact, approval, test, deployment, and recovery record.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/evidence-index.md" target="_blank" rel="noreferrer"><span class="evidence-title">Master security evidence index</span><span class="evidence-description">Cross-reference for repository implementation, tests, workflows, and documents.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+        </ul>
+      </div>
+
+      <div class="evidence-group">
+        <h3>AI and sensitive-data boundaries</h3>
+        <p>Documented behavior, source implementation, and direct boundary tests.</p>
+        <ul class="evidence-list">
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/provider-input-firewall.md" target="_blank" rel="noreferrer"><span class="evidence-title">Provider input firewall record</span><span class="evidence-description">Supported patterns, provider coverage, processing order, and acceptance checks.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/provider-input-firewall.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Provider firewall implementation</span><span class="evidence-description">Fail-closed redaction applied before supported provider payloads leave the server.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/scripts/src/provider-input-firewall.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Portable provider-boundary tests</span><span class="evidence-description">Captured OpenAI, Cohere, and OpenRouter payload assertions.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/ask-sensitive-input-handling.md" target="_blank" rel="noreferrer"><span class="evidence-title">Ask-input handling record</span><span class="evidence-description">Pre-persistence ordering and blocked deterministic high-risk input classes.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/ask-content-policy.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Ask-content policy implementation</span><span class="evidence-description">Pure decision boundary for current questions and supplied history.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/__tests__/ask-content-policy.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Ask-content policy tests</span><span class="evidence-description">Blocked classes, history coverage, and raw-free finding assertions.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/model-output-sensitive-data-handling.md" target="_blank" rel="noreferrer"><span class="evidence-title">Model-output handling record</span><span class="evidence-description">Sensitive-output blocking, diagnostic redaction, and refusal behavior.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/generation/answer.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Cited-answer implementation</span><span class="evidence-description">Citation validation, sensitive-output screening, and fail-closed refusal path.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/generation/__tests__/answer.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Generation safety tests</span><span class="evidence-description">Citation, fallback, route exhaustion, and sensitive-output cases.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
+        </ul>
+      </div>
+
+      <div class="evidence-group">
+        <h3>Access, content, and browser controls</h3>
+        <p>Server-side authorization, controlled activation, and browser-request defenses.</p>
+        <ul class="evidence-list">
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/retrieval/query.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Authorization-scoped retrieval</span><span class="evidence-description">Program, classification, lifecycle, and active-version filters in retrieval.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/retrieval/__tests__/program-scope.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Program-scope retrieval tests</span><span class="evidence-description">Fail-closed rejection of leaked or cross-program retrieval candidates.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/__tests__/negative-controls.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Authorization negative-control tests</span><span class="evidence-description">Cross-program, clearance, activation, and unsafe-state denial cases.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/content-scan.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Content screening implementation</span><span class="evidence-description">EICAR, secret, identity, payment-card, and prompt-injection detection.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/__tests__/content-scan.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Content screening tests</span><span class="evidence-description">Safe detection behavior without retaining matched sensitive values.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/middleware/browser-security.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Browser request-defense middleware</span><span class="evidence-description">Origin, Fetch Metadata, CSP, framing, MIME, referrer, and permissions controls.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/middleware/__tests__/browser-security.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Browser request-defense tests</span><span class="evidence-description">Trusted-origin acceptance and foreign, opaque, malformed, and cross-site denial.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
+        </ul>
+      </div>
+
+      <div class="evidence-group">
+        <h3>Audit and secure delivery</h3>
+        <p>Security-event integrity, durable delivery, hosted analysis, and evidence validation.</p>
+        <ul class="evidence-list">
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/audit.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Security-event audit implementation</span><span class="evidence-description">Correlated security receipts and append-only event creation.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/siem-outbox.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Durable SIEM delivery implementation</span><span class="evidence-description">Signed payloads, lease-fenced claims, retries, backoff, and dead-letter handling.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/__tests__/siem-outbox.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">SIEM delivery tests</span><span class="evidence-description">Signing, lease, retry, completion, dead-letter, and health-reporting cases.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/security/p1-siem-delivery-outbox.sql" target="_blank" rel="noreferrer"><span class="evidence-title">SIEM delivery database controls</span><span class="evidence-description">Outbox constraints, indexes, lease functions, grants, and verification queries.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/actions/workflows/security.yml" target="_blank" rel="noreferrer"><span class="evidence-title">Hosted security workflow results</span><span class="evidence-description">Type checks, build, tests, secret scan, dependency audit, SBOM, and CodeQL.</span><span class="evidence-action">Open workflow <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/.github/workflows/security.yml" target="_blank" rel="noreferrer"><span class="evidence-title">Security workflow definition</span><span class="evidence-description">Exact hosted job configuration and retained security-analysis steps.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/scripts/src/verify-pci-evidence.ts" target="_blank" rel="noreferrer"><span class="evidence-title">PCI evidence-integrity verifier</span><span class="evidence-description">Machine checks for links, hashes, workflow settings, threat rows, and evidence scopes.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/scripts/src/verify-pci-evidence.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Evidence-integrity verifier tests</span><span class="evidence-description">Positive and mutation cases for the security evidence gate.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/scripts/src/public-security-page.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Public security-page tests</span><span class="evidence-description">Routes, reporting links, public-only claims, and internal-ledger separation.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
+        </ul>
+      </div>
     </section>
   </main>
 
