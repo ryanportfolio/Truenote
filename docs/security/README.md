@@ -63,9 +63,11 @@ next actions across long-running tasks and context compaction.
 
 ## Reporting
 
-Report suspected vulnerabilities through the dedicated
-[`/security/report/` source](../../artifacts/rag-app/public/security/report/index.html),
-which is linked from the public security-capabilities brief, or use the
-repository [`SECURITY.md`](../../SECURITY.md). Keep exploit details out of public
-issues. Public deployment and intake operation remain unverified until the
-acceptance steps in the PCI evidence pack are retained.
+Report suspected vulnerabilities through GitHub's
+[private vulnerability intake](https://github.com/ryanportfolio/Truenote/security/advisories/new)
+or follow the repository [`SECURITY.md`](../../SECURITY.md). RFC 9116 discovery
+at `/.well-known/security.txt` points directly to those maintained GitHub
+surfaces. The broken `/security/report/` destination was removed from public
+navigation and the sitemap; PCI Readiness now occupies that Security-page
+position. Keep exploit details out of public issues. Intake operation remains
+unverified until the acceptance steps in the PCI evidence pack are retained.

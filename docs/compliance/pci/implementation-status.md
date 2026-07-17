@@ -102,16 +102,15 @@
   CODEOWNERS or accepted current record exists. A live re-check was unavailable
   because the saved GitHub CLI credentials were invalid, so current state remains
   unverified and the Requirement 6.5 grade remains **Gap**.
-- Added a dedicated public `/security/report/` page and RFC 9116
-  `/.well-known/security.txt` record using the existing GitHub private-reporting
-  policy. The existing `/security/` capabilities brief now links directly to the
-  reporting page, and the sitemap lists both routes. Four portable tests verify
-  login-to-overview-to-report discovery, exact private intake,
-  sensitive-data/safe-testing guidance, accessible static structure, absence of
+- Added an RFC 9116 `/.well-known/security.txt` record that points directly to
+  the existing GitHub private-reporting intake and maintained security policy.
+  Production checks found that `/security/report/` returned the generic SPA
+  shell, so it was removed from the public overview and sitemap and replaced by
+  PCI Readiness. Four portable tests verify exact private intake, removal of the
+  broken link, PCI discovery, sensitive-data/safe-testing guidance, absence of
   invented email/SLA claims, assurance limits, and a future expiry within one
-  year. The production build retains both routes and the RFC 9116 record.
-  Deployment, GitHub private-report enablement/monitoring, owner approval, and a
-  harmless end-to-end intake test remain **Implemented, unverified**.
+  year. Public discovery exists; GitHub private-report enablement/monitoring,
+  owner approval, and a harmless end-to-end intake test remain unverified.
 - Added a pull-request change record covering security/CDE impact, verification,
   vulnerabilities, deployment, rollback, and approval.
 - Configured dependency audit/SBOM, Gitleaks, and CodeQL jobs to run on pull
@@ -302,10 +301,10 @@ workstream; the PR is not treated as the Requirement 6.5 operating record.
    environment, retain the sanitized report/receipt hashes, and close failures.
 7. Commission independent application/API, AI, and segmentation testing as scoped;
    remediate and obtain retest evidence.
-8. Approve and deploy the public security overview and `/security/report/`
-   policy, verify both routes plus the RFC 9116 record and content types from the
-   public origin, enable/monitor GitHub private reporting, run a harmless
-   synthetic intake through closure, and assign annual expiry review.
+8. Verify the public security overview, PCI Readiness route, and RFC 9116 record
+   by expected content as well as status/content type; enable and monitor GitHub
+   private reporting, run a harmless synthetic intake through closure, and
+   assign annual expiry review.
 9. Complete the change-control adoption record, approve the exact tool-neutral
    procedure, name its authority/system of record,
    reconcile the production-change register, and complete one normal sample

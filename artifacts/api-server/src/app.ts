@@ -50,6 +50,15 @@ export function createApp(): Express {
   // keep Express's revalidation behavior.
   if (process.env.NODE_ENV === "production") {
     const assetsDir = path.join(dist, "assets");
+    app.get(
+      ["/security/pci", "/security/pci/", "/security/pci/index.html"],
+      (_req: Request, res: Response, next: NextFunction) => {
+        res.setHeader("Cache-Control", "no-cache");
+        res.sendFile("security-pci.html", { root: dist }, (error) => {
+          if (error) next(error);
+        });
+      }
+    );
     app.get("/assets/*", (req: Request, res: Response, next: NextFunction) => {
       const accepted = req.headers["accept-encoding"] ?? "";
       const suffix = accepted.includes("br")

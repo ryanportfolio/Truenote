@@ -2,18 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
-const securityHtml = readFileSync(
-  new URL(
-    "../../artifacts/rag-app/public/security/report/index.html",
-    import.meta.url
-  ),
-  "utf8"
-);
-const securityCss = readFileSync(
-  new URL(
-    "../../artifacts/rag-app/public/security/report/styles.css",
-    import.meta.url
-  ),
+const securityPolicy = readFileSync(
+  new URL("../../SECURITY.md", import.meta.url),
   "utf8"
 );
 const securityTxt = readFileSync(
@@ -43,29 +33,26 @@ const viteConfig = readFileSync(
   new URL("../../artifacts/rag-app/vite.config.ts", import.meta.url),
   "utf8"
 );
-const normalizedSecurityHtml = securityHtml.replace(/\s+/g, " ");
+const apiApp = readFileSync(
+  new URL("../../artifacts/api-server/src/app.ts", import.meta.url),
+  "utf8"
+);
+const normalizedSecurityPolicy = securityPolicy.replace(/\s+/g, " ");
 
 describe("public security reporting surface", () => {
   it("publishes a discoverable private reporting path without inventing email or SLA claims", () => {
-    assert.match(
-      securityHtml,
-      /<link rel="canonical" href="https:\/\/truenote\.org\/security\/report\/"/
-    );
-    assert.ok(
-      securityHtml.includes(
-        'href="https://github.com/ryanportfolio/Truenote/security/advisories/new"'
-      )
-    );
-    assert.ok(securityHtml.includes("Open a private GitHub report"));
-    assert.ok(securityHtml.includes("Do not open a public issue with exploit details"));
-    assert.ok(securityHtml.includes("No response-time or remediation-time SLA is represented here"));
-    assert.equal(securityHtml.includes("mailto:"), false);
+    assert.ok(securityPolicy.includes("Report a vulnerability"));
+    assert.ok(securityPolicy.includes("Do not open a public issue with exploit details"));
+    assert.equal(securityPolicy.includes("mailto:"), false);
     assert.ok(loginSource.includes('href="/security/"'));
     assert.ok(securityOverview.includes('href="/security/pci/"'));
-    assert.ok(securityOverview.includes('href="/security/report/"'));
+    assert.equal(securityOverview.includes('href="/security/report/"'), false);
     assert.ok(sitemap.includes("<loc>https://truenote.org/security/</loc>"));
     assert.ok(sitemap.includes("<loc>https://truenote.org/security/pci/</loc>"));
-    assert.ok(sitemap.includes("<loc>https://truenote.org/security/report/</loc>"));
+    assert.equal(
+      sitemap.includes("<loc>https://truenote.org/security/report/</loc>"),
+      false
+    );
     assert.ok(
       pciReadiness.includes(
         '<link rel="canonical" href="https://truenote.org/security/pci/">'
@@ -73,36 +60,37 @@ describe("public security reporting surface", () => {
     );
     assert.ok(pciReadiness.includes("Not a PCI compliance claim"));
     assert.ok(viteConfig.includes('fileName: "security/pci/index.html"'));
+    assert.ok(viteConfig.includes('fileName: "security-pci.html"'));
     assert.ok(viteConfig.includes('fileName: "security/pci/styles.css"'));
+    assert.ok(apiApp.includes('"/security/pci/"'));
+    assert.ok(apiApp.includes('res.sendFile("security-pci.html"'));
   });
 
   it("keeps sensitive-data, safe-testing, and assurance boundaries on the public page", () => {
     for (const required of [
-      "Use synthetic data",
+      "using synthetic data",
       "payment-card data",
       "Do not access data that is not yours",
-      "Do not degrade a shared service",
-      "Do not test model or infrastructure providers without permission",
-      "Source code, configuration, and local tests do not prove",
-      "not represented here as PCI DSS compliant"
+      "degrade a shared service",
+      "test third-party providers without their permission",
+      "Source code and passing CI do not prove",
+      "not represented as FedRAMP compliant"
     ]) {
       assert.ok(
-        normalizedSecurityHtml.includes(required),
+        normalizedSecurityPolicy.includes(required),
         `missing public security text: ${required}`
       );
     }
   });
 
-  it("uses an external stylesheet and accessible static document structure", () => {
-    assert.ok(securityHtml.includes('<a class="skip-link" href="#main-content">'));
-    assert.ok(securityHtml.includes('<main id="main-content">'));
-    assert.ok(securityHtml.includes('<h1 id="security-title">'));
-    assert.ok(securityHtml.includes('rel="noreferrer"'));
-    assert.ok(securityHtml.includes('<link rel="stylesheet" href="./styles.css"'));
-    assert.equal(securityHtml.includes("<style"), false);
-    assert.equal(securityHtml.includes("<script"), false);
-    assert.ok(securityCss.includes("focus-visible"));
-    assert.ok(securityCss.includes("@media (max-width: 480px)"));
+  it("keeps an accessible Security overview and CSP-safe build publisher", () => {
+    assert.ok(securityOverview.includes('<main class="shell">'));
+    assert.ok(securityOverview.includes('<h1>Security controls Truenote has today</h1>'));
+    assert.ok(securityOverview.includes('<nav aria-label="Document sections">'));
+    assert.ok(securityOverview.includes("focus-visible"));
+    assert.ok(securityOverview.includes("@media (max-width: 590px)"));
+    assert.ok(viteConfig.includes("loadStandalonePage"));
+    assert.ok(viteConfig.includes("<link rel=\"stylesheet\""));
   });
 
   it("publishes a current RFC 9116 discovery record", () => {
@@ -117,7 +105,9 @@ describe("public security reporting surface", () => {
       )
     );
     assert.ok(
-      securityTxt.includes("Policy: https://truenote.org/security/report/")
+      securityTxt.includes(
+        "Policy: https://github.com/ryanportfolio/Truenote/security/policy"
+      )
     );
     const expires = /^Expires:\s*(.+)$/m.exec(securityTxt)?.[1];
     assert.ok(expires, "security.txt must contain Expires");
