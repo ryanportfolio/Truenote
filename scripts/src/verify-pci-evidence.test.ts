@@ -10,6 +10,7 @@ import {
   verifyReadOnlyEvidenceSql,
   verifyRecordedArtifactHash,
   verifyRecordedSourceHash,
+  verifySessionVerificationCounts,
   verifySecurityWorkflow,
   verifySupplyChainSettings,
   verifyThreatModel
@@ -144,6 +145,28 @@ describe("verifyPublicEvidenceGrades", () => {
         "evidence grade lacks an adjacent scope label: Mostly verified"
       ]
     });
+
+    const consistentLedger = `<section id="verification">
+      <p class="number">62</p><p class="label">Frontend tests current to integrated worktree</p>
+      <p class="number">258</p><p class="label">API tests current to integrated worktree</p>
+      <p class="number">76</p><p class="label">Scripts tests current to integrated worktree</p>
+      <p class="number">396</p><p class="label">Current tests passed across all three suites</p>
+      <tr><td>Frontend tests</td><td><span class="status done">62/62 pass</span></td></tr>
+      <tr><td>API tests</td><td><span class="status done">258/258 pass</span></td></tr>
+      <tr><td>Scripts tests</td><td><span class="status done">76/76 pass</span></td></tr>
+    </section>`;
+    assert.deepEqual(verifySessionVerificationCounts(consistentLedger), []);
+    assert.deepEqual(
+      verifySessionVerificationCounts(
+        consistentLedger
+          .replace(">258</p><p class=\"label\">API", ">255</p><p class=\"label\">API")
+          .replace(">396</p><p class=\"label\">Current", ">394</p><p class=\"label\">Current")
+      ),
+      [
+        "API current-test card 255 does not match detail row 258",
+        "combined current-test card 394 does not equal suite sum 396"
+      ]
+    );
   });
 });
 
