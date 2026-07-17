@@ -1,0 +1,19 @@
+# Truenote
+
+> Truenote is a retrieval-augmented knowledge assistant for customer service teams. Managers upload approved policies, procedures, and SOPs; customer service representatives ask questions during calls and get fast, source-backed answers with citations they can verify — or an explicit refusal when the documents do not answer.
+
+Key properties:
+
+- Every answer carries at least one clickable citation to an approved source document, or is an explicit refusal ("I couldn't find this in the knowledge base"). There are no uncited answers.
+- Retrieval is hybrid (vector + keyword + reranker), so exact-match questions like fee amounts and policy numbers are found reliably.
+- Content is scoped per program as a server-enforced security boundary: a representative only searches the documents approved for their program.
+- Refusal is treated as a successful response — the product never invents fees, dates, policy numbers, or procedures.
+
+## Pages
+
+- [About Truenote](https://truenote.org/about/): How Truenote turns approved documents into cited answers — workflow, source receipts, refusal boundary, access controls, and operational model.
+- [Security](https://truenote.org/security/): Truenote's security posture and controls.
+
+## Product
+
+- [Truenote app](https://truenote.org/): Sign-in for customer service teams using Truenote.
