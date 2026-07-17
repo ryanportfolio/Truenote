@@ -87,3 +87,7 @@ build = ["bash", "-c", "pnpm --filter @workspace/rag-app run build"]
 
 [objectStorage]
 defaultBucketID = "replit-objstore-a2040b63-42f1-4634-a980-06c7e837a4cb"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 120000
