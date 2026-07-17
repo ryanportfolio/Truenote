@@ -13,6 +13,8 @@ Key properties:
 
 - [About Truenote](https://truenote.org/about/): How Truenote turns approved documents into cited answers — workflow, source receipts, refusal boundary, access controls, and operational model.
 - [Security](https://truenote.org/security/): Truenote's security posture and controls.
+- [PCI Readiness](https://truenote.org/security/pci/): Truenote's PCI DSS readiness posture, scope, and cardholder-data handling boundaries.
+- [Security Reporting](https://truenote.org/security/report/): How to responsibly disclose security vulnerabilities to the Truenote team.
 
 ## Product
 
