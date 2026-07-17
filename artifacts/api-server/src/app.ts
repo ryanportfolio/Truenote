@@ -6,10 +6,14 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { attachCurrentUser } from "./middleware/current-user.js";
 import { registerRoutes } from "./routes/index.js";
-import { recordAppError } from "./lib/observability/error-log.js";
+import {
+  recordAppError,
+  safeErrorMessage
+} from "./lib/observability/error-log.js";
 import { robotsHeaderForSpaPath } from "./lib/seo.js";
 import { securityAuditMiddleware } from "./middleware/security-audit.js";
 import { SecurityControlsNotReadyError } from "./lib/security/errors.js";
+import { compressedAssetFileName } from "./lib/security/static-assets.js";
 import {
   contentSecurityPolicy,
   trustedMutationOriginMiddleware,
@@ -57,11 +61,10 @@ export function createApp(): Express {
 
       const relativePath = req.params[0];
       if (typeof relativePath !== "string") return next();
-      const originalPath = path.resolve(assetsDir, relativePath);
-      const compressedPath = `${originalPath}${suffix}`;
+      const compressedFileName = compressedAssetFileName(relativePath, suffix);
       if (
-        !originalPath.startsWith(`${assetsDir}${path.sep}`) ||
-        !existsSync(compressedPath)
+        compressedFileName === null ||
+        !existsSync(path.join(assetsDir, compressedFileName))
       ) {
         return next();
       }
@@ -69,11 +72,11 @@ export function createApp(): Express {
       // res.type() treats any string containing "/" as a literal MIME type.
       // Passing the absolute path therefore emitted an invalid Content-Type
       // like "/home/runner/.../index.js", which browsers refuse for modules.
-      res.type(path.extname(originalPath));
+      res.type(path.extname(relativePath));
       res.setHeader("Content-Encoding", suffix === ".br" ? "br" : "gzip");
       res.vary("Accept-Encoding");
       res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-      res.sendFile(compressedPath);
+      res.sendFile(compressedFileName, { root: assetsDir });
     });
     app.use(
       "/assets",
@@ -147,7 +150,7 @@ export function createApp(): Express {
   // raw `err.message` value can leak schema or credential details. Full
   // detail still goes to the server log for operator diagnosis.
   app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
-    console.error("[api-server] error:", err);
+    console.error("[api-server] error:", safeErrorMessage(err));
     const incomingRequestId = req.headers["x-request-id"];
     void recordAppError({
       source: "api",

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db-client.js";
+import { redactSensitiveText } from "../security/content-scan.js";
 
 export type ErrorSeverity = "warning" | "error" | "fatal";
 
@@ -62,7 +63,7 @@ function redactString(value: string): string {
     value.length > MAX_STRING_CHARS
       ? `${value.slice(0, MAX_STRING_CHARS)}… [truncated ${value.length - MAX_STRING_CHARS} chars]`
       : value;
-  return truncated
+  return redactSensitiveText(truncated)
     .replace(/(Bearer\s+)[A-Za-z0-9._~+\/-]+/gi, "$1[REDACTED]")
     .replace(/\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}\b/g, "[REDACTED_API_KEY]")
     .replace(
@@ -73,6 +74,13 @@ function redactString(value: string): string {
       /([?&](?:api_key|token|secret|password)=)[^&\s]+/gi,
       "$1[REDACTED]"
     );
+}
+
+/** Safe one-line error text for console paths that cannot await persistence. */
+export function safeErrorMessage(error: unknown): string {
+  return redactString(error instanceof Error ? error.message : String(error))
+    .replace(/[\r\n\u2028\u2029]+/g, " ")
+    .trim();
 }
 
 function objectValue(value: unknown): Record<string, unknown> | null {
@@ -153,12 +161,7 @@ function serializeHeaders(value: unknown): JsonValue | null {
 
 export function prepareErrorLog(input: ErrorLogInput): PreparedErrorLog {
   const record = objectValue(input.error);
-  const message =
-    input.error instanceof Error
-      ? redactString(input.error.message)
-      : typeof input.error === "string"
-        ? redactString(input.error)
-        : redactString(String(input.error));
+  const message = safeErrorMessage(input.error);
   const name =
     input.error instanceof Error
       ? redactString(input.error.name)
@@ -264,7 +267,7 @@ export async function recordAppError(input: ErrorLogInput): Promise<boolean> {
 export function installProcessErrorLogging(source: string): void {
   let handlingFatal = false;
   process.on("unhandledRejection", (reason) => {
-    console.error(`[${source}] unhandled rejection:`, reason);
+    console.error(`[${source}] unhandled rejection:`, safeErrorMessage(reason));
     void recordAppError({
       severity: "error",
       source,
@@ -273,7 +276,7 @@ export function installProcessErrorLogging(source: string): void {
     });
   });
   process.on("uncaughtException", (error) => {
-    console.error(`[${source}] uncaught exception:`, error);
+    console.error(`[${source}] uncaught exception:`, safeErrorMessage(error));
     if (handlingFatal) {
       process.exit(1);
       return;

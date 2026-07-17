@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { prepareErrorLog } from "../error-log.js";
+import { prepareErrorLog, safeErrorMessage } from "../error-log.js";
 
 describe("error log preparation", () => {
   it("preserves provider diagnostics while redacting credentials", () => {
@@ -59,5 +59,39 @@ describe("error log preparation", () => {
       error
     });
     expect(JSON.stringify(prepared.details)).toContain("[circular]");
+  });
+
+  it("removes SSNs and payment-card numbers from persistent and console text", () => {
+    const error = new Error(
+      "Customer 123-45-6789 supplied card 4242 4242 4242 4242\nFORGED LOG"
+    );
+    const prepared = prepareErrorLog({
+      source: "test",
+      operation: "sensitive-error",
+      error
+    });
+
+    expect(JSON.stringify(prepared)).not.toContain("123-45-6789");
+    expect(JSON.stringify(prepared)).not.toContain("4242 4242 4242 4242");
+    expect(safeErrorMessage(error)).not.toContain("123-45-6789");
+    expect(safeErrorMessage(error)).not.toContain("4242 4242 4242 4242");
+    expect(safeErrorMessage(error)).not.toContain("\n");
+  });
+
+  it("removes complete private-key blocks from persistent and console text", () => {
+    const keyBody = "c2Vuc2l0aXZlLXByaXZhdGUta2V5LWJvZHk=";
+    const error = new Error(
+      `provider rejected\n-----BEGIN PRIVATE KEY-----\n${keyBody}\n` +
+        "-----END PRIVATE KEY-----"
+    );
+    const prepared = prepareErrorLog({
+      source: "test",
+      operation: "private-key-error",
+      error
+    });
+
+    expect(JSON.stringify(prepared)).not.toContain(keyBody);
+    expect(safeErrorMessage(error)).not.toContain(keyBody);
+    expect(safeErrorMessage(error)).toContain("[REDACTED_SECRET_PRIVATE_KEY]");
   });
 });

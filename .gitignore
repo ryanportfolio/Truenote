@@ -11,6 +11,7 @@ out/
 
 # pnpm
 .pnpm-debug.log*
+.pnpm-store/
 
 # env
 .env

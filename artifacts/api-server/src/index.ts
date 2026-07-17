@@ -6,7 +6,8 @@ import { purgeExpiredSessions } from "./lib/auth/sessions.js";
 import { purgeExpiredResetTokens } from "./lib/auth/password-reset.js";
 import {
   installProcessErrorLogging,
-  recordAppError
+  recordAppError,
+  safeErrorMessage
 } from "./lib/observability/error-log.js";
 import { startSiemOutboxWorker } from "./lib/security/siem-outbox.js";
 
@@ -38,7 +39,7 @@ async function main(): Promise<void> {
   try {
     await bootstrapSuperUser();
   } catch (err) {
-    console.error("[api-server] bootstrap failed:", err);
+    console.error("[api-server] bootstrap failed:", safeErrorMessage(err));
     void recordAppError({
       source: "startup",
       operation: "bootstrap-super-user",
@@ -51,7 +52,10 @@ async function main(): Promise<void> {
   try {
     await bootstrapDemoAccounts();
   } catch (err) {
-    console.error("[api-server] demo-account bootstrap failed:", err);
+    console.error(
+      "[api-server] demo-account bootstrap failed:",
+      safeErrorMessage(err)
+    );
     void recordAppError({
       source: "startup",
       operation: "bootstrap-demo-accounts",
@@ -80,7 +84,7 @@ async function main(): Promise<void> {
       .catch((err: unknown) => {
         console.warn(
           "[auth] purgeExpiredSessions failed:",
-          err instanceof Error ? err.message : err
+          safeErrorMessage(err)
         );
         void recordAppError({
           severity: "warning",
@@ -96,7 +100,7 @@ async function main(): Promise<void> {
       .catch((err: unknown) => {
         console.warn(
           "[auth] purgeExpiredResetTokens failed:",
-          err instanceof Error ? err.message : err
+          safeErrorMessage(err)
         );
         void recordAppError({
           severity: "warning",
@@ -123,7 +127,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("[api-server] fatal:", err);
+  console.error("[api-server] fatal:", safeErrorMessage(err));
   void Promise.race([
     recordAppError({
       severity: "fatal",

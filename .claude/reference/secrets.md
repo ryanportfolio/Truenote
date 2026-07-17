@@ -26,6 +26,7 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 | `OIDC_REQUIRE_MFA` / `OIDC_REQUIRED_ACR` / `OIDC_ALLOWED_DOMAINS` | IdP assurance and identity restrictions | MFA defaults on when OIDC is configured; verify the IdP emits `amr: ["mfa"]` or set an approved exact ACR. |
 | `LOCAL_LOGIN_MODE` | `enabled`, `break_glass`, or `disabled` | Keep `enabled` through SSO smoke testing. Recommended steady state is `break_glass`, which permits local login only for super users. |
 | `ASK_RATE_LIMIT_WINDOW_SECONDS`, `ASK_RATE_LIMIT_PER_USER`, `ASK_RATE_LIMIT_PER_PROGRAM` | Distributed Postgres-backed ask limits | Defaults: 60 seconds, 30/user, 300/program. Requires the reviewed P0/P1 DDL. |
+| `WORKLOAD_RATE_LIMIT_WINDOW_SECONDS`, `DOCUMENT_INGEST_RATE_LIMIT_PER_USER`, `EVAL_RUN_RATE_LIMIT_PER_USER`, `BULK_USER_IMPORT_RATE_LIMIT_PER_USER`, `USER_ADMIN_RATE_LIMIT_PER_USER`, `PASSWORD_CHANGE_RATE_LIMIT_PER_USER` | Distributed per-user limits for document processing, evaluation runs, bulk invitations, credential administration, and password changes | Defaults: 3600-second window and 60/10/5/60/10 operations per user. Separate buckets and user keys preserve shared-office availability. Requires the reviewed P0/P1 DDL; tune only from capacity and abuse evidence. |
 | `ALLOW_RETENTION_OVERRIDE` | Emergency/legal purge before retention expiry | Default false. Do not enable without an approved process. |
 
 ## Optional
@@ -42,8 +43,8 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 | `BOOTSTRAP_SUPER_USER_NAME` | Display name for the bootstrap super_user | `Super User` |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for cross-origin credentialed requests. Leave unset for same-origin Replit deploys. | unset → no cross-origin |
 | `MIN_PASSWORD_LENGTH` | Floor enforced by bootstrap and the change-password form (server-side zod + client UI mirror via `/api/config`). Read once at api-server startup; restart to apply. Enforced within `[15, 1024]`; out-of-range falls back to 15. | `15` |
-| `RESEND_API_KEY` | Transactional email API key (resend.com). Used to send self-service password-reset links. **Both** this and `RESEND_FROM_EMAIL` must be set — otherwise the email layer falls back to a console logger that prints the link to stdout (useful for local dev, useless in production). | unset → console fallback |
-| `RESEND_FROM_EMAIL` | Sender address for outgoing emails. Must be a verified Resend domain or `onboarding@resend.dev` for testing. | unset → console fallback |
+| `RESEND_API_KEY` | Transactional email API key (resend.com). Used to send self-service password-reset links. **Both** this and `RESEND_FROM_EMAIL` must be set. Local development may use the console sender; production fails closed instead of logging reset/invite links. | unset → dev console; production send error |
+| `RESEND_FROM_EMAIL` | Sender address for outgoing emails. Must be a verified Resend domain or `onboarding@resend.dev` for testing. Must accompany `RESEND_API_KEY`; production fails closed when either is absent. | unset → dev console; production send error |
 | `APP_BASE_URL` | Public base URL used when constructing links in outgoing emails (e.g. `https://kbase.replit.app`). When unset we infer from `X-Forwarded-Proto` / `X-Forwarded-Host`, which works on Replit but is spoofable in unusual proxy setups. Set this explicitly for production. | unset → inferred from request headers |
 
 ## Pitfalls

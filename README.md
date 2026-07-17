@@ -20,7 +20,7 @@ A plausible answer is only the beginning. Truenote is built around the next ques
 | Keep unsupported answers off the screen | Refuses before generation when retrieval confidence is too low. Generated answers must cite known retrieved chunks or they are rejected. |
 | Prevent cross-program retrieval | Filters every retrieval query by server-resolved `program_id` and classification, then applies a final fail-closed scope check. |
 | Preserve context across chunk boundaries | Adds adjacent chunks for the strongest reranked anchors without letting those unscored neighbors affect the confidence gate. |
-| Catch bad source material before it goes live | Holds uploads through file checks, malware scanning, content DLP, parsing, preview, and separate approval. |
+| Catch bad source material before it goes live | Holds uploads through file checks, malware scanning, content DLP, parsing, preview, and role-authorized activation or review. |
 | Measure quality instead of judging a demo | Attributes failures to retrieval, reranking, thresholding, or generation, with optional claim-level faithfulness judging. |
 
 ## Retrieval and answer pipeline
@@ -54,12 +54,12 @@ Security is part of Truenote's data path, not a separate checklist. The reposito
 |---|---|---|
 | Program and classification isolation | SQL filters use server-resolved scope and a final fail-closed program check. | Negative tests cover cross-program access, malformed principals, and classification boundaries. |
 | Grounded generation | Retrieval gates, untrusted-excerpt instructions, citation validation, sensitive-output blocking, and defensive refusal protect every answer. | The eval harness measures retrieval, refusal, citation, and claim-level faithfulness. |
-| Controlled ingestion | File signatures, EICAR checks, default-on scanner enforcement, content DLP, inactive versions, separate approval, revocation, and retention gates protect source activation. | Lifecycle records preserve provenance, scan results, audited temporary scanner overrides, reviewer decisions, and document history. |
+| Controlled ingestion | File signatures, EICAR checks, default-on scanner enforcement, content DLP, inactive versions, role-authorized activation or review, revocation, and retention gates protect source activation. | Lifecycle records preserve provenance, scan results, audited temporary scanner overrides, reviewer decisions, and document history. |
 | Authentication and browser defense | Argon2id local passwords, hashed session tokens, OIDC Authorization Code with PKCE, MFA or ACR validation, CSP, Origin checks, and Fetch Metadata checks protect access. | Automated tests exercise identity validation, foreign origins, security headers, and privileged routes. |
 | Audit and SIEM | Hash-chained security events, a transactional outbox, signed delivery, bounded retries, lease fencing, dead-letter state, and health reporting preserve security receipts. | Control DDL includes acceptance queries; tests cover queueing, delivery failure, retry, and recovery behavior. |
-| Supply chain | Pull requests run type checks, production builds, and unit tests. `main`, weekly, and manual runs add the high-severity dependency audit, CycloneDX SBOM generation, Gitleaks, and CodeQL security-extended analysis. | Dependabot checks npm and GitHub Actions weekly, while scheduled CI retains machine-readable security evidence without delaying routine pull requests. |
+| Supply chain | Pull requests, `main`, weekly, and manual runs execute PCI/vulnerability evidence checks, type checks, the production build, unit tests, high-severity dependency audit, CycloneDX SBOM generation, Gitleaks, and CodeQL security-extended analysis. | A safe baseline accounts for all 51 retained CodeQL results; the strict managed-release gate honestly remains blocked by missing owners, dates, and dispositions. Alert upload, branch enforcement, and new pull-request behavior still require live verification. |
 
-Read the [security documentation index](./docs/security/README.md) and the [technical security capabilities brief](./docs/security/truenote-security-capabilities.html). Report vulnerabilities through [SECURITY.md](./SECURITY.md).
+Read the [security documentation index](./docs/security/README.md), the [PCI DSS readiness evidence pack](./docs/compliance/pci/README.md), and the [technical security capabilities brief](./docs/security/truenote-security-capabilities.html). Report vulnerabilities through [SECURITY.md](./SECURITY.md).
 
 ## Product tour
 
@@ -76,7 +76,7 @@ Read the [security documentation index](./docs/security/README.md) and the [tech
 - Upload PDF, DOCX, PNG, JPG, WebP, Markdown, or text sources.
 - Review provenance, scan findings, classification, parsed content, and chunk boundaries before activation.
 - Keep immutable document versions. Re-uploading creates a new inactive version instead of overwriting history.
-- Approve content through a separate senior reviewer. Uploaders cannot approve their own version.
+- Senior managers and super users may activate their own uploads after automated controls pass. Manager and CSR uploads remain inactive until an authorized senior manager or super user reviews them.
 - Inspect retrieval confidence, rerank scores, provider attempts, latency, evaluation history, and redacted application errors.
 
 ## Ingestion pipeline

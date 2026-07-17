@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>Report a Security Concern | Truenote</title>
+    <meta
+      name="description"
+      content="Report a suspected Truenote vulnerability privately and review safe-testing and disclosure guidance."
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://truenote.org/security/report/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Truenote" />
+    <meta property="og:title" content="Report a Security Concern | Truenote" />
+    <meta
+      property="og:description"
+      content="Private vulnerability reporting and safe-testing guidance for Truenote."
+    />
+    <meta property="og:url" content="https://truenote.org/security/report/" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to security guidance</a>
+
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="/" aria-label="Truenote sign in">
+          <span class="brand-mark" aria-hidden="true">T</span>
+          <span>Truenote</span>
+        </a>
+        <nav aria-label="Public pages">
+          <a href="/about/">About</a>
+          <a href="/">Sign in</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <section class="hero" aria-labelledby="security-title">
+        <p class="eyebrow">Public security reporting</p>
+        <h1 id="security-title">Report a security concern</h1>
+        <p class="lead">
+          Tell the maintainers privately so the issue can be investigated before
+          technical details become public.
+        </p>
+        <div class="actions">
+          <a
+            class="primary-action"
+            href="https://github.com/ryanportfolio/kbase/security/advisories/new"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open a private GitHub report
+          </a>
+          <a
+            class="secondary-action"
+            href="https://github.com/ryanportfolio/kbase/security"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Review repository security
+          </a>
+        </div>
+        <div class="safety-note" role="note">
+          <strong>Keep sensitive material out of the report.</strong>
+          <span>
+            Use synthetic data. Do not submit customer content, personal data,
+            payment-card data, credentials, session tokens, API keys, or private
+            database output.
+          </span>
+        </div>
+      </section>
+
+      <div class="guidance-grid">
+        <section class="card" aria-labelledby="private-channel-title">
+          <p class="section-index">01</p>
+          <h2 id="private-channel-title">Use a private channel</h2>
+          <p>
+            GitHub private vulnerability reporting is the approved intake path.
+            Do not open a public issue with exploit details.
+          </p>
+          <p>
+            If private reporting is unavailable, contact the
+            <a href="https://github.com/ryanportfolio" target="_blank" rel="noreferrer">
+              repository owner through GitHub</a
+            >
+            without disclosing the vulnerability, and ask for a private channel.
+          </p>
+        </section>
+
+        <section class="card" aria-labelledby="include-title">
+          <p class="section-index">02</p>
+          <h2 id="include-title">What to include</h2>
+          <ul>
+            <li>The affected route, component, or commit.</li>
+            <li>The security boundary you expected.</li>
+            <li>A minimal reproduction using synthetic data.</li>
+            <li>The likely impact and any temporary mitigation.</li>
+          </ul>
+        </section>
+
+        <section class="card" aria-labelledby="testing-title">
+          <p class="section-index">03</p>
+          <h2 id="testing-title">Test without causing harm</h2>
+          <ul>
+            <li>Use accounts, programs, documents, and credentials you control.</li>
+            <li>Do not access data that is not yours.</li>
+            <li>Do not degrade a shared service.</li>
+            <li>Do not test model or infrastructure providers without permission.</li>
+          </ul>
+        </section>
+
+        <section class="card" aria-labelledby="response-title">
+          <p class="section-index">04</p>
+          <h2 id="response-title">Response and coordinated disclosure</h2>
+          <p>
+            Maintainers will acknowledge the report, confirm whether it can be
+            reproduced, and coordinate disclosure after affected users have a
+            reasonable chance to update.
+          </p>
+          <p>
+            A fix date depends on severity, reproduction, and deployment ownership.
+            No response-time or remediation-time SLA is represented here.
+          </p>
+        </section>
+      </div>
+
+      <section class="support" aria-labelledby="support-title">
+        <div>
+          <p class="eyebrow">Supported version</p>
+          <h2 id="support-title">Current <code>main</code> branch</h2>
+        </div>
+        <p>
+          Truenote does not publish versioned releases yet. Earlier commits and
+          unmerged branches are not represented as supported versions.
+        </p>
+      </section>
+
+      <section class="claim-boundary" aria-labelledby="claim-title">
+        <p class="eyebrow">Security claim boundary</p>
+        <h2 id="claim-title">Public guidance is not an assurance report</h2>
+        <p>
+          Source code, configuration, and local tests do not prove that a deployed
+          environment is secure or compliant. Truenote is not represented here as
+          PCI DSS compliant, FedRAMP compliant, independently assessed, or certified.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-inner">
+        <span>Truenote security reporting</span>
+        <nav aria-label="Security resources">
+          <a href="/.well-known/security.txt">security.txt</a>
+          <a
+            href="https://github.com/ryanportfolio/kbase/blob/main/SECURITY.md"
+            target="_blank"
+            rel="noreferrer"
+          >Repository policy</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { protectProviderText } from "../security/provider-input-firewall.js";
 import {
   resolveApprovedModelRoute,
   type ApprovedModelRoute,
@@ -70,6 +71,8 @@ export async function runUtilityCompletion(
 ): Promise<string | null> {
   const client = deps.client ?? getUtilityClient();
   const route = deps.route ?? UTILITY_MODEL_ROUTE;
+  const protectedSystem = protectProviderText(input.system).text;
+  const protectedUser = protectProviderText(input.user).text;
 
   const request = {
     model: route.model,
@@ -77,8 +80,8 @@ export async function runUtilityCompletion(
       ? { temperature: 0 }
       : { reasoning_effort: route.reasoningEffort }),
     messages: [
-      { role: "system", content: input.system },
-      { role: "user", content: input.user }
+      { role: "system", content: protectedSystem },
+      { role: "user", content: protectedUser }
     ]
   } satisfies OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
 

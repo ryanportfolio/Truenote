@@ -1,0 +1,168 @@
+{
+  "schemaVersion": 2,
+  "recordId": "TN-BRANCH-<YYYY>-<NNN>",
+  "repository": "ryanportfolio/kbase",
+  "defaultBranch": "main",
+  "capturedAt": "<UTC timestamp>",
+  "capturedBy": "<GitHub API capture operator>",
+  "captureMethod": "github_api",
+  "apiEndpoints": [
+    "/repos/ryanportfolio/kbase/rulesets",
+    "/repos/ryanportfolio/kbase/branches/main/protection"
+  ],
+  "apiResponses": [
+    {
+      "endpoint": "/repos/ryanportfolio/kbase/rulesets",
+      "method": "GET",
+      "httpStatus": 0,
+      "capturedAt": "<UTC timestamp>",
+      "requestId": "<GitHub request ID>",
+      "pageCount": 0,
+      "paginationComplete": false,
+      "bodySha256": "<SHA-256 of complete response body>"
+    },
+    {
+      "endpoint": "/repos/ryanportfolio/kbase/branches/main/protection",
+      "method": "GET",
+      "httpStatus": 0,
+      "capturedAt": "<UTC timestamp>",
+      "requestId": "<GitHub request ID>",
+      "pageCount": 0,
+      "paginationComplete": false,
+      "bodySha256": "<SHA-256 of complete response body>"
+    }
+  ],
+  "evidence": {
+    "restrictedArtifactId": "<restricted artifact ID>",
+    "artifactSha256": "<SHA-256 of combined raw API response bundle>",
+    "safeReference": "<safe evidence-index reference>",
+    "rulesetReference": "TN-RULESET-<YYYY>-<NNN>"
+  },
+  "codeowners": {
+    "path": ".github/CODEOWNERS",
+    "coverage": "pending",
+    "ownerTokens": ["<GitHub user or team handle>"],
+    "sourceSha256": "<SHA-256 of CODEOWNERS file>"
+  },
+  "rules": {
+    "enforcement": "pending",
+    "targetBranch": "refs/heads/main",
+    "requirePullRequest": false,
+    "requiredApprovals": 0,
+    "dismissStaleReviews": false,
+    "requireCodeOwnerReview": false,
+    "requireLastPushApproval": false,
+    "requireConversationResolution": false,
+    "requireStatusChecks": false,
+    "requireBranchesUpToDate": false,
+    "enforceAdmins": false,
+    "restrictDirectPushes": false,
+    "blockForcePushes": false,
+    "blockDeletions": false,
+    "bypassActors": ["<remove every bypass actor>"],
+    "requiredChecks": [
+      { "id": "verify", "workflow": "Security and quality", "jobName": "Typecheck, build, tests", "context": "Typecheck, build, tests", "integrationId": null, "required": false },
+      { "id": "supply-chain", "workflow": "Security and quality", "jobName": "Dependency audit and SBOM", "context": "Dependency audit and SBOM", "integrationId": null, "required": false },
+      { "id": "secrets", "workflow": "Security and quality", "jobName": "Secret scan", "context": "Secret scan", "integrationId": null, "required": false },
+      { "id": "codeql", "workflow": "Security and quality", "jobName": "CodeQL analysis and SARIF evidence", "context": "CodeQL analysis and SARIF evidence", "integrationId": null, "required": false }
+    ]
+  },
+  "enforcementTests": [
+    {
+      "id": "denied_unapproved_pr",
+      "expectedResult": "denied",
+      "actualResult": "pending",
+      "executedAt": "<UTC timestamp>",
+      "executedBy": "<test operator>",
+      "reviewedAt": "<UTC timestamp>",
+      "reviewedBy": "<independent test reviewer>",
+      "targetReference": "TN-BRANCH-TARGET-<YYYY>-<NNN>",
+      "restrictedArtifactId": "TN-BRANCH-RECEIPT-<YYYY>-<NNN>",
+      "artifactSha256": "<SHA-256 of denial receipt>",
+      "configurationArtifactSha256": "<exact evidence.artifactSha256>",
+      "rulesetReference": "TN-RULESET-<YYYY>-<NNN>",
+      "exercisedCheckIds": []
+    },
+    {
+      "id": "denied_missing_required_check",
+      "expectedResult": "denied",
+      "actualResult": "pending",
+      "executedAt": "<UTC timestamp>",
+      "executedBy": "<test operator>",
+      "reviewedAt": "<UTC timestamp>",
+      "reviewedBy": "<independent test reviewer>",
+      "targetReference": "TN-BRANCH-TARGET-<YYYY>-<NNN>",
+      "restrictedArtifactId": "TN-BRANCH-RECEIPT-<YYYY>-<NNN>",
+      "artifactSha256": "<SHA-256 of all missing-check denial receipts>",
+      "configurationArtifactSha256": "<exact evidence.artifactSha256>",
+      "rulesetReference": "TN-RULESET-<YYYY>-<NNN>",
+      "exercisedCheckIds": ["verify", "supply-chain", "secrets", "codeql"]
+    },
+    {
+      "id": "denied_stale_review",
+      "expectedResult": "denied",
+      "actualResult": "pending",
+      "executedAt": "<UTC timestamp>",
+      "executedBy": "<test operator>",
+      "reviewedAt": "<UTC timestamp>",
+      "reviewedBy": "<independent test reviewer>",
+      "targetReference": "TN-BRANCH-TARGET-<YYYY>-<NNN>",
+      "restrictedArtifactId": "TN-BRANCH-RECEIPT-<YYYY>-<NNN>",
+      "artifactSha256": "<SHA-256 of denial receipt>",
+      "configurationArtifactSha256": "<exact evidence.artifactSha256>",
+      "rulesetReference": "TN-RULESET-<YYYY>-<NNN>",
+      "exercisedCheckIds": []
+    },
+    {
+      "id": "denied_direct_push",
+      "expectedResult": "denied",
+      "actualResult": "pending",
+      "executedAt": "<UTC timestamp>",
+      "executedBy": "<test operator>",
+      "reviewedAt": "<UTC timestamp>",
+      "reviewedBy": "<independent test reviewer>",
+      "targetReference": "TN-BRANCH-TARGET-<YYYY>-<NNN>",
+      "restrictedArtifactId": "TN-BRANCH-RECEIPT-<YYYY>-<NNN>",
+      "artifactSha256": "<SHA-256 of denial receipt>",
+      "configurationArtifactSha256": "<exact evidence.artifactSha256>",
+      "rulesetReference": "TN-RULESET-<YYYY>-<NNN>",
+      "exercisedCheckIds": []
+    },
+    {
+      "id": "denied_force_push",
+      "expectedResult": "denied",
+      "actualResult": "pending",
+      "executedAt": "<UTC timestamp>",
+      "executedBy": "<test operator>",
+      "reviewedAt": "<UTC timestamp>",
+      "reviewedBy": "<independent test reviewer>",
+      "targetReference": "TN-BRANCH-TARGET-<YYYY>-<NNN>",
+      "restrictedArtifactId": "TN-BRANCH-RECEIPT-<YYYY>-<NNN>",
+      "artifactSha256": "<SHA-256 of denial receipt>",
+      "configurationArtifactSha256": "<exact evidence.artifactSha256>",
+      "rulesetReference": "TN-RULESET-<YYYY>-<NNN>",
+      "exercisedCheckIds": []
+    },
+    {
+      "id": "allowed_fully_approved_merge",
+      "expectedResult": "allowed",
+      "actualResult": "pending",
+      "executedAt": "<UTC timestamp>",
+      "executedBy": "<test operator>",
+      "reviewedAt": "<UTC timestamp>",
+      "reviewedBy": "<independent test reviewer>",
+      "targetReference": "TN-BRANCH-TARGET-<YYYY>-<NNN>",
+      "restrictedArtifactId": "TN-BRANCH-RECEIPT-<YYYY>-<NNN>",
+      "artifactSha256": "<SHA-256 of allowed-merge receipt>",
+      "configurationArtifactSha256": "<exact evidence.artifactSha256>",
+      "rulesetReference": "TN-RULESET-<YYYY>-<NNN>",
+      "exercisedCheckIds": []
+    }
+  ],
+  "decision": "pending",
+  "gaps": ["<remove only after every rule and test passes>"],
+  "signoffs": [
+    { "role": "engineering_owner", "identity": "<approver>", "decision": "pending", "reviewedAt": "<UTC timestamp>", "evidenceReference": "<restricted approval reference>" },
+    { "role": "security_reviewer", "identity": "<approver>", "decision": "pending", "reviewedAt": "<UTC timestamp>", "evidenceReference": "<restricted approval reference>" }
+  ]
+}

@@ -69,4 +69,15 @@ describe("OpenAIEmbedder", () => {
     expect(calls).toHaveLength(2);
     expect(result).toEqual([[0], [1], [0]]);
   });
+
+  it("redacts sensitive text before the OpenAI embedding boundary", async () => {
+    const calls: CapturedCall[] = [];
+    const embedder = new OpenAIEmbedder({ client: capturingClient(calls) });
+
+    await embedder.embed(["Contact csr@example.com or 212-555-0198."]);
+
+    expect(calls[0]?.body.input[0]).toBe(
+      "Contact [REDACTED_PII_EMAIL] or [REDACTED_PII_PHONE]."
+    );
+  });
 });

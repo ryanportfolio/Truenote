@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getMinPasswordLength,
   resetMinPasswordLengthCacheForTests
@@ -13,6 +13,7 @@ afterEach(() => {
     process.env.MIN_PASSWORD_LENGTH = originalMinimum;
   }
   resetMinPasswordLengthCacheForTests();
+  vi.restoreAllMocks();
 });
 
 describe("getMinPasswordLength", () => {
@@ -35,5 +36,14 @@ describe("getMinPasswordLength", () => {
     resetMinPasswordLengthCacheForTests();
 
     expect(getMinPasswordLength()).toBe(20);
+  });
+
+  it("does not echo an invalid environment value into logs", () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    process.env.MIN_PASSWORD_LENGTH = "8-Bearer-sensitive-value";
+    resetMinPasswordLengthCacheForTests();
+
+    expect(getMinPasswordLength()).toBe(15);
+    expect(JSON.stringify(warning.mock.calls)).not.toContain("Bearer-sensitive-value");
   });
 });

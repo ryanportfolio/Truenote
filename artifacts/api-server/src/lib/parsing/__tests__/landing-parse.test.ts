@@ -77,6 +77,16 @@ Synthetic demonstration document.
     expect(normalizeLandingMarkdown(result.markdown)).toBe(result.markdown);
   });
 
+  it("escapes existing backslashes before escaping Markdown table pipes", () => {
+    const result = parseLandingResponse({
+      markdown:
+        "<table><tr><td>Path</td><td>Value</td></tr>" +
+        "<tr><td>Windows</td><td>C:\\temp|report</td></tr></table>"
+    });
+
+    expect(result.markdown).toContain("| Windows | C:\\\\temp\\|report |");
+  });
+
   it("throws when markdown is missing", () => {
     expect(() => parseLandingResponse({ metadata: {} })).toThrow(/markdown/);
   });

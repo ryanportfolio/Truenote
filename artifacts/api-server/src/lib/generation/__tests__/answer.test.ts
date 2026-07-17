@@ -21,6 +21,7 @@ const GRANITE_ROUTE = APPROVED_MODEL_ROUTES.find(
 
 interface CapturedRequest {
   model: string;
+  messages?: Array<{ role: string; content: string }>;
   provider?: unknown;
   reasoning_effort?: string;
   temperature?: number;
@@ -231,6 +232,28 @@ describe("generateAnswer ZDR route fallback", () => {
         provider: expect.objectContaining({ only: ["inception"], zdr: true })
       })
     );
+  });
+
+  it("redacts sensitive question and excerpt data before OpenRouter", async () => {
+    const requests: CapturedRequest[] = [];
+    const sensitiveChunks = [
+      { ...chunks[0]!, content: "Call 212-555-0198 or email csr@example.com." }
+    ];
+
+    await generateAnswer(
+      {
+        programName: "Test",
+        question: "What is linked to 192.0.2.10?",
+        chunks: sensitiveChunks
+      },
+      { client: stubClient(answer, requests), routeChain: [DEFAULT_MODEL_ROUTE] }
+    );
+
+    const userMessage = requests[0]?.messages?.find((message) => message.role === "user");
+    expect(userMessage?.content).toContain("[REDACTED_PII_EMAIL]");
+    expect(userMessage?.content).toContain("[REDACTED_PII_PHONE]");
+    expect(userMessage?.content).toContain("[REDACTED_PII_IP_ADDRESS]");
+    expect(userMessage?.content).not.toContain("csr@example.com");
   });
 
   it("routes Granite 4.1 8B only to its live WandB ZDR endpoint", async () => {

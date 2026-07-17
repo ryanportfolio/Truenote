@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "recordId": "TN-PCI-POLICY-<YYYY>-<NNN>",
+  "effectiveAt": "<UTC timestamp>",
+  "nextReviewDate": "<YYYY-MM-DD>",
+  "preparedByPrincipalId": "<stable corporate record-keeper principal ID>",
+  "roleAssignmentRecordId": "TN-PCI-ROLES-<YYYY>-<NNN>",
+  "roleAssignmentRecordSha256": "<SHA-256 of exact role-assignment JSON bytes>",
+  "policies": [
+    { "id": "secure_development_lifecycle", "repositoryPath": "docs/compliance/pci/secure-development-lifecycle.md", "repositorySha256": "<SHA-256 of exact approved document bytes>", "version": "pending", "decision": "pending", "approvalReference": "<controlled approval reference>", "exceptions": [] },
+    { "id": "vulnerability_management", "repositoryPath": "docs/compliance/pci/vulnerability-management.md", "repositorySha256": "<SHA-256 of exact approved document bytes>", "version": "pending", "decision": "pending", "approvalReference": "<controlled approval reference>", "exceptions": [] },
+    { "id": "change_control", "repositoryPath": "docs/compliance/pci/change-control.md", "repositorySha256": "<SHA-256 of exact approved document bytes>", "version": "pending", "decision": "pending", "approvalReference": "<controlled approval reference>", "exceptions": [] },
+    { "id": "scope_and_data_flow", "repositoryPath": "docs/compliance/pci/scope-and-data-flow.md", "repositorySha256": "<SHA-256 of exact approved document bytes>", "version": "pending", "decision": "pending", "approvalReference": "<controlled approval reference>", "exceptions": [] },
+    { "id": "roles_and_responsibilities", "repositoryPath": "docs/compliance/pci/roles-and-responsibilities.md", "repositorySha256": "<SHA-256 of exact approved document bytes>", "version": "pending", "decision": "pending", "approvalReference": "<controlled approval reference>", "exceptions": [] },
+    { "id": "third_party_responsibility_matrix", "repositoryPath": "docs/compliance/pci/third-party-responsibility-matrix.md", "repositorySha256": "<SHA-256 of exact approved document bytes>", "version": "pending", "decision": "pending", "approvalReference": "<controlled approval reference>", "exceptions": [] }
+  ],
+  "communicationReferences": ["<controlled policy-communication reference>"],
+  "trainingPlanReference": "<controlled training-plan reference>",
+  "unresolvedItems": ["<remove only after resolution>"],
+  "decision": "pending",
+  "signoffs": [
+    { "role": "engineering_owner", "principalId": "<linked assigned principal ID>", "decision": "pending", "decidedAt": "<UTC timestamp>", "evidenceReference": "<controlled approval reference>" },
+    { "role": "product_security", "principalId": "<linked assigned principal ID>", "decision": "pending", "decidedAt": "<UTC timestamp>", "evidenceReference": "<controlled approval reference>" },
+    { "role": "pci_scope_owner", "principalId": "<linked assigned principal ID>", "decision": "pending", "decidedAt": "<UTC timestamp>", "evidenceReference": "<controlled approval reference>" },
+    { "role": "qsa_or_compliance_accepting_entity", "principalId": "<linked assigned principal ID>", "decision": "pending", "decidedAt": "<UTC timestamp>", "evidenceReference": "<controlled approval reference>" }
+  ]
+}
+
