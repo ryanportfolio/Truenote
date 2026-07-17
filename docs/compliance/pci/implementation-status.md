@@ -259,6 +259,13 @@ operational evidence and do not establish PCI compliance.
 
 ## Remaining external or operational actions
 
+The complete repository package was committed as `b18f78e` on
+`codex/pci-security-readiness-2026-07-16` and pushed to the relocated
+`ryanportfolio/Truenote` GitHub repository. A draft pull request remains pending
+because GitHub currently reports only `@ryanportfolio` as a collaborator and the
+machine-checked change record requires a distinct real non-author reviewer. No
+reviewer identity was invented and no self-review was recorded.
+
 1. Assign named owners and obtain Security/QSA approval.
 2. Complete and authenticate a bounded provisional synthetic-test authorization;
    execute only its named flows with synthetic non-PAN data; reconcile the trace;

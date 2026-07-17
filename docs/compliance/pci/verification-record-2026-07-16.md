@@ -68,6 +68,7 @@ GitHub required-check, deployed-runtime, or production-control receipt.
 | Patch whitespace | `git diff --check` passed |
 | PCI/security Markdown links | All checked local targets resolved |
 | Security-readiness continuity ledger | HTML parsed successfully with 11 unique IDs; required feedback, continuity, verification, blocker, and workstream markers were present; all 91 links/anchors resolved: 11 internal, 79 local artifacts, and one official external source |
+| GitHub persistence | Primary package commit `b18f78e` contains 135 files and was pushed on `codex/pci-security-readiness-2026-07-16` to the repository now resolved as `ryanportfolio/Truenote`. Local `.pnpm-store/` is ignored. Repository inspection reported only the author account as a collaborator, so no draft PR reviewer or independent approval was fabricated |
 | Security workflow invariants | Pull-request trigger present; prior PR exclusions absent; hosted PCI and vulnerability-baseline verifier steps, opt-in manual strict-release and branch-evidence gates, CodeQL `security-events: write`, unconditional SARIF retention, and `upload: always` present |
 | Public security HTML | Python standard-library HTML parser completed without error; all 19 evidence grades use the approved vocabulary and include an adjacent evidence-scope label |
 
