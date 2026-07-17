@@ -246,8 +246,8 @@
     @media (max-width: 590px) {
       .shell { width: min(100% - 28px, 1180px); }
       .hero-inner { padding: 18px 0 38px; }
-      .site-nav { align-items: flex-start; margin-bottom: 36px; }
-      .site-links { gap: 12px; }
+      .site-nav { flex-direction: column; align-items: flex-start; margin-bottom: 36px; }
+      .site-links { flex-wrap: wrap; gap: 12px; }
       .hero-meta span { font-size: .7rem; }
       nav .shell { gap: 20px; }
       main { padding-top: 42px; }
@@ -283,6 +283,7 @@
           <span>Truenote</span>
         </a>
         <div class="site-links">
+          <a href="/security/pci/">PCI readiness</a>
           <a href="/security/report/">Report a concern</a>
           <a href="/about/">About</a>
           <a href="/">Sign in</a>
@@ -320,7 +321,7 @@
       <div class="intro">
         <div class="callout">
           <strong>Truenote has a layered security control foundation.</strong>
-          Program and classification boundaries are enforced before retrieval. Content passes source, file, scan, parsing, and role checks before activation. Answer and utility model calls use pinned provider routes with Zero Data Retention requested, data collection denied, and provider fallback disabled. Answers require valid citations or become refusals. Security events are hash-chained and support durable signed SIEM delivery. Repository tests exercise negative paths. Hosted execution and retained scanner results for the current package remain unverified.</div>
+          Program and classification boundaries are enforced before retrieval. Content passes source, file, scan, parsing, and role checks before activation. Answer and utility model calls use pinned provider routes with Zero Data Retention requested, data collection denied, and provider fallback disabled. Answers require valid citations or become refusals. Security events are hash-chained and support durable signed SIEM delivery. Repository tests exercise negative paths. Hosted execution and retained scanner results for the current package remain unverified. <a href="/security/pci/">Review the living PCI DSS readiness record</a> for completed Requirement 6 work, current verification, and open external-evidence gates.</div>
       </div>
     </section>
 

@@ -32,6 +32,17 @@ const securityOverview = readFileSync(
   new URL("../../docs/security/truenote-security-capabilities.html", import.meta.url),
   "utf8"
 );
+const pciReadiness = readFileSync(
+  new URL(
+    "../../docs/compliance/pci/security-readiness-session-report-2026-07-16.html",
+    import.meta.url
+  ),
+  "utf8"
+);
+const viteConfig = readFileSync(
+  new URL("../../artifacts/rag-app/vite.config.ts", import.meta.url),
+  "utf8"
+);
 const normalizedSecurityHtml = securityHtml.replace(/\s+/g, " ");
 
 describe("public security reporting surface", () => {
@@ -50,9 +61,19 @@ describe("public security reporting surface", () => {
     assert.ok(securityHtml.includes("No response-time or remediation-time SLA is represented here"));
     assert.equal(securityHtml.includes("mailto:"), false);
     assert.ok(loginSource.includes('href="/security/"'));
+    assert.ok(securityOverview.includes('href="/security/pci/"'));
     assert.ok(securityOverview.includes('href="/security/report/"'));
     assert.ok(sitemap.includes("<loc>https://truenote.org/security/</loc>"));
+    assert.ok(sitemap.includes("<loc>https://truenote.org/security/pci/</loc>"));
     assert.ok(sitemap.includes("<loc>https://truenote.org/security/report/</loc>"));
+    assert.ok(
+      pciReadiness.includes(
+        '<link rel="canonical" href="https://truenote.org/security/pci/">'
+      )
+    );
+    assert.ok(pciReadiness.includes("Not a PCI compliance claim"));
+    assert.ok(viteConfig.includes('fileName: "security/pci/index.html"'));
+    assert.ok(viteConfig.includes('fileName: "security/pci/styles.css"'));
   });
 
   it("keeps sensitive-data, safe-testing, and assurance boundaries on the public page", () => {
