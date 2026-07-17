@@ -46,6 +46,14 @@ describe("public security reporting surface", () => {
     assert.equal(securityPolicy.includes("mailto:"), false);
     assert.ok(loginSource.includes('href="/security/"'));
     assert.ok(securityOverview.includes('href="/security/pci/"'));
+    assert.ok(
+      securityOverview.includes(
+        "which safeguards are in place, how we tested them, and what still needs independent review"
+      )
+    );
+    assert.equal(securityOverview.includes("living PCI DSS readiness record"), false);
+    assert.equal(securityOverview.includes("completed Requirement 6 work"), false);
+    assert.equal(securityOverview.includes("external-evidence gates"), false);
     assert.equal(securityOverview.includes('href="/security/report/"'), false);
     assert.ok(sitemap.includes("<loc>https://truenote.org/security/</loc>"));
     assert.ok(sitemap.includes("<loc>https://truenote.org/security/pci/</loc>"));
@@ -58,7 +66,15 @@ describe("public security reporting surface", () => {
         '<link rel="canonical" href="https://truenote.org/security/pci/">'
       )
     );
-    assert.ok(pciReadiness.includes("Not a PCI compliance claim"));
+    assert.ok(
+      pciReadiness.includes("Not a compliance or certification claim")
+    );
+    assert.ok(pciReadiness.includes("<h1>Truenote PCI security readiness</h1>"));
+    assert.ok(
+      pciReadiness.includes(
+        "what still needs operational proof or independent review before a PCI assessment"
+      )
+    );
     assert.ok(viteConfig.includes('fileName: "security/pci/index.html"'));
     assert.ok(viteConfig.includes('fileName: "security-pci.html"'));
     assert.ok(viteConfig.includes('fileName: "security/pci/styles.css"'));
