@@ -240,12 +240,15 @@
   prompts, answers, canaries, and session tokens from reports. No live model was
   called. Deployed execution remains **Operational evidence required** and a true
   external AI red team remains **Third-party evidence required**.
-- Added a machine-checked pull-request change record with five passing tests and
+- Added a machine-checked pull-request change record with seven passing tests and
   explicit PCI DSS 6.5.1 through 6.5.6 fields. Hosted PR CI now checks change
   identity, CDE/significant-change decisions, security testing, environment/role
   separation, PAN/test-data handling, recovery, emergency authority, non-author
-  identity, and change-authority decision. Branch enforcement, field truth, and
-  operational receipts remain a **Gap**.
+  identity, and change-authority decision. Pull-request mode accepts an explicit
+  pending decision and a specifically explained unassigned reviewer so CI does
+  not fabricate organizational approval; strict invocation still requires an
+  approved decision and a real distinct reviewer. Branch enforcement, field
+  truth, and operational receipts remain a **Gap**.
 - Re-centered Requirement 6.5 on a tool-neutral operating process rather than
   GitHub enforcement. Added a complete manual production-change record and a
   population register for assessor sampling. Added an adoption record for the
@@ -261,7 +264,7 @@
   an applicable emergency sample or zero-event reconciliation plus an approved
   tabletop remain missing, so the grade stays **Gap**.
 - Retained a local verification record covering the initial historical runs and
-  the current frontend 62-test, API 258-test, and scripts 74-test results (394
+  the current frontend 62-test, API 258-test, and scripts 76-test results (396
   current tests total), plus current typechecks, the frontend production build,
   documentation checks, and the current-main overlap that must be reconciled
   before release.

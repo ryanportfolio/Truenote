@@ -62,7 +62,7 @@
 
 ## Approval and closure
 
-- Non-author reviewer: `@github-user`
+- Non-author reviewer: `@github-user` / `Unassigned: <specific reason while decision remains pending>`
 - Review evidence: `<pull-request review URL or immutable receipt ID>`
 - Specialist approval: `<Security/PCI/data/platform approval ID, or Not applicable: exact rationale>`
 - Release/change-authority decision: `approved` / `pending`

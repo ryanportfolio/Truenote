@@ -63,7 +63,7 @@ jobs:
       - run: pnpm run verify:pci-evidence
       - name: Change record
         if: github.event_name == 'pull_request'
-        run: corepack pnpm --filter @workspace/scripts run verify:change-record -- --event "$GITHUB_EVENT_PATH"
+        run: corepack pnpm --filter @workspace/scripts run verify:change-record -- --event "$GITHUB_EVENT_PATH" --allow-pending
       - run: corepack pnpm --filter @workspace/scripts run verify:vulnerabilities
       - name: Managed release
         if: github.event_name == 'workflow_dispatch' && inputs.managed_release_gate
@@ -101,7 +101,7 @@ jobs:
       # - run: pnpm run verify:pci-evidence
       - name: Change record
         if: github.event_name != 'pull_request'
-        run: corepack pnpm --filter @workspace/scripts run verify:change-record -- --event "$GITHUB_EVENT_PATH"
+        run: corepack pnpm --filter @workspace/scripts run verify:change-record -- --event "$GITHUB_EVENT_PATH" --allow-pending
   codeql:
     permissions:
       security-events: write

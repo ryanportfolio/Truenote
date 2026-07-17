@@ -100,6 +100,34 @@ describe("PCI change-record gate", () => {
     assert.ok(issues.includes("significant changes cannot mark 6.5.2 completion revalidation not applicable"));
   });
 
+  it("allows an honestly pending PR record without weakening strict approval", () => {
+    const pending = validRecord({
+      "Non-author reviewer": "Unassigned: repository has no second collaborator",
+      "Review evidence": "Pending: independent review has not occurred",
+      "Release/change-authority decision": "pending"
+    });
+    assert.deepEqual(verifyChangeRecord(pending, { allowPendingApproval: true }), {
+      changeId: "TN-CHG-2026-001",
+      issues: []
+    });
+    const strictIssues = verifyChangeRecord(pending).issues;
+    assert.ok(strictIssues.some((issue) => issue.startsWith(
+      "Release/change-authority decision must be exactly one of"
+    )));
+    assert.ok(strictIssues.includes(
+      "Non-author reviewer must be a GitHub username beginning with @"
+    ));
+  });
+
+  it("removes overlapping HTML comments without exposing hidden fields", () => {
+    const hiddenDuplicate = "<!<!-- -->--- Change ID: `TN-CHG-2026-999`-->";
+    const result = verifyChangeRecord(`${validRecord()}\n${hiddenDuplicate}`);
+    assert.deepEqual(result, {
+      changeId: "TN-CHG-2026-001",
+      issues: []
+    });
+  });
+
   it("requires emergency authority, incident identity, and retrospective date", () => {
     const issues = verifyChangeRecord(validRecord({
       "Change type": "emergency",

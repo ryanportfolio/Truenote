@@ -79,7 +79,7 @@ describe("error log preparation", () => {
   });
 
   it("removes complete private-key blocks from persistent and console text", () => {
-    const keyBody = "c2Vuc2l0aXZlLXByaXZhdGUta2V5LWJvZHk=";
+    const keyBody = "A".repeat(48);
     const error = new Error(
       `provider rejected\n-----BEGIN PRIVATE KEY-----\n${keyBody}\n` +
         "-----END PRIVATE KEY-----"

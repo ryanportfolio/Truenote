@@ -3,6 +3,10 @@ export interface ChangeRecordVerification {
   issues: string[];
 }
 
+export interface ChangeRecordVerificationOptions {
+  allowPendingApproval?: boolean;
+}
+
 export const CHANGE_RECORD_HEADINGS = [
   "## Change identity",
   "## Purpose and scope",
@@ -63,7 +67,13 @@ function escapeRegExp(value: string): string {
 }
 
 function stripComments(markdown: string): string {
-  return markdown.replace(/<!--[\s\S]*?-->/g, "");
+  let sanitized = markdown;
+  let previous: string;
+  do {
+    previous = sanitized;
+    sanitized = sanitized.replace(/<!--[\s\S]*?-->/g, "");
+  } while (sanitized !== previous);
+  return sanitized;
 }
 
 function cleanValue(value: string): string {
@@ -121,7 +131,10 @@ function requireChoice(
   return value;
 }
 
-export function verifyChangeRecord(markdown: string): ChangeRecordVerification {
+export function verifyChangeRecord(
+  markdown: string,
+  options: ChangeRecordVerificationOptions = {}
+): ChangeRecordVerification {
   const source = stripComments(markdown);
   const issues: string[] = [];
   for (const heading of CHANGE_RECORD_HEADINGS) {
@@ -167,7 +180,12 @@ export function verifyChangeRecord(markdown: string): ChangeRecordVerification {
     "completed",
     "not applicable"
   ]);
-  requireChoice(fields, issues, "Release/change-authority decision", ["approved"]);
+  const releaseDecision = requireChoice(
+    fields,
+    issues,
+    "Release/change-authority decision",
+    options.allowPendingApproval ? ["approved", "pending"] : ["approved"]
+  );
 
   if (significant === "yes" && revalidation === "not applicable") {
     issues.push("significant changes cannot mark 6.5.2 completion revalidation not applicable");
@@ -178,8 +196,12 @@ export function verifyChangeRecord(markdown: string): ChangeRecordVerification {
   if (!/^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(author)) {
     issues.push("Author must be a GitHub username beginning with @");
   }
-  if (!/^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(reviewer)) {
-    issues.push("Non-author reviewer must be a GitHub username beginning with @");
+  const reviewerAssigned = /^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(reviewer);
+  const reviewerExplicitlyUnassigned = /^unassigned:\s*.+/i.test(reviewer);
+  if (!reviewerAssigned) {
+    if (!(options.allowPendingApproval && releaseDecision === "pending" && reviewerExplicitlyUnassigned)) {
+      issues.push("Non-author reviewer must be a GitHub username beginning with @");
+    }
   } else if (author.toLowerCase() === reviewer.toLowerCase()) {
     issues.push("Non-author reviewer must differ from Author");
   }

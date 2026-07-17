@@ -66,3 +66,7 @@ Fix (Replit Agent, commit `cfc2ea8` on main), in `artifacts/rag-app/src/pages/Ad
 ### 2026-07-15: pnpm 10 dependency audit endpoint retired
 
 `pnpm audit` can fail with HTTP 410 even when dependency state is unchanged because pnpm 10 calls npm's retired legacy audit endpoint. Keep the project's install and test toolchain pinned, but run the CI audit with a pinned pnpm 11 binary and `--pm-on-fail=ignore` so the audit-only major can read the pnpm 10 project (`.github/workflows/security.yml:40`). A successful typecheck and test run does not make this failure safe to ignore; the replacement audit must pass before merge.
+
+### 2026-07-17: PR checks reflect only pushed commits, and CodeQL cannot see custom controls
+
+GitHub PR checks and review suggestions remain attached to the last pushed commit; a locally passing fix does not change the PR until the branch is pushed. CodeQL's Express queries do not recognize Truenote's custom Postgres-backed workload limiter or application-wide Origin/Fetch-Metadata CSRF middleware, so verify the exact middleware implementation, route order, and negative tests before recording a narrow false-positive disposition. The PR change-record gate permits an explicitly pending decision with a specifically explained unassigned reviewer, while the verifier's default strict mode still requires real approval and a distinct reviewer.

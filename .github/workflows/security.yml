@@ -46,7 +46,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Verify pull-request change record
         if: github.event_name == 'pull_request'
-        run: corepack pnpm --filter @workspace/scripts run verify:change-record -- --event "$GITHUB_EVENT_PATH"
+        run: corepack pnpm --filter @workspace/scripts run verify:change-record -- --event "$GITHUB_EVENT_PATH" --allow-pending
       - name: Verify PCI evidence integrity
         run: pnpm run verify:pci-evidence
       - name: Verify vulnerability baseline structure

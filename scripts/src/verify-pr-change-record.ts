@@ -22,7 +22,9 @@ function readBody(): string {
 }
 
 function main(): void {
-  const result = verifyChangeRecord(readBody());
+  const result = verifyChangeRecord(readBody(), {
+    allowPendingApproval: process.argv.includes("--allow-pending")
+  });
   if (result.issues.length > 0) {
     console.error("Pull-request change record failed:");
     for (const issue of result.issues) console.error(`- ${issue}`);
