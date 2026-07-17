@@ -1,7 +1,7 @@
 # PCI DSS Requirement 6 control matrix
 
 **Status:** Draft evidence map; not an assessor determination  
-**Assessment basis:** Repository inspection through 2026-07-16
+**Assessment basis:** Repository inspection through 2026-07-17
 
 The QSA/compliance-accepting entity determines applicability and sufficiency.
 Grades follow [`docs/security/README.md`](../../security/README.md).
@@ -13,7 +13,7 @@ Grades follow [`docs/security/README.md`](../../security/README.md).
 | 6.3 Vulnerability identification and management | Operational evidence required | Exact 11-category source register; machine-checked execution metadata and safe history index; Dependabot; locked dependencies; audit/SBOM; Gitleaks; CodeQL; repository policy plus a tested public `/security/` overview, dedicated `/security/report/` policy, and RFC 9116 private-reporting discovery record; technical triage; rate-limit remediation; repeatable safe SARIF intake; a 51-finding versioned baseline; structural CI gate; strict managed-release gate; and a read-only production verifier | Strict gate reports six blocker groups: 51 missing finding owners, 51 missing dates, 51 pending dispositions, 11 missing source owners, nine missing source evidence sets, and 11 non-operating sources; public deployment, private-report enablement/monitoring, synthetic intake closure, approved SLA/cadences, authentic hosted receipts, exceptions, closure/retest, production query output, capacity/edge evidence, and production/external scanning are incomplete | Every applicable source runs at its approved cadence with externally authenticated evidence whose declared metadata passes validation, a restricted artifact/manifest resolved by hash, non-operator review, and independently checked finding reconciliation; the public reporting paths resolve and a harmless synthetic private report is acknowledged/closed; a hosted rescan preserves managed findings and fails on unreviewed new/removed items; structural checks pass; and the strict gate passes only after every source and active finding has required management evidence |
 | 6.4.2 Public-facing web application protection | Gap | CSP, Origin/Fetch Metadata checks, browser negative tests, and a machine-checked two-stage applicability format that separates bounded synthetic-test authorization from final scope acceptance and requires accountable-party plus typed/hash-bound admin/network/data-store/backup inventory receipt metadata with contradiction checks | Accountable provisional authorization, authenticated assessed-entity/operator/CDE-owner records, complete externally resolved infrastructure inventories, trace-backed final scope/applicability record, and, if applicable, an automated technical solution to detect and prevent web attacks plus deployed configuration/effectiveness evidence; 6.4.2 is the effective v4.x control after 31 March 2025 | Authorized synthetic block evidence is reconciled; every accountable-party and infrastructure reference/hash resolves to reviewed restricted bytes; QSA/compliance-accepting entity approves a final validated scope record; applicable automated protection has retained configuration and effectiveness evidence |
 | 6.4.3 Payment-page scripts | Operational evidence required | Scope/data-flow record and machine-checked two-stage applicability format identify the decision point and prohibit PAN during the bounded synthetic exercise | Accountable provisional authorization and trace-backed signed final applicability decision; if applicable, script authorization, integrity assurance, inventory, and business/technical justification | Authorized trace is reconciled; QSA/compliance-accepting entity approves the final validated scope record; every applicable script is authorized, integrity-protected, inventoried, justified, and reviewed |
-| 6.5 Secure change control | Gap | Machine-checked PR record and hosted step cover change identity, CDE/significant-change decision, 6.5.1-6.5.6 evidence, security tests, separation/PAN/test-data handling, emergency fields, recovery, reviewer identity, and authority decision; populated pre-release record exists; a separate machine-checked branch-evidence format/manual gate covers fresh official API capture metadata, exact check contexts/integration, CODEOWNERS, bypasses, protections, gaps, and signoffs | No CODEOWNERS or accepted current branch record; latest authenticated state remains the historical 2026-07-16 absence and a later re-check failed authentication; restricted API bodies/signoffs, effective overlapping/organization rulesets, actual required non-author approval/checks, named change authority, field truth, negative merge/push tests, completed release decision, production verification, and deployment/post-verification receipts are missing | A sampled normal and emergency production change passes the structural gate and contains truthful approval, 6.5.1-6.5.6 evidence, tests, secure recovery, deployment approval, and successful post-verification; a fresh branch record validates against an all-path CODEOWNERS file; reviewers reconcile complete API bodies; controlled tests deny unapproved/missing-check/stale-review merges and direct/force pushes; one fully approved merge succeeds |
+| 6.5 Secure change control | Gap | Tool-neutral procedure, complete manual change-record template, assessor sampling register, and populated pre-release engineering record cover reason/description, security and CDE impact, significance, authorized approval, 6.2.4 and negative testing, 6.5.1-6.5.6 decisions, role accountability, PAN/test-data handling, deployment, secure recovery, post-change verification, emergency handling, reconciliation, and closure. PR and branch artifacts remain optional supporting evidence | Procedure is unapproved; change authority, approved system of record, retention period, and reconciliation owner are unassigned; no complete authenticated normal production sample, register reconciliation, field-truth review, release approval, recovery result, significant-change revalidation, or post-deployment receipt has been reviewed. Emergency evidence is also missing: an applicable sample, or reconciled zero-event evidence plus an approved tabletop | Approved owner and system of record exist; the register reconciles to the production-change population; one sampled normal change traces through authentic approval, exact change identity, 6.5.1-6.5.6 evidence, security tests, secure recovery, deployment, production verification, findings, and closure. If an emergency occurred in the period, sample it; otherwise retain reconciled zero-event evidence plus an approved tabletop. Acceptance does not rely on GitHub or verbal explanation |
 | 11.4 penetration/segmentation testing dependency | Operational evidence required | Internal negative tests and evals only; external firm is the company assurance target | Defined methodology, scope, qualified internal or external tester with organizational independence, app/network/segmentation results, remediation and retest | Qualified independent results cover applicable CDE/app/segmentation scope; findings are remediated and retested |
 
 ## Immediate blockers
@@ -22,20 +22,22 @@ Grades follow [`docs/security/README.md`](../../security/README.md).
    now removes the authorization/trace circular dependency, but its template
    intentionally fails. No provisional synthetic-test authorization, trace, or
    final scope acceptance is claimed.
-2. The retained 2026-07-16 API check found no `main` enforcement. A later live
-   check could not authenticate, so current state is unverified; no CODEOWNERS,
-   accepted branch record, or negative enforcement receipts exist.
-3. Independent reviewer/CODEOWNER identities are unassigned.
-4. Production database functions/constraints, SIEM delivery, provider settings,
+2. The change-control procedure is not adopted; no change authority, approved
+   system of record, reconciled register, or complete normal production sample
+   has been reviewed. Emergency evidence also requires a sample if an emergency
+   occurred, or reconciled zero-event evidence plus an approved tabletop if none
+   occurred. GitHub branch hardening is owner-deferred and is not the current
+   Requirement 6.5 acceptance path.
+3. Production database functions/constraints, SIEM delivery, provider settings,
    IdP/MFA, backup/restore, and incident evidence are not retained in this pack.
-5. No independent penetration or AI red-team report exists in reviewed evidence.
-6. The latest retained CodeQL artifact contains 50 high-scored results; individual
+4. No independent penetration or AI red-team report exists in reviewed evidence.
+5. The latest retained CodeQL artifact contains 50 high-scored results; individual
    triage, approved disposition, remediation, and retest are incomplete. The
    safe baseline accounts for every result, but its strict managed-release gate
    currently reports 51 missing owners, 51 missing dates, and 51 pending
    dispositions. The broader source gate also reports 11 missing source owners,
    nine missing source evidence sets, and 11 non-operating sources.
-7. The engineering threat model has no named Product Security/PCI/QSA approval,
+6. The engineering threat model has no named Product Security/PCI/QSA approval,
    and its Critical/High residual treatments lack assigned people and due dates.
 
 ## Claim limits

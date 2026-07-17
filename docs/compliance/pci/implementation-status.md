@@ -1,6 +1,7 @@
 # PCI readiness implementation status
 
 **Recorded:** 2026-07-16  
+**Last updated:** 2026-07-17
 **Scope:** Repository foundation only
 
 ## Completed in this tranche
@@ -245,6 +246,16 @@
   separation, PAN/test-data handling, recovery, emergency authority, non-author
   identity, and change-authority decision. Branch enforcement, field truth, and
   operational receipts remain a **Gap**.
+- Re-centered Requirement 6.5 on a tool-neutral operating process rather than
+  GitHub enforcement. Added a complete manual production-change record and a
+  population register for assessor sampling. The procedure now covers the full
+  reason/impact/approval/test/recovery/deployment/verification/closure lifecycle,
+  significant-change triggers, 6.5.1 through 6.5.6, emergency changes, an
+  organization-approved reconciliation cadence, and authentic evidence
+  references. GitHub PR/branch artifacts are optional supporting evidence.
+  Adoption, authority, a system of record, a completed normal sample, and either
+  an applicable emergency sample or zero-event reconciliation plus an approved
+  tabletop remain missing, so the grade stays **Gap**.
 - Retained a local verification record covering the initial historical runs and
   the current frontend 62-test, API 258-test, and scripts 74-test results (394
   current tests total), plus current typechecks, the frontend production build,
@@ -259,12 +270,12 @@ operational evidence and do not establish PCI compliance.
 
 ## Remaining external or operational actions
 
-The complete repository package was committed as `b18f78e` on
+The complete initial repository package was committed as `b18f78e` on
 `codex/pci-security-readiness-2026-07-16` and pushed to the relocated
-`ryanportfolio/Truenote` GitHub repository. A draft pull request remains pending
-because GitHub currently reports only `@ryanportfolio` as a collaborator and the
-machine-checked change record requires a distinct real non-author reviewer. No
-reviewer identity was invented and no self-review was recorded.
+`ryanportfolio/Truenote` GitHub repository. Draft PR #136 exists as repository
+persistence, but its reviewer/approval fields remain honestly unassigned. Owner
+direction on 2026-07-17 removes additional GitHub hardening from the active PCI
+workstream; the PR is not treated as the Requirement 6.5 operating record.
 
 1. Assign named owners and obtain Security/QSA approval.
 2. Complete and authenticate a bounded provisional synthetic-test authorization;
@@ -288,9 +299,12 @@ reviewer identity was invented and no self-review was recorded.
    policy, verify both routes plus the RFC 9116 record and content types from the
    public origin, enable/monitor GitHub private reporting, run a harmless
    synthetic intake through closure, and assign annual expiry review.
-9. Use the new PR change record for one real reviewed release and retain its
-   hosted workflow, approval, deployment, rollback-readiness, and production
-   verification receipts.
+9. Approve the tool-neutral change procedure, name its authority/system of record,
+   reconcile the production-change register, and complete one normal sample
+   through approval, deployment, secure recovery readiness, production
+   verification, and closure. If an emergency occurred in the review period,
+   sample it; if none occurred, retain reconciled zero-event evidence and run an
+   approved tabletop of the emergency process.
 10. **Deferred by owner:** do not spend more local effort on advanced GitHub
     branch-proof hardening now. Requirement 6.5 remains a documented Gap. Resume
     CODEOWNERS, ruleset, authenticated API, and behavioral push/merge receipts

@@ -132,8 +132,9 @@ The dated result is retained in
 | Internal source-receipt review | No P1; the earlier rejected-receipt CLI issue was confirmed fixed, and five remaining P2 binding/history/claim issues were reviewed in independent context. Future/placeholders, canonical register/owner binding, reconciliation manifests/counts, append-only uniqueness/overlap, and claim limits were added. Internal review only, not third-party assurance |
 | Managed-release vulnerability gate | Expected blockers: 51 missing finding owners, 51 missing due dates, 51 pending dispositions, 11 missing source owners, nine missing source evidence sets, and 11 non-operating sources; no finding or source was fictionalized, waived, or closed |
 | Vulnerability triage workshop | Added an execution-ready Product Security procedure that uses the current baseline as the sole management source, preserves scanner identity, defines exact active decisions and evidence, prevents bulk/group-only closure, and distinguishes finding completion from source-operation blockers; no owner/date/disposition was invented |
-| PCI evidence integrity gate | Passed across 36 PCI Markdown files, 19 public evidence grades, one read-only SQL artifact, two hash-bound OpenRouter screenshots, 26 threat rows, 51 vulnerability fingerprints, and 11 required vulnerability-source categories |
-| Security-readiness continuity ledger | Passed: HTML parser, 11 unique IDs, required continuity markers, and all 91 links/anchors: 11 internal, 79 local artifacts, and one official external source |
+| PCI evidence integrity gate | Passed across 38 PCI Markdown files, 19 public evidence grades, one read-only SQL artifact, two hash-bound OpenRouter screenshots, 26 threat rows, 51 vulnerability fingerprints, and 11 required vulnerability-source categories |
+| Tool-neutral Requirement 6.5 package | Added a practical manual production-change record and change-population register; rewrote the operating procedure so GitHub is optional supporting evidence. Templates are unapproved and unfilled; no operating evidence is claimed |
+| Security-readiness continuity ledger | Passed: HTML parser, 11 unique IDs, required continuity markers, and all 93 links/anchors: 11 internal, 81 local artifacts, and one official external source |
 | Security workflow invariant check | PR trigger, hosted PCI and vulnerability-baseline verifiers, CodeQL permission/upload, and unconditional SARIF retention present |
 | Public security brief checks | HTML parser passed; exact grade vocabulary, explicit scopes, and public evidence paths passed |
 | Patch whitespace | `git diff --check` passed; line-ending conversion warnings only |
@@ -182,11 +183,12 @@ Release remains blocked until every applicable step has a named executor and
 retained result:
 
 1. reconcile this worktree with current `main` and rerun all repository checks;
-2. open a pull request using the required template and link this record;
+2. open or update the approved change-management record and link this engineering
+   record;
 3. obtain non-author security-sensitive code review plus required Security/PCI,
    platform, data-owner, and change-authority approvals;
-4. obtain passing required GitHub checks, CodeQL upload, secret scan, dependency
-   audit, and SBOM artifacts tied to the approved commit;
+4. retain applicable tests, CodeQL/scanner results, secret scan, dependency audit,
+   and SBOM artifacts tied to the approved release identity;
 5. confirm production `security_rate_limits`, security audit/outbox, and related
    P0/P1 database definitions using the reviewed read-only
    `docs/compliance/pci/production-control-verification.sql` and retain its hashed

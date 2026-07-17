@@ -1,10 +1,10 @@
 # Truenote PCI DSS readiness evidence
 
 **Status:** Draft control package for Security/QSA review  
-**Current as of:** 2026-07-16  
+**Current as of:** 2026-07-17
 **Scope:** Repository and known provider/data paths; deployed CDE scope is not yet determined
 
-**Normative engineering basis:** [PCI DSS v4.0.1, published June 2024](https://www.pcisecuritystandards.org/document_library/?class=pcidss&doc=pci_dss), accessed 2026-07-16. This repository mapping is non-authoritative; the compliance-accepting entity and QSA determine applicability and evidence sufficiency.
+**Normative engineering basis:** [PCI DSS v4.0.1, published June 2024](https://www.pcisecuritystandards.org/document_library/?class=pcidss&doc=pci_dss), accessed 2026-07-17. This repository mapping is non-authoritative; the compliance-accepting entity and QSA determine applicability and evidence sufficiency.
 
 This directory organizes evidence for incorporating Truenote into an existing
 PCI DSS assessment. It is not a Report on Compliance, Attestation of Compliance,
@@ -41,14 +41,16 @@ and evidence sufficiency.
    current evidence and gaps to PCI DSS Requirements 6.1 through 6.5 and the
    related penetration-testing dependency in 11.4.
 5. [`secure-development-lifecycle.md`](./secure-development-lifecycle.md),
-   [`vulnerability-management.md`](./vulnerability-management.md), and
-   [`change-control.md`](./change-control.md) define the proposed operating
-   procedures. The
-   [`secure-development review record`](./secure-development-review-record-template.md)
-   [`Truenote secure-development curriculum`](./secure-development-training-curriculum.md),
-   and [`annual training record`](./secure-development-training-record-template.md)
-   give staff practical Requirement 6.2 content and evidence forms. They become
-   operational evidence only after approval, authentic completion, and use.
+    [`vulnerability-management.md`](./vulnerability-management.md), and
+    [`change-control.md`](./change-control.md) define the proposed operating
+    procedures. The
+    [`secure-development review record`](./secure-development-review-record-template.md),
+    [`Truenote secure-development curriculum`](./secure-development-training-curriculum.md),
+    [`annual training record`](./secure-development-training-record-template.md),
+    [`tool-neutral change record`](./manual-change-record-template.md), and
+    [`change register`](./change-register-template.md) give staff practical
+    Requirement 6.2 and 6.5 content and evidence forms. They become operational
+    evidence only after approval, authentic completion, and use.
 6. [`roles-and-responsibilities.md`](./roles-and-responsibilities.md) and
    [`third-party-responsibility-matrix.md`](./third-party-responsibility-matrix.md)
    identify owners and external dependencies still requiring assignment or proof.
@@ -108,10 +110,12 @@ and evidence sufficiency.
    defines the named review, disposition, ownership, due-date, and sign-off record
    required before the engineering model becomes operational evidence.
 20. [`branch-enforcement-evidence.md`](./branch-enforcement-evidence.md) and its
-   [`intentionally failing JSON template`](./branch-enforcement-evidence-template.json)
-   define current GitHub API capture, exact check/integration binding, CODEOWNERS
-   coverage, distinct review, and negative enforcement tests required to close
-   the Requirement 6.5 branch-control gap.
+    [`intentionally failing JSON template`](./branch-enforcement-evidence-template.json)
+    define optional supplemental GitHub API capture, exact check/integration
+    binding, CODEOWNERS coverage, distinct review, and negative enforcement tests.
+    Owner direction defers this advanced platform evidence unless Security/PCI
+    requests it or relevant CDE integration approaches; the tool-neutral change
+    process is the current Requirement 6.5 path.
 21. [`public-security-reporting.md`](./public-security-reporting.md) records the
    public `/security/` overview and `/security/report/` policy, RFC 9116
    discovery record, portable tests, production-build output, claim boundaries,
@@ -131,5 +135,9 @@ P0 remains incomplete until accountable parties issue a bounded provisional
 synthetic-test authorization with resolved assessed-entity, application-operator,
 customer-CDE-owner, administrative/support-path, network/management-path, and
 data-store evidence; reconcile the resulting trace; approve the final CDE
-boundary and PAN policy; verify production database/security integrations; and
-enforce required GitHub branch controls.
+boundary and PAN policy; and verify production database/security integrations.
+Requirement 6.5 separately needs an approved tool-neutral procedure, named
+authority and system of record, a reconciled change register, and authentic
+normal samples. Emergency handling needs a sampled emergency record if an
+emergency occurred in the review period; otherwise retain reconciled zero-event
+evidence plus an approved tabletop. Additional GitHub controls are owner-deferred.

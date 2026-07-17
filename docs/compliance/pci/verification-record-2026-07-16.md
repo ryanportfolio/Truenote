@@ -1,6 +1,7 @@
 # Repository verification record — 2026-07-16
 
 **Evidence grade:** Local repository verification only  
+**Record coverage:** Initial verification on 2026-07-16 with documentation addendum through 2026-07-17
 **Worktree base:** `a1def35de039c2065d1148371b3490fac81e5ebf`  
 **Current remote `main` observed during verification:**
 `32d0b1b754753b3d7fe1cc057c3394105fe44eac`
@@ -22,7 +23,7 @@ GitHub required-check, deployed-runtime, or production-control receipt.
 | Post-triage frontend regression | Complete frontend suite: 14 files/62 tests passed after removing the test-only tag-stripping regex |
 | Post-triage API regression/build | Complete API suite: 41 files/239 tests passed; API TypeScript check and production build passed after single-line development email logging and compressed-asset path hardening |
 | Workload-throttle regression/build | Complete API suite: 44 files/249 tests passed; complete frontend suite: 14 files/62 tests passed; all four workspace checks and both production builds passed after adding the distributed workload controls |
-| PCI evidence integrity gate | 36 PCI Markdown files, 19 public evidence grades, one read-only SQL artifact, two hash-bound OpenRouter screenshots, 26 threat rows, 51 vulnerability fingerprints, and 11 required vulnerability-source categories checked; all local links, public evidence paths/scopes, required workflow/package settings, SQL safety invariants, stable threat IDs, exact grades, trust boundaries, evidence paths, release blockers, safe CodeQL grouping, and exact source coverage passed |
+| PCI evidence integrity gate | 38 PCI Markdown files, 19 public evidence grades, one read-only SQL artifact, two hash-bound OpenRouter screenshots, 26 threat rows, 51 vulnerability fingerprints, and 11 required vulnerability-source categories checked; all local links, public evidence paths/scopes, required workflow/package settings, SQL safety invariants, stable threat IDs, exact grades, trust boundaries, evidence paths, release blockers, safe CodeQL grouping, and exact source coverage passed |
 | Package-manager security settings | Pinned pnpm 10.26.1 frozen offline install passed; pnpm 10.26.1 and local pnpm 11.9.0 both resolved the two `form-data` security overrides and the single-package `esbuild` build allowlist from `pnpm-workspace.yaml` |
 | Evidence-gate hardening retest | 4 scripts tests passed after requiring overrides to remain inside the root `overrides` section and rejecting any additional allowed dependency installer |
 | Production verifier focused test | 5 scripts tests passed after requiring a bounded read-only transaction, rejecting mutation/direct application-table reads, and requiring binary results plus definition hashes |
@@ -32,6 +33,7 @@ GitHub required-check, deployed-runtime, or production-control receipt.
 | Model-output sensitive-data handling | Portable provider-boundary suite passed 7/7, including one output case that supplies credential/API-key, complete private-key, SSN, and valid payment-card candidates with valid citations and verifies no accepted payload or raw diagnostic survives. Focused API generation suite passed 26/26; API and scripts TypeScript passed. Deployed operation and contextual output policy remain unverified |
 | Requirement 6.2 operating forms | Added an intentionally unfilled annual secure-development training record and a representative released-change review record. Both are linked from the SDLC, PCI index, evidence index, control matrix, implementation status, and durable HTML ledger. They establish a practical collection format only; no training, approval, release, or production operation is claimed |
 | Requirement 6.2.2 curriculum | Added `TN-SDLC-CURRICULUM-001` v1.0 draft with role/language/framework-specific secure design and coding content, required vulnerability-tool demonstrations, twelve knowledge questions with four critical items, a practical assessment, automatic safety failures, scoring, remediation, and evidence requirements. It is linked to the annual record but remains unapproved, undelivered, and not participant evidence |
+| Tool-neutral Requirement 6.5 package | Rewrote the operating procedure so the approved system of record can be the organization's existing change-management platform or controlled repository. Added a complete manual normal/emergency change record and a production-change population register. The process covers reason/description, security and CDE impact, significance, approval, 6.2.4 tests, 6.5.1-6.5.6 decisions, role accountability, PAN/test-data handling, secure recovery, deployment, post-change verification, emergency review, reconciliation, and closure. These are unapproved templates, not operating evidence |
 | Pull-request change-record gate | Five tests passed for a complete normal record, placeholder/CDE/section rejection, author self-review and significant-change rejection, emergency authority/deadline enforcement, and repository-template field/section coverage; hosted workflow step present for pull-request events |
 | PCI scope decision record | Eleven tests passed: final acceptance bound to exact provisional and safe trace-receipt bytes with verifier-computed hashes; receipt-to-provisional hash/ID binding, stable receipt ID/year, and receipt-review-before-final chronology; duplicate-key rejection for final/prior/receipt JSON; bounded provisional authorization with `structurallyFinalAccepted=false`; mandatory controlled assessed-entity/application-operator/customer-CDE-owner references; canonical component/connected-system IDs; typed/hash-bound reviewer/timestamp metadata for `present` or `none_verified` admin/support-path, network/management-path, data-store, and backup/recovery inventories; contradictory absence, malformed receipt, and common raw topology/contact/account/credential rejection; future/backdated/placeholder/unresolved/self/principal/artifact-reuse rejection; unsafe/expired/overlong authorization; trace timing/receipt/flow completeness; preservation against final-record mutation; compatible CDE-path/no-impact/PAN/segmentation/11.4 decisions; exact provider/requirement/flow coverage; and end-to-end CLI success/failure for mandatory stage and final inputs. Restricted inventory bytes remain externally resolved evidence. Repository templates are intentionally invalid; no real authorization or approval is claimed |
 | PCI governance adoption records | Six tests passed: complete linked role/policy acceptance; missing/duplicate role, delegate, critical-separation, unresolved, overdue-review, and self-approval rejection; exact role/policy byte hashes; exact single approved/adoption headers; linked role signers and chronology; communication/training; policy coverage; safe current exceptions; repository-safe principal/reference/free-text rejection; and end-to-end combined CLI/duplicate-key handling. Both templates intentionally fail; external identities, references, acknowledgements, communication, training, procedure use, and assessor acceptance remain unverified |
@@ -67,8 +69,8 @@ GitHub required-check, deployed-runtime, or production-control receipt.
 | Threat-model source identity | `threat-model.md` SHA-256 `34B5E35CA10D454FE5858BFDBA78A47743EAE4ACCF20549FF5E0AAE4211ACF8D`; engineering source only, not a signed review or risk acceptance |
 | Patch whitespace | `git diff --check` passed |
 | PCI/security Markdown links | All checked local targets resolved |
-| Security-readiness continuity ledger | HTML parsed successfully with 11 unique IDs; required feedback, continuity, verification, blocker, and workstream markers were present; all 91 links/anchors resolved: 11 internal, 79 local artifacts, and one official external source |
-| GitHub persistence | Primary package commit `b18f78e` contains 135 files and was pushed on `codex/pci-security-readiness-2026-07-16` to the repository now resolved as `ryanportfolio/Truenote`. Local `.pnpm-store/` is ignored. Repository inspection reported only the author account as a collaborator, so no draft PR reviewer or independent approval was fabricated |
+| Security-readiness continuity ledger | HTML parsed successfully with 11 unique IDs; required feedback, continuity, verification, blocker, and workstream markers were present; all 93 links/anchors resolved: 11 internal, 81 local artifacts, and one official external source |
+| GitHub persistence | Primary package commit `b18f78e` contains 135 files and was pushed on `codex/pci-security-readiness-2026-07-16` to the repository now resolved as `ryanportfolio/Truenote`; follow-up continuity commit `49a8053` and draft PR #136 exist. Reviewer and authority remain unassigned; the PR is persistence only and is not treated as the Requirement 6.5 operating record |
 | Security workflow invariants | Pull-request trigger present; prior PR exclusions absent; hosted PCI and vulnerability-baseline verifier steps, opt-in manual strict-release and branch-evidence gates, CodeQL `security-events: write`, unconditional SARIF retention, and `upload: always` present |
 | Public security HTML | Python standard-library HTML parser completed without error; all 19 evidence grades use the approved vocabulary and include an adjacent evidence-scope label |
 
@@ -91,14 +93,18 @@ against the combined current-main result before release.
 
 ## Verification still required
 
-- GitHub must parse the updated workflow and complete all pull-request jobs.
-- The CodeQL job must upload results into code scanning and retain SARIF.
+- Authorized leaders must approve the tool-neutral change procedure, name its
+  authority/system of record/retention period, reconcile the production-change
+  register, and complete one authentic normal sample. Emergency evidence requires
+  a sample if an emergency occurred in the review period, or reconciled zero-event
+  evidence plus an approved tabletop if none occurred.
 - Every changed or remaining CodeQL alert must be reconciled to the vulnerability
   register; the safe baseline accounts for all 51 but the strict release gate
   remains blocked until owners, dates, dispositions, approvals, and retests are
   recorded as applicable. Local tests do not close SARIF findings.
-- Required branch/ruleset checks and independent review must be enabled and
-  captured.
+- Advanced GitHub branch/ruleset evidence is owner-deferred and is not the current
+  Requirement 6.5 acceptance path. Resume only if Security/PCI requests it or
+  relevant CDE integration requires it.
 - Replit deployment, production database definitions, provider settings,
   OpenRouter guardrail assignment/runtime redaction, IdP/MFA, SIEM delivery,
   backup/restore, and incident controls remain unverified.
