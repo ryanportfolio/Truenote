@@ -34,15 +34,62 @@
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "WebSite",
-        "name": "Truenote",
-        "url": "https://truenote.org/",
-        "description": "Cited knowledge answers for customer service teams."
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://truenote.org/#organization",
+            "name": "Truenote",
+            "url": "https://truenote.org/",
+            "logo": "https://truenote.org/logo.svg",
+            "description": "Truenote is a retrieval-augmented knowledge assistant that gives customer service teams cited, verifiable answers from approved policies and procedures."
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://truenote.org/#website",
+            "name": "Truenote",
+            "url": "https://truenote.org/",
+            "publisher": { "@id": "https://truenote.org/#organization" },
+            "description": "Cited knowledge answers for customer service teams."
+          },
+          {
+            "@type": "WebPage",
+            "@id": "https://truenote.org/",
+            "url": "https://truenote.org/",
+            "name": "Truenote | Cited Knowledge Answers for Customer Service Teams",
+            "isPartOf": { "@id": "https://truenote.org/#website" },
+            "about": { "@id": "https://truenote.org/#organization" },
+            "dateModified": "2026-07-16"
+          }
+        ]
       }
     </script>
   </head>
   <body class="min-h-screen bg-background text-foreground antialiased">
-    <div id="root"></div>
+    <!-- Static pre-hydration content: mirrors the AppBoot wordmark so the
+         handoff to React is calm, and gives non-JS crawlers (GPTBot,
+         ClaudeBot, PerplexityBot) real text + an H1 to index. React's
+         createRoot().render() replaces it on mount. -->
+    <div id="root">
+      <div class="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
+        <div class="flex items-center gap-3">
+          <svg viewBox="0 0 32 32" class="h-8 w-8 shrink-0" aria-hidden="true">
+            <path d="M16 2c10 0 14 4 14 14s-4 14-14 14S2 26 2 16 6 2 16 2z" class="fill-foreground" />
+            <text x="16" y="22" text-anchor="middle" font-family="Georgia, serif" font-size="18" font-weight="600" class="fill-background">T</text>
+          </svg>
+          <h1 class="font-display text-2xl font-semibold tracking-tight">Truenote</h1>
+        </div>
+        <p class="max-w-md text-sm leading-relaxed text-muted-foreground">
+          Truenote is a retrieval-augmented knowledge assistant for customer
+          service teams: managers upload approved policies and procedures, and
+          representatives get fast answers that carry a citation they can
+          verify — or an explicit refusal when the documents do not answer.
+        </p>
+        <nav class="flex gap-4 text-sm" aria-label="Truenote pages">
+          <a class="text-primary underline underline-offset-2" href="/about/">About Truenote</a>
+          <a class="text-primary underline underline-offset-2" href="/security/">Security</a>
+        </nav>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

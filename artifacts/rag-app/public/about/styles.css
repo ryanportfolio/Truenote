@@ -47,6 +47,36 @@ button { color: inherit; }
 .about-home:hover { background: rgba(0, 64, 171, .92); }
 .about-home:focus-visible { outline: 2px solid #7db0ff; outline-offset: 3px; }
 
+/* Freshness stamp: same quiet pill language as .about-home so it reads on
+   every slide theme, but smaller and non-interactive. */
+.page-updated {
+  position: fixed;
+  bottom: 1rem;
+  left: 1rem;
+  z-index: 20;
+  border: 1px solid rgba(255, 253, 248, .28);
+  border-radius: 999px;
+  background: rgba(2, 13, 34, .78);
+  padding: .4rem .8rem;
+  color: rgba(255, 253, 248, .85);
+  font-size: .68rem;
+  backdrop-filter: blur(12px);
+}
+
+/* Screen-reader / crawler-visible page title; the deck slides carry the
+   visual headings. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 #atmosphere {
   position: fixed;
   inset: 0;
@@ -1170,7 +1200,7 @@ body:hover .key-hint { opacity: 1; }
 @media print {
   @page { size: 16in 9in; margin: 0; }
   html, body { overflow: visible; width: auto; height: auto; background: white; }
-  #atmosphere, .deck-nav, .key-hint, .speaker-note { display: none !important; }
+  #atmosphere, .deck-nav, .key-hint, .speaker-note, .page-updated { display: none !important; }
   .deck { width: auto; height: auto; perspective: none; }
   .slide { position: relative; inset: auto; visibility: visible; width: 16in; height: 9in; break-after: page; opacity: 1; transform: none; transition: none; }
   .fragment { opacity: 1; transform: none; }
