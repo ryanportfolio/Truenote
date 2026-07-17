@@ -18,8 +18,10 @@ requests are constructed:
 
 - OpenAI embedding batches;
 - Cohere rerank queries and candidate documents;
-- OpenRouter answer-generation system/user messages; and
-- OpenRouter follow-up rewrite and session-naming system/user messages.
+- OpenRouter answer-generation system/user messages;
+- OpenRouter follow-up rewrite and session-naming system/user messages; and
+- direct-OpenAI evaluation faithfulness-judge excerpt/answer prompts
+  (added 2026-07-17 after an audit found this path previously unprotected).
 
 It redacts these deterministic classes:
 
@@ -58,6 +60,7 @@ remain separate evidence.
 - `artifacts/api-server/src/lib/retrieval/rerank.ts`
 - `artifacts/api-server/src/lib/generation/answer.ts`
 - `artifacts/api-server/src/lib/generation/utility-model.ts`
+- `artifacts/api-server/src/lib/eval/faithfulness.ts`
 - `artifacts/api-server/src/lib/security/__tests__/provider-input-firewall.test.ts`
 - `artifacts/api-server/src/lib/ingestion/__tests__/embedder.test.ts`
 - `artifacts/api-server/src/lib/retrieval/__tests__/rerank.test.ts`

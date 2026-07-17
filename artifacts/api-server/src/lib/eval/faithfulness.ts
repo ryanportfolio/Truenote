@@ -3,6 +3,7 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import type { RetrievalChunk } from "../retrieval/query.js";
 import { formatExcerpts } from "../generation/answer.js";
+import { protectProviderText } from "../security/provider-input-firewall.js";
 import { getDeadlineConfig } from "../deadlines.js";
 
 /**
@@ -82,7 +83,13 @@ export async function judgeFaithfulness(
   deps: JudgeFaithfulnessDeps = {}
 ): Promise<FaithfulnessJudgment> {
   const client = deps.client ?? getClient();
-  const userPrompt = `EXCERPTS:\n${formatExcerpts(input.chunks)}\n\nANSWER:\n${input.answer}`;
+  // Same deterministic pre-provider firewall as the embedding/rerank/generation
+  // paths: the judge runs on direct OpenAI (non-ZDR), so sensitive content must
+  // be redacted before the prompt is built. Generation saw redacted excerpts
+  // too, so the judge scores the same view the answer was produced from.
+  const protectedExcerpts = protectProviderText(formatExcerpts(input.chunks)).text;
+  const protectedAnswer = protectProviderText(input.answer).text;
+  const userPrompt = `EXCERPTS:\n${protectedExcerpts}\n\nANSWER:\n${protectedAnswer}`;
 
   const { faithfulness } = getDeadlineConfig();
   const completion = await client.beta.chat.completions.parse(

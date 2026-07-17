@@ -1,6 +1,59 @@
 import { describe, expect, it } from "vitest";
-import { scoreClaims } from "../faithfulness.js";
+import type OpenAI from "openai";
+import { judgeFaithfulness, scoreClaims } from "../faithfulness.js";
 import { expectedDocRank } from "../runner.js";
+import type { RetrievalChunk } from "../../retrieval/query.js";
+
+function chunk(content: string): RetrievalChunk {
+  return {
+    id: "c1",
+    content,
+    documentVersionId: "dv1",
+    documentId: "doc-a",
+    versionNumber: 1,
+    programId: "p1",
+    docTitle: "Test Doc",
+    metadata: null,
+    relevanceScore: 0.9
+  } as RetrievalChunk;
+}
+
+describe("judgeFaithfulness provider-input firewall", () => {
+  it("redacts sensitive excerpt and answer content before the prompt reaches the provider", async () => {
+    const sent: Array<{ messages: Array<{ role: string; content: string }> }> = [];
+    const fakeClient = {
+      beta: {
+        chat: {
+          completions: {
+            parse: async (request: { messages: Array<{ role: string; content: string }> }) => {
+              sent.push(request);
+              return { choices: [{ message: { parsed: { claims: [] } } }] };
+            }
+          }
+        }
+      }
+    } as unknown as OpenAI;
+
+    await judgeFaithfulness(
+      {
+        answer: "Call the member back at (415) 555-0132 to confirm.",
+        chunks: [chunk("Member SSN on file is 456-45-6789 and email is member@example.com.")]
+      },
+      { client: fakeClient }
+    );
+
+    expect(sent).toHaveLength(1);
+    const userPrompt = sent[0].messages.find((m) => m.role === "user")?.content ?? "";
+    expect(userPrompt).not.toContain("456-45-6789");
+    expect(userPrompt).not.toContain("member@example.com");
+    expect(userPrompt).not.toContain("(415) 555-0132");
+    expect(userPrompt).toContain("[REDACTED_PII_EMAIL]");
+    expect(userPrompt).toContain("[REDACTED_PII_PHONE]");
+    // Non-sensitive excerpt structure survives so the judge still sees sources.
+    expect(userPrompt).toContain("SOURCE [S1]");
+    expect(userPrompt).toContain("Test Doc");
+  });
+});
 
 describe("scoreClaims", () => {
   it("computes the supported percentage and lists unsupported claims", () => {
