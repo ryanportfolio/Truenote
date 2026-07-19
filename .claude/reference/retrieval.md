@@ -11,8 +11,8 @@ question
     fee" into a standalone question; failure falls back to the raw question;
     first turn = passthrough)
   → embed (text-embedding-3-small)
-  → parallel: vector search (top 40) + BM25 search (top 40)
-       BM25 zero-hit → pg_trgm word_similarity fallback (typos, SKU codes)
+  → parallel: vector search (top 40) + PostgreSQL full-text search (top 40)
+       full-text zero-hit → pg_trgm word_similarity fallback (typos, SKU codes)
   → merge + dedupe by chunk_id
   → Cohere rerank → top 8
   → confidence gate (top score >= RERANK_CONFIDENCE_THRESHOLD?)
@@ -26,16 +26,16 @@ question
   → log to query_log
 ```
 
-**Every query is scoped by `program_id` server-side.** The filter is applied to both vector and BM25 queries. Do not rely on UI scoping.
+**Every query is scoped by `program_id` server-side.** The filter is applied to both vector and full-text queries. Do not rely on UI scoping.
 
 ## Retrieval rules
 
-- **Hybrid is non-negotiable.** Pure vector misses exact-match queries CSRs actually ask ("cancellation fee for plan X"). Pure BM25 misses paraphrases ("how do I refund a customer?" vs SOP titled "issuing returns"). Always combine.
+- **Hybrid is non-negotiable.** Pure vector misses exact-match queries CSRs actually ask ("cancellation fee for plan X"). Pure full-text search misses paraphrases ("how do I refund a customer?" vs SOP titled "issuing returns"). Always combine.
 - **Use HNSW, not IVFFlat,** for the pgvector index. HNSW recall is meaningfully better on small KBs (which yours will be for months).
 - **Reranker over top 40 candidates, not top 8.** Cheap; big quality lift. Skipping this is the most common cause of "RAG demo feels dumb."
 - **Confidence gate is non-negotiable.** If the reranker's top score is below `RERANK_CONFIDENCE_THRESHOLD` (default 0.3, tunable), refuse without calling the LLM. Saves cost AND prevents hallucination on questions the KB can't answer.
 - **Rerank model is env-configurable** (`COHERE_RERANK_MODEL`, default `rerank-english-v3.0`). Upgrading (e.g. `rerank-v3.5`) is eval-gated: flip the secret, run the eval suite, and RETUNE the threshold — score distributions differ across rerank model versions, so the old threshold is invalid the moment the model changes. The eval's `threshold` failure-stage count is the retune signal.
-- **Trigram fallback (2026-07):** when `websearch_to_tsquery` matches zero rows, `word_similarity(question, content) > 0.3` supplies BM25-leg candidates instead — catches typos ("cancelation") and exact codes tsvector stems away. Plain function call, no trgm index yet; if the KB passes ~100k chunks, add a `gin (content gin_trgm_ops)` index via DDL and switch to the `<%` operator form.
+- **Trigram fallback (2026-07):** when `websearch_to_tsquery` matches zero rows, `word_similarity(question, content) > 0.3` supplies full-text-leg candidates instead — catches typos ("cancelation") and exact codes tsvector stems away. `word_similarity` finds the best continuous trigram extent and may match parts of words; it is not the word-boundary-strict `strict_word_similarity`. Plain function call, no trgm index yet; if the KB passes ~100k chunks, add a `gin (content gin_trgm_ops)` index via DDL and switch to the `<%` operator form.
 - **Neighbor expansion (2026-07):** after the gate passes, ordinal ±1 siblings (same active document version) of the top `RETRIEVAL_NEIGHBOR_ANCHORS` (default 3) reranked chunks are appended as context — procedures routinely span a chunk boundary. Neighbors carry `relevanceScore: 0` and `neighbor: true`, never affect the gate, and are citable (they're real chunks). Set the env to 0 to disable.
 - **Eval trace:** `retrieve({ withTrace: true })` returns pre-rerank candidates + post-rerank top-K (chunk id → doc id) so the eval harness attributes failures to a stage. `/api/ask` doesn't request it.
 - **Multi-turn (2026-07):** the Chat client sends its last 3 completed exchanges; `lib/generation/rewrite.ts` (Granite 4.1 8B via the OpenRouter ZDR utility, `lib/generation/utility-model.ts`) rewrites a follow-up into a standalone question used for retrieval AND generation. HARD boundary: conversation history is used ONLY for reference resolution — answer generation still sees excerpts + standalone question, so an ungrounded fact from a previous answer can never leak into a new one. `query_log.question` stores what the CSR typed; the rewrite is returned as `rewrittenQuestion` (manager+ debug footer shows "Searched as: …"). Rewrite failure falls back to the raw question. "New conversation" button clears history between calls.
@@ -85,7 +85,7 @@ Granite 4.1 8B is a standard instruct model, not a hybrid-thinking model. Its Wa
 ## Pitfalls
 
 - Mixing `program_id` filter into reranker input (post-hoc filter) is a known bug class — filter at the SQL stage, before reranking, or you'll return chunks from the wrong program when scores happen to favor them.
-- BM25 via `ts_rank` on `to_tsvector('english', content)` handles most cases; if your KB has heavy industry jargon (insurance codes, telco SKUs), consider a custom dictionary.
+- PostgreSQL `ts_rank` ranks full-text matches using within-document matching-lexeme frequency and configured weights; it does not use global corpus statistics and is not BM25/IDF. If your KB has heavy industry jargon (insurance codes, telco SKUs), consider a custom dictionary.
 - The reranker threshold is a hyperparameter. Tune it against the eval set, not vibes.
 - Don't stream responses in v1. CSRs need the complete answer + citations to read to a customer — streaming partial state is a regression.
 
