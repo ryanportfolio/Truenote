@@ -20,14 +20,9 @@ Safety rails. Violations = bugs, not "improvements."
 
 Find a violation (answer rendered without citations, query crossed program scope) → fix it AND flag it.
 
-## CRITICAL: Popup tools forbidden
+## Communication & Plan Visibility
 
-BLOCKING requirement — the user's UI does not render them; they cause infinite "awaiting input..." hangs.
-
-- ❌ NEVER use `ExitPlanMode`. ❌ NEVER use `AskUserQuestion`.
-- ✅ Plans: inline markdown chat text, ending "I'll proceed unless you have concerns."
-- ✅ Questions: plain chat messages, numbered if multiple.
-- ✅ `TodoWrite` allowed and encouraged (renders inline).
+Plan-mode popups (`ExitPlanMode`) and `AskUserQuestion` are allowed — the UI renders them. Inline markdown plans and plain-chat questions also fine. `TodoWrite` encouraged (renders inline).
 
 ## Default prose mode: caveman ultra
 
