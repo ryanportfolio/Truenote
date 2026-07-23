@@ -60,11 +60,11 @@ export interface RetrievalTraceEntry {
 
 /** Stage-level retrieval trace, for eval failure attribution. */
 export interface RetrievalTrace {
-  /** Merged vector + BM25 candidates, pre-rerank. */
+  /** Merged vector + keyword candidates, pre-rerank. */
   candidates: RetrievalTraceEntry[];
   /** Post-rerank top-K, before neighbor expansion. */
   ranked: RetrievalTraceEntry[];
-  /** True when BM25 returned zero rows and the trigram fallback supplied candidates instead. */
+  /** True when full-text search returned zero rows and the trigram fallback supplied candidates instead. */
   trigramFallback: boolean;
 }
 
@@ -192,12 +192,12 @@ async function vectorSearch(
 }
 
 /**
- * BM25 (Postgres full-text) search over chunks, scoped to a program.
+ * PostgreSQL full-text search over chunks, scoped to a program.
  *
  * websearch_to_tsquery handles "quoted phrases", OR/AND, and bare words —
  * the syntax CSRs will actually type, without parsing failures on punctuation.
  */
-async function bm25Search(
+async function fullTextSearch(
   programId: string,
   maxClassification: Classification,
   question: string,
@@ -222,12 +222,13 @@ async function bm25Search(
 }
 
 /**
- * Trigram fallback for BM25 zero-hits, scoped to a program.
+ * Trigram fallback for full-text zero-hits, scoped to a program.
  *
  * to_tsvector stems dictionary words; it has nothing for typos ("cancelation
  * fee") or exact codes ("PLN-X200") that CSRs type mid-call. pg_trgm's
- * word_similarity(query, content) finds the best word-bounded match of the
- * query inside the chunk, so a one-letter typo still scores high.
+ * word_similarity(query, content) finds the best continuous trigram extent
+ * inside the chunk, so a one-letter typo still scores high. Unlike
+ * strict_word_similarity, the extent may start or end inside a word.
  *
  * This runs ONLY when tsquery matched zero rows, so the extra cost lands on
  * queries that would otherwise contribute nothing to the candidate pool.
@@ -284,11 +285,11 @@ export function filterToProgramScope(
 
 export function mergeCandidates(
   vectorRows: CandidateRow[],
-  bm25Rows: CandidateRow[]
+  keywordRows: CandidateRow[]
 ): CandidateRow[] {
   const merged = new Map<string, CandidateRow>();
   for (const row of vectorRows) merged.set(row.id, row);
-  for (const row of bm25Rows) {
+  for (const row of keywordRows) {
     if (!merged.has(row.id)) merged.set(row.id, row);
   }
   return Array.from(merged.values());
@@ -476,7 +477,7 @@ export async function retrieve(
   const keywordPromise = (async () => {
     const startedAt = performance.now();
     try {
-      return await bm25Search(
+      return await fullTextSearch(
         input.programId,
         input.maxClassification,
         trimmed,
@@ -486,16 +487,16 @@ export async function retrieve(
       timingStages.keywordSearch = elapsedMs(startedAt);
     }
   })();
-  const [vectorRows, bm25Initial] = await Promise.all([vectorPromise, keywordPromise]);
+  const [vectorRows, fullTextInitial] = await Promise.all([vectorPromise, keywordPromise]);
   timingCounts.vectorCandidates = vectorRows.length;
 
   // Zero-hit fallback: tsquery found nothing keyword-shaped, so try trigram
   // similarity (typos, SKU codes). Vector candidates are unaffected either way.
-  let bm25Rows = bm25Initial;
+  let keywordRows = fullTextInitial;
   let trigramFallback = false;
-  if (bm25Rows.length === 0) {
+  if (keywordRows.length === 0) {
     const trigramStartedAt = performance.now();
-    bm25Rows = await trigramSearch(
+    keywordRows = await trigramSearch(
       input.programId,
       input.maxClassification,
       trimmed,
@@ -503,13 +504,13 @@ export async function retrieve(
     ).finally(() => {
       timingStages.trigramSearch = elapsedMs(trigramStartedAt);
     });
-    trigramFallback = bm25Rows.length > 0;
+    trigramFallback = keywordRows.length > 0;
   }
   timingTrigramFallback = trigramFallback;
-  timingCounts.keywordCandidates = bm25Rows.length;
+  timingCounts.keywordCandidates = keywordRows.length;
 
   const mergeStartedAt = performance.now();
-  const candidates = mergeCandidates(vectorRows, bm25Rows);
+  const candidates = mergeCandidates(vectorRows, keywordRows);
   timingStages.candidateMerge = elapsedMs(mergeStartedAt);
   timingCounts.mergedCandidates = candidates.length;
   if (candidates.length === 0) {

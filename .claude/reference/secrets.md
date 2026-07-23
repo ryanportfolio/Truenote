@@ -37,7 +37,7 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 | `RERANK_CONFIDENCE_THRESHOLD` | Refusal gate — if top reranker score is below this, refuse. MUST be retuned (via eval) whenever `COHERE_RERANK_MODEL` changes | `0.3` |
 | `COHERE_RERANK_MODEL` | Cohere rerank model. Upgrade (e.g. `rerank-v3.5`) is eval-gated — see retrieval.md | `rerank-english-v3.0` |
 | `RETRIEVAL_TOP_K` | Final chunks sent to LLM after reranking | `8` |
-| `RETRIEVAL_CANDIDATE_K` | Candidates pulled from vector + BM25 before reranking | `40` each |
+| `RETRIEVAL_CANDIDATE_K` | Candidates pulled from vector + PostgreSQL full-text search before reranking | `40` each |
 | `RETRIEVAL_NEIGHBOR_ANCHORS` | Top reranked chunks whose ordinal ±1 siblings are appended as unscored context. `0` disables neighbor expansion | `3` |
 | `RAG_STORAGE_DRIVER` | Set to `memory` to use the in-memory adapter (local scripts / tests). Any other value (or unset) selects Replit Object Storage | unset → Replit SDK |
 | `BOOTSTRAP_SUPER_USER_NAME` | Display name for the bootstrap super_user | `Super User` |
