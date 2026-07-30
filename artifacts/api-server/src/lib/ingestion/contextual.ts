@@ -1,9 +1,9 @@
 /**
  * Contextual chunk headers — the no-LLM core of Anthropic's "contextual
- * retrieval". A chunk that says "The fee is $25" embeds and BM25-indexes
- * poorly because its context (which document? which section?) lives in the
- * doc title and headings, not the chunk body. Prepending a one-line header
- * puts that context into BOTH the embedding input and content_tsv (a DB
+ * retrieval". A chunk that says "The fee is $25" performs poorly in embedding
+ * and full-text retrieval because its context (which document? which section?)
+ * lives in the doc title and headings, not the chunk body. Prepending a one-line
+ * header puts that context into BOTH the embedding input and content_tsv (a DB
  * generated column over `content`), so semantic and exact-match retrieval
  * see it.
  *
