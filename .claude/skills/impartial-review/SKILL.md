@@ -1,5 +1,5 @@
 ---
-description: Critically review recent code changes (uncommitted diff, latest commit, or active PR) for bugs, schema drift, edge cases, observability gaps, and project-specific rule violations. Use when the user asks to review, audit, check, stress-test, or "look hard at" recent work — including code Claude itself just wrote. Dispatches five parallel Sonnet 4.6 subagents (general-purpose, fresh context) — four bucket reviewers plus one project-aware reviewer loaded with CLAUDE.md and `.claude/reference/` — so reviewers are genuinely impartial AND aware of project-specific landmines. Verifies claims with grep/read before asserting, severity-tags findings (blocking / should-fix / nitpick), surfaces things that look suspicious but verified fine, and gives concrete fixes with file:line references.
+description: Use when the user asks to review, audit, or stress-test recent code changes with fresh independent agents; requires exposed multi-agent tools.
 ---
 
 # Impartial review
@@ -26,6 +26,8 @@ State the scope you're reviewing in your first sentence so the user can redirect
 - **Everything else:** dispatch **five parallel Sonnet 4.6 subagents** (see Step 3). This is the default.
 
 If you're not sure, dispatch. Subagents are cheap relative to a missed bug.
+
+**Strict quality mode (opt-in):** when the user asks for a "strict", "harsh", "thermo-nuclear", or deep maintainability review, additionally load `strict-quality-rubric.md` from this folder and append it to the Bucket D ("things the author missed") subagent's prompt — missed structural simplifications are exactly its territory. It raises the approval bar to presumptive blockers (code-judo simplifications, 1k-line rule, spaghetti growth) on top of the normal buckets; correctness review is unchanged.
 
 ## Step 3: Dispatch five parallel Sonnet 4.6 review subagents
 
@@ -291,9 +293,9 @@ This rule is repeated inside each subagent prompt, but it also applies to your i
 
 When the five agents return — **this is the precision stage.** The subagents over-reported on purpose (coverage); your job is to verify and rank so the human gets a trustworthy list. You're running on the strongest available model, and this verification is exactly where it earns its cost. Reviewing the subagents' work is the point — do not rubber-stamp it.
 
-1. **Deduplicate.** Two agents may flag the same issue from different angles — merge into one finding, keep the higher severity. Bucket E findings often overlap with A/B/C/D (e.g., a cover-identity leak is also a correctness issue) — merge but preserve E's rule citation so the human sees *why* it's a violation.
+1. **Deduplicate — and read agreement as signal.** Two agents may flag the same issue from different angles — merge into one finding, keep the higher severity. Bucket E findings often overlap with A/B/C/D (e.g., a cover-identity leak is also a correctness issue) — merge but preserve E's rule citation so the human sees *why* it's a violation. The same issue surfaced independently by two or more subagents is high-confidence signal: note the agreement on the merged finding ("flagged independently by A and D") and weight it accordingly when you verify. A lone-agent finding is still worth verifying, just with lower prior.
 2. **Verify every finding you intend to surface — across all severities, not just 🔴.** The finding stage deliberately over-reported, including LOW-confidence items; turning that into precision is your job. For each finding, run a real `grep`/`Read` to confirm before passing it to the human (for Bucket E, open the cited rule file and confirm the rule actually says what the agent claimed — paraphrased rules are the most common Bucket E failure mode). Treat the 🔴s adversarially: a fresh-context subagent in a hurry is exactly the kind of reviewer that produces plausible-but-wrong blockers, so try to *refute* each one before you accept it.
-   - **Own the confidence filter — but drop only on evidence.** A finding tagged LOW-confidence gets *confirmed* (verify, then promote and re-tag), *refuted* (drop it — optionally note it under "checked and verified fine"), or *kept as LOW* with a one-line note on the residual uncertainty. Drop a finding **only because you checked and it isn't real** — never because it "seems minor" or "seems unlikely." Filtering on vibes here re-introduces exactly the recall loss the coverage-first finding stage was built to prevent.
+   - **Own the confidence filter — but drop only on evidence.** A finding tagged LOW-confidence gets *confirmed* (verify, then promote and re-tag), *refuted* (drop it from the findings list and record it under "Dismissed" with the reason), or *kept as LOW* with a one-line note on the residual uncertainty. Drop a finding **only because you checked and it isn't real** — never because it "seems minor" or "seems unlikely." Filtering on vibes here re-introduces exactly the recall loss the coverage-first finding stage was built to prevent.
 3. **Severity-order globally.** All 🔴 first across all buckets, then all 🟡, then 🟢 — not bucket-by-bucket and not in the order agents returned.
 4. **Present in this format:**
 
@@ -313,6 +315,12 @@ After the findings, include:
 
 - [Suspicious-looking item that's actually OK, with a one-line reason. Merge
   these from all five subagents so the human doesn't re-investigate.]
+
+## Dismissed
+
+- [Every subagent finding you refuted during verification, with the one-line
+  reason it's wrong or missing context. Never silently drop a finding: showing
+  the dismissal lets the human override your judgment.]
 
 ## Recommendation
 
