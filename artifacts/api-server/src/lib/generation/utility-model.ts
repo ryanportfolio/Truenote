@@ -116,7 +116,7 @@ export async function runUtilityCompletion(
 /**
  * Strip a matching pair of wrapping quotes a model may add around a plain-text
  * value. Matters for the rewrite: a quoted question would otherwise become a
- * BM25 phrase search. Returns the trimmed text unchanged when it is not quoted.
+ * PostgreSQL full-text phrase query. Returns the trimmed text unchanged when it is not quoted.
  */
 export function stripWrappingQuotes(text: string): string {
   const trimmed = text.trim();

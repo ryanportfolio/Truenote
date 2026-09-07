@@ -130,7 +130,7 @@ export interface EvalQuestionResult {
   /** Null when expected_answer_contains is empty. */
   answerCorrect: boolean | null;
   // Stage-level retrieval metrics (null when expected_doc_id is unset)
-  /** Expected doc appeared in the merged vector+BM25 candidates (pre-rerank). */
+  /** Expected doc appeared in the merged vector+keyword candidates (pre-rerank). */
   retrievalHit: boolean | null;
   /** Expected doc survived the reranker into the top-K sent to the LLM. */
   rerankHit: boolean | null;
