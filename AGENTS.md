@@ -55,3 +55,7 @@ hooks, and `.claude/skills/` exactly as before.
 - Verify before claiming completion. State exactly what ran and identify any
   authoritative check that must happen in CI, deployment, or the user's
   environment.
+
+## Browser per session
+
+- Browser per session, never shared. The official playwright plugin holds one persistent profile; a second connection fails with "Browser is already in use ... use --isolated" and deadlocks. Parallel or subagent browser work uses `@playwright/mcp --isolated` (in-memory profile; copy `.mcp.json` from claude-starter).

@@ -42,6 +42,7 @@ Which checks you can run depends on the sandbox — full detail: `.claude/refere
 - ✅ Runtime verification is Replit's job. Say so explicitly when it's the next step.
 
 A check couldn't run → *flag the risk plainly* — never fabricate verification.
+- Browser per session, never shared. The desktop app's Browser pane (`mcp__Claude_Browser__*`, `preview_start`) is one Chrome per app: a second session or subagent gets "Another task's Chrome owns browser slot". The official playwright plugin is one persistent profile: the second connection gets "Browser is already in use ... use --isolated" and deadlocks. Parallel or subagent browser work uses `@playwright/mcp --isolated` (in-memory profile; copy `.mcp.json` from claude-starter).
 
 ## Core principles
 
