@@ -9,7 +9,10 @@
 //   2. scene    MSAA MRT: attachment 0 = lit, unlit-exact scene colour (linear),
 //               attachment 1 = emitted light. Ground (ray-cast full-screen pass
 //               with the lens, pencil lines and waves), instanced tiles with
-//               alpha-to-coverage, beams (tint into scene, light additive).
+//               alpha-to-coverage after a depth prepass, then a blended pass for
+//               fading tiles (card-sized sheets anywhere, every tile on a light
+//               table) with a one-layer stencil, beams (tint into scene, light
+//               additive).
 //   3. bloom    Emitted light only: quarter + eighth res, separable gaussian.
 //   4. output   Scene gets a soft shoulder above 0.86 linear only (cream and
 //               cobalt pass untouched); light is tone-mapped on its own and
@@ -126,7 +129,10 @@ float boxCov(float a0, float a1, float x, float fw){ return clamp((min(x + .5 * 
 const SHADOW_CURVES = `
 uniform float uShadowAmt;
 uniform vec4 uShadowK; // darkness, penumbra per unit height, AO strength, AO radius per unit height
-uniform float uFlightK; // ground shadow pass on a light table: 1. Tiles in flight keep a firm shadow.
+// uFlightK is set (to the light-table weight) only for the ground shadow pass, so tiles in flight
+// keep a firm shadow on a light table while tile-on-tile shadows keep the plain height falloff.
+// It is not a copy of uDayG: every other program that uses these curves leaves it at 0.
+uniform float uFlightK;
 float darkAt(float z){
   float d = uShadowAmt * uShadowK.x / (1. + pow(max(z, 0.) / 70., 1.4));
   return max(d, uFlightK * uShadowAmt * uShadowK.x * .5 * (1. - smoothstep(700., 1100., z)));
@@ -593,7 +599,7 @@ void main(){
   // a card-sized sheet (short side >= 40) part way through a fade is drawn in the blended pass,
   // so it fades smoothly instead of in alpha-to-coverage steps
   // blended pass: card-sized sheets anywhere, and every tile on a light table, while they fade
-  float card = max(step(40., min(iB.z, iB.w)), uDayG) * step(iC.a, .995);
+  float card = max(step(40., min(iB.z, iB.w)), step(.5, uDayG)) * step(iC.a, .995);
   vCard = uCardPass;
   float mine = mix(1. - card, card, uCardPass);
   gl_Position = mix(vec4(2., 2., 2., 1.), uVP * vec4(pos, 1.), step(1e-4, iC.a) * mine);
@@ -808,9 +814,10 @@ void main(){
   float hz = hazeAt(length(vPos - uEye));
   col = mix(col, uAir, hz);
   em *= 1. - hz;
-  // a card fading out on a light table fades toward the table colour, so its alpha-to-coverage
-  // dither never mixes a saturated face with what lies below (no pink fringe over the lens)
-  col = mix(col, uAir, (1. - alpha) * .7 * uDayG * (1. - vCard));
+  // a small tile fading in the blended pass on a light table holds its colour toward the table
+  // as it goes, so a persimmon or sage face never mixes with the cobalt lens into mauve.
+  // Card-sized sheets keep their colour (they are paper-toned already).
+  col = mix(col, uAir, smoothstep(.995, .6, alpha) * vCard * step(.5, uDayG) * (1. - step(20., min(vHalf.x, vHalf.y))));
 
   // --- order-independent alpha: alpha-to-coverage with MSAA, else hashed discard
   float h = hash12(floor(gl_FragCoord.xy) + seed * 131.);
@@ -1450,7 +1457,9 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
       gl.bindVertexArray(tileVao);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
       gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
-      // translucent card-sized sheets: true alpha blending, depth-tested, no depth write
+      // fading card-sized sheets anywhere, and every fading tile on a light table: true alpha
+      // blending, depth-tested, no depth write; the stencil keeps one layer per sample so stacked
+      // (or seam-grown, overlapping) tiles do not double-blend
       gl.uniform1f(p.u.uCardPass, 1);
       gl.uniform1f(p.u.uHashAlpha, 0); // blended: never hash-discard, even without MSAA
       gl.enable(gl.BLEND);

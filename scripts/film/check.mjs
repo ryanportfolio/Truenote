@@ -16,7 +16,7 @@
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { launchChrome, parseArgs, waitForAnim } from './lib.mjs';
+import { launchChrome, parseArgs, repoRoot, waitForAnim } from './lib.mjs';
 
 const args = parseArgs(process.argv.slice(2), ['sheet', 'with-ui', 'reduce', 'dip-check']);
 if (!args.url) {
@@ -25,7 +25,7 @@ if (!args.url) {
 }
 const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
 const name = args.name || `run-${stamp}`;
-const outDir = resolve(args.out || `.tmp/film/${name}`);
+const outDir = resolve(args.out || resolve(repoRoot, `.tmp/film/${name}`));
 const fps = Number(args.fps ?? 60);
 const tol = Number(args.tol ?? 2);
 const nFrames = Number(args.frames ?? 90);

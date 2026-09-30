@@ -337,6 +337,8 @@ function applyGuess(k, t, p) {
   p.rz = lerp(p.rz, un(G.rz, GR.rz), u);
   p.w = lerp(p.w, G.w, u); p.h = lerp(p.h, G.h, u);
   mixCol(p, CARD, u); p.lines = 1 - u;
+  // A warm spot light as it turns, so the card is born white, not a grey sheet.
+  p.glow = Math.max(p.glow, 0.8 * u); p.hue = 2;
   p.a = 1 - ramp(t, 10.9 + k * 0.3, 11.2 + k * 0.3);
 }
 
@@ -1060,12 +1062,17 @@ function drawThreshold(ctx, t, proj) {
     return out;
   };
   const ring = pts(z), shade = pts(18);
-  // Two passes: everywhere but the question row, the stop label and the refusal
-  // card's area at full strength; inside the card's area fading out as the card
-  // fades in (53.5-53.9 s), so no dash vanishes in one frame.
+  // Everywhere but the question row, the stop labels and the refusal card's
+  // area at full strength; under the card and each label the ring fades with
+  // that element's own alpha, so no dash vanishes in one frame.
   const cardIn = ramp(t, 53.5, 53.9);
-  paintThreshold(ctx, bar, ring, shade, n, sub, 1, [[0, 0, 1920, 1080], [80, 214, 800, 92], [1360, 176, 500, 48], [80, 306, 800, 488]]);
+  const labelA = (text) => { const w = labelWin(text); return ramp(t, w.t0, w.t0 + 0.3) * (1 - ramp(t, w.t1 - 0.3, w.t1)); };
+  const noA = labelA('No passage matched well enough'), minA = labelA('Minimum match');
+  const WIDE = [1360, 176, 500, 48], NARROW = [1600, 176, 260, 48];
+  paintThreshold(ctx, bar, ring, shade, n, sub, 1, [[0, 0, 1920, 1080], [80, 214, 800, 92], WIDE, [80, 306, 800, 488]]);
   if (cardIn < 1) paintThreshold(ctx, bar, ring, shade, n, sub, 1 - cardIn, [[80, 306, 800, 488]]);
+  if (noA < 1) paintThreshold(ctx, bar, ring, shade, n, sub, 1 - noA, [WIDE, NARROW]);
+  if (Math.max(noA, minA) < 1) paintThreshold(ctx, bar, ring, shade, n, sub, 1 - Math.max(noA, minA), [NARROW]);
 }
 
 // One pass of the dashed ring and its paper shadow, clipped (even-odd) to rects.
