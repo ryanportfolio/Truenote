@@ -380,7 +380,8 @@ function applyThreadTile(i, t, p) {
   for (let a = 0; a < 2 && k < 0; a++) { const b = tt[a].indexOf(i); if (b >= 0) { k = a; j = b; } }
   if (k < 0) return;
   const ta = threadArrive(k, j);
-  p.glow = Math.max(p.glow, 0.9 * pulse(t, ta, ta + 0.8));
+  const g = 0.9 * pulse(t, ta, ta + 0.8);
+  if (g > p.glow) { p.glow = g; p.hue = 2; }
   const back = easeInOutCubic((t - 17.4) / 0.8);
   if (!REDUCED) {
     const flip = easeInOutCubic((t - ta - 0.2) / 0.5) - back;
@@ -646,8 +647,9 @@ function applyRetrieval(i, t, p) {
       p.rx = (Math.PI / 2) * rise; p.ry = 0;
       p.rz = p.rz + wrap(rzF - p.rz) * rise;
       p.w = lerp(p.w, WEAK_CARD.w, rise); p.h = lerp(p.h, WEAK_CARD.h, rise);
-      // Ruled lines would run vertically on a standing card; show it plain.
+      // Ruled lines would run vertically on a standing card; show it plain paper.
       p.lines *= 1 - rise;
+      mixCol(p, CARD, 0.85 * rise);
       p.glow = Math.max(p.glow, 0.5 * rise);
     }
   }
@@ -849,16 +851,7 @@ export function frameState(tIn) {
     const k = HERO * STRIDE;
     fs.beams.push({ x0: tiles[k], y0: tiles[k + 1], z0: tiles[k + 2], x1: CENTER.x, y1: CENTER.y, z1: 30, width: 3, intensity: pulse(t, 37.2, 37.95), hue: 0 });
   }
-    // Light columns under the candidates that fall short of the bar (the dashed
-  // ring itself is drawn in the 2D layer, see drawThreshold).
-  if (barAmount(t) > 0) {
-    for (const i of L.weak) {
-      const k = i * STRIDE;
-      const hgt = tiles[k + 2] - L.slots[i].z;
-      if (hgt < 4) continue;
-      fs.beams.push({ x0: tiles[k], y0: tiles[k + 1], z0: L.slots[i].z, x1: tiles[k], y1: tiles[k + 1], z1: tiles[k + 2], width: 3, intensity: 0.7 * clamp(hgt / WEAK_Z), hue: 0 });
-    }
-  }
+  // (The stop draws no beams: the dashed ring and the shortfall are 2D, see drawThreshold.)
   return fs;
 }
 
@@ -1002,7 +995,7 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
   }
 
   // The stop: the bar, the fall short, the refusal, the gap.
-  const ba = (60 * Math.PI) / 180;
+  const ba = (118 * Math.PI) / 180;
   const bp = proj(CENTER.x + Math.cos(ba) * THRESH.r, CENTER.y + Math.sin(ba) * THRESH.r, THRESH.z);
   label({ text: 'Minimum match', x: 1840, y: 200, align: 'right', tick: { x: bp.sx, y: bp.sy }, t, t0: lw('Minimum match').t0, t1: lw('Minimum match').t1, swatch: 'amber' });
   label({ text: 'No passage matched well enough', x: 1840, y: 200, align: 'right', tick: { x: bp.sx, y: bp.sy }, t, t0: lw('No passage matched well enough').t0, t1: lw('No passage matched well enough').t1, swatch: 'amber' });

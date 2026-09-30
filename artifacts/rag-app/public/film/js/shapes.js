@@ -153,9 +153,10 @@ export function buildLayout(seed = 7) {
   for (let k = 0; shortlist.length < 7; k++) { const i = byDistToHero[5 + k * 3][1]; if (!shortlist.includes(i)) shortlist.push(i); }
 
   // Weak candidates for the refused question: five passages spread along the
-  // near-right bands (right of the lens from the stop camera), clear of the wall at 90.
+  // near side of the ring from the stop camera (where the ring runs level on
+  // screen), clear of the walls at 90 and 210.
   const weak = [];
-  for (const [deg, band] of [[48, 2], [66, 3], [82, 2], [100, 3], [118, 2]]) {
+  for (const [deg, band] of [[114, 2], [134, 3], [154, 2], [174, 3], [194, 2]]) {
     let best = -1, bd = 1e9;
     for (let i = 0; i < n; i++) {
       const s = slots[i];
