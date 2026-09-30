@@ -39,9 +39,9 @@ export const STATEMENTS = [
   { text: 'The answer is in here, somewhere', accent: [5], t0: 6.4, t1: 10.5, x: 960, y: 866, align: 'center', theme: 'dark' },
   { text: 'A guess sounds exactly like an answer', accent: [3], t0: 13.6, t1: 18.0, x: 960, y: 880, align: 'center', theme: 'dark' },
   { text: 'Only your approved documents can support an answer', accent: [2], t0: 27.0, t1: 31.6, x: 110, y: 520, align: 'left', maxWidth: 720, theme: 'light' },
-  { text: 'Every answer shows its receipt', accent: [4], t0: 41.8, t1: 45.6, x: 96, y: 950, align: 'left', maxWidth: 1300, theme: 'light' },
-  { text: 'When the documents stop, Truenote stops', accent: [5], t0: 54.8, t1: 58.5, x: 96, y: 950, align: 'left', maxWidth: 860, theme: 'light' },
-  { text: "A rep's search never reaches another program", accent: [3], t0: 62.2, t1: 66.6, x: 960, y: 985, align: 'center', maxWidth: 1700, theme: 'light' },
+  { text: 'Every answer shows its receipt', accent: [4], t0: 41.8, t1: 45.6, x: 96, y: 905, align: 'left', maxWidth: 1300, theme: 'light' },
+  { text: 'When the documents stop, Truenote stops', accent: [5], t0: 54.8, t1: 58.5, x: 96, y: 905, align: 'left', maxWidth: 860, theme: 'light' },
+  { text: "A rep's search never reaches another program", accent: [3], t0: 62.2, t1: 66.6, x: 960, y: 945, align: 'center', maxWidth: 1700, theme: 'light' },
 ];
 
 // Timed labels, so their reading budget is checked with the statements.
@@ -947,7 +947,7 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
   const chars = Math.floor(clamp((t - (compIn + 0.4)) / 2.0) * q.length);
   if (compA > 0.001) {
     ui.composer(ctx, {
-      x: 96, y: 790, w: 760, text: q, chars, caretOn: Math.floor(t * 2) % 2 === 0, alpha: compA, theme: 'light',
+      x: 96, y: 790, w: 840, text: q, chars, caretOn: Math.floor(t * 2) % 2 === 0, alpha: compA, theme: 'light',
       progress: easeOutQuart((t - compIn) / 0.6), press: pulse(t, pressAt - 0.1, pressAt + 0.3),
     });
   }
@@ -1003,12 +1003,13 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
     const ra = ramp(t, 53.5, 53.9) * (1 - ramp(t, 57.9, 58.6));
     ui.refusalCard(ctx, { x: 96, y: 250, w: 760, question: COPY.q2, answer: COPY.refusal, hint: COPY.refusalHint, progress: easeOutQuart((t - 53.5) / 0.5), alpha: ra, flagged: 0, questionAlpha: 1 });
     // The gap lands in the right column, bottom-aligned, so the stop statement
-    // owns the bottom-left band alone (gap card height 278 at w 760).
+    // owns the bottom-left band alone (gap card height 278 at w 760; bottom at 985,
+    // clear of the viewer controls).
     if (t > 55.6) {
       const u = easeOutQuart((t - 55.7) / 0.7);
       const ga = ramp(t, 55.7, 56.1) * (1 - ramp(t, 57.9, 58.6));
       const w = lw('Logged in Content gaps for review');
-      const gy = 1040 - 278;
+      const gy = 985 - 278;
       ui.label(ctx, { text: w.text, x: 1010, y: gy - 34, t, t0: w.t0, t1: w.t1, theme: 'light', size: 20, align: 'left', reduced });
       ui.gapItem(ctx, { x: 1010, y: gy + (1 - u) * 16, w: 760, question: COPY.q2, progress: u, alpha: ga, time: 'now' });
     }
@@ -1123,11 +1124,14 @@ function drawShortfall(ctx, t, proj) {
     const tick = ringAt(0);
     ctx.globalAlpha = bar * rise;
     // Guide: the distance still to go, straight up from the card to the bar.
+    // Shown only while the card holds at full height.
+    ctx.globalAlpha = bar * ramp(rise, 0.9, 1);
     ctx.strokeStyle = 'rgba(33, 32, 28, 0.6)';
     ctx.lineWidth = 1.5;
     ctx.setLineDash([2, 5]);
     ctx.beginPath(); ctx.moveTo(top.sx, top.sy - 4); ctx.lineTo(tick.sx, tick.sy + 6); ctx.stroke();
     ctx.setLineDash([]);
+    ctx.globalAlpha = bar * rise;
     // Notch: the part of the bar this passage needed to reach, thicker on the ring.
     const w = clamp(tick.scale * 4.2, 2.5, 9) + 4;
     ctx.beginPath();

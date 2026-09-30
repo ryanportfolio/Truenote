@@ -77,12 +77,16 @@ function dawnGround(ink) {
   const u = 1 - clamp01(ink);
   if (u >= 1) return hexLin('#E8E6DE');
   let c = DAWN_STOPS[0][1];
-  for (let i = 1; i < DAWN_STOPS.length; i++) {
+  const last = DAWN_STOPS.length - 1;
+  for (let i = 1; i < last; i++) {
     const k = clamp01((u - DAWN_STOPS[i - 1][0]) / (DAWN_STOPS[i][0] - DAWN_STOPS[i - 1][0]));
     const n = DAWN_STOPS[i][1];
     c = [c[0] + (n[0] - c[0]) * k, c[1] + (n[1] - c[1]) * k, hueMix(c[2], n[2], k)];
   }
-  return oklabToLin(lchLab(c)).map((v) => Math.max(0, v));
+  // last segment in OKLab, as in the shader (no hue sweep between two near-neutrals)
+  const k = clamp01((u - DAWN_STOPS[last - 1][0]) / (DAWN_STOPS[last][0] - DAWN_STOPS[last - 1][0]));
+  const a0 = lchLab(c), a1 = lchLab(DAWN_STOPS[last][1]);
+  return oklabToLin(a0.map((v, i) => v + (a1[i] - v) * k)).map((v) => Math.max(0, v));
 }
 
 const DEFAULTS = {
@@ -319,13 +323,18 @@ vec3 oklabToLin(vec3 c){
 }
 vec3 dawnColor(float u){
   vec3 c = uDawnLab[0];
-  for (int i = 1; i < 7; i++){
+  for (int i = 1; i < 6; i++){
     float k = clamp((u - uDawnU[i - 1]) / (uDawnU[i] - uDawnU[i - 1]), 0., 1.);
     vec3 n = uDawnLab[i];
     float dh = mod(n.z - c.z + 3.14159265, 6.2831853) - 3.14159265;
     c = vec3(mix(c.xy, n.xy, k), c.z + dh * k);
   }
-  return oklabToLin(vec3(c.x, c.y * cos(c.z), c.y * sin(c.z)));
+  // last segment (cold dawn white -> cream): a straight OKLab crossing between two near-neutral
+  // colours, so the moving dawn front never shows a green or pink hue sweep
+  vec3 n6 = uDawnLab[6];
+  float k6 = clamp((u - uDawnU[5]) / (uDawnU[6] - uDawnU[5]), 0., 1.);
+  vec3 lab = mix(vec3(c.x, c.y * cos(c.z), c.y * sin(c.z)), vec3(n6.x, n6.y * cos(n6.z), n6.y * sin(n6.z)), k6);
+  return oklabToLin(lab);
 }
 layout(location = 0) out vec4 oScene;
 layout(location = 1) out vec4 oLight;
@@ -384,7 +393,18 @@ void main(){
   // --- paper table
   // Morning arriving from the light's side: that side of the table runs ahead along the ramp.
   float sideL = smoothstep(-1400., 1400., dot(P.xy - uGlowC, ld0));
-  float uLoc = clamp(uDawnP + .06 * uDawn * (sideL * 2. - 1.), 0., 1.);
+  // Dawn rises from the lens: the ramp position runs ahead near the core's projected centre and
+  // lags with screen distance from it, so a soft light front sweeps outward and the farthest
+  // frame corner arrives last (it reaches the end of the ramp exactly when the global dawn does).
+  vec4 cc = uVP * vec4(uCore.xy, 0., 1.);
+  vec2 cN = cc.xy / max(cc.w, 1e-4);
+  vec2 asp = vec2(uRes.x / uRes.y, 1.);
+  vec2 pN = cp.xy / max(cp.w, 1e-4);
+  float dMax = length((vec2(1.) + abs(cN)) * asp);
+  float dn = pow(clamp(length((pN - cN) * asp) / dMax, 0., 1.), 1.6); // wide bright pool round the core
+  const float lag = .65; // share of the dawn by which the farthest corner trails the core
+  float uLoc = clamp((uDawnP - lag * dn) / (1. - lag), 0., 1.);
+  uLoc = clamp(uLoc + .02 * uDawn * (sideL * 2. - 1.), 0., 1.);
   vec3 base = mix(dawnColor(uLoc), uBase, step(.9999, uDawnP) + step(uDawnP, 1e-4));
   // the warmth stays local: a soft peach-gold light strongest on the light's side
   vec3 alb = base;
