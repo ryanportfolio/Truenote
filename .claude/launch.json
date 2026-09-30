@@ -4,9 +4,27 @@
     {
       "name": "rag-app",
       "runtimeExecutable": "corepack",
-      "runtimeArgs": ["pnpm", "--filter", "@workspace/rag-app", "run", "dev"],
+      "runtimeArgs": [
+        "pnpm",
+        "--filter",
+        "@workspace/rag-app",
+        "run",
+        "dev"
+      ],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "film",
+      "runtimeExecutable": "py",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8790",
+        "--directory",
+        "."
+      ],
+      "port": 8790
     }
   ]
 }
