@@ -47,7 +47,7 @@ export const REFUSAL_TEXT =
 // Scrim alpha under text, per surface. Measured on the film's densest frames
 // (storm t 3, 8, 17; rings t 39, 58) so the worst pixel under text passes
 // 4.5:1 for labels and 3:1 for large statement text. See the lab's measure script.
-export const SCRIM = { statementDark: 0.8, statementLight: 0.85, labelDark: 0.94, labelLight: 0.95, callerDark: 0.82, callerLight: 0.9, questionLight: 0.9 };
+export const SCRIM = { statementDark: 0.8, statementLight: 0.7, labelDark: 0.94, labelLight: 0.95, callerDark: 0.82, callerLight: 0.9, questionLight: 0.9 };
 
 const EASE_STAGGER = 0.07; // statement word stagger, s
 const WORD_IN = 0.6; // statement word arrival, s
@@ -709,7 +709,13 @@ export function callBar(ctx, props) {
     const ruleA = smoothstep(callerProgress * 8);
     if (ruleA > 0) {
       ctx.globalAlpha = G0 * (alpha * ruleA);
-      const widest = Math.max(...lines.map((l) => textW(ctx, l)));
+      // Scrim follows the typed text, so it never smears ahead of the words.
+      let usedW = 0;
+      const widest = Math.max(1, ...lines.map((l) => {
+        const n = Math.max(0, Math.min(l.length, shown - usedW));
+        usedW += l.length + 1;
+        return textW(ctx, l.slice(0, Math.ceil(n)));
+      }));
       softScrim(ctx, qx - 40, qy - 16, widest + 28 + 80, qh + 32, 32, dark ? rgba(TOKENS.night, SCRIM.callerDark * 0.5) : rgba(TOKENS.canvas, SCRIM.callerLight * 0.5), 56);
       softScrim(ctx, qx - 20, qy - 4, widest + 28 + 40, qh + 8, 24, dark ? rgba(TOKENS.night, SCRIM.callerDark) : rgba(TOKENS.canvas, SCRIM.callerLight), 24);
     }

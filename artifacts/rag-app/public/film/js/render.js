@@ -788,7 +788,9 @@ void main(){
   float h = hash12(floor(gl_FragCoord.xy) + seed * 131.);
   if (uHashAlpha > .5 && alpha < h) discard;
   float a2c = clamp(alpha + (h - .5) * .24 * step(alpha, .999), 0., 1.);
-  a2c = mix(a2c, alpha, vCard);
+  // card pass: the scene is linear light, so a linear alpha fade over the dark lens holds and then
+  // drops at the end. alpha^2.2 makes equal alpha steps equal steps in display space.
+  a2c = mix(a2c, pow(alpha, 2.2), vCard);
   oScene = vec4(col, a2c);
   oLight = vec4(em, a2c);
 }`;
@@ -1420,6 +1422,7 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
       gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
       // translucent card-sized sheets: true alpha blending, depth-tested, no depth write
       gl.uniform1f(p.u.uCardPass, 1);
+      gl.uniform1f(p.u.uHashAlpha, 0); // blended: never hash-discard, even without MSAA
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);

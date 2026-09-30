@@ -149,7 +149,8 @@ const CAM_KEYS = [
   { t: 45.5, e: [700, 540, 1810], g: [700, 540, 0], fov: 30 },
   { t: 47.0, e: [740, 800, 2150], g: [740, 540, 0], fov: 30 },
   // The second search, from the other side; then a held stop.
-  { t: 49.0, e: [-260, 1000, 820], g: [880, 560, 20], fov: 34, up: [0, 0, 1] },
+  { t: 49.3, e: [740, 800, 2150], g: [740, 540, 0], fov: 30 },
+  { t: 50.6, e: [-260, 1000, 820], g: [880, 560, 20], fov: 34, up: [0, 0, 1] },
   { t: 52.2, e: [-220, 980, 830], g: [880, 560, 20], fov: 34, up: [0, 0, 1] },
   { t: 52.9, e: [-220, 980, 830], g: [880, 560, 20], fov: 34, up: [0, 0, 1] },
   { t: 56.8, e: [720, 760, 2150], g: [720, 540, 0], fov: 30 },
@@ -167,10 +168,12 @@ const CAM_KEYS = [
 let REDUCED = false;
 export function setReducedMotion(on) { REDUCED = !!on; }
 export function isReduced() { return REDUCED; }
-const REDUCED_CUTS = [22.9, 58.6, 67.2];
+const REDUCED_CUTS = [22.9, 46.9, 58.6, 67.2];
+const RC_GATHER = 22.9, RC_MARK = 67.2;
 const REDUCED_POSES = [
   { e: [1080, 1950, 1250], g: [960, 560, 120], fov: 34 },
   { e: [700, 540, 1830], g: [700, 540, 0], fov: 30 },
+  { e: [-220, 980, 830], g: [880, 560, 20], fov: 34, up: [0, 0, 1] },
   { e: [960, 1560, 2700], g: [960, 560, 0], fov: 30 },
   { e: [1546, 634, 2560], g: [1546, 634, 0], fov: 30 },
 ];
@@ -195,7 +198,7 @@ export function cameraAt(t) {
     let k = 0;
     while (k < REDUCED_CUTS.length && t >= REDUCED_CUTS[k]) k++;
     const p = REDUCED_POSES[k];
-    return setCam(defaultCam(p.fov), p.e, p.g);
+    return setCam(defaultCam(p.fov), p.e, p.g, 0, p.up ?? null);
   }
   let k = 0;
   while (k < CAM_KEYS.length - 2 && t >= CAM_KEYS[k + 1].t) k++;
@@ -501,7 +504,7 @@ function blend(a, b, u, i, lift, out, ref = null) {
 
 // Gather timing: the pages' passages file in first and seed the inner rings.
 function gatherStart(i) {
-  if (REDUCED) return REDUCED_CUTS[0];
+  if (REDUCED) return RC_GATHER;
   const s = L.slots[i];
   const d = L.docOf[i];
   if (d >= 0) { const doc = L.docs[d]; return 22.6 + doc.row * 0.07 + doc.col * 0.03 + doc.page * 0.1; }
@@ -517,8 +520,8 @@ const MARK_DUR = 0.8;
 function basePose(i, t, out) {
   const isDoc = L.docOf[i] >= 0;
   if (REDUCED) {
-    if (t < REDUCED_CUTS[0]) { if (isDoc) poseDoc(i, t, out); else poseStorm(i, t, out); }
-    else if (t < REDUCED_CUTS[2]) poseArchive(i, t, out);
+    if (t < RC_GATHER) { if (isDoc) poseDoc(i, t, out); else poseStorm(i, t, out); }
+    else if (t < RC_MARK) poseArchive(i, t, out);
     else poseMark(i, t, out);
     return;
   }
@@ -588,9 +591,9 @@ function exactTickTile() {
   return pick;
 }
 
-// A weak candidate's rise: up 50.4 to 51.2 (staggered), held, down from 52.9.
+// A weak candidate's rise: up 50.8 to 51.9 (staggered), held, down from 52.9.
 function weakRise(wk, t) {
-  return easeOutCubic((t - 50.4 - wk * 0.08) / 0.8) * (1 - easeInOutCubic((t - 52.9 - wk * 0.03) / 0.6));
+  return easeOutCubic((t - 50.8 - wk * 0.08) / 0.8) * (1 - easeInOutCubic((t - 52.9 - wk * 0.03) / 0.6));
 }
 
 // Where the hero passage opens into the citation panel (world, overhead camera over x=700).
@@ -633,12 +636,15 @@ function applyRetrieval(i, t, p) {
   if (wk >= 0 && t > 50.2 && t < 53.8) {
     const rise = weakRise(wk, t);
     if (rise > 0) {
-      // Stand up, facing the lens, and grow to a readable card.
-      const { f } = camBasis(cameraAt(t));
-      const rxF = Math.asin(clamp(f[1], -1, 1)), ryF = Math.atan2(-f[0], -f[2]);
+      // Stand upright, turned toward the lens, and grow to a readable card.
+      const cam = cameraAt(t);
+      const rzF = Math.atan2(cam.y - p.y, cam.x - p.x) + Math.PI / 2;
+      const a = L.slots[i].a;
+      p.x = lerp(p.x, CENTER.x + Math.cos(a) * THRESH.r, rise);
+      p.y = lerp(p.y, CENTER.y + Math.sin(a) * THRESH.r, rise);
       p.z = lerp(p.z, WEAK_Z, rise);
-      p.rx = lerp(p.rx, rxF, rise); p.ry = lerp(p.ry, ryF, rise);
-      p.rz = p.rz + wrap(0 - p.rz) * rise;
+      p.rx = (Math.PI / 2) * rise; p.ry = 0;
+      p.rz = p.rz + wrap(rzF - p.rz) * rise;
       p.w = lerp(p.w, WEAK_CARD.w, rise); p.h = lerp(p.h, WEAK_CARD.h, rise);
       // Ruled lines would run vertically on a standing card; show it plain.
       p.lines *= 1 - rise;
@@ -721,7 +727,9 @@ function applyScope(i, t, p) {
   const inside = d < 0 ? d >= reach : d <= reach;
   if (!inside) return;
   const edge = Math.abs(d - reach);
-  const on = (0.45 + 0.4 * Math.exp(-Math.pow(edge / 6, 2))) * fade;
+  const th = wallHitTime(d < 0 ? 0 : 1);
+  const settle = t > th ? Math.exp(-(t - th) * 2.5) : 1;
+  const on = (0.45 + 0.4 * settle * Math.exp(-Math.pow(edge / 6, 2))) * fade;
   // Swept passages lift to card white with a cobalt edge: light, not a tint.
   mixCol(p, CARD, 0.7 * on);
   p.glow = Math.max(p.glow, on * 0.8);
@@ -959,7 +967,9 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
   }
   const wa = (-20 * Math.PI) / 180;
   const wp = proj(CENTER.x + Math.cos(wa) * 560, CENTER.y + Math.sin(wa) * 560, 0);
-  label({ text: 'Meaning', x: wp.sx + 30, y: wp.sy - 70, tick: { x: wp.sx, y: wp.sy }, t, t0: lw('Meaning').t0, t1: lw('Meaning').t1, swatch: 'cobalt' });
+  const wr = waveRadius(SEARCHES[0], clamp(t, SEARCHES[0].t0, SEARCHES[0].t0 + SEARCHES[0].dur));
+  const wf = proj(CENTER.x + Math.cos(wa) * wr, CENTER.y + Math.sin(wa) * wr, 0);
+  label({ text: 'Meaning', x: wp.sx + 30, y: wp.sy - 70, tick: { x: wf.sx, y: wf.sy }, t, t0: lw('Meaning').t0, t1: lw('Meaning').t1, swatch: 'cobalt' });
   const ek = exactTickTile();
   const ep = proj(L.slots[ek].x, L.slots[ek].y, 30);
   const eq = ek * STRIDE, en = proj(tiles[eq], tiles[eq + 1], tiles[eq + 2]);
@@ -1061,6 +1071,12 @@ function drawThreshold(ctx, t, proj) {
   ctx.beginPath();
   ctx.rect(0, 0, 1920, 1080);
   ctx.rect(80, 214, 800, 92);
+  const cam = fs.cam;
+  L.weak.forEach((i, wk) => {
+    if (weakRise(wk, t) <= 0.05) return;
+    const q = tileQuad(cam, i);
+    ctx.moveTo(q[0][0], q[0][1]); for (let j = 1; j < 4; j++) ctx.lineTo(q[j][0], q[j][1]); ctx.closePath();
+  });
   ctx.clip('evenodd');
   // Adds dash j to the current path; returns its width, or 0 when behind the eye.
   const dash = (arr, j) => {
@@ -1113,21 +1129,23 @@ function drawShortfall(ctx, t, proj) {
     const rise = weakRise(wk, t);
     if (rise <= 0.02) return;
     const k = i * STRIDE;
-    const top = proj(tiles[k], tiles[k + 1], tiles[k + 2] + (tiles[k + 7] / 2) * Math.cos(tiles[k + 3]));
-    const tick = proj(tiles[k], tiles[k + 1], zBar);
-    const half = clamp(tick.scale * 38, 18, 44);
+    const a = L.slots[i].a;
+    const top = proj(tiles[k], tiles[k + 1], tiles[k + 2] + (tiles[k + 7] / 2) * Math.sin(tiles[k + 3]));
+    const ringAt = (da) => proj(CENTER.x + Math.cos(a + da) * THRESH.r, CENTER.y + Math.sin(a + da) * THRESH.r, zBar);
+    const tick = ringAt(0);
     ctx.globalAlpha = bar * rise;
-    // Guide: the distance still to go.
-    ctx.strokeStyle = 'rgba(33, 32, 28, 0.55)';
+    // Guide: the distance still to go, straight up from the card to the bar.
+    ctx.strokeStyle = 'rgba(33, 32, 28, 0.6)';
     ctx.lineWidth = 1.5;
     ctx.setLineDash([2, 5]);
-    ctx.beginPath(); ctx.moveTo(top.sx, top.sy - 4); ctx.lineTo(tick.sx, tick.sy + 5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(top.sx, top.sy - 4); ctx.lineTo(tick.sx, tick.sy + 6); ctx.stroke();
     ctx.setLineDash([]);
-    // Tick: the height it needed to reach.
-    ctx.strokeStyle = '#8A5300'; ctx.lineWidth = 6;
-    ctx.beginPath(); ctx.moveTo(tick.sx - half, tick.sy); ctx.lineTo(tick.sx + half, tick.sy); ctx.stroke();
-    ctx.strokeStyle = '#F59F0A'; ctx.lineWidth = 3.5;
-    ctx.beginPath(); ctx.moveTo(tick.sx - half, tick.sy); ctx.lineTo(tick.sx + half, tick.sy); ctx.stroke();
+    // Notch: the part of the bar this passage needed to reach, thicker on the ring.
+    const w = clamp(tick.scale * 4.2, 2.5, 9) + 4;
+    ctx.beginPath();
+    for (let q = -6; q <= 6; q++) { const r = ringAt((q / 6) * 0.05); if (q === -6) ctx.moveTo(r.sx, r.sy); else ctx.lineTo(r.sx, r.sy); }
+    ctx.strokeStyle = '#8A5300'; ctx.lineWidth = w + 2.5; ctx.stroke();
+    ctx.strokeStyle = '#F59F0A'; ctx.lineWidth = w; ctx.stroke();
   });
   ctx.restore();
 }
