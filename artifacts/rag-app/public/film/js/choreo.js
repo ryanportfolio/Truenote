@@ -40,7 +40,7 @@ export const STATEMENTS = [
   { text: 'A guess sounds exactly like an answer', accent: [3], t0: 13.6, t1: 18.0, x: 960, y: 880, align: 'center', theme: 'dark' },
   { text: 'Only your approved documents can support an answer', accent: [2], t0: 27.0, t1: 31.6, x: 110, y: 520, align: 'left', maxWidth: 720, theme: 'light' },
   { text: 'Every answer shows its receipt', accent: [4], t0: 41.8, t1: 45.6, x: 96, y: 905, align: 'left', maxWidth: 1300, theme: 'light' },
-  { text: 'When the documents stop, Truenote stops', accent: [5], t0: 54.6, t1: 58.5, x: 96, y: 905, align: 'left', maxWidth: 860, theme: 'light' },
+  { text: 'When the documents stop, Truenote stops', accent: [5], t0: 54.55, t1: 58.5, x: 96, y: 905, align: 'left', maxWidth: 860, theme: 'light' },
   { text: "A rep's search never reaches another program", accent: [3], t0: 62.2, t1: 66.6, x: 960, y: 945, align: 'center', maxWidth: 1700, theme: 'light' },
 ];
 
@@ -60,7 +60,7 @@ export const LABELS = [
 // arrive over (words - 1) x 0.07 + 0.6 s and exit over 0.45 s; labels fade in
 // over 0.4 s and out over 0.35 s (ui.js statement and label).
 export function captions() {
-  const words = (s) => s.text.trim().split(/s+/).length;
+  const words = (s) => s.text.trim().split(/\s+/).length;
   return [
     ...STATEMENTS.map((s) => ({ text: s.text, t0: s.t0, t1: s.t1, read0: s.t0 + (words(s) - 1) * 0.07 + 0.6, read1: s.t1 - 0.45 })),
     ...LABELS.map((s) => ({ text: s.text, t0: s.t0, t1: s.t1, read0: s.t0 + 0.4, read1: s.t1 - 0.35 })),
