@@ -238,7 +238,7 @@ void main(){
   mn -= pad; mx += pad;
   vec2 g = mix(mn, mx, aCorner.xy + .5);
   vG = g;
-  vC0 = iA.xyz; vN = R[2]; vTx = tx; vTy = ty; vHalf = max(hs, vec2(1e-3)); vAQ = vec2(mix(clamp(iC.a, 0., 1.), smoothstep(.35, .65, clamp(iC.a, 0., 1.)), smoothstep(.97, .995, abs(R[2].z)) * (1. - smoothstep(70., 110., iA.z)) * uDayG), q);
+  vC0 = iA.xyz; vN = R[2]; vTx = tx; vTy = ty; vHalf = max(hs, vec2(1e-3)); vAQ = vec2(clamp(iC.a, 0., 1.), q);
   float live = step(1e-4, iC.a) * step(1e-4, uShadowAmt) * step(zmax, 4000.) * (1. - q * step(90., zmin));
   gl_Position = mix(vec4(2., 2., 2., 1.), uSVP * vec4(g, 0., 1.), live);
 }`;
@@ -553,9 +553,10 @@ ${TILE_ATTRIBS}
 ${ROT}
 uniform mat4 uVP;
 uniform float uDayG;
+uniform float uCardPass; // 0: opaque/coverage pass (prepass + shade), 1: blended card pass
 invariant gl_Position;
 out vec3 vPos; out vec2 vLP;
-flat out vec3 vN; flat out vec3 vTx; flat out vec3 vTy; flat out vec4 vC; flat out vec4 vD; flat out vec2 vHalf;
+flat out vec3 vN; flat out vec3 vTx; flat out vec3 vTy; flat out vec4 vC; flat out vec4 vD; flat out vec2 vHalf; flat out float vCard;
 void main(){
   mat3 R = rotXYZ(vec3(iA.w, iB.x, iB.y));
   float flatV = smoothstep(.992, .999, abs(R[2].z));
@@ -564,10 +565,13 @@ void main(){
   vec3 pos = iA.xyz + R[0] * lp.x + R[1] * lp.y;
   vPos = pos; vLP = lp; vN = R[2]; vTx = R[0]; vTy = R[1];
   vC = clamp(iC, 0., 1.);
-  // a resting tile on a light table is either there or not: no translucent grey ghosts
-  float restA = smoothstep(.97, .995, abs(R[2].z)) * (1. - smoothstep(70., 110., iA.z)) * uDayG;
-  vC.a = mix(vC.a, smoothstep(.35, .65, vC.a), restA); vD = vec4(clamp(iD.xy, 0., 1.), clamp(iD.z, 0., 2.), clamp(iD.w, 0., 1.)); vHalf = max(.5 * size, vec2(1e-3));
-  gl_Position = mix(vec4(2., 2., 2., 1.), uVP * vec4(pos, 1.), step(1e-4, iC.a));
+  vD = vec4(clamp(iD.xy, 0., 1.), clamp(iD.z, 0., 2.), clamp(iD.w, 0., 1.)); vHalf = max(.5 * size, vec2(1e-3));
+  // a card-sized sheet (short side >= 40) part way through a fade is drawn in the blended pass,
+  // so it fades smoothly instead of in alpha-to-coverage steps
+  float card = step(40., min(iB.z, iB.w)) * step(iC.a, .995);
+  vCard = uCardPass;
+  float mine = mix(1. - card, card, uCardPass);
+  gl_Position = mix(vec4(2., 2., 2., 1.), uVP * vec4(pos, 1.), step(1e-4, iC.a) * mine);
 }`;
 
 const FS_TILE = `#version 300 es
@@ -590,7 +594,7 @@ uniform vec3 uBounceN;  // warm bounce from below x intensity
 uniform vec3 uAmbN;     // near-black room fill
 uniform vec3 uRimC;     // fresnel rim colour x strength
 in vec3 vPos; in vec2 vLP;
-flat in vec3 vN; flat in vec3 vTx; flat in vec3 vTy; flat in vec4 vC; flat in vec4 vD; flat in vec2 vHalf;
+flat in vec3 vN; flat in vec3 vTx; flat in vec3 vTy; flat in vec4 vC; flat in vec4 vD; flat in vec2 vHalf; flat in float vCard;
 layout(location = 0) out vec4 oScene;
 layout(location = 1) out vec4 oLight;
 
@@ -635,11 +639,14 @@ void main(){
   float spotK = step(1.5, vD.z);                         // hue 2: warm spot light
   float hue = min(vD.z, 1.);
   float amberK = smoothstep(.5, .95, hue) * (1. - spotK); // exact-word hits
-  float rest = smoothstep(.992, .999, abs(vN.z)) * (1. - smoothstep(70., 110., vPos.z));
-  float restL = smoothstep(.97, .995, abs(vN.z)) * (1. - smoothstep(70., 110., vPos.z));
+  float restZ = mix(1. - smoothstep(70., 110., vPos.z), 1., uDayG) * (1. - step(20., min(vHalf.x, vHalf.y)));
+  float rest = smoothstep(.992, .999, abs(vN.z)) * restZ;
+  float restL = smoothstep(.97, .995, abs(vN.z)) * restZ;
   vec3 alb0 = toLin(vC.rgb);
   // cream paper (bright, low chroma) vs coloured families (sage, persimmon)
-  float paperK = smoothstep(.5, .7, dot(alb0, vec3(.2126, .7152, .0722)));
+  float greenK = smoothstep(0., .045, vC.g - vC.r);          // sage family
+  float warmK = smoothstep(.12, .3, vC.r - vC.g);            // persimmon / amber family
+  float paperK = (1. - greenK) * (1. - warmK) * smoothstep(.2, .35, dot(alb0, vec3(.2126, .7152, .0722)));
   // glow: at night it is light on the marks; on a light table it is a lift toward #FDFDFC plus an
   // opaque cobalt edge, on cream paper only
   float gN = vD.y * (1. - uDayG) * (1. - spotK);          // night: light on the marks
@@ -653,7 +660,7 @@ void main(){
   // at rest a band reads as one sheet: cream tiles share one paper tone (#E4D6BD under the warm
   // light) and each coloured family (sage, persimmon) one luminance, so no per-tile mosaic
   float l0 = max(dot(alb0, vec3(.2126, .7152, .0722)), 1e-3);
-  float famL = mix(.28, .42, step(alb0.r, alb0.g));
+  float famL = mix(.28, .42, smoothstep(-.02, .02, vC.g - vC.r));
   vec3 restAlb = mix(alb0 * (famL / l0), vec3(.746, .672, .541), paperK);
   alb = mix(alb, restAlb, restL * .92);
   float sheet = fbm3(vPos.xy * .011 + 2.7) - .5;
@@ -698,7 +705,7 @@ void main(){
   len = mix(len, .8, avgK); live = mix(live, .93, avgK);
   float x0 = -vHalf.x + mX;
   float text = cy * inRows * live * boxCov(x0, x0 + len * (W - 2. * mX), lp.x, fwv.x);
-  vec3 glowAlbN = mix(vec3(.012, .085, .62), vec3(.86, .33, .003), hue);
+  vec3 glowAlbN = mix(mix(vec3(.012, .085, .62), vec3(.9, .78, .6), warmK), vec3(.86, .33, .003), hue);
   vec3 inkC = mix(alb * vec3(.42, .43, .46), glowAlbN, smoothstep(0., .5, glow));
   float textA = text * mix(lines, max(lines, 1.), smoothstep(0., .4, glow)) * mix(mix(.6, .95, smoothstep(0., .5, glow)), .14, back)
               * mix(1., .55, smoothstep(.6, 1.6, fwr));
@@ -749,7 +756,7 @@ void main(){
   col += alb * uRimC * fres;
 
   // --- emitted light (night only): glow on the printed marks and edge; waves wash over marks
-  vec3 gcol = mix(uCobaltE, uAmberE, hue);
+  vec3 gcol = mix(mix(uCobaltE, uAmberE * vec3(1., 1.6, 3.), warmK), uAmberE, hue);
   float edgeM = max(hair, max(bnd.x, bnd.y) * .6);
   vec3 em = gcol * gN * (text * max(lines, .4) * .5 + rim * .7) + uRimC * fres * fres * .35 * uNight;
   vec3 wem, wt, wsc; float wcov, wsh;
@@ -775,12 +782,13 @@ void main(){
   em *= 1. - hz;
   // a card fading out on a light table fades toward the table colour, so its alpha-to-coverage
   // dither never mixes a saturated face with what lies below (no pink fringe over the lens)
-  col = mix(col, uAir, (1. - alpha) * .7 * uDayG);
+  col = mix(col, uAir, (1. - alpha) * .7 * uDayG * (1. - vCard));
 
   // --- order-independent alpha: alpha-to-coverage with MSAA, else hashed discard
   float h = hash12(floor(gl_FragCoord.xy) + seed * 131.);
   if (uHashAlpha > .5 && alpha < h) discard;
   float a2c = clamp(alpha + (h - .5) * .24 * step(alpha, .999), 0., 1.);
+  a2c = mix(a2c, alpha, vCard);
   oScene = vec4(col, a2c);
   oLight = vec4(em, a2c);
 }`;
@@ -1386,6 +1394,7 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
       gl.uniformMatrix4fv(pp.u.uVP, false, VP);
       gl.uniform1f(pp.u.uHashAlpha, SAMPLES > 0 ? 0 : 1);
       gl.uniform1f(pp.u.uDayG, dayG);
+      gl.uniform1f(pp.u.uCardPass, 0);
       if (SAMPLES > 0) gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE);
       gl.colorMask(false, false, false, false);
       gl.bindVertexArray(tileVao);
@@ -1405,9 +1414,16 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
       gl.bindTexture(gl.TEXTURE_2D, T.shadow.t);
       gl.uniform1i(p.u.uShadowTex, 0);
       if (SAMPLES > 0) gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE);
+      gl.uniform1f(p.u.uCardPass, 0);
       gl.bindVertexArray(tileVao);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
       gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
+      // translucent card-sized sheets: true alpha blending, depth-tested, no depth write
+      gl.uniform1f(p.u.uCardPass, 1);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+      gl.disable(gl.BLEND);
       gl.depthMask(true);
     }
 

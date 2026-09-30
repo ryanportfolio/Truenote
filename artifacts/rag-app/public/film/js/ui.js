@@ -1335,7 +1335,8 @@ export function citationPanel(ctx, props) {
   // Header.
   ctx.textBaseline = 'alphabetic';
   setFont(ctx, { size: 20, track: 0.06 });
-  ctx.fillStyle = TOKENS.mutedFg;
+  // Darker than mutedFg: this sits on the tile's tan paper, not on a card.
+  ctx.fillStyle = '#48463E';
   ctx.fillText(String(eyebrow).toUpperCase(), px + padX, y + 20 + 17);
   setFont(ctx, { size: 28 });
   ctx.fillStyle = TOKENS.ink;

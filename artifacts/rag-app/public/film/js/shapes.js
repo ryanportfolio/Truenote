@@ -152,11 +152,18 @@ export function buildLayout(seed = 7) {
   for (const i of exact) if (shortlist.length < 5 && !shortlist.includes(i)) shortlist.push(i);
   for (let k = 0; shortlist.length < 7; k++) { const i = byDistToHero[5 + k * 3][1]; if (!shortlist.includes(i)) shortlist.push(i); }
 
+  // Weak candidates for the refused question: five passages spread along the
+  // near-right bands (right of the lens from the stop camera), clear of the wall at 90.
   const weak = [];
-  for (let k = 0; k < n && weak.length < 9; k++) {
-    const i = Math.floor(R[3][k] * n);
-    const s = slots[i];
-    if ((s.band === 2 || s.band === 3) && Math.abs(((s.deg - 170 + 540) % 360) - 180) < 45 && !weak.includes(i) && i !== hero.tile) weak.push(i);
+  for (const [deg, band] of [[48, 2], [66, 3], [82, 2], [100, 3], [118, 2]]) {
+    let best = -1, bd = 1e9;
+    for (let i = 0; i < n; i++) {
+      const s = slots[i];
+      if (s.band !== band || s.colKey === 'coral' || i === hero.tile || used.has(i) || weak.includes(i)) continue;
+      const d = Math.abs(((s.deg - deg + 540) % 360) - 180) + Math.abs(s.r - (band === 2 ? 470 : 578)) * 0.2;
+      if (d < bd) { bd = d; best = i; }
+    }
+    weak.push(best);
   }
 
   // Program wedges for the scope chapter: A, B, C.

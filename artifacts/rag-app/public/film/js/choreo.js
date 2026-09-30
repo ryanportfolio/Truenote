@@ -48,7 +48,7 @@ export const STATEMENTS = [
 export const LABELS = [
   { text: 'Approved documents', t0: 20.1, t1: 21.8 },
   { text: 'Split into passages', t0: 21.8, t1: 23.6 },
-  { text: 'Meaning', t0: 34.4, t1: 36.9 },
+  { text: 'Meaning', t0: 34.4, t1: 35.95 },
   { text: 'Exact words', t0: 35.3, t1: 36.9 },
   { text: 'Best passage', t0: 36.2, t1: 37.8 },
   { text: 'Minimum match', t0: 49.9, t1: 52.1 },
@@ -129,7 +129,8 @@ const markLayer = new Float32Array(N);
 }
 
 // ---------------------------------------------------------------- camera
-// Keys: t, eye, target, fov, roll. Segments ease in-out between consecutive keys.
+// Keys: t, eye, target, fov, roll (or an explicit up vector). Segments ease
+// in-out between consecutive keys; the up vector is interpolated and renormalised.
 const CAM_KEYS = [
   { t: 0, e: [930, 1560, 250], g: [960, 640, 210], fov: 38 },
   { t: 8.5, e: [1080, 1950, 1250], g: [960, 560, 120], fov: 34 },
@@ -148,9 +149,9 @@ const CAM_KEYS = [
   { t: 45.5, e: [700, 540, 1810], g: [700, 540, 0], fov: 30 },
   { t: 47.0, e: [740, 800, 2150], g: [740, 540, 0], fov: 30 },
   // The second search, from the other side; then a held stop.
-  { t: 49.0, e: [-260, 1000, 820], g: [880, 560, 20], fov: 34 },
-  { t: 52.2, e: [-220, 980, 830], g: [880, 560, 20], fov: 34 },
-  { t: 52.9, e: [-220, 980, 830], g: [880, 560, 20], fov: 34 },
+  { t: 49.0, e: [-260, 1000, 820], g: [880, 560, 20], fov: 34, up: [0, 0, 1] },
+  { t: 52.2, e: [-220, 980, 830], g: [880, 560, 20], fov: 34, up: [0, 0, 1] },
+  { t: 52.9, e: [-220, 980, 830], g: [880, 560, 20], fov: 34, up: [0, 0, 1] },
   { t: 56.8, e: [720, 760, 2150], g: [720, 540, 0], fov: 30 },
   { t: 58.4, e: [730, 780, 2160], g: [730, 540, 0], fov: 30 },
   { t: 60.6, e: [960, 1560, 2700], g: [960, 560, 0], fov: 30 },
@@ -180,12 +181,14 @@ export function reducedDip(t) {
   return smooth(d);
 }
 
-function setCam(cam, e, g, r = 0) {
+function setCam(cam, e, g, r = 0, up = null) {
   cam.x = e[0]; cam.y = e[1]; cam.z = e[2];
   cam.tx = g[0]; cam.ty = g[1]; cam.tz = g[2];
-  cam.ux = Math.sin(r); cam.uy = -Math.cos(r); cam.uz = 0;
+  if (up) { const l = Math.hypot(...up); cam.ux = up[0] / l; cam.uy = up[1] / l; cam.uz = up[2] / l; }
+  else { cam.ux = Math.sin(r); cam.uy = -Math.cos(r); cam.uz = 0; }
   return cam;
 }
+const keyUp = (k) => k.up ?? [Math.sin(k.r ?? 0), -Math.cos(k.r ?? 0), 0];
 
 export function cameraAt(t) {
   if (REDUCED) {
@@ -201,7 +204,8 @@ export function cameraAt(t) {
   const cam = defaultCam(lerp(a.fov, b.fov, u));
   const e = [0, 1, 2].map((j) => lerp(a.e[j], b.e[j], u));
   const g = [0, 1, 2].map((j) => lerp(a.g[j], b.g[j], u));
-  setCam(cam, e, g, lerp(a.r ?? 0, b.r ?? 0, u));
+  if (a.up || b.up) { const ua = keyUp(a), ub = keyUp(b); setCam(cam, e, g, 0, [0, 1, 2].map((j) => lerp(ua[j], ub[j], u))); }
+  else setCam(cam, e, g, lerp(a.r ?? 0, b.r ?? 0, u));
   // Handheld breath in the storm only, from t (deterministic).
   const hb = 1 - ramp(t, 19, 24);
   cam.x += hb * (Math.sin(t * 0.41) * 14 + Math.sin(t * 1.07 + 1.3) * 5);
@@ -304,7 +308,7 @@ function applyFocus(t, p) {
   const near = u < 0.52;
   const ua = easeOutCubic(u / 0.52), ub = easeInCubic((u - 0.52) / 0.48);
   const sx = near ? lerp(1500, 860, ua) : lerp(860, -700, ub);
-  const sy = near ? lerp(230, 380, ua) : lerp(380, 430, (u - 0.52) / 0.48);
+  const sy = near ? lerp(320, 400, ua) : lerp(400, 450, (u - 0.52) / 0.48);
   const d = near ? lerp(1500, 600, ua) : lerp(600, 420, ub);
   placeInView(p, t, sx, sy, d, 400, 278, lerp(0.75, -0.55, easeInOutSine(u)), 0.1 * Math.sin(u * 3.2));
   p.r = c[0]; p.g = c[1]; p.b = c[2]; p.lines = 0; p.a = 1;
@@ -345,7 +349,7 @@ function threadTiles() {
   const cand = [];
   for (let i = 0; i < N; i++) {
     if (L.docOf[i] >= 0 || i === FOCUS || i === WHIP || GUESS.includes(i) || i === HERO) continue;
-    if (gatherStart(i) < 22) continue;
+    if (gatherStart(i) < 22 || R1[i] < 0.1 || R1[i] > 0.93) continue;
     poseStorm(i, THREAD_T, G);
     const pr = project(cam, G.x, G.y, G.z);
     if (pr.depth > 50 && pr.sy > 640 && pr.sy < 790) cand.push({ i, sx: pr.sx, sy: pr.sy });
@@ -562,9 +566,10 @@ const WAVE_R0 = RIM, WAVE_R1 = 820;
 function waveRadius(sr, t) { return WAVE_R0 + (WAVE_R1 - WAVE_R0) * easeOutCubic((t - sr.t0) / sr.dur); }
 const EXACT_T0 = 35.2, EXACT_STEP = 0.08;
 const THRESH = { r: 520, z: 170 };
-const WEAK_Z = 56;
-// The bar rises 49.4 to 50.0 and is gone before the stop statement (54.8).
-function barAmount(t) { return easeOutCubic((t - 49.4) / 0.6) * (1 - ramp(t, 54.3, 54.9)); }
+const WEAK_Z = 80;
+const WEAK_CARD = { w: 64, h: 50 };
+// The bar rises 49.9 to 50.5 (after the question row settles) and is gone before the stop statement (54.8).
+function barAmount(t) { return easeOutCubic((t - 49.9) / 0.6) * (1 - ramp(t, 54.3, 54.9)); }
 
 // The exact-word hit the label points at: the first one (after the hero) that
 // sits well inside the frame at 35.6 s, picked once per motion mode.
@@ -581,6 +586,11 @@ function exactTickTile() {
   }
   exactTick[key] = pick;
   return pick;
+}
+
+// A weak candidate's rise: up 50.4 to 51.2 (staggered), held, down from 52.9.
+function weakRise(wk, t) {
+  return easeOutCubic((t - 50.4 - wk * 0.08) / 0.8) * (1 - easeInOutCubic((t - 52.9 - wk * 0.03) / 0.6));
 }
 
 // Where the hero passage opens into the citation panel (world, overhead camera over x=700).
@@ -621,10 +631,19 @@ function applyRetrieval(i, t, p) {
   // The refused question: weak candidates rise toward the bar, fall short, hold, settle.
   const wk = weakRank[i];
   if (wk >= 0 && t > 50.2 && t < 53.8) {
-    const rise = easeOutCubic((t - 50.4 - wk * 0.06) / 0.9) * (1 - easeInOutCubic((t - 52.9 - wk * 0.03) / 0.6));
-    p.z += WEAK_Z * rise;
-    p.glow = Math.max(p.glow, 0.5 * rise);
-    p.rx = 0; p.ry = 0;
+    const rise = weakRise(wk, t);
+    if (rise > 0) {
+      // Stand up, facing the lens, and grow to a readable card.
+      const { f } = camBasis(cameraAt(t));
+      const rxF = Math.asin(clamp(f[1], -1, 1)), ryF = Math.atan2(-f[0], -f[2]);
+      p.z = lerp(p.z, WEAK_Z, rise);
+      p.rx = lerp(p.rx, rxF, rise); p.ry = lerp(p.ry, ryF, rise);
+      p.rz = p.rz + wrap(0 - p.rz) * rise;
+      p.w = lerp(p.w, WEAK_CARD.w, rise); p.h = lerp(p.h, WEAK_CARD.h, rise);
+      // Ruled lines would run vertically on a standing card; show it plain.
+      p.lines *= 1 - rise;
+      p.glow = Math.max(p.glow, 0.5 * rise);
+    }
   }
 }
 
@@ -663,8 +682,8 @@ function applyHero(t, p) {
   p.lines = 1 - unfold; p.glow = 0.7 * (1 - unfold) * out; p.hue = 0;
   const c = COLORS.paper;
   p.r = lerp(c[0], CARD[0], unfold); p.g = lerp(c[1], CARD[1], unfold); p.b = lerp(c[2], CARD[2], unfold);
-  if (t > 45.4 && REDUCED) {
-    if (t < 45.9) { p.x = PANEL.x; p.y = PANEL.y; p.z = PANEL.z; p.w = PANEL.w; p.h = PANEL.h; p.a = 1 - ramp(t, 45.4, 45.9); return; }
+  if (t > 45.2 && REDUCED) {
+    if (t < 45.9) { p.x = PANEL.x; p.y = PANEL.y; p.z = PANEL.z; p.w = PANEL.w; p.h = PANEL.h; p.a = 1 - ramp(t, 45.2, 45.5); return; }
     p.x = s.x; p.y = s.y; p.z = s.z; p.w = s.w; p.h = s.h; p.rx = 0; p.ry = 0; p.rz = s.rz;
     p.r = s.col[0]; p.g = s.col[1]; p.b = s.col[2]; p.lines = s.lines; p.glow = 0; p.a = ramp(t, 45.95, 46.5);
     return;
@@ -871,6 +890,8 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
 
   drawThreshold(ctx, t, proj);
 
+  drawShortfall(ctx, t, proj);
+
   // The passage that drifts past in the cold open carries the answer.
   if (t > 4.4 && t < 7.6 && ui.tileText) {
     const a = ramp(t, 4.6, 5.0) * (1 - ramp(t, 7.0, 7.4)) * tiles[FOCUS * STRIDE + 11];
@@ -971,7 +992,7 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
   }
 
   // The stop: the bar, the fall short, the refusal, the gap.
-  const ba = (-10 * Math.PI) / 180;
+  const ba = (60 * Math.PI) / 180;
   const bp = proj(CENTER.x + Math.cos(ba) * THRESH.r, CENTER.y + Math.sin(ba) * THRESH.r, THRESH.z);
   label({ text: 'Minimum match', x: 1840, y: 200, align: 'right', tick: { x: bp.sx, y: bp.sy }, t, t0: lw('Minimum match').t0, t1: lw('Minimum match').t1, swatch: 'amber' });
   label({ text: 'No passage matched well enough', x: 1840, y: 200, align: 'right', tick: { x: bp.sx, y: bp.sy }, t, t0: lw('No passage matched well enough').t0, t1: lw('No passage matched well enough').t1, swatch: 'amber' });
@@ -1077,6 +1098,37 @@ function drawThreshold(ctx, t, proj) {
     ctx.strokeStyle = '#F59F0A'; ctx.lineWidth = w; ctx.stroke();
   }
   ctx.restore();
+  ctx.restore();
+}
+
+// The fall-short: above each weak candidate, an amber tick at the bar's height
+// and a dotted ink guide from the candidate's top edge up to it.
+function drawShortfall(ctx, t, proj) {
+  const bar = barAmount(t);
+  if (bar <= 0.001 || t < 50.3 || t > 53.8) return;
+  const zBar = lerp(THRESH.z * 0.5, THRESH.z, bar);
+  ctx.save();
+  ctx.lineCap = 'round';
+  L.weak.forEach((i, wk) => {
+    const rise = weakRise(wk, t);
+    if (rise <= 0.02) return;
+    const k = i * STRIDE;
+    const top = proj(tiles[k], tiles[k + 1], tiles[k + 2] + (tiles[k + 7] / 2) * Math.cos(tiles[k + 3]));
+    const tick = proj(tiles[k], tiles[k + 1], zBar);
+    const half = clamp(tick.scale * 38, 18, 44);
+    ctx.globalAlpha = bar * rise;
+    // Guide: the distance still to go.
+    ctx.strokeStyle = 'rgba(33, 32, 28, 0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([2, 5]);
+    ctx.beginPath(); ctx.moveTo(top.sx, top.sy - 4); ctx.lineTo(tick.sx, tick.sy + 5); ctx.stroke();
+    ctx.setLineDash([]);
+    // Tick: the height it needed to reach.
+    ctx.strokeStyle = '#8A5300'; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.moveTo(tick.sx - half, tick.sy); ctx.lineTo(tick.sx + half, tick.sy); ctx.stroke();
+    ctx.strokeStyle = '#F59F0A'; ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.moveTo(tick.sx - half, tick.sy); ctx.lineTo(tick.sx + half, tick.sy); ctx.stroke();
+  });
   ctx.restore();
 }
 

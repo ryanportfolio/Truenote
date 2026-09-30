@@ -147,6 +147,10 @@ window.__anim = anim;
 async function boot() {
   ui = await import('./ui.js');
   await loadRenderer();
+  // Warm the canvas and GPU paths each act first uses (dashes, clips, shadows),
+  // so a seek into a later act never stalls on its first frame.
+  for (const w of [6, 15, 22.5, 36, 42, 51, 57, 63, 69, 74]) draw(w);
+  draw(t);
   window.addEventListener('resize', () => { fit(); });
   try {
     const { mountTransport } = await import('./transport.js');
