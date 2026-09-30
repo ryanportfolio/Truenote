@@ -40,7 +40,7 @@ export const STATEMENTS = [
   { text: 'A guess sounds exactly like an answer.', accent: [3], t0: 13.6, t1: 18.0, x: 960, y: 880, align: 'center', theme: 'dark' },
   { text: 'Only your approved documents can support an answer.', accent: [2], t0: 27.0, t1: 31.6, x: 110, y: 520, align: 'left', maxWidth: 720, theme: 'light' },
   { text: 'Every answer shows its receipt.', accent: [4], t0: 41.8, t1: 45.6, x: 96, y: 950, align: 'left', maxWidth: 1300, theme: 'light' },
-  { text: 'When the documents stop, Truenote stops.', accent: [5], t0: 54.4, t1: 58.5, x: 96, y: 950, align: 'left', maxWidth: 1300, theme: 'light' },
+  { text: 'When the documents stop, Truenote stops.', accent: [5], t0: 54.8, t1: 58.5, x: 96, y: 950, align: 'left', maxWidth: 860, theme: 'light' },
   { text: "A rep's search never reaches another program.", accent: [3], t0: 62.2, t1: 66.6, x: 960, y: 985, align: 'center', maxWidth: 1700, theme: 'light' },
 ];
 
@@ -52,7 +52,7 @@ export const LABELS = [
   { text: 'Exact words', t0: 35.3, t1: 36.9 },
   { text: 'Best passage', t0: 36.2, t1: 37.8 },
   { text: 'Minimum match', t0: 49.9, t1: 52.1 },
-  { text: 'No passage matched well enough', t0: 52.2, t1: 55.4 },
+  { text: 'No passage matched well enough', t0: 52.2, t1: 54.9 },
   { text: 'Logged in Content gaps for review', t0: 55.9, t1: 58.6 },
 ];
 
@@ -176,7 +176,7 @@ const REDUCED_POSES = [
 export function reducedDip(t) {
   if (!REDUCED) return 0;
   let d = 0;
-  for (const c of REDUCED_CUTS) d = Math.max(d, 1 - clamp(Math.abs(t - c) / 0.5));
+  for (const c of REDUCED_CUTS) d = Math.max(d, clamp((0.5 - Math.abs(t - c)) / 0.35));
   return smooth(d);
 }
 
@@ -241,7 +241,7 @@ function placeInView(p, t, sx, sy, d, pw, ph, yaw = 0, roll = 0) {
 
 // ---------------------------------------------------------------- poses
 function P() { return { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, w: 10, h: 10, r: 1, g: 1, b: 1, a: 1, lines: 0, glow: 0, hue: 0 }; }
-const A = P(), B = P(), O = P(), A0 = P(), G = P();
+const A = P(), B = P(), O = P(), A0 = P(), G = P(), GR = P();
 
 // Storm time warp: full speed, decelerating through the stakes, slow drift after.
 function stormClock(t) {
@@ -281,8 +281,8 @@ function poseStorm(i, t, p) {
 
 // Cold open, first event: one sheet whips across the lens as the light comes on.
 function applyWhip(t, p) {
-  if (REDUCED || t < 0.3 || t > 1.4) { if (t < gatherStart(WHIP)) p.a = 0; return; }
-  const u = clamp((t - 0.3) / 1.1);
+  if (REDUCED || t < 0.05 || t > 1.15) { if (t < gatherStart(WHIP)) p.a = 0; return; }
+  const u = clamp((t - 0.05) / 1.1);
   placeInView(p, t, lerp(2500, -700, easeInOutSine(u)), 470 + 120 * Math.sin(u * 3), 330, 520, 380, (u - 0.5) * 1.6, 0.4 - u * 0.5);
   const c = COLORS.paperWarm;
   p.r = c[0]; p.g = c[1]; p.b = c[2]; p.lines = 1; p.glow = 0; p.a = 1;
@@ -304,7 +304,7 @@ function applyFocus(t, p) {
   const near = u < 0.52;
   const ua = easeOutCubic(u / 0.52), ub = easeInCubic((u - 0.52) / 0.48);
   const sx = near ? lerp(1500, 860, ua) : lerp(860, -700, ub);
-  const sy = near ? lerp(160, 320, ua) : lerp(320, 260, (u - 0.52) / 0.48);
+  const sy = near ? lerp(230, 380, ua) : lerp(380, 330, (u - 0.52) / 0.48);
   const d = near ? lerp(1500, 600, ua) : lerp(600, 420, ub);
   placeInView(p, t, sx, sy, d, 400, 278, lerp(0.75, -0.55, easeInOutSine(u)), 0.1 * Math.sin(u * 3.2));
   p.r = c[0]; p.g = c[1]; p.b = c[2]; p.lines = 0; p.glow = 0; p.a = 1;
@@ -317,13 +317,69 @@ function applyGuess(k, t, p) {
   if (t < 9.9) return;
   if (t > 11.6 || REDUCED) { if (t < gatherStart(gi)) p.a = 0; return; }
   const c = GUESS_CARDS[k];
-  const u = easeInOutCubic((t - 9.9 - k * 0.3) / 0.9);
+  const t0 = 9.9 + k * 0.3;
+  const u = easeInOutCubic((t - t0) / 0.9);
   placeInView(G, t, c.x + c.w / 2, c.y + c.h / 2, 700, c.w, c.h, 0, 0);
+  // Targets unwrapped once against the storm pose at the turn's start.
+  poseStorm(gi, t0, GR);
+  const un = (tgt, r0) => tgt + TAU * Math.round((r0 - tgt) / TAU);
   p.x = lerp(p.x, G.x, u); p.y = lerp(p.y, G.y, u); p.z = lerp(p.z, G.z, u);
-  p.rx = lerp(p.rx, G.rx, u); p.ry = G.ry + Math.PI * (1 - u); p.rz = lerp(p.rz, G.rz, u);
+  p.rx = lerp(p.rx, un(G.rx, GR.rx), u);
+  p.ry = lerp(p.ry, un(G.ry + Math.PI, GR.ry) - Math.PI * u, u);
+  p.rz = lerp(p.rz, un(G.rz, GR.rz), u);
   p.w = lerp(p.w, G.w, u); p.h = lerp(p.h, G.h, u);
   mixCol(p, CARD, u); p.lines = 1 - u;
   p.a = 1 - ramp(t, 10.9 + k * 0.3, 11.2 + k * 0.3);
+}
+
+// The search for a source: each card sends five threads down into the storm.
+// Targets are storm passages below the card (screen y 640 to 790, above the
+// statement), picked from the pose at 14.6 s once per motion mode.
+const THREAD_T = 14.6;
+const threadCache = {};
+function threadTiles() {
+  const key = REDUCED ? 'r' : 'f';
+  if (threadCache[key]) return threadCache[key];
+  const cam = cameraAt(THREAD_T);
+  const cand = [];
+  for (let i = 0; i < N; i++) {
+    if (L.docOf[i] >= 0 || i === FOCUS || i === WHIP || GUESS.includes(i) || i === HERO) continue;
+    if (gatherStart(i) < 22) continue;
+    poseStorm(i, THREAD_T, G);
+    const pr = project(cam, G.x, G.y, G.z);
+    if (pr.depth > 50 && pr.sy > 640 && pr.sy < 790) cand.push({ i, sx: pr.sx, sy: pr.sy });
+  }
+  const used = new Set();
+  const out = GUESS_CARDS.map((c, k) => [-170, -85, 0, 85, 170].map((dx, j) => {
+    const tx = c.x + c.w / 2 + dx, ty = 700 + ((j + k) % 2) * 50;
+    let best = null, bd = Infinity;
+    for (const q of cand) {
+      if (used.has(q.i)) continue;
+      const d = Math.hypot(q.sx - tx, q.sy - ty);
+      if (d < bd) { bd = d; best = q; }
+    }
+    if (best) used.add(best.i);
+    return best ? best.i : -1;
+  }));
+  threadCache[key] = out;
+  return out;
+}
+const threadArrive = (k, j) => 14.5 + j * 0.1 + k * 0.05;
+const DIM = [0.3, 0.31, 0.35];
+function applyThreadTile(i, t, p) {
+  const tt = threadTiles();
+  let k = -1, j = -1;
+  for (let a = 0; a < 2 && k < 0; a++) { const b = tt[a].indexOf(i); if (b >= 0) { k = a; j = b; } }
+  if (k < 0) return;
+  const ta = threadArrive(k, j);
+  p.glow = Math.max(p.glow, 0.9 * pulse(t, ta, ta + 0.8));
+  const back = easeInOutCubic((t - 17.4) / 0.8);
+  if (!REDUCED) {
+    const flip = easeInOutCubic((t - ta - 0.2) / 0.5) - back;
+    p.rx += Math.PI * flip;
+    p.lines *= 1 - flip;
+  }
+  mixCol(p, DIM, 0.55 * ramp(t, ta + 0.4, ta + 0.9) * (1 - back));
 }
 
 // Two document pages that arrive whole and are cut into 5 x 7 passages.
@@ -376,7 +432,8 @@ function poseArchive(i, t, p) {
     const H = 110;
     p.x = lerp(s.x, CENTER.x + Math.cos(a) * s.r, up);
     p.y = lerp(s.y, CENTER.y + Math.sin(a) * s.r, up);
-    p.rz = lerp(s.rz, a, up);
+    const dr = a - s.rz;
+    p.rz = s.rz + (dr - Math.PI * Math.round(dr / Math.PI)) * up;
     p.rx = (Math.PI / 2) * up;
     p.w = lerp(s.w, Math.max(s.w, 20) * 1.2, up);
     p.h = lerp(s.h, H, up);
@@ -401,8 +458,8 @@ function poseMark(i, t, p) {
   p.w = c.w * (layer > 0 ? 0.9 : 1.05); p.h = c.h * (layer > 0 ? 0.9 : 1.05);
   const col = COLORS[c.colKey];
   p.r = col[0]; p.g = col[1]; p.b = col[2];
-  // The tile mosaic hands over to the drawn sheets (ui lockup) around 69.2 to 69.9.
-  p.a = 1 - ramp(t, 69.2, 69.9);
+  // The tile mosaic hands over to the drawn sheets (ui lockup): sheets 68.95 to 69.3, tiles out by 69.35.
+  p.a = 1 - ramp(t, 69.0, 69.35);
   p.lines = 0.1; p.glow = 0; p.hue = 0;
 }
 
@@ -439,6 +496,7 @@ function blend(a, b, u, i, lift, out, ref = null) {
 
 // Gather timing: the pages' passages file in first and seed the inner rings.
 function gatherStart(i) {
+  if (REDUCED) return REDUCED_CUTS[0];
   const s = L.slots[i];
   const d = L.docOf[i];
   if (d >= 0) { const doc = L.docs[d]; return 22.6 + doc.row * 0.07 + doc.col * 0.03 + doc.page * 0.1; }
@@ -453,6 +511,12 @@ const MARK_DUR = 0.8;
 
 function basePose(i, t, out) {
   const isDoc = L.docOf[i] >= 0;
+  if (REDUCED) {
+    if (t < REDUCED_CUTS[0]) { if (isDoc) poseDoc(i, t, out); else poseStorm(i, t, out); }
+    else if (t < REDUCED_CUTS[2]) poseArchive(i, t, out);
+    else poseMark(i, t, out);
+    return;
+  }
   const g0 = gatherStart(i), gd = gatherDur(i);
   if (t < g0) {
     if (isDoc) poseDoc(i, t, out); else poseStorm(i, t, out);
@@ -498,6 +562,8 @@ function waveRadius(sr, t) { return WAVE_R0 + (WAVE_R1 - WAVE_R0) * easeOutCubic
 const EXACT_T0 = 35.2, EXACT_STEP = 0.08;
 const THRESH = { r: 520, z: 120 };
 const WEAK_Z = THRESH.z * 0.6;
+// The bar rises 49.4 to 50.0 and is gone before the stop statement (54.8).
+function barAmount(t) { return easeOutCubic((t - 49.4) / 0.6) * (1 - ramp(t, 54.3, 54.9)); }
 
 // Where the hero passage opens into the citation panel (world, overhead camera over x=700).
 const PANEL = { x: 1119, y: 540, z: 70, w: 664, h: 454 };
@@ -628,7 +694,7 @@ function applyRipple(i, t, p) {
     const dist = Math.hypot(p.x - CENTER.x, p.y - CENTER.y);
     const r = RIM + u * 700;
     const env = Math.exp(-Math.pow((dist - r) / 70, 2)) * Math.exp(-u * 1.1);
-    p.z += 12 * env;
+    if (!REDUCED) p.z += 12 * env;
     if (t0 < 60) p.glow = Math.max(p.glow, 0.3 * env);
   }
 }
@@ -640,7 +706,7 @@ const fs = {
   ground: { ink: 1, lines: 0, linesX: CENTER.x, linesY: CENTER.y },
   light: { az: 0, el: 0.5, warmth: 0, intensity: 1 },
   shadow: 1,
-  core: { x: CENTER.x, y: CENTER.y, r: CORE_R, on: 0, glow: 0, dim: 0 },
+  core: { x: CENTER.x, y: CENTER.y, r: CORE_R, on: 0, glow: 0, dim: 0, bezel: 1 },
   waves: [],
   beams: [],
   post: { exposure: 1, bloom: 0.6, vignette: 0.35, grain: 0.4, fade: 0, fadeColor: INK },
@@ -662,15 +728,15 @@ export function frameState(tIn) {
   fs.light.az = lerp(lerp(-3.0, -2.6, ramp(t, 0, 2)), -2.25, dawn);
   fs.light.el = lerp(0.42, 0.85, dawn);
   // Lights on: the room is dark for the first beat, then the key comes up.
-  fs.light.intensity = lerp(REDUCED ? 0.9 : 0.9 * easeOutCubic((t - 0.25) / 1.05), 1.0, dawn);
+  fs.light.intensity = lerp(REDUCED ? 0.9 : 0.9 * easeOutCubic((t - 0.05) / 0.9), 1.0, dawn);
   fs.shadow = lerp(0.65, 1, dawn);
   fs.post.exposure = 1 - 0.1 * ramp(t, 52.9, 53.5) * (1 - ramp(t, 56.8, 57.8));
   fs.post.bloom = lerp(0.9, 0.55, dawn);
   fs.post.vignette = lerp(0.5, 0.28, dawn);
   fs.post.grain = lerp(0.5, 0.32, dawn);
   const dip = reducedDip(t);
-  fs.post.fade = Math.max(1 - ramp(t, 0, 0.5), dip);
-  fs.post.fadeColor = dip > 0 && t > 23 ? CREAM : INK;
+  fs.post.fade = Math.max(1 - ramp(t, 0, 0.3), dip);
+  fs.post.fadeColor = dip > 0 && fs.ground.ink < 0.5 ? CREAM : INK;
   fs.haze = 0.0003 * (1 - dawn);
   fs.tileEdge = 1;
 
@@ -682,6 +748,8 @@ export function frameState(tIn) {
   c.glow = 0.25 * c.on + 0.8 * pulse(t, 37.8, 39.6) + 0.25 * pulse(t, 33.9, 34.6)
     + 0.5 * ramp(t, 67.0, 67.8) * (1 - ramp(t, 68.6, 69.4)) + 0.35 * ramp(t, 69.0, 70.5);
   c.dim = ramp(t, 52.9, 53.5) * (1 - ramp(t, 57.8, 58.8));
+  // The bezel outline goes once the core has grown into the mark.
+  c.bezel = 1 - ramp(t, 69.0, 69.6);
 
   // Waves.
   fs.waves.length = 0;
@@ -699,7 +767,7 @@ export function frameState(tIn) {
   // Impact of the implosion: one cobalt ring out to the frame edge.
   if (t > 68.6 && t < 69.2 && !REDUCED) {
     const u = (t - 68.6) / 0.6;
-    fs.waves.push({ x: CENTER.x, y: CENTER.y, r: MARK.coreR * 1.35 + easeOutCubic(u) * 1300, width: 22, intensity: 0.8 * (1 - u), hue: 0 });
+    fs.waves.push({ x: CENTER.x, y: CENTER.y, r: MARK.coreR * 1.35 + easeOutCubic(u) * 1300, width: 60, intensity: 1.0 * (1 - u), hue: 0 });
   }
 
   // Tiles.
@@ -709,6 +777,7 @@ export function frameState(tIn) {
     else if (i === FOCUS) applyFocus(t, O);
     else if (i === GUESS[0]) applyGuess(0, t, O);
     else if (i === GUESS[1]) applyGuess(1, t, O);
+    else if (t > 14.2 && t < 18.3) applyThreadTile(i, t, O);
     if ((t > 34 && t < 38.2) || (t > 49.6 && t < 53.8)) applyRetrieval(i, t, O);
     if (i === HERO) applyHero(t, O);
     if (t > SWEEP.t0) applyScope(i, t, O);
@@ -728,19 +797,9 @@ export function frameState(tIn) {
     const k = HERO * STRIDE;
     fs.beams.push({ x0: tiles[k], y0: tiles[k + 1], z0: tiles[k + 2], x1: CENTER.x, y1: CENTER.y, z1: 30, width: 3, intensity: pulse(t, 37.2, 37.95), hue: 0 });
   }
-  // The bar a passage must clear: a dashed amber ring rising over the archive,
-  // with light columns under the candidates that fall short of it.
-  const bar = easeOutCubic((t - 49.4) / 0.6) * (1 - ramp(t, 55.4, 56.2));
-  if (bar > 0) {
-    const n = 56, z = lerp(THRESH.z * 0.5, THRESH.z, bar);
-    for (let j = 0; j < n; j++) {
-      const a0 = (j / n) * TAU, a1 = a0 + (TAU / n) * 0.55;
-      fs.beams.push({
-        x0: CENTER.x + Math.cos(a0) * THRESH.r, y0: CENTER.y + Math.sin(a0) * THRESH.r, z0: z,
-        x1: CENTER.x + Math.cos(a1) * THRESH.r, y1: CENTER.y + Math.sin(a1) * THRESH.r, z1: z,
-        width: 10, intensity: bar * 1.4, hue: 1,
-      });
-    }
+    // Light columns under the candidates that fall short of the bar (the dashed
+  // ring itself is drawn in the 2D layer, see drawThreshold).
+  if (barAmount(t) > 0) {
     for (const i of L.weak) {
       const k = i * STRIDE;
       const hgt = tiles[k + 2] - L.slots[i].z;
@@ -785,6 +844,8 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
   const lw = (text) => labelWin(text);
   const label = (o) => ui.label(ctx, { size: 20, theme: 'light', reduced, ...o });
 
+  drawThreshold(ctx, t, proj);
+
   // The passage that drifts past in the cold open carries the answer.
   if (t > 4.4 && t < 7.6 && ui.tileText) {
     const a = ramp(t, 4.6, 5.0) * (1 - ramp(t, 7.0, 7.4)) * tiles[FOCUS * STRIDE + 11];
@@ -814,7 +875,7 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
     if (a <= 0.001) return;
     ui.guessCard(ctx, { x: c.x, y: c.y + ramp(t, 17.8, 18.6) * 14, w: c.w, h: c.h, text: k ? '$15' : '$5', kicker: 'No source', alpha: a, progress: 1, crack: 0, theme: 'light' });
   });
-  drawFrayedThreads(ctx, t, reduced);
+  drawFrayedThreads(ctx, t, reduced, proj);
 
   // The turn: titles ride above the pages until the cut.
   if (t > 19.3 && t < 24.2) {
@@ -857,7 +918,9 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
   const ep = proj(L.slots[ek].x, L.slots[ek].y, 30);
   label({ text: 'Exact words', x: ep.sx + 40, y: ep.sy + 70, tick: { x: ep.sx, y: ep.sy }, t, t0: lw('Exact words').t0, t1: lw('Exact words').t1, swatch: 'amber' });
   const hs = proj(L.slots[HERO].x, L.slots[HERO].y, 170);
-  label({ text: 'Best passage', x: hs.sx - 60, y: hs.sy - 60, tick: { x: hs.sx, y: hs.sy }, t, t0: lw('Best passage').t0, t1: lw('Best passage').t1, align: 'right', swatch: 'cobalt' });
+  const hk = HERO * STRIDE;
+  const hn = proj(tiles[hk], tiles[hk + 1], tiles[hk + 2]);
+  label({ text: 'Best passage', x: hs.sx - 60, y: hs.sy - 60, tick: { x: hn.sx, y: hn.sy }, t, t0: lw('Best passage').t0, t1: lw('Best passage').t1, align: 'right', swatch: 'cobalt' });
 
   // The answer, then its receipt: the passage unfolds into the source panel.
   if (t > 37.9 && t < 46.7) {
@@ -882,19 +945,22 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
   }
 
   // The stop: the bar, the fall short, the refusal, the gap.
-  const bp = proj(CENTER.x + Math.cos(2.7) * THRESH.r, CENTER.y + Math.sin(2.7) * THRESH.r, THRESH.z);
-  label({ text: 'Minimum match', x: bp.sx + 36, y: bp.sy + 60, tick: { x: bp.sx, y: bp.sy }, t, t0: lw('Minimum match').t0, t1: lw('Minimum match').t1, swatch: 'amber' });
-  label({ text: 'No passage matched well enough', x: bp.sx + 36, y: bp.sy + 60, tick: { x: bp.sx, y: bp.sy }, t, t0: lw('No passage matched well enough').t0, t1: lw('No passage matched well enough').t1, swatch: 'amber' });
+  const ba = (-10 * Math.PI) / 180;
+  const bp = proj(CENTER.x + Math.cos(ba) * THRESH.r, CENTER.y + Math.sin(ba) * THRESH.r, THRESH.z);
+  label({ text: 'Minimum match', x: 1840, y: 200, align: 'right', tick: { x: bp.sx, y: bp.sy }, t, t0: lw('Minimum match').t0, t1: lw('Minimum match').t1, swatch: 'amber' });
+  label({ text: 'No passage matched well enough', x: 1840, y: 200, align: 'right', tick: { x: bp.sx, y: bp.sy }, t, t0: lw('No passage matched well enough').t0, t1: lw('No passage matched well enough').t1, swatch: 'amber' });
   if (t > 53.4 && t < 58.7) {
     const ra = ramp(t, 53.5, 53.9) * (1 - ramp(t, 57.9, 58.6));
-    const rc = ui.refusalCard(ctx, { x: 96, y: 250, w: 760, question: COPY.q2, answer: COPY.refusal, hint: COPY.refusalHint, progress: easeOutQuart((t - 53.5) / 0.5), alpha: ra, flagged: 0, questionAlpha: 1 });
-    const bottom = rc && rc.rect ? rc.rect.y + rc.rect.h : 600;
+    ui.refusalCard(ctx, { x: 96, y: 250, w: 760, question: COPY.q2, answer: COPY.refusal, hint: COPY.refusalHint, progress: easeOutQuart((t - 53.5) / 0.5), alpha: ra, flagged: 0, questionAlpha: 1 });
+    // The gap lands in the right column, bottom-aligned, so the stop statement
+    // owns the bottom-left band alone (gap card height 278 at w 760).
     if (t > 55.6) {
       const u = easeOutQuart((t - 55.7) / 0.7);
       const ga = ramp(t, 55.7, 56.1) * (1 - ramp(t, 57.9, 58.6));
       const w = lw('Logged in Content gaps for review');
-      ui.label(ctx, { text: w.text, x: 96, y: bottom + 40, t, t0: w.t0, t1: w.t1, theme: 'light', size: 20, align: 'left', reduced });
-      ui.gapItem(ctx, { x: 96, y: bottom + 72 + (1 - u) * 16, w: 760, question: COPY.q2, progress: u, alpha: ga, time: 'now' });
+      const gy = 1040 - 278;
+      ui.label(ctx, { text: w.text, x: 1010, y: gy - 34, t, t0: w.t0, t1: w.t1, theme: 'light', size: 20, align: 'left', reduced });
+      ui.gapItem(ctx, { x: 1010, y: gy + (1 - u) * 16, w: 760, question: COPY.q2, progress: u, alpha: ga, time: 'now' });
     }
   }
 
@@ -920,41 +986,105 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
     const m = proj(MARK.x, MARK.y, 0);
     ui.lockup(ctx, {
       x: m.sx, y: m.sy, scale: (m.scale * MARK.size) / 330, markAlpha: 0,
-      sheetsAlpha: ramp(t, 69.2, 69.9), holeR: fs.core.r * m.scale * 1.02,
-      tAlpha: ramp(t, 69.8, 70.6), wordAlpha: ramp(t, 70.4, 71.4), tagline: COPY.tagline, taglineAlpha: ramp(t, 71.2, 72.1),
-      url: COPY.url, urlAlpha: ramp(t, 72.0, 72.8), theme: 'light', layout: 'horizontal', reduced,
+      sheetsAlpha: ramp(t, 68.95, 69.3), holeR: fs.core.r * m.scale * 1.02,
+      tAlpha: ramp(t, 69.4, 70.1), wordAlpha: ramp(t, 69.6, 70.5), tagline: COPY.tagline, taglineAlpha: ramp(t, 70.4, 71.3),
+      url: COPY.url, urlAlpha: ramp(t, 71.2, 72.0), theme: 'light', layout: 'horizontal', reduced,
     });
   }
 }
 
-// The stakes: from each guess a thread searches the storm for a source, finds
-// none, frays and fades.
-function drawFrayedThreads(ctx, t, reduced) {
+// The bar a passage must clear: a dashed amber ring rising over the archive at
+// THRESH.z, with its soft shadow on the paper. Dashes scale with depth.
+function drawThreshold(ctx, t, proj) {
+  const bar = barAmount(t);
+  if (bar <= 0.001) return;
+  const z = lerp(THRESH.z * 0.5, THRESH.z, bar);
+  const n = 48, sub = 6;
+  const pts = (zz) => {
+    const out = [];
+    for (let j = 0; j <= n * sub; j++) {
+      const a = (j / (n * sub)) * TAU;
+      out.push(proj(CENTER.x + Math.cos(a) * THRESH.r, CENTER.y + Math.sin(a) * THRESH.r, zz));
+    }
+    return out;
+  };
+  const ring = pts(z), shade = pts(18);
+  // Adds dash j to the current path; returns its width, or 0 when behind the eye.
+  const dash = (arr, j) => {
+    const a = j * sub, b = a + Math.round(sub * 0.6);
+    if (arr[a].depth <= 1 || arr[b].depth <= 1) return 0;
+    ctx.moveTo(arr[a].sx, arr[a].sy);
+    for (let q = a + 1; q <= b; q++) ctx.lineTo(arr[q].sx, arr[q].sy);
+    return clamp(arr[a + 2].scale * 4.2, 2.5, 9);
+  };
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // Shadow on the paper, one blurred stroke for all dashes.
+  ctx.globalAlpha *= bar * 0.5;
+  ctx.strokeStyle = 'rgba(33, 32, 28, 0.35)';
+  ctx.filter = 'blur(5px)';
+  ctx.beginPath();
+  let ws = 0, nw = 0;
+  for (let j = 0; j < n; j++) { const w = dash(shade, j); if (w) { ws += w; nw++; } }
+  ctx.lineWidth = nw ? (ws / nw) * 1.6 : 4;
+  ctx.stroke();
+  ctx.restore();
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.globalAlpha *= bar;
+  for (let j = 0; j < n; j++) {
+    ctx.beginPath();
+    const w = dash(ring, j);
+    if (!w) continue;
+    ctx.strokeStyle = '#8A5300'; ctx.lineWidth = w + 2.5; ctx.stroke();
+    ctx.strokeStyle = '#F59F0A'; ctx.lineWidth = w; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// The stakes: from each guess a thread searches the storm for a source; the
+// passages it reaches light, turn over blank and dim. The threads fray and fade.
+function drawFrayedThreads(ctx, t, reduced, proj) {
   if (t < 14.2 || t > 16.2) return;
-  const grow = reduced ? 1 : easeOutCubic((t - 14.2) / 0.8);
   const fray = ramp(t, 15.0, 15.8);
   const a = ramp(t, 14.2, 14.4) * (1 - ramp(t, 15.6, 16.2));
+  const tt = threadTiles();
   GUESS_CARDS.forEach((c, k) => {
-    const x0 = c.x + c.w / 2, y0 = c.y + c.h + 4;
-    const tx = k ? 1480 : 380, ty = 180 + k * 60;
+    const y0 = c.y + c.h + 4;
     ctx.save();
     ctx.globalAlpha *= a * 0.9;
     ctx.strokeStyle = '#7DB0FF';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
-    const n = 60;
-    ctx.beginPath();
-    let pen = false;
-    for (let j = 0; j <= n * grow; j++) {
-      const u = j / n;
-      const x = lerp(x0, tx, u) + Math.sin(u * 9 + k * 2) * 40 * u;
-      const y = lerp(y0, ty, u) + Math.cos(u * 7 + k) * 30 * u + 60 * Math.sin(Math.PI * u);
-      // Fraying: the far end breaks into ever shorter dashes.
-      const gap = fray * u > 0.15 && ((j * 7 + k * 3) % Math.max(2, Math.round(6 - 5 * fray * u))) === 0;
-      if (gap) { pen = false; continue; }
-      if (!pen) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
+    tt[k].forEach((i, j) => {
+      if (i < 0) return;
+      const ta = threadArrive(k, j);
+      const grow = reduced ? 1 : easeOutCubic((t - 14.2) / (ta - 14.2));
+      const q = i * STRIDE;
+      const e = proj(tiles[q], tiles[q + 1], tiles[q + 2]);
+      const x0 = c.x + c.w / 2 + (j - 2) * 44, x1 = e.sx, y1 = Math.max(e.sy, y0 + 40);
+      // Cubic whose control points keep y increasing: the thread never climbs into a card.
+      const pt = (u) => {
+        const v = 1 - u;
+        const cy0 = y0 + (y1 - y0) * 0.55, cy1 = y1 - (y1 - y0) * 0.25;
+        return [v * v * v * x0 + 3 * v * v * u * x0 + 3 * v * u * u * x1 + u * u * u * x1 + Math.sin(u * 9 + j + k * 2) * 10 * u * v * 4,
+          v * v * v * y0 + 3 * v * v * u * cy0 + 3 * v * u * u * cy1 + u * u * u * y1];
+      };
+      const n = 40;
+      ctx.beginPath();
+      let pen = false;
+      for (let m = 0; m <= n * grow; m++) {
+        const u = m / n;
+        // Fraying: the far end breaks into ever shorter dashes.
+        const gap = fray * u > 0.15 && ((m * 7 + j * 3 + k) % Math.max(2, Math.round(6 - 5 * fray * u))) === 0;
+        if (gap) { pen = false; continue; }
+        const [x, y] = pt(u);
+        if (!pen) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    });
     ctx.restore();
   });
 }

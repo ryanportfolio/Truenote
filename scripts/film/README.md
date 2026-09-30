@@ -9,13 +9,18 @@ Playwright is resolved from `.tmp/film-tools/node_modules` (override with `FILM_
     py -m http.server 8780 --bind 127.0.0.1 --directory artifacts/rag-app/public
     # film at http://localhost:8780/film/
 
+`.claude/launch.json` config `film` runs the same command on the same port (8780).
+
 **Check** (ms/frame, stills, seek robustness, caption budget, console errors; exits 1 on failure):
 
     node scripts/film/check.mjs --url <url> [--name round1] [--times 2,10,17.5] [--sheet] [--tol 2] [--with-ui]
+    node scripts/film/check.mjs --url <url> --reduce --dip-check   # reduced motion, one-frame luma jumps
 
 The page links `/film/css/transport.css`; the transport injects no styles and no HTML strings (CSP `style-src-elem 'self'`, Trusted Types).
 
 Stills go to `D:/screenshots/truenote/film/<name>/` (override with `--out`), with `report.json` and, with `--sheet`, `sheet.png`. The transport overlay is hidden in stills unless `--with-ui`.
+
+Seek robustness reruns any failing time once and fails only if the rerun fails too (both are logged; a pass on rerun is reported as flaky). Each failure writes the forward frame, the failing frame, a diff PNG (yellow box = diff bbox) and the split into the `#gl` and `#ui` canvases (`--gl-canvas`, `--ui-canvas`) to `--out`, and prints the bbox and layer. `--reduce` loads the page with `?motion=reduce`. `--dip-check` is a mode: it renders 22.2-23.7, 58.1-59.1 and 66.7-67.7 s at 1/60 s through `renderAt` and fails if any one-frame composite mean-luma jump is >= 10 levels (`--dip-windows a-b,c-d`, `--dip-max 10`).
 
 **Export** (WebCodecs H.264 in the page, `ffmpeg -c copy` mux, faststart, BT.709 primaries and matrix, sRGB transfer tag):
 

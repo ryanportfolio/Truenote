@@ -373,7 +373,11 @@ export function statementArrive(text) {
 /**
  * Large Georgia statement, words staggered in, one italic cobalt accent.
  * (x, y): align 'center' -> centre of the text block; 'left' -> left edge, vertical centre.
- * Returns the block rect { x, y, w, h, lines } or null when not on screen.
+ * y is the vertical centre of the whole block, not a baseline: h = lines * size *
+ * lineHeight and the block spans y - h/2 .. y + h/2. Lines break at the narrowest
+ * measure that keeps the minimum line count, and a one-word last line borrows a word.
+ * Returns the block rect { x, y, w, h, lines } (all lines, static layout; words sit
+ * up to 10 px lower while arriving and 8 px higher while exiting) or null when not on screen.
  */
 export function statement(ctx, props) {
   const {
@@ -396,6 +400,7 @@ export function statement(ctx, props) {
   const words = parseStatement(text, accent);
   if (!words.length) return null;
   ctx.save();
+  const G0 = ctx.globalAlpha; // caller alpha: multiply, never replace
   ctx.fontKerning = 'normal';
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'left';
@@ -432,7 +437,7 @@ export function statement(ctx, props) {
     const sa = smoothstep((t - t0) / 0.5) * exitA;
     const sc = theme === 'dark' ? TOKENS.night : TOKENS.canvas;
     ctx.save();
-    ctx.globalAlpha = sa;
+    ctx.globalAlpha = G0 * (sa);
     softScrim(ctx, left - size * 1.6, top - size * 1.1, w + size * 3.2, h + size * 2.2, size * 1.4, rgba(sc, S * 0.5), size * 1.6);
     softScrim(ctx, left - size * 0.9, top - size * 0.5, w + size * 1.8, h + size * 1.0, size * 0.8, rgba(sc, S), size * 0.7);
     ctx.restore();
@@ -450,7 +455,7 @@ export function statement(ctx, props) {
         const e = easeOutQuart(p);
         const a = clamp01(p * 1.5) * e * exitA;
         const rise = reduced ? 0 : (1 - e) * 10;
-        ctx.globalAlpha = a;
+        ctx.globalAlpha = G0 * (a);
         setFont(ctx, face(it.italic));
         ctx.fillStyle = it.italic ? acc : ink;
         ctx.fillText(it.word, cx, base + rise + drift);
@@ -500,6 +505,7 @@ export function label(ctx, props) {
   const a = alpha * clamp01(inK * 1.4) * (1 - outK);
   if (a <= 0) return null;
   ctx.save();
+  const G0 = ctx.globalAlpha; // caller alpha: multiply, never replace
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
   setFont(ctx, { family: FONTS.mono, size, weight: 400, track });
@@ -508,7 +514,19 @@ export function label(ctx, props) {
   const sw = swatch ? size * 0.62 : 0;
   const sg = swatch ? size * 0.72 : 0;
   const w = tw + sw + sg;
-  const left = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+  // Keep the box inside the frame (40..1880): flip the alignment to the other side
+  // of the tick when it would run off an edge, then clamp.
+  let al = align;
+  let ax = x;
+  if (al === 'left' && x + w > 1880) {
+    al = 'right';
+    ax = tick ? tick.x - 30 : 1880;
+  } else if (al === 'right' && x - w < 40) {
+    al = 'left';
+    ax = tick ? tick.x + 30 : 40;
+  }
+  let left = al === 'center' ? ax - w / 2 : al === 'right' ? ax - w : ax;
+  left = Math.max(40, Math.min(1880 - w, left));
   const color = theme === 'dark' ? rgba(TOKENS.paper, 0.86) : TOKENS.labelInk;
   const rise = reduced ? 0 : (1 - e) * 4;
 
@@ -522,12 +540,12 @@ export function label(ctx, props) {
       sx = Math.max(left, Math.min(left + w, tick.x));
       sy = tick.y > y ? y + size * 0.9 : y - size * 0.9;
     } else {
-      sx = tick.x > x ? bx1 : bx0;
+      sx = tick.x > left + w / 2 ? bx1 : bx0;
       sy = y;
     }
     const ex = lerp(sx, tick.x, tk);
     const ey = lerp(sy, tick.y, tk);
-    ctx.globalAlpha = a * 0.8;
+    ctx.globalAlpha = G0 * (a * 0.8);
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -536,7 +554,7 @@ export function label(ctx, props) {
     ctx.stroke();
     if (tk > 0.9) {
       const ra = (tk - 0.9) / 0.1;
-      ctx.globalAlpha = a * ra;
+      ctx.globalAlpha = G0 * (a * ra);
       ctx.beginPath();
       ctx.arc(tick.x, tick.y, 5, 0, Math.PI * 2);
       ctx.stroke();
@@ -549,13 +567,13 @@ export function label(ctx, props) {
 
   const S = scrim ?? (theme === 'dark' ? SCRIM.labelDark : SCRIM.labelLight);
   if (S > 0) {
-    ctx.globalAlpha = a;
+    ctx.globalAlpha = G0 * (a);
     const sc = theme === 'dark' ? rgba(TOKENS.night, S) : rgba(TOKENS.canvas, S);
     // Two passes: a wide feather plus a tighter core so the worst pixel under the text is covered.
     softScrim(ctx, left - size * 1.2, y - size * 1.4 + rise, w + size * 2.4, size * 2.8, size * 1.4, sc, size * 1.4);
     softScrim(ctx, left - size * 0.5, y - size * 0.8 + rise, w + size, size * 1.6, size * 0.8, sc, size * 0.6);
   }
-  ctx.globalAlpha = a;
+  ctx.globalAlpha = G0 * (a);
   if (swatch) {
     const sc = {
       cobalt: theme === 'dark' ? TOKENS.cobaltOnDark : TOKENS.primary,
@@ -604,7 +622,8 @@ export function callBar(ctx, props) {
   const sub = dark ? rgba(TOKENS.paper, 0.72) : TOKENS.mutedFg;
   const ans = status === 'answered' ? easeOutQuart(statusProgress) : 0;
   ctx.save();
-  ctx.globalAlpha = alpha;
+  const G0 = ctx.globalAlpha; // caller alpha: multiply, never replace
+  ctx.globalAlpha = G0 * (alpha);
   ctx.textBaseline = 'middle';
   const H = 64;
   const padX = 28;
@@ -639,7 +658,7 @@ export function callBar(ctx, props) {
   // Live dot with a deterministic pulse from t.
   if (ans < 1) {
     const ph = (((t % 1.6) + 1.6) % 1.6) / 1.6;
-    ctx.globalAlpha = alpha * (1 - ans);
+    ctx.globalAlpha = G0 * (alpha * (1 - ans));
     ctx.beginPath();
     ctx.arc(dx, cy, 7 + 12 * easeOutQuart(ph), 0, Math.PI * 2);
     ctx.fillStyle = rgba(TOKENS.coral, 0.35 * (1 - ph));
@@ -650,7 +669,7 @@ export function callBar(ctx, props) {
     ctx.fill();
   }
   if (ans > 0) {
-    ctx.globalAlpha = alpha * ans;
+    ctx.globalAlpha = G0 * (alpha * ans);
     ctx.beginPath();
     ctx.arc(dx, cy, 11 * lerp(0.8, 1, ans), 0, Math.PI * 2);
     ctx.fillStyle = dark ? TOKENS.greenOnDark : TOKENS.success;
@@ -661,14 +680,14 @@ export function callBar(ctx, props) {
   setFont(ctx, { family: FONTS.mono, size: 18, track: 0.14 });
   ctx.fillStyle = text;
   if (ans < 1) {
-    ctx.globalAlpha = alpha * (1 - ans);
+    ctx.globalAlpha = G0 * (alpha * (1 - ans));
     ctx.fillText(l1, lx, cy + 1 - 6 * ans);
   }
   if (ans > 0) {
-    ctx.globalAlpha = alpha * ans;
+    ctx.globalAlpha = G0 * (alpha * ans);
     ctx.fillText(l2, lx, cy + 1 + 6 * (1 - ans));
   }
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = G0 * (alpha);
   const dvx = lx + lw + 24;
   ctx.fillStyle = dark ? rgba(TOKENS.paper, 0.22) : TOKENS.border;
   ctx.fillRect(dvx, cy - 12, 1.5, 24);
@@ -689,15 +708,15 @@ export function callBar(ctx, props) {
     const qh = lines.length * lh;
     const ruleA = smoothstep(callerProgress * 8);
     if (ruleA > 0) {
-      ctx.globalAlpha = alpha * ruleA;
+      ctx.globalAlpha = G0 * (alpha * ruleA);
       const widest = Math.max(...lines.map((l) => textW(ctx, l)));
       softScrim(ctx, qx - 40, qy - 16, widest + 28 + 80, qh + 32, 32, dark ? rgba(TOKENS.night, SCRIM.callerDark * 0.5) : rgba(TOKENS.canvas, SCRIM.callerLight * 0.5), 56);
       softScrim(ctx, qx - 20, qy - 4, widest + 28 + 40, qh + 8, 24, dark ? rgba(TOKENS.night, SCRIM.callerDark) : rgba(TOKENS.canvas, SCRIM.callerLight), 24);
     }
-    ctx.globalAlpha = alpha * ruleA;
+    ctx.globalAlpha = G0 * (alpha * ruleA);
     ctx.fillStyle = dark ? TOKENS.warning : TOKENS.warning;
     ctx.fillRect(qx, qy + 4, 3, qh - 8);
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = G0 * (alpha);
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = text;
     let used = 0;
@@ -711,9 +730,9 @@ export function callBar(ctx, props) {
       if (whole > 0) ctx.fillText(ln.slice(0, whole), tx, base);
       const pw = textW(ctx, ln.slice(0, whole));
       if (frac > 0 && whole < ln.length) {
-        ctx.globalAlpha = alpha * frac;
+        ctx.globalAlpha = G0 * (alpha * frac);
         ctx.fillText(ln[whole], tx + pw, base);
-        ctx.globalAlpha = alpha;
+        ctx.globalAlpha = G0 * (alpha);
       }
       if (n > 0 && n < ln.length + 1) caret = { x: tx + pw + (frac > 0 ? textW(ctx, ln[whole] || '') * frac : 0), base };
       used += ln.length + 1;
@@ -764,8 +783,9 @@ export function composer(ctx, props) {
   const lh = bodySize * 1.5;
   const innerW = w - pad * 2;
   ctx.save();
+  const G0 = ctx.globalAlpha; // caller alpha: multiply, never replace
   ctx.translate(0, (1 - e) * 8);
-  ctx.globalAlpha = a;
+  ctx.globalAlpha = G0 * (a);
   const shown = String(text).slice(0, Math.max(0, Math.floor(Math.min(chars, text.length))));
   setFont(ctx, { size: bodySize });
   const lines = shown ? greedyLines(ctx, shown, innerW) : [];
@@ -985,6 +1005,7 @@ export function answerCard(ctx, props) {
   const bodySize = 32;
   const lh = 46;
   ctx.save();
+  const G0 = ctx.globalAlpha; // caller alpha: multiply, never replace
   let qh = 0;
   if (showQuestion && question) qh = measureQuestion(ctx, w, question) + 28;
   const cy = y + qh;
@@ -1027,11 +1048,11 @@ export function answerCard(ctx, props) {
   const H = 4 + pad + kickH + 20 + bodyH + (docTitle ? 28 + receiptH : 0) + (footer ? 28 + 1.5 + 20 + 36 : 0) + pad - 4;
 
   const dy = (1 - cardK) * 8;
-  ctx.globalAlpha = a;
+  ctx.globalAlpha = G0 * (a);
   // The echo does not ride the card's arrival: same pixels as questionRow(), clean handover.
   if (qh && questionAlpha > 0) {
     ctx.save();
-    ctx.globalAlpha = alpha * questionAlpha;
+    ctx.globalAlpha = G0 * (alpha * questionAlpha);
     drawQuestion(ctx, x, y, w, question, theme, 1);
     ctx.restore();
   }
@@ -1046,7 +1067,7 @@ export function answerCard(ctx, props) {
   g.addColorStop(0, TOKENS.primary);
   g.addColorStop(0.5, TOKENS.green);
   g.addColorStop(1, TOKENS.coral);
-  ctx.globalAlpha = a * 0.65;
+  ctx.globalAlpha = G0 * (a * 0.65);
   ctx.fillStyle = g;
   ctx.fillRect(x, cy, w, 4);
   ctx.restore();
@@ -1080,7 +1101,7 @@ export function answerCard(ctx, props) {
       const wp = clamp01((progress - start) / 0.15);
       const wa = a * wp;
       if (it.kind === 'word') {
-        ctx.globalAlpha = wa;
+        ctx.globalAlpha = G0 * (wa);
         setFont(ctx, { size: bodySize, weight: it.bold ? 600 : 400 });
         ctx.fillStyle = TOKENS.ink;
         ctx.fillText(it.s, cx, base);
@@ -1094,7 +1115,7 @@ export function answerCard(ctx, props) {
         const chy = base - bodySize * 0.36 - chh / 2;
         const hot = clamp01(chipHot);
         chipRect = { x: chx, y: chy + dy, w: it.cw, h: chh };
-        ctx.globalAlpha = wa;
+        ctx.globalAlpha = G0 * (wa);
         if (hot > 0) {
           ctx.save();
           shadow(ctx, rgba(TOKENS.primary, 0.55 * hot), 28, 0, 0);
@@ -1141,7 +1162,7 @@ export function answerCard(ctx, props) {
     const ra = a * clamp01(receiptProgress * 1.5);
     const ry = yy + (1 - rk) * 6;
     receiptRect = { x: x + pad, y: ry + dy, w: innerW, h: receiptH };
-    ctx.globalAlpha = ra;
+    ctx.globalAlpha = G0 * (ra);
     rrPath(ctx, x + pad, ry, innerW, receiptH, 20);
     ctx.fillStyle = rgba(TOKENS.primary, 0.07);
     ctx.fill();
@@ -1178,7 +1199,7 @@ export function answerCard(ctx, props) {
   // Footer: hairline, copy + thumbs icons right-aligned.
   if (footer) {
     yy += 28;
-    ctx.globalAlpha = a;
+    ctx.globalAlpha = G0 * (a);
     ctx.fillStyle = TOKENS.border;
     ctx.fillRect(x + pad, yy, innerW, 1.5);
     yy += 1.5 + 20;
@@ -1276,6 +1297,7 @@ export function citationPanel(ctx, props) {
   const linkH = linkText ? 20 + 52 : 0;
   const units = lines.length;
   ctx.save();
+  const G0 = ctx.globalAlpha; // caller alpha: multiply, never replace
   setFont(ctx, { family: FONTS.mono, size: 100 });
   const widest = Math.max(1, ...lines.map((l) => textW(ctx, l)));
   const availW = w - bodyPad * 2 - inset * 2;
@@ -1293,7 +1315,7 @@ export function citationPanel(ctx, props) {
     H = headH + bodyPad * 2 + blockH + linkH;
   }
   const lh = mono * lead;
-  ctx.globalAlpha = a;
+  ctx.globalAlpha = G0 * (a);
   if (surface) {
     ctx.save();
     if (theme === 'dark') shadow(ctx, 'rgba(0,0,0,0.4)', 42, 0, 14);
@@ -1473,6 +1495,7 @@ export function refusalCard(ctx, props) {
   const pad = 32;
   const innerW = w - pad * 2;
   ctx.save();
+  const G0 = ctx.globalAlpha; // caller alpha: multiply, never replace
   let qh = 0;
   if (showQuestion && question) qh = measureQuestion(ctx, w, question) + 28;
   // The refusal sentence is the card's primary text: a size up from answer body.
@@ -1486,11 +1509,11 @@ export function refusalCard(ctx, props) {
   const chipH = 40;
   const H = pad + chipH + 20 + ansLines.length * alh + (hintLines.length ? 12 + hintLines.length * hlh : 0) + (footer ? 28 + 1.5 + 20 + 52 : 0) + pad;
   const dy = (1 - e) * 8;
-  ctx.globalAlpha = a;
+  ctx.globalAlpha = G0 * (a);
   // The echo does not ride the card's arrival: same pixels as questionRow(), clean handover.
   if (qh && questionAlpha > 0) {
     ctx.save();
-    ctx.globalAlpha = alpha * questionAlpha;
+    ctx.globalAlpha = G0 * (alpha * questionAlpha);
     drawQuestion(ctx, x, y, w, question, theme, 1);
     ctx.restore();
   }
@@ -1545,14 +1568,14 @@ export function refusalCard(ctx, props) {
     ctx.textBaseline = 'middle';
     ctx.fillStyle = TOKENS.ink;
     if (fk < 1) {
-      ctx.globalAlpha = a * (1 - fk);
+      ctx.globalAlpha = G0 * (a * (1 - fk));
       ctx.fillText(flagText, x + pad + 20 + 24 + 12, yy + 27);
     }
     if (fk > 0) {
-      ctx.globalAlpha = a * fk;
+      ctx.globalAlpha = G0 * (a * fk);
       ctx.fillText(flaggedText, x + pad + 20 + 24 + 12, yy + 27);
     }
-    ctx.globalAlpha = a;
+    ctx.globalAlpha = G0 * (a);
     flag = { x: x + pad, y: yy + dy, w: fw, h: 52 };
     const ic = 32;
     ['thumbsUp', 'thumbsDown'].forEach((n, i) => {
@@ -1681,7 +1704,8 @@ export function guessCard(ctx, props) {
   const sepK = clamp01((crack - 0.45) / 0.55);
   const sep = sepK * sepK;
   ctx.save();
-  ctx.globalAlpha = a;
+  const G0 = ctx.globalAlpha; // caller alpha: multiply, never replace
+  ctx.globalAlpha = G0 * (a);
   let centroids = geo.pieces.map((p) => {
     const cx = p.reduce((s, q) => s + q[0], 0) / p.length;
     const cyy = p.reduce((s, q) => s + q[1], 0) / p.length;
@@ -1732,7 +1756,7 @@ export function guessCard(ctx, props) {
       const ox = m.vx * m.d * sep;
       const oy = m.vy * m.d * sep + 160 * sep * sep;
       ctx.save();
-      ctx.globalAlpha = a * (1 - smoothstep((crack - 0.62) / 0.38));
+      ctx.globalAlpha = G0 * (a * (1 - smoothstep((crack - 0.62) / 0.38)));
       ctx.translate(c.x + ox, c.y + oy);
       ctx.rotate(m.rot * sep);
       ctx.translate(-c.x, -c.y);
@@ -1760,7 +1784,8 @@ export function guessCard(ctx, props) {
  * relative time and signal badges (Refused / Flagged), "Fill this gap" whisper right.
  * header: draws the "Content gaps" title and the column head above the row.
  * progress: row slides down 8 px and fades in; a cobalt wash marks it new, then fades.
- * Returns { rect, row: {x,y,w,h} }.
+ * Returns { x, y, w, h, rect, row }: x/y/w/h is the whole drawn card (static layout,
+ * independent of progress).
  */
 export function gapItem(ctx, props) {
   const {
@@ -1783,6 +1808,7 @@ export function gapItem(ctx, props) {
   const ra = clamp01(progress * 1.4);
   const padX = 28;
   ctx.save();
+  const G0 = ctx.globalAlpha; // caller alpha: multiply, never replace
   setFont(ctx, { size: 22 });
   const aw = action ? textW(ctx, action) + 40 : 0;
   const qW = w - padX * 2 - (aw ? aw + 32 : 0);
@@ -1792,7 +1818,7 @@ export function gapItem(ctx, props) {
   const titleH = header && title ? 76 : 0;
   const headH = header && column ? 48 : 0;
   const H = titleH + headH + rowH;
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = G0 * (alpha);
   cardSurface(ctx, x, y, w, H, 16, theme);
   let yy = y;
   ctx.textBaseline = 'alphabetic';
@@ -1817,13 +1843,13 @@ export function gapItem(ctx, props) {
   if (yy > y) ctx.fillRect(x, yy, w, 1.5);
   const wash = 1 - smoothstep((progress - 0.55) / 0.45);
   if (wash > 0 && progress > 0) {
-    ctx.globalAlpha = alpha * ra * wash;
+    ctx.globalAlpha = G0 * (alpha * ra * wash);
     ctx.fillStyle = rgba(TOKENS.primary, 0.07);
     ctx.fillRect(x, yy + 1.5, w, rowH - 1.5);
   }
   ctx.restore();
   const ry = yy + (1 - e) * -8;
-  ctx.globalAlpha = alpha * ra;
+  ctx.globalAlpha = G0 * (alpha * ra);
   if (progress > 0) {
     setFont(ctx, { size: 24 });
     ctx.fillStyle = TOKENS.ink;
@@ -1864,7 +1890,7 @@ export function gapItem(ctx, props) {
     }
   }
   ctx.restore();
-  return { rect: { x, y, w, h: H }, row: { x, y: yy, w, h: rowH } };
+  return { x, y, w, h: H, rect: { x, y, w, h: H }, row: { x, y: yy, w, h: rowH } };
 }
 
 // ---------------------------------------------------------------- program tag
@@ -1879,7 +1905,8 @@ export function programTag(ctx, props) {
   if (alpha <= 0) return null;
   const dark = theme === 'dark';
   ctx.save();
-  ctx.globalAlpha = alpha;
+  const G0 = ctx.globalAlpha; // caller alpha: multiply, never replace
+  ctx.globalAlpha = G0 * (alpha);
   ctx.textBaseline = 'middle';
   setFont(ctx, { size });
   const nw = textW(ctx, name);
@@ -2013,16 +2040,38 @@ function drawSheets(ctx, cx, cy, B, alpha, holeR, theme) {
     clip.arc(cx, cy, holeR, 0, Math.PI * 2);
     ctx.clip(clip, 'evenodd');
   }
-  for (const s of MARK_SHEETS) {
+  // Opaque paper: each sheet's CSS colour-at-alpha is pre-composited over the
+  // ground, so nothing below shows through at sheetsAlpha = 1. The overlap gets
+  // the persimmon-over-green mix the translucent CSS mark shows.
+  const ground = hexRgb(theme === 'dark' ? TOKENS.night : TOKENS.canvas);
+  const over = (base, hex, k) => hexRgb(hex).map((v, i) => Math.round(lerp(base[i], v, k)));
+  const css = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
+  const solid = MARK_SHEETS.map((m) => over(ground, m.color, m.alpha));
+  const overlap = over(solid[0], MARK_SHEETS[1].color, MARK_SHEETS[1].alpha);
+  MARK_SHEETS.forEach((m, i) => {
     ctx.save();
-    ctx.translate(cx + s.dx * B, cy + s.dy * B);
-    ctx.rotate((s.rot * Math.PI) / 180);
+    ctx.translate(cx + m.dx * B, cy + m.dy * B);
+    ctx.rotate((m.rot * Math.PI) / 180);
     shadow(ctx, rgba(theme === 'dark' ? '#000000' : TOKENS.ink, theme === 'dark' ? 0.35 : 0.16), 20, 0, 4);
     squirclePath(ctx, -S / 2, -S / 2, S, S, rad);
-    ctx.fillStyle = rgba(s.color, s.alpha);
+    ctx.fillStyle = css(solid[i]);
     ctx.fill();
     ctx.restore();
-  }
+  });
+  // Overlap: clip to the green sheet, fill the persimmon sheet with the mixed colour.
+  ctx.save();
+  ctx.translate(cx + MARK_SHEETS[0].dx * B, cy + MARK_SHEETS[0].dy * B);
+  ctx.rotate((MARK_SHEETS[0].rot * Math.PI) / 180);
+  squirclePath(ctx, -S / 2, -S / 2, S, S, rad);
+  ctx.rotate((-MARK_SHEETS[0].rot * Math.PI) / 180);
+  ctx.translate(-(cx + MARK_SHEETS[0].dx * B), -(cy + MARK_SHEETS[0].dy * B));
+  ctx.clip();
+  ctx.translate(cx + MARK_SHEETS[1].dx * B, cy + MARK_SHEETS[1].dy * B);
+  ctx.rotate((MARK_SHEETS[1].rot * Math.PI) / 180);
+  squirclePath(ctx, -S / 2, -S / 2, S, S, rad);
+  ctx.fillStyle = css(overlap);
+  ctx.fill();
+  ctx.restore();
   ctx.restore();
 }
 
@@ -2109,12 +2158,13 @@ export function lockup(ctx, props) {
   const sub = dark ? rgba(TOKENS.paper, 0.74) : TOKENS.mutedFg;
   const urlC = dark ? TOKENS.cobaltOnDark : TOKENS.primary;
   ctx.save();
+  const G0 = ctx.globalAlpha; // caller alpha: multiply, never replace
   if (scrim > 0) {
-    ctx.globalAlpha = scrim * Math.max(clamp01(markAlpha), clamp01(wordAlpha), clamp01(sheetsAlpha));
+    ctx.globalAlpha = G0 * (scrim * Math.max(clamp01(markAlpha), clamp01(wordAlpha), clamp01(sheetsAlpha)));
     const sc = dark ? rgba(TOKENS.night, 0.8) : rgba(TOKENS.canvas, 0.9);
     const r = L.rect;
     softScrim(ctx, r.x - B * 0.3, r.y - B * 0.3, r.w + B * 0.6, r.h + B * 0.6, B * 0.6, sc, B * 0.6);
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = G0 * (1);
   }
   if (sheetsAlpha > 0) drawSheets(ctx, x, y, B, clamp01(sheetsAlpha), holeR, theme);
   if (markAlpha > 0) {
@@ -2126,21 +2176,21 @@ export function lockup(ctx, props) {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   if (wordAlpha > 0) {
-    ctx.globalAlpha = clamp01(wordAlpha);
+    ctx.globalAlpha = G0 * (clamp01(wordAlpha));
     setFont(ctx, { family: FONTS.display, size: L.ws, weight: 600, track: -0.025 });
     ctx.fillStyle = ink;
     ctx.fillText(word, L.wx, L.wBase + (1 - wk) * 8);
   }
   if (L.tag && taglineAlpha > 0) {
     const k = easeOutQuart(taglineAlpha);
-    ctx.globalAlpha = clamp01(taglineAlpha);
+    ctx.globalAlpha = G0 * (clamp01(taglineAlpha));
     setFont(ctx, { family: FONTS.display, size: L.tag.ts, italic: true, weight: 400 });
     ctx.fillStyle = sub;
     ctx.fillText(tagline, L.tag.x, L.tag.base + (1 - k) * 6);
   }
   if (L.u && urlAlpha > 0) {
     const k = easeOutQuart(urlAlpha);
-    ctx.globalAlpha = clamp01(urlAlpha);
+    ctx.globalAlpha = G0 * (clamp01(urlAlpha));
     setFont(ctx, { family: FONTS.mono, size: L.u.us, track: 0.08 });
     ctx.fillStyle = urlC;
     ctx.fillText(url, L.u.x, L.u.base + (1 - k) * 4);

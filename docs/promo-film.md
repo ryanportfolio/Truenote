@@ -47,7 +47,7 @@ Coordinates: world units are pixels of a 1920x1080 design frame; `x` right, `y` 
 
 ## Verification
 
-- Serve `artifacts/rag-app/public` on 127.0.0.1 and open `/film/` (see `scripts/film/README.md`).
+- Serve `artifacts/rag-app/public` on 127.0.0.1:8780 and open `/film/` (see `scripts/film/README.md`; the `film` entry in `.claude/launch.json` uses the same port).
 - `scripts/film/check.mjs` in headed Chrome on the GPU: 0 console errors, identical frames forward and reverse, every statement and label within 250 ms per word + 1 s.
 - `prefers-reduced-motion` (or `?motion=reduce`): the camera holds one pose per act and changes under a dissolve through the scene's colour; no vortex spin, tumbling or flyby; captions and states stay.
 - Flash budget: no hit frames; the dawn is a 3 s ramp.

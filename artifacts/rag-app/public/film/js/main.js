@@ -72,6 +72,9 @@ async function loadRenderer() {
       renderer = m.createRenderer(glCanvas, { preserveDrawingBuffer: params.has('export') });
       pixelW = 0; fit(); draw(t);
       rendererMode = 'webgl2';
+      // Runs after render.js's own restore handler (registered first), so the
+      // redraw uses the rebuilt programs and targets, even while paused.
+      glCanvas.addEventListener('webglcontextrestored', () => { if (exportMode) draw(t); else dirty = true; });
       return;
     } catch (e) {
       console.warn('WebGL renderer failed, using the 2D debug renderer:', e);
@@ -128,8 +131,11 @@ const anim = {
       composite = document.createElement('canvas');
       composite.width = 1920; composite.height = 1080;
     }
+    // A lost context draws nothing: fail loudly so an export never encodes stale frames.
+    if (rendererMode === 'webgl2' && renderer.lost) throw new Error('renderAt: WebGL context lost');
     draw(time);
     const c = composite.getContext('2d');
+    c.clearRect(0, 0, 1920, 1080);
     c.drawImage(glCanvas, 0, 0, 1920, 1080);
     c.drawImage(uiCanvas, 0, 0, 1920, 1080);
     return composite;
@@ -139,7 +145,7 @@ const anim = {
 window.__anim = anim;
 
 async function boot() {
-  try { ui = await import('./ui.js'); } catch (e) { console.warn('ui.js unavailable:', e); }
+  ui = await import('./ui.js');
   await loadRenderer();
   window.addEventListener('resize', () => { fit(); });
   try {
