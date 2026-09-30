@@ -29,6 +29,9 @@ const outDir = resolve(args.out || resolve(repoRoot, `.tmp/film/${name}`));
 const fps = Number(args.fps ?? 60);
 const tol = Number(args.tol ?? 2);
 const nFrames = Number(args.frames ?? 90);
+if (!(Number.isFinite(fps) && fps > 0) || !(Number.isFinite(tol) && tol >= 0) || !(Number.isInteger(nFrames) && nFrames >= 2)) {
+  console.error('--fps must be > 0, --tol >= 0 and --frames an integer >= 2'); process.exit(2);
+}
 const selector = args.selector || '#stage';
 const vw = Number(args.width ?? 1920), vh = Number(args.height ?? 1080);
 try { mkdirSync(outDir, { recursive: true }); } catch (e) {
@@ -71,6 +74,10 @@ try {
   if (dipOnly) {
     // ---- dip check: one-frame composite mean-luma jumps through each window (renderAt at 1/fps)
     const wins = String(args['dip-windows'] || '22.2-23.7,46.4-47.4,58.1-59.1,66.7-67.7').split(',').map((w) => w.split('-').map(Number));
+    const dipMaxArg = Number(args['dip-max'] ?? 10);
+    if (!(Number.isFinite(dipMaxArg) && dipMaxArg > 0) || wins.some((w) => w.length !== 2 || !w.every(Number.isFinite) || !((w[1] - w[0]) * fps >= 1))) {
+      console.error('--dip-max must be > 0 and every --dip-windows entry a-b with at least two samples at --fps'); process.exit(2);
+    }
     if (wins.some((w) => w.length !== 2 || !w.every(Number.isFinite) || w[0] >= w[1])) throw new Error('bad --dip-windows, expected a-b,c-d');
     const dipMax = Number(args['dip-max'] ?? 10);
     const dip = await page.evaluate(({ wins, fps, dipMax }) => {
@@ -151,7 +158,12 @@ try {
 
   // ---- times
   let times;
-  if (args.times) times = String(args.times).split(',').map(Number).filter((x) => Number.isFinite(x));
+  if (args.times) {
+    const raw = String(args.times).split(',');
+    times = raw.map(Number);
+    const bad = raw.filter((_, i) => !Number.isFinite(times[i]) || times[i] < 0 || times[i] > meta.duration);
+    if (!times.length || bad.length) { console.error(`--times: invalid or out-of-range values: ${bad.join(', ') || '(empty)'}`); process.exit(2); }
+  }
   else {
     const set = new Set();
     for (const c of meta.chapters) { set.add(+(c.t0 + 0.5).toFixed(2)); set.add(+((c.t0 + c.t1) / 2).toFixed(2)); }
@@ -254,14 +266,16 @@ try {
           if (kind === 'afterEnd') grab(end(), false);
           const g = grab(t, true), d = diff(fwd.get(t), g.full, tol);
           rows[t] = d;
-          if (d.max > tol) fails.push({ t, kind, bad: g, d });
+          if (d.max > tol) fails.push({ t, kind, bad: fails.length < 6 ? g : null, d });
         }
         return rows;
       },
       failed() { return fails.map((f) => ({ t: f.t, kind: f.kind })); },
       // Names the layer: a fresh render now is the per-layer reference when it matches the forward composite.
       capture(i, tol) {
-        const f = fails[i], ref = fwd.get(f.t), good = grab(f.t, true);
+        const f = fails[i];
+        if (!f.bad) return { t: f.t, kind: f.kind, full: f.d, png: {} };
+        const ref = fwd.get(f.t), good = grab(f.t, true);
         const goodMatches = diff(ref, good.full, tol).max <= tol;
         const out = { t: f.t, kind: f.kind, full: f.d, referenceMatchesForward: goodMatches, layers: {}, png: {} };
         out.png.forward = png(ref); out.png.fail = png(f.bad.full); out.png.diff = diffPng(ref, f.bad.full, tol, f.d.bbox);
@@ -352,7 +366,8 @@ try {
     const minFrames = 20;
     const rows = meta.captions.map((c) => {
       const words = c.text.trim().split(/\s+/).filter(Boolean).length;
-      const visible = c.t1 - c.t0;
+      // Settled reading time when captions() reports it; otherwise the whole window.
+      const visible = (c.read1 ?? c.t1) - (c.read0 ?? c.t0);
       const need = Math.max(0.25 * words + 1, minFrames / fps);
       return { text: c.text, t0: c.t0, t1: c.t1, words, visible, need, frames: Math.round(visible * fps), ok: visible + 1e-9 >= need };
     });

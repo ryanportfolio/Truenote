@@ -80,7 +80,7 @@ export async function waitForAnim(page, { url = '', timeoutMs = 30000 } = {}) {
   const missing = await page.evaluate(() => ['seek', 'renderAt', 'captions'].filter((k) => typeof window.__anim[k] !== 'function')
     .concat(window.__anim.duration > 0 ? [] : ['duration']));
   if (missing.length) throw new Error('window.__anim is incomplete, missing: ' + missing.join(', '));
-  if (boot.renderer !== 'webgl2' && !/debug2d/.test(url)) {
+  if (boot.renderer !== 'webgl2' && !new URL(url).searchParams.has('debug2d')) {
     throw new Error(`degraded rendering: __anim.renderer is ${JSON.stringify(boot.renderer)}, expected 'webgl2'. ` +
       `Frames from a fallback renderer are not the film. (Add 'debug2d' to the URL only to test the debug renderer.)`);
   }

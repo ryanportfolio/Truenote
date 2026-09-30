@@ -76,7 +76,11 @@ export function createDebugRenderer(canvas) {
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
       }
-      if (fs.post.fade > 0) { ctx.fillStyle = `rgba(11,16,32,${fs.post.fade})`; ctx.fillRect(0, 0, 1920, 1080); }
+      if (fs.post.fade > 0) {
+        const c = (fs.post.fadeColor || [0.043, 0.063, 0.125]).map((v) => Math.round(v * 255));
+        ctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${fs.post.fade})`;
+        ctx.fillRect(0, 0, 1920, 1080);
+      }
     },
   };
 }

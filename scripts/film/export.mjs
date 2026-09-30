@@ -23,8 +23,8 @@ const height = Number(args.height ?? 1080);
 const bitrateMbps = Number(args.bitrate ?? 24);
 const out = resolve(args.out);
 const rawPath = out.replace(/\.mp4$/i, '') + '.h264';
-if (!(Number.isFinite(fps) && fps > 0) || !Number.isInteger(width) || !Number.isInteger(height) || width % 2 || height % 2 || !(bitrateMbps > 0)) {
-  console.error('fps and bitrate must be > 0, width/height must be even integers'); process.exit(2);
+if (!(Number.isFinite(fps) && fps > 0) || !(Number.isInteger(width) && width > 0) || !(Number.isInteger(height) && height > 0) || width % 2 || height % 2 || !(Number.isFinite(bitrateMbps) && bitrateMbps > 0)) {
+  console.error('fps and bitrate must be finite and > 0, width/height must be positive even integers'); process.exit(2);
 }
 const fromArg = args.from !== undefined ? Number(args.from) : undefined;
 const toArg = args.to !== undefined ? Number(args.to) : undefined;

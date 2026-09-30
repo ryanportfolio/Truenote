@@ -40,24 +40,31 @@ export const STATEMENTS = [
   { text: 'A guess sounds exactly like an answer', accent: [3], t0: 13.6, t1: 18.0, x: 960, y: 880, align: 'center', theme: 'dark' },
   { text: 'Only your approved documents can support an answer', accent: [2], t0: 27.0, t1: 31.6, x: 110, y: 520, align: 'left', maxWidth: 720, theme: 'light' },
   { text: 'Every answer shows its receipt', accent: [4], t0: 41.8, t1: 45.6, x: 96, y: 905, align: 'left', maxWidth: 1300, theme: 'light' },
-  { text: 'When the documents stop, Truenote stops', accent: [5], t0: 54.8, t1: 58.5, x: 96, y: 905, align: 'left', maxWidth: 860, theme: 'light' },
+  { text: 'When the documents stop, Truenote stops', accent: [5], t0: 54.6, t1: 58.5, x: 96, y: 905, align: 'left', maxWidth: 860, theme: 'light' },
   { text: "A rep's search never reaches another program", accent: [3], t0: 62.2, t1: 66.6, x: 960, y: 945, align: 'center', maxWidth: 1700, theme: 'light' },
 ];
 
 // Timed labels, so their reading budget is checked with the statements.
 export const LABELS = [
-  { text: 'Approved documents', t0: 20.1, t1: 21.8 },
-  { text: 'Split into passages', t0: 21.8, t1: 23.6 },
-  { text: 'Meaning', t0: 34.4, t1: 35.95 },
-  { text: 'Exact words', t0: 35.3, t1: 36.9 },
-  { text: 'Best passage', t0: 36.2, t1: 37.8 },
-  { text: 'Minimum match', t0: 49.9, t1: 52.1 },
-  { text: 'No passage matched well enough', t0: 52.2, t1: 54.9 },
-  { text: 'Logged in Content gaps for review', t0: 55.9, t1: 58.6 },
+  { text: 'Approved documents', t0: 19.7, t1: 21.95 },
+  { text: 'Split into passages', t0: 21.95, t1: 24.45 },
+  { text: 'Meaning', t0: 34.0, t1: 36.0 },
+  { text: 'Exact words', t0: 35.2, t1: 37.45 },
+  { text: 'Best passage', t0: 35.95, t1: 38.2 },
+  { text: 'Minimum match', t0: 49.85, t1: 52.1 },
+  { text: 'No passage matched well enough', t0: 52.2, t1: 55.2 },
+  { text: 'Logged in Content gaps for review', t0: 55.35, t1: 58.6 },
 ];
 
+// read0..read1 is the settled, fully readable part of each window: statements
+// arrive over (words - 1) x 0.07 + 0.6 s and exit over 0.45 s; labels fade in
+// over 0.4 s and out over 0.35 s (ui.js statement and label).
 export function captions() {
-  return [...STATEMENTS, ...LABELS].map((s) => ({ text: s.text, t0: s.t0, t1: s.t1 }));
+  const words = (s) => s.text.trim().split(/s+/).length;
+  return [
+    ...STATEMENTS.map((s) => ({ text: s.text, t0: s.t0, t1: s.t1, read0: s.t0 + (words(s) - 1) * 0.07 + 0.6, read1: s.t1 - 0.45 })),
+    ...LABELS.map((s) => ({ text: s.text, t0: s.t0, t1: s.t1, read0: s.t0 + 0.4, read1: s.t1 - 0.35 })),
+  ];
 }
 const labelWin = (text) => LABELS.find((l) => l.text === text);
 
@@ -1007,7 +1014,7 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
     // The gap lands in the right column, bottom-aligned, so the stop statement
     // owns the bottom-left band alone (gap card height 278 at w 760; bottom at 985,
     // clear of the viewer controls).
-    if (t > 55.6) {
+    if (t > 55.3) {
       const u = easeOutQuart((t - 55.7) / 0.7);
       const ga = ramp(t, 55.7, 56.1) * (1 - ramp(t, 57.9, 58.6));
       const w = lw('Logged in Content gaps for review');
@@ -1020,11 +1027,10 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
   // Program scope tags, one per wedge, on the outer band.
   if (t > 60.2 && t < 67.4) {
     const ta = ramp(t, 60.4, 61.0) * (1 - ramp(t, 66.2, 66.9));
-    const hues = [262, 48, 168];
     L.WEDGES.forEach((w, k) => {
       const m = (((w.a0 + w.a1) / 2) * Math.PI) / 180;
       const p = proj(CENTER.x + Math.cos(m) * 730, CENTER.y + Math.sin(m) * 730, 0);
-      ui.programTag(ctx, { x: p.sx, y: p.sy, name: w.name, hue: hues[k], alpha: ta, theme: 'light' });
+      ui.programTag(ctx, { x: p.sx, y: p.sy, name: w.name, hue: w.hue, alpha: ta, theme: 'light' });
     });
   }
 

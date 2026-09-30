@@ -243,9 +243,9 @@ export function mountTransport(root, anim, { autoHideMs = 2500 } = {}) {
       fill.style.transform = `scaleX(${f})`;
       thumb.style.left = `${f * 100}%`;
       const sec = Math.floor(t + 1e-6);
-      if (sec !== lastSec) {
+      const c = chapterAt(t);
+      if (sec !== lastSec || c !== lastChap) {
         lastSec = sec;
-        const c = chapterAt(t);
         cur.textContent = fmt(t);
         track.setAttribute('aria-valuenow', String(sec));
         track.setAttribute('aria-valuetext', `${fmt(t)} of ${fmt(duration)}${c ? `, chapter ${chapterIndex(c) + 1}: ${c.name}` : ''}`);

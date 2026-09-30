@@ -1221,7 +1221,13 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
     }
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, depth);
     const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-    if (status !== gl.FRAMEBUFFER_COMPLETE) throw new Error('render.js: main framebuffer incomplete ' + status);
+    if (status !== gl.FRAMEBUFFER_COMPLETE) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      for (const t of textures) gl.deleteTexture(t);
+      for (const r of rbs) gl.deleteRenderbuffer(r);
+      for (const f of fbos) gl.deleteFramebuffer(f);
+      throw new Error('render.js: main framebuffer incomplete ' + status);
+    }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     T = { scene, light, shadow, q1, q2, e1, e2, main, textures, rbs, fbos };
   }
