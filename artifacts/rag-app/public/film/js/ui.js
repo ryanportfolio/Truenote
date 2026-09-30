@@ -37,7 +37,17 @@ export const TOKENS = {
   paper: '#F1EFE8', // 15:1 on night, 11.4:1 on archive ink
   cobaltOnDark: '#7DB0FF', // the /about page's cobalt-on-dark: 6.49:1 on archive ink, 8.59:1 on night
   greenOnDark: '#7FC3AE', // 7.0:1 on archive ink
+  labelInk: '#48463E', // film label ink on light: 7.9:1 on cream (mutedFg is 5.5:1, too thin over the dawn)
 };
+
+// Product refusal text (api-server generation/answer.ts). Default for refusalCard.
+export const REFUSAL_TEXT =
+  "I couldn't find this in the knowledge base. Please escalate or check the source documents directly.";
+
+// Scrim alpha under text, per surface. Measured on the film's densest frames
+// (storm t 3, 8, 17; rings t 39, 58) so the worst pixel under text passes
+// 4.5:1 for labels and 3:1 for large statement text. See the lab's measure script.
+export const SCRIM = { statementDark: 0.8, statementLight: 0.85, labelDark: 0.94, labelLight: 0.95, callerDark: 0.82, callerLight: 0.9, questionLight: 0.9 };
 
 const EASE_STAGGER = 0.07; // statement word stagger, s
 const WORD_IN = 0.6; // statement word arrival, s
@@ -372,7 +382,7 @@ export function statement(ctx, props) {
     t0 = 0,
     t1 = Infinity,
     theme = 'dark',
-    scrim = 0.7,
+    scrim = null,
     lineHeight = 1.14,
     reduced = false,
   } = props;
@@ -410,23 +420,15 @@ export function statement(ctx, props) {
   const exitA = 1 - exitK;
   const drift = reduced ? 0 : -8 * exitK;
 
-  if (scrim > 0) {
-    const a = scrim * smoothstep((t - t0) / 0.5) * exitA;
-    const cx = left + w / 2;
-    const cy = top + h / 2;
-    const rx = w / 2 + size * 2.2;
-    const ry = h / 2 + size * 1.3;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.scale(rx / ry, 1);
-    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, ry);
+  const S = scrim ?? (theme === 'dark' ? SCRIM.statementDark : SCRIM.statementLight);
+  if (S > 0) {
+    // A block-shaped scrim (uniform under every word) inside a wide feather.
+    const sa = smoothstep((t - t0) / 0.5) * exitA;
     const sc = theme === 'dark' ? TOKENS.night : TOKENS.canvas;
-    g.addColorStop(0, rgba(sc, 0.82 * a));
-    g.addColorStop(0.45, rgba(sc, 0.62 * a));
-    g.addColorStop(0.75, rgba(sc, 0.22 * a));
-    g.addColorStop(1, rgba(sc, 0));
-    ctx.fillStyle = g;
-    ctx.fillRect(-ry, -ry, ry * 2, ry * 2);
+    ctx.save();
+    ctx.globalAlpha = sa;
+    softScrim(ctx, left - size * 1.6, top - size * 1.1, w + size * 3.2, h + size * 2.2, size * 1.4, rgba(sc, S * 0.5), size * 1.6);
+    softScrim(ctx, left - size * 0.9, top - size * 0.5, w + size * 1.8, h + size * 1.0, size * 0.8, rgba(sc, S), size * 0.7);
     ctx.restore();
   }
 
@@ -482,7 +484,7 @@ export function label(ctx, props) {
     swatch = null,
     alpha = 1,
     track = 0.14,
-    scrim = 0.85,
+    scrim = null,
   } = props;
   if (t < t0 || t > t1) return null;
   const inK = Number.isFinite(t0) ? (t - t0) / 0.4 : 1;
@@ -500,7 +502,7 @@ export function label(ctx, props) {
   const sg = swatch ? size * 0.72 : 0;
   const w = tw + sw + sg;
   const left = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
-  const color = theme === 'dark' ? rgba(TOKENS.paper, 0.86) : TOKENS.mutedFg;
+  const color = theme === 'dark' ? rgba(TOKENS.paper, 0.86) : TOKENS.labelInk;
   const rise = (1 - e) * 4;
 
   if (tick) {
@@ -538,9 +540,10 @@ export function label(ctx, props) {
     }
   }
 
-  if (scrim > 0) {
-    ctx.globalAlpha = a * scrim;
-    const sc = theme === 'dark' ? rgba(TOKENS.night, 0.9) : rgba(TOKENS.canvas, 1);
+  const S = scrim ?? (theme === 'dark' ? SCRIM.labelDark : SCRIM.labelLight);
+  if (S > 0) {
+    ctx.globalAlpha = a;
+    const sc = theme === 'dark' ? rgba(TOKENS.night, S) : rgba(TOKENS.canvas, S);
     // Two passes: a wide feather plus a tighter core so the worst pixel under the text is covered.
     softScrim(ctx, left - size * 1.2, y - size * 1.4 + rise, w + size * 2.4, size * 2.8, size * 1.4, sc, size * 1.4);
     softScrim(ctx, left - size * 0.5, y - size * 0.8 + rise, w + size, size * 1.6, size * 0.8, sc, size * 0.6);
@@ -667,6 +670,7 @@ export function callBar(ctx, props) {
   ctx.fillText(timer, dvx + 1.5 + 24, cy + 1);
 
   let h = H;
+  let callerRect = null;
   if (caller) {
     setFont(ctx, { family: FONTS.display, size: callerSize, italic: true, weight: 400 });
     const lines = balancedText(ctx, caller, callerMaxWidth);
@@ -680,7 +684,8 @@ export function callBar(ctx, props) {
     if (ruleA > 0) {
       ctx.globalAlpha = alpha * ruleA;
       const widest = Math.max(...lines.map((l) => textW(ctx, l)));
-      softScrim(ctx, qx - 24, qy - 8, widest + 28 + 48, qh + 16, 24, dark ? rgba(TOKENS.night, 0.72) : rgba(TOKENS.canvas, 0.9), 40);
+      softScrim(ctx, qx - 40, qy - 16, widest + 28 + 80, qh + 32, 32, dark ? rgba(TOKENS.night, SCRIM.callerDark * 0.5) : rgba(TOKENS.canvas, SCRIM.callerLight * 0.5), 56);
+      softScrim(ctx, qx - 20, qy - 4, widest + 28 + 40, qh + 8, 24, dark ? rgba(TOKENS.night, SCRIM.callerDark) : rgba(TOKENS.canvas, SCRIM.callerLight), 24);
     }
     ctx.globalAlpha = alpha * ruleA;
     ctx.fillStyle = dark ? TOKENS.warning : TOKENS.warning;
@@ -711,9 +716,11 @@ export function callBar(ctx, props) {
       ctx.fillRect(caret.x + 3, caret.base - callerSize * 0.74, 2, callerSize * 0.9);
     }
     h = H + 28 + qh;
+    setFont(ctx, { family: FONTS.display, size: callerSize, italic: true, weight: 400 });
+    callerRect = { x: qx, y: qy, w: 28 + Math.max(...lines.map((l) => textW(ctx, l))), h: qh };
   }
   ctx.restore();
-  return { x, y, w: W, h, pill: { x, y, w: W, h: H } };
+  return { x, y, w: W, h, pill: { x, y, w: W, h: H }, caller: callerRect };
 }
 
 // ---------------------------------------------------------------- composer
@@ -781,7 +788,7 @@ export function composer(ctx, props) {
   ctx.restore();
 
   ctx.textBaseline = 'alphabetic';
-  setFont(ctx, { size: 18, weight: 700, track: 0.13 });
+  setFont(ctx, { size: 18, weight: 600, track: 0.13 });
   ctx.fillStyle = TOKENS.primary;
   ctx.fillText(String(labelText).toUpperCase(), x + pad, y + pad + 16);
 
@@ -865,6 +872,11 @@ function questionRow(ctx, x, y, w, question, theme, a) {
   ctx.save();
   ctx.globalAlpha *= a;
   const bs = 44;
+  setFont(ctx, { size: 26 });
+  const qLines = balancedText(ctx, question, w - bs - 16);
+  const qw = Math.max(...qLines.map((l) => textW(ctx, l)));
+  const qh = Math.max(bs, 4 + qLines.length * 39);
+  softScrim(ctx, x - 20, y - 12, bs + 16 + qw + 40, qh + 24, 24, dark ? rgba(TOKENS.night, SCRIM.labelDark) : rgba(TOKENS.canvas, SCRIM.questionLight), 24);
   rrPath(ctx, x, y, bs, bs, 14);
   ctx.fillStyle = dark ? TOKENS.paper : TOKENS.ink;
   ctx.fill();
@@ -875,7 +887,7 @@ function questionRow(ctx, x, y, w, question, theme, a) {
   ctx.fillText('Q', x + bs / 2, y + bs / 2 + 22 * 0.35);
   ctx.textAlign = 'left';
   setFont(ctx, { size: 26 });
-  const lines = greedyLines(ctx, question, w - bs - 16);
+  const lines = qLines;
   const lh = 26 * 1.5;
   ctx.fillStyle = dark ? TOKENS.paper : TOKENS.ink;
   lines.forEach((ln, i) => ctx.fillText(ln, x + bs + 16, y + 4 + lh * i + lh * 0.5 + 26 * 0.36));
@@ -957,7 +969,7 @@ export function answerCard(ctx, props) {
   const chipSize = 20;
   const items = toks.map((tk) => {
     if (tk.kind === 'word') {
-      setFont(ctx, { size: bodySize, weight: tk.bold ? 700 : 400 });
+      setFont(ctx, { size: bodySize, weight: tk.bold ? 600 : 400 });
       const bw = textW(ctx, tk.s);
       setFont(ctx, { size: bodySize });
       const tw = tk.tail ? textW(ctx, tk.tail) : 0;
@@ -969,7 +981,7 @@ export function answerCard(ctx, props) {
     const tw = tk.tail ? textW(ctx, tk.tail) : 0;
     return { ...tk, cw, tw, w: cw + 8 + tw };
   });
-  const lines = wrapItems(items, innerW, () => space);
+  const lines = balancedLines(items, innerW, () => space);
   const bodyH = lines.length * lh;
   setFont(ctx, { size: 18, weight: 400, track: 0.04 });
   const rLabel = receiptLabel || (sourceCount === 1 ? 'Source passage' : 'Source passages');
@@ -1011,7 +1023,7 @@ export function answerCard(ctx, props) {
   ctx.arc(x + pad + 6, yy + kickH / 2, 6, 0, Math.PI * 2);
   ctx.fillStyle = TOKENS.success;
   ctx.fill();
-  setFont(ctx, { size: 18, weight: 700, track: 0.14 });
+  setFont(ctx, { size: 18, weight: 600, track: 0.14 });
   ctx.fillText(String(kicker).toUpperCase(), x + pad + 24, yy + kickH / 2 + 1);
   yy += kickH + 20;
 
@@ -1030,7 +1042,7 @@ export function answerCard(ctx, props) {
       const wa = a * wp;
       if (it.kind === 'word') {
         ctx.globalAlpha = wa;
-        setFont(ctx, { size: bodySize, weight: it.bold ? 700 : 400 });
+        setFont(ctx, { size: bodySize, weight: it.bold ? 600 : 400 });
         ctx.fillStyle = TOKENS.ink;
         ctx.fillText(it.s, cx, base);
         if (it.tail) {
@@ -1143,6 +1155,7 @@ export function answerCard(ctx, props) {
     rect,
     chip: chipRect,
     chipCenter: chipRect ? { x: chipRect.x + chipRect.w / 2, y: chipRect.y + chipRect.h / 2 } : null,
+    chipAnchor: chipRect ? { x: chipRect.x + chipRect.w, y: chipRect.y + chipRect.h / 2 } : null,
     receipt: receiptRect,
     question: qh ? { x, y: y + dy, w, h: qh - 28 } : null,
   };
@@ -1150,15 +1163,34 @@ export function answerCard(ctx, props) {
 
 // ---------------------------------------------------------------- citation panel
 
+/** Raw markdown lines for a section + table, pipes aligned. Shared by citationPanel and tileText callers. */
+export function markdownExcerpt(section, rows) {
+  const lines = [];
+  if (section) lines.push(`## ${section}`, '');
+  if (rows && rows.length) {
+    // Raw markdown, as the product shows it, with the pipes aligned.
+    const cols = rows[0].length;
+    const wid = Array.from({ length: cols }, (_, c) => Math.max(3, ...rows.map((r) => String(r[c] ?? '').length)));
+    const fmt = (r) => `| ${wid.map((wd, c) => String(r[c] ?? '').padEnd(wd)).join(' | ')} |`;
+    lines.push(fmt(rows[0]));
+    lines.push(`| ${wid.map((wd) => '-'.repeat(wd)).join(' | ')} |`);
+    rows.slice(1).forEach((r) => lines.push(fmt(r)));
+  }
+  return lines;
+}
+
 /**
  * Source panel faithful to CitationPanel: eyebrow, doc title + version pill, close X,
  * the excerpt as raw markdown in a mono inset block (the product does not render or
- * tint rows). Content scales down to fit h.
- * Excerpt: pass `excerpt` (string, \n lines) or `section` + `rows` (first row = header),
- * which are printed as markdown ("## Section", "| a | b |", "| --- | --- |").
- * highlightRow: index into rows (or a substring to find in the excerpt); its line's
- * rect is returned for the lead's annotation thread. Nothing is tinted.
- * Returns { rect, row: {x,y,w,h} | null, excerpt: {x,y,w,h} }.
+ * tint rows). With `h`, the excerpt block grows to fill the panel: mono size fits
+ * width and height (up to maxMono, default 26), leading opens up to 2.0.
+ * Excerpt: `excerpt` (string, \n lines) or `section` + `rows` (first row = header),
+ * printed as markdown with aligned pipes.
+ * highlightRow: index into rows (or a substring of a line); that line's rect is
+ * returned for the annotation thread. Nothing is tinted.
+ * surface: false draws only the content (no card fill, border or shadow) for a
+ * panel whose paper is a lit 3D tile.
+ * Returns { rect, row, rowAnchor: {x,y} (left edge, centred), excerpt, mono }.
  */
 export function citationPanel(ctx, props) {
   const {
@@ -1177,6 +1209,8 @@ export function citationPanel(ctx, props) {
     theme = 'light',
     eyebrow = 'Source passage',
     linkText = null,
+    surface = true,
+    maxMono = 26,
   } = props;
   const e = easeOutQuart(progress);
   const a = alpha * clamp01(progress * 1.4);
@@ -1185,58 +1219,55 @@ export function citationPanel(ctx, props) {
   let hiLine = -1;
   if (excerpt != null) {
     lines = String(excerpt).split('\n');
-    if (typeof highlightRow === 'string') hiLine = lines.findIndex((l) => l.includes(highlightRow));
   } else {
-    lines = [];
-    if (section) lines.push(`## ${section}`, '');
-    if (rows && rows.length) {
-      lines.push(`| ${rows[0].join(' | ')} |`);
-      lines.push(`| ${rows[0].map(() => '---').join(' | ')} |`);
-      rows.slice(1).forEach((r, i) => {
-        if (highlightRow === i + 1) hiLine = lines.length;
-        lines.push(`| ${r.join(' | ')} |`);
-      });
-      if (highlightRow === 0) hiLine = lines.length - rows.length - 1;
-    }
-    if (typeof highlightRow === 'string') hiLine = lines.findIndex((l) => l.includes(highlightRow));
+    lines = markdownExcerpt(section, rows);
+    if (typeof highlightRow === 'number' && rows) hiLine = lines.length - rows.length + highlightRow;
   }
+  if (typeof highlightRow === 'string') hiLine = lines.findIndex((l) => l.includes(highlightRow));
 
-  const dx = (1 - e) * 28;
+  const dx = surface ? (1 - e) * 28 : 0;
   const px = x + dx;
   const padX = 28;
   const headH = 20 + 18 + 12 + 32 + 20;
-  const inset = 20;
+  const inset = 24;
   const bodyPad = 28;
   const linkH = linkText ? 20 + 52 : 0;
-  // Mono size fits both width and (if given) height.
-  let mono = 22;
+  // Blank lines take half a line.
+  const units = lines.reduce((s, l) => s + (l.trim() ? 1 : 0.5), 0);
   ctx.save();
-  setFont(ctx, { family: FONTS.mono, size: mono });
+  setFont(ctx, { family: FONTS.mono, size: 100 });
   const widest = Math.max(1, ...lines.map((l) => textW(ctx, l)));
   const availW = w - bodyPad * 2 - inset * 2;
-  mono = Math.min(mono, (mono * availW) / widest);
-  const monoLh = () => mono * 1.6;
+  let mono = Math.min(maxMono, (100 * availW) / widest);
+  let lead = 1.7;
   let H = h;
+  let blockH;
   if (h != null) {
-    const availH = h - headH - bodyPad * 2 - inset * 2 - linkH;
-    if (lines.length * monoLh() > availH) mono = Math.max(10, availH / (lines.length * 1.6));
+    blockH = h - headH - bodyPad * 2 - linkH;
+    const textH = blockH - inset * 2;
+    mono = Math.max(10, Math.min(mono, textH / (units * lead)));
+    lead = Math.min(2.0, textH / (units * mono));
   } else {
-    H = headH + bodyPad * 2 + inset * 2 + lines.length * monoLh() + linkH;
+    blockH = units * mono * lead + inset * 2;
+    H = headH + bodyPad * 2 + blockH + linkH;
   }
+  const lh = mono * lead;
   ctx.globalAlpha = a;
-  ctx.save();
-  if (theme === 'dark') shadow(ctx, 'rgba(0,0,0,0.4)', 42, 0, 14);
-  else shadow(ctx, rgba(TOKENS.ink, 0.1), 42, 0, 14);
-  rrPath(ctx, px, y, w, H, 16);
-  ctx.fillStyle = TOKENS.card;
-  ctx.fill();
-  shadow(ctx, rgba(TOKENS.ink, 0.06), 4, 0, 2);
-  ctx.fill();
-  noShadow(ctx);
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = TOKENS.border;
-  ctx.stroke();
-  ctx.restore();
+  if (surface) {
+    ctx.save();
+    if (theme === 'dark') shadow(ctx, 'rgba(0,0,0,0.4)', 42, 0, 14);
+    else shadow(ctx, rgba(TOKENS.ink, 0.1), 42, 0, 14);
+    rrPath(ctx, px, y, w, H, 16);
+    ctx.fillStyle = TOKENS.card;
+    ctx.fill();
+    shadow(ctx, rgba(TOKENS.ink, 0.06), 4, 0, 2);
+    ctx.fill();
+    noShadow(ctx);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = TOKENS.border;
+    ctx.stroke();
+    ctx.restore();
+  }
 
   // Header.
   ctx.textBaseline = 'alphabetic';
@@ -1262,46 +1293,114 @@ export function citationPanel(ctx, props) {
   }
   icon(ctx, 'x', px + w - padX - 26, y + headH / 2 - 13, 26, TOKENS.mutedFg, 2);
   ctx.fillStyle = TOKENS.border;
-  ctx.fillRect(px, y + headH, w, 1.5);
+  ctx.fillRect(px + (surface ? 0 : padX), y + headH, w - (surface ? 0 : padX * 2), 1.5);
 
-  // Excerpt inset.
+  // Excerpt inset: mono, vertically centred in the block.
   const ex = px + bodyPad;
   const ey = y + headH + bodyPad;
   const ew = w - bodyPad * 2;
-  const eh = lines.length * monoLh() + inset * 2;
-  rrPath(ctx, ex, ey, ew, eh, 12);
-  ctx.fillStyle = rgba(TOKENS.muted, 1);
+  rrPath(ctx, ex, ey, ew, blockH, 12);
+  ctx.fillStyle = surface ? TOKENS.muted : rgba(TOKENS.muted, 0.85);
   ctx.fill();
   ctx.save();
-  rrPath(ctx, ex, ey, ew, eh, 12);
+  rrPath(ctx, ex, ey, ew, blockH, 12);
   ctx.clip();
   setFont(ctx, { family: FONTS.mono, size: mono });
-  ctx.fillStyle = TOKENS.ink;
+  let ly = ey + (blockH - units * lh) / 2;
   let rowRect = null;
   lines.forEach((ln, i) => {
-    const ly = ey + inset + monoLh() * i;
-    ctx.fillText(ln, ex + inset, ly + monoLh() * 0.5 + mono * 0.34);
-    if (i === hiLine) rowRect = { x: ex + inset - 8, y: ly, w: textW(ctx, ln) + 16, h: monoLh() };
+    const hh = ln.trim() ? lh : lh * 0.5;
+    if (ln.trim()) {
+      const isRule = /^\|[\s|-]+\|$/.test(ln);
+      const isHead = ln.startsWith('#');
+      ctx.fillStyle = isRule || isHead ? TOKENS.mutedFg : TOKENS.ink;
+      ctx.fillText(ln, ex + inset, ly + hh * 0.5 + mono * 0.34);
+    }
+    if (i === hiLine) rowRect = { x: ex + inset - 10, y: ly, w: textW(ctx, ln) + 20, h: hh };
+    ly += hh;
   });
   ctx.restore();
 
   if (linkText) {
-    const ly = ey + eh + 20;
+    const lky = ey + blockH + 20;
     setFont(ctx, { size: 22 });
     const lw = textW(ctx, linkText) + 28 + 12 + 40;
-    rrPath(ctx, ex, ly, lw, 52, 26);
+    rrPath(ctx, ex, lky, lw, 52, 26);
     ctx.fillStyle = TOKENS.secondary;
     ctx.fill();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = TOKENS.border;
     ctx.stroke();
-    icon(ctx, 'book', ex + 20, ly + 13, 26, TOKENS.ink, 1.8);
+    icon(ctx, 'book', ex + 20, lky + 13, 26, TOKENS.ink, 1.8);
     ctx.fillStyle = TOKENS.ink;
     ctx.textBaseline = 'middle';
-    ctx.fillText(linkText, ex + 20 + 28 + 12, ly + 27);
+    ctx.fillText(linkText, ex + 20 + 28 + 12, lky + 27);
   }
   ctx.restore();
-  return { rect: { x: px, y, w, h: H }, row: rowRect, excerpt: { x: ex, y: ey, w: ew, h: eh } };
+  return {
+    rect: { x: px, y, w, h: H },
+    row: rowRect,
+    rowAnchor: rowRect ? { x: rowRect.x, y: rowRect.y + rowRect.h / 2 } : null,
+    excerpt: { x: ex, y: ey, w: ew, h: blockH },
+    mono,
+  };
+}
+
+// ---------------------------------------------------------------- tile text
+
+/**
+ * Mono text printed on a projected paper tile. quad = [tl, tr, br, bl] in design px
+ * (screen space). Mapped with the average affine of the quad's edges (fine for the
+ * mild perspective of a top-down camera). Text auto-fits the tile inside `pad`
+ * (fraction of the short side) with 1.5 leading; `size` caps it in tile units, where
+ * the tile is 1000 units wide. highlight: index of a line inked in highlightInk.
+ * Returns { size } in tile units.
+ */
+export function tileText(ctx, props) {
+  const {
+    quad,
+    lines = [],
+    alpha = 1,
+    ink = TOKENS.ink,
+    align = 'left',
+    pad = 0.12,
+    size = null,
+    weight = 400,
+    highlight = -1,
+    highlightInk = TOKENS.primary,
+  } = props;
+  if (!quad || quad.length < 4 || alpha <= 0 || !lines.length) return null;
+  const [tl, tr, br, bl] = quad;
+  const ux = (tr[0] - tl[0] + br[0] - bl[0]) / 2;
+  const uy = (tr[1] - tl[1] + br[1] - bl[1]) / 2;
+  const vx = (bl[0] - tl[0] + br[0] - tr[0]) / 2;
+  const vy = (bl[1] - tl[1] + br[1] - tr[1]) / 2;
+  const lu = Math.hypot(ux, uy);
+  const lv = Math.hypot(vx, vy);
+  if (lu < 1 || lv < 1) return null;
+  const cx = (tl[0] + tr[0] + br[0] + bl[0]) / 4;
+  const cy = (tl[1] + tr[1] + br[1] + bl[1]) / 4;
+  const LW = 1000;
+  const LH = (1000 * lv) / lu;
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.transform(ux / LW, uy / LW, vx / LH, vy / LH, cx - ux / 2 - vx / 2, cy - uy / 2 - vy / 2);
+  const p = pad * Math.min(LW, LH);
+  setFont(ctx, { family: FONTS.mono, size: 100, weight });
+  const widest = Math.max(1, ...lines.map((l) => textW(ctx, l)));
+  let fs = Math.min((100 * (LW - p * 2)) / widest, (LH - p * 2) / (lines.length * 1.5));
+  if (size) fs = Math.min(fs, size);
+  setFont(ctx, { family: FONTS.mono, size: fs, weight });
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = align === 'center' ? 'center' : 'left';
+  const lh = fs * 1.5;
+  const top = (LH - lines.length * lh) / 2;
+  lines.forEach((ln, i) => {
+    ctx.fillStyle = i === highlight ? highlightInk : ink;
+    ctx.fillText(ln, align === 'center' ? LW / 2 : p, top + lh * i + lh * 0.5 + fs * 0.34);
+  });
+  ctx.restore();
+  return { size: fs };
 }
 
 // ---------------------------------------------------------------- refusal card
@@ -1318,7 +1417,7 @@ export function refusalCard(ctx, props) {
     y = 200,
     w = 880,
     question = '',
-    answer = '',
+    answer = REFUSAL_TEXT,
     progress = 1,
     alpha = 1,
     theme = 'light',
@@ -1338,14 +1437,16 @@ export function refusalCard(ctx, props) {
   ctx.save();
   let qh = 0;
   if (showQuestion && question) qh = measureQuestion(ctx, w, question) + 28;
-  setFont(ctx, { size: 24 });
-  const ansLines = greedyLines(ctx, answer, innerW);
-  const alh = 24 * 1.625;
+  // The refusal sentence is the card's primary text: a size up from answer body.
+  const ansSize = 26;
+  setFont(ctx, { size: ansSize });
+  const ansLines = balancedText(ctx, answer || REFUSAL_TEXT, innerW);
+  const alh = ansSize * 1.55;
   setFont(ctx, { size: 20 });
-  const hintLines = hint ? greedyLines(ctx, hint, innerW) : [];
+  const hintLines = hint ? balancedText(ctx, hint, innerW) : [];
   const hlh = 20 * 1.625;
   const chipH = 36;
-  const H = pad + chipH + 16 + ansLines.length * alh + (hintLines.length ? 12 + hintLines.length * hlh : 0) + (footer ? 28 + 1.5 + 20 + 48 : 0) + pad;
+  const H = pad + chipH + 20 + ansLines.length * alh + (hintLines.length ? 12 + hintLines.length * hlh : 0) + (footer ? 28 + 1.5 + 20 + 48 : 0) + pad;
   const dy = (1 - e) * 8;
   ctx.globalAlpha = a;
   ctx.translate(0, dy);
@@ -1354,7 +1455,7 @@ export function refusalCard(ctx, props) {
   cardSurface(ctx, x, cy, w, H, 28, theme);
 
   let yy = cy + pad;
-  setFont(ctx, { size: 18, weight: 700, track: 0.06 });
+  setFont(ctx, { size: 18, weight: 600, track: 0.06 });
   const cs = String(chipText).toUpperCase();
   const cw = textW(ctx, cs) + 32;
   rrPath(ctx, x + pad, yy, cw, chipH, chipH / 2);
@@ -1366,12 +1467,12 @@ export function refusalCard(ctx, props) {
   ctx.textBaseline = 'middle';
   ctx.fillText(cs, x + pad + 16, yy + chipH / 2 + 1);
   const chip = { x: x + pad, y: yy + dy, w: cw, h: chipH };
-  yy += chipH + 16;
+  yy += chipH + 20;
 
   ctx.textBaseline = 'alphabetic';
-  setFont(ctx, { size: 24 });
+  setFont(ctx, { size: ansSize });
   ctx.fillStyle = TOKENS.ink;
-  ansLines.forEach((ln, i) => ctx.fillText(ln, x + pad, yy + alh * i + alh * 0.5 + 24 * 0.36));
+  ansLines.forEach((ln, i) => ctx.fillText(ln, x + pad, yy + alh * i + alh * 0.5 + ansSize * 0.36));
   yy += ansLines.length * alh;
   if (hintLines.length) {
     yy += 12;
@@ -1387,7 +1488,7 @@ export function refusalCard(ctx, props) {
     ctx.fillStyle = TOKENS.border;
     ctx.fillRect(x + pad, yy, innerW, 1.5);
     yy += 1.5 + 20;
-    const fk = easeOutQuart(flagged);
+    const fk = easeOutQuart(Number(flagged));
     setFont(ctx, { size: 20 });
     const fw = Math.max(textW(ctx, flagText), fk > 0 ? textW(ctx, flaggedText) : 0) + 20 + 22 + 10 + 20;
     rrPath(ctx, x + pad, yy, fw, 48, 24);
@@ -1520,7 +1621,7 @@ export function guessCard(ctx, props) {
       ctx.arc(cx + 32 + 6, cyy + 42, 6, 0, Math.PI * 2);
       ctx.fillStyle = dark ? rgba(TOKENS.paper, 0.6) : TOKENS.mutedFg;
       ctx.fill();
-      setFont(ctx, { size: 18, weight: 700, track: 0.14 });
+      setFont(ctx, { size: 18, weight: 600, track: 0.14 });
       ctx.fillText(String(kicker).toUpperCase(), cx + 32 + 24, cyy + 43);
     }
     const fs = Math.min(h * 0.46, (w * 0.7) / Math.max(1, String(text).length * 0.5));

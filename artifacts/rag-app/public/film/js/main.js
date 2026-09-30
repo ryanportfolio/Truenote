@@ -12,11 +12,13 @@ const motion = params.get('motion');
 setReducedMotion(motion === 'reduce' || (motion !== 'full' && window.matchMedia('(prefers-reduced-motion: reduce)').matches));
 
 let renderer = null;
+let rendererMode = null;
 let ui = null;
 let t = Math.max(0, Math.min(DURATION, Number(params.get('t')) || 0));
 let playing = !params.has('paused');
 let rate = 1;
 let last = null;
+let dirty = true;
 let exportMode = false;
 let composite = null;
 let pixelW = 0, pixelH = 0;
@@ -30,26 +32,12 @@ function replaceCanvas() {
   glCanvas = c;
 }
 
-async function loadRenderer() {
-  if (!params.has('debug2d')) {
-    try {
-      const m = await import('./render.js');
-      renderer = m.createRenderer(glCanvas, { preserveDrawingBuffer: params.has('export') });
-      return;
-    } catch (e) {
-      console.warn('render.js unavailable, using the 2D debug renderer:', e);
-      replaceCanvas();
-    }
-  }
-  const m = await import('./debug2d.js');
-  renderer = m.createDebugRenderer(glCanvas);
-}
-
 function sizeTo(w, h) {
   if (w === pixelW && h === pixelH) return;
   pixelW = w; pixelH = h;
   renderer.resize(w, h);
   uiCanvas.width = w; uiCanvas.height = h;
+  dirty = true;
 }
 
 function fit() {
@@ -72,23 +60,54 @@ function draw(time) {
   const s = uiCanvas.width / 1920;
   uctx.setTransform(s, 0, 0, s, 0, 0);
   drawUI(uctx, time, ui, fs.cam);
+  dirty = false;
+}
+
+// WebGL2 unless ?debug2d. A renderer that fails to construct, allocate or
+// draw its first frame is torn down and replaced by the 2D debug renderer.
+async function loadRenderer() {
+  if (!params.has('debug2d')) {
+    try {
+      const m = await import('./render.js');
+      renderer = m.createRenderer(glCanvas, { preserveDrawingBuffer: params.has('export') });
+      pixelW = 0; fit(); draw(t);
+      rendererMode = 'webgl2';
+      return;
+    } catch (e) {
+      console.warn('WebGL renderer failed, using the 2D debug renderer:', e);
+      try { renderer?.destroy(); } catch { /* already broken */ }
+      renderer = null;
+      replaceCanvas();
+    }
+  }
+  const m = await import('./debug2d.js');
+  renderer = m.createDebugRenderer(glCanvas);
+  pixelW = 0; fit(); draw(t);
+  rendererMode = 'debug2d';
 }
 
 function tick(now) {
   if (last !== null && playing) {
     const dt = Math.min(0.1, (now - last) / 1000);
     t += dt * rate;
+    dirty = true;
     if (t >= DURATION) { t = DURATION; playing = false; emit(); }
   }
   last = now;
-  if (!exportMode) draw(t);
+  if (dirty && !exportMode) draw(t);
   requestAnimationFrame(tick);
 }
 
 function emit() { for (const f of listeners) f(); }
 
+let resolveReady, rejectReady;
+const ready = new Promise((res, rej) => { resolveReady = res; rejectReady = rej; });
+ready.catch(() => {}); // boot() logs the failure; callers still see the rejection.
+
 const anim = {
-  seek(x) { t = Math.max(0, Math.min(DURATION, Number(x) || 0)); draw(t); emit(); },
+  ready,
+  get renderer() { return rendererMode; },
+  seek(x) { t = Math.max(0, Math.min(DURATION, Number(x) || 0)); if (renderer) draw(t); emit(); },
   play() { if (exportMode) anim.endExport(); if (t >= DURATION) t = 0; playing = true; emit(); },
   pause() { playing = false; emit(); },
   get t() { return t; },
@@ -122,9 +141,7 @@ window.__anim = anim;
 async function boot() {
   try { ui = await import('./ui.js'); } catch (e) { console.warn('ui.js unavailable:', e); }
   await loadRenderer();
-  fit();
-  window.addEventListener('resize', fit);
-  draw(t);
+  window.addEventListener('resize', () => { fit(); });
   try {
     const { mountTransport } = await import('./transport.js');
     mountTransport(stage, anim);
@@ -132,7 +149,8 @@ async function boot() {
     console.warn('transport.js unavailable:', e);
   }
   document.documentElement.dataset.ready = '1';
+  resolveReady(rendererMode);
   requestAnimationFrame(tick);
 }
 
-boot();
+boot().catch((e) => { console.error('Film failed to start:', e); rejectReady(e); });

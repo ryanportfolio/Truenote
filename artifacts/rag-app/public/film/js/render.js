@@ -15,7 +15,7 @@
 //               cobalt pass untouched); light is tone-mapped on its own and
 //               screen-blended over it. Vignette, fade, grain, 1 LSB dither.
 
-import { cameraMatrices } from './camera.js';
+import { cameraMatrices, defaultCam } from './camera.js';
 
 export const STRIDE = 16;
 const MAX_WAVES = 8;
@@ -23,7 +23,7 @@ const MAX_BEAMS = 32;
 const GUARD = 1.18; // shadow buffer covers 18% beyond each screen edge
 const SHADOW_SCALE = 0.75; // shadow buffer resolution relative to the canvas
 // Master look constants.
-const SHADOW_K = [0.74, 0.07, 0.42, 0.35]; // darkness at z=0, penumbra per unit height, AO strength, AO radius per unit height
+const SHADOW_K = [0.74, 0.07, 0.32, 0.35]; // darkness at z=0, penumbra per unit height, AO strength, AO radius per unit height
 const HAZE = 0;                            // distance haze per world unit beyond the camera target
 
 const hexLin = (h) => {
@@ -33,26 +33,50 @@ const hexLin = (h) => {
 const hexSrgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
 
 const CREAM = '#E8E6DE';
-// Ground colour along the dawn (u = 1 - ground.ink). Interpolated in linear light between
-// close stops so no segment passes through neutral grey.
+const INK = '#0B1020';
+const fin = (v, d) => (Number.isFinite(v) ? v : d);
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+// Ground colour along the dawn (u = 1 - ground.ink): archive ink, deep cobalt ink, a low
+// amber glow, golden light, cream. Stops are OKLCH (L, C, hue deg) or hex; the shader
+// interpolates in OKLab and runs the light's side of the table ahead of the far side.
+const linToOklab = ([r, g, b]) => {
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const q = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * q,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * q,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * q];
+};
+const oklabToLin = ([L, a, b]) => {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const q = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * q,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * q,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * q];
+};
+const lch = (L, C, h) => [L, C * Math.cos((h * Math.PI) / 180), C * Math.sin((h * Math.PI) / 180)];
 const DAWN_STOPS = [
-  [0.0, '#0B1020'], [0.25, '#142452'], [0.45, '#2E3A6E'], [0.6, '#6B6A88'],
-  [0.74, '#B49C98'], [0.86, '#DEC5AA'], [0.94, '#E8DAC6'], [1.0, '#E8E6DE'],
-].map(([u, h]) => [u, hexLin(h)]);
+  [0.0, linToOklab(hexLin('#0B1020'))],
+  [0.3, lch(0.29, 0.115, 264)],    // deep cobalt ink
+  [0.5, lch(0.43, 0.075, 258)],    // blue dusk, lighter
+  [0.58, lch(0.68, 0.045, 68)],    // soft peach-gold, low chroma
+  [0.8, lch(0.85, 0.028, 80)],     // warm morning paper
+  [0.92, lch(0.9, 0.018, 84)],
+  [1.0, linToOklab(hexLin('#E8E6DE'))],
+];
+const DAWN_U = new Float32Array(DAWN_STOPS.map((d) => d[0]));
+const DAWN_LAB = new Float32Array(DAWN_STOPS.flatMap((d) => d[1]));
 function dawnGround(ink) {
   const u = 1 - clamp01(ink);
+  if (u >= 1) return hexLin('#E8E6DE');
+  let lab = DAWN_STOPS[0][1];
   for (let i = 1; i < DAWN_STOPS.length; i++) {
-    const [u1, c1] = DAWN_STOPS[i];
-    if (u <= u1) {
-      const [u0, c0] = DAWN_STOPS[i - 1];
-      const k = (u - u0) / (u1 - u0);
-      const e = k * k * (3 - 2 * k);
-      return [0, 1, 2].map((j) => c0[j] + (c1[j] - c0[j]) * e);
-    }
+    const k = clamp01((u - DAWN_STOPS[i - 1][0]) / (DAWN_STOPS[i][0] - DAWN_STOPS[i - 1][0]));
+    lab = lab.map((v, j) => v + (DAWN_STOPS[i][1][j] - v) * k);
   }
-  return DAWN_STOPS[DAWN_STOPS.length - 1][1];
+  return oklabToLin(lab).map((v) => Math.max(0, v));
 }
-const INK = '#0B1020';
 
 const DEFAULTS = {
   ground: { ink: 0, lines: 0, linesX: 960, linesY: 540 },
@@ -117,14 +141,14 @@ void waveField(vec2 p, float px, float haloK, out vec3 em, out vec3 tint){
     vec4 A = uWaveA[i]; vec4 B = uWaveB[i];
     float w = max(A.w, 1.);
     float dr = length(p - A.xy) - A.z;
-    float lw = max(w * .06, px * .65);
+    float lw = max(w * .07, px * 1.1);
     float line = exp(-dr * dr / (lw * lw));
     float halo = exp(-dr * dr / (w * w * .3));
     float trail = step(dr, 0.) * exp(min(dr, 0.) / (w * 2.5)) * smoothstep(0., w * 2., A.z + dr);
     vec3 col = mix(uCobaltE, uAmberE, B.y);
     em += col * B.x * (line * .9 + haloK * (halo * .16 + trail * .035));
-    vec3 tc = mix(vec3(.2, .4, 1.), vec3(1., .58, .1), B.y);
-    tint *= mix(vec3(1.), tc, clamp(B.x * (line * .85 + haloK * halo * .16), 0., 1.));
+    vec3 tc = mix(vec3(.015, .108, .85), vec3(.6, .165, .004), B.y); // cobalt / amber ink over cream
+    tint *= mix(vec3(1.), tc, clamp(min(B.x * 1.6, 1.) * line * .9 + haloK * B.x * halo * .1, 0., 1.));
   }
 }
 uniform float uHaze;
@@ -254,12 +278,38 @@ uniform vec3 uAir;
 uniform vec3 uBase;   // table colour along the dawn ramp (linear)
 uniform float uDawn;  // 0 at either end of the dawn, 1 mid-way
 uniform vec2 uGlowC;  // centre of the dawn wash (camera target)
+uniform float uDawnU[7];
+uniform vec3 uDawnLab[7];
+uniform float uDawnP; // dawn progress 1 - ink
+vec3 oklabToLin(vec3 c){
+  float l = c.x + .3963377774 * c.y + .2158037573 * c.z;
+  float m = c.x - .1055613458 * c.y - .0638541728 * c.z;
+  float s = c.x - .0894841775 * c.y - 1.291485548 * c.z;
+  l = l * l * l; m = m * m * m; s = s * s * s;
+  return max(vec3(4.0767416621 * l - 3.3077115913 * m + .2309699292 * s,
+                  -1.2684380046 * l + 2.6097574011 * m - .3413193965 * s,
+                  -.0041960863 * l - .7034186147 * m + 1.707614701 * s), 0.);
+}
+vec3 dawnColor(float u){
+  vec3 lab = uDawnLab[0];
+  for (int i = 1; i < 7; i++){
+    float k = clamp((u - uDawnU[i - 1]) / (uDawnU[i] - uDawnU[i - 1]), 0., 1.);
+    lab = mix(lab, uDawnLab[i], k);
+  }
+  return oklabToLin(lab);
+}
 layout(location = 0) out vec4 oScene;
 layout(location = 1) out vec4 oLight;
 
 float hairline(float d, float px, float hw){
   float w = max(hw, .5 * px);
   return boxCov(-w, w, d, px) * min(1., 2. * hw / px + .35);
+}
+
+// Lens coordinates (units of r) of the layer 'dep' r below the glass, seen along the view ray.
+vec2 lensQ(vec3 P, vec3 rdn, float dep){
+  vec3 X = P + rdn * (dep * uCore.z / max(-rdn.z, .05));
+  return (X.xy - uCore.xy) / uCore.z;
 }
 
 float pencil(vec2 p, float px){
@@ -303,10 +353,12 @@ void main(){
   vec2 ld0 = normalize(uL.xy + vec2(1e-5, 0.));
 
   // --- paper table
-  vec3 base = uBase;
-  // Morning light arriving: a warm wash rising from the light's side of the table mid-dawn.
-  float sideL = smoothstep(-1300., 1300., dot(P.xy - uGlowC, ld0));
-  base *= 1. + uDawn * vec3(.24, .14, .045) * (.3 + .7 * sideL);
+  // Morning arriving from the light's side: that side of the table runs ahead along the ramp.
+  float sideL = smoothstep(-1400., 1400., dot(P.xy - uGlowC, ld0));
+  float uLoc = clamp(uDawnP + .12 * uDawn * (sideL * 2. - 1.), 0., 1.);
+  vec3 base = mix(dawnColor(uLoc), uBase, step(.9999, uDawnP) + step(uDawnP, 1e-4));
+  // the warmth stays local: a soft peach-gold light strongest on the light's side
+  base *= 1. + uDawn * vec3(.09, .05, .012) * sideL * sideL;
   vec3 alb = base;
   float mottle = fbm3(P.xy * .0065) - .5;
   float cloud = fbm3(P.xy * .0021 + 7.3) - .5;
@@ -348,15 +400,18 @@ void main(){
   float ridge = hairline(d - 1.165 + .004 * facing, pr, .0022) + hairline(d - 1.215 + .004 * facing, pr, .0022);
 
   float depth = .16 * uCore.z;
+  // refraction: towards the rim the glass bends the view inwards
+  float refr = 1. - .1 * smoothstep(.55, 1., d);
   vec3 P2 = P + rdn * (depth / max(-rdn.z, .05));
-  vec2 q2 = (P2.xy - uCore.xy) / uCore.z;
+  vec2 q2 = (P2.xy - uCore.xy) / uCore.z * refr;
   float d2 = length(q2);
   float wall = smoothstep(.985, 1.0, d2);
   vec2 Q = P2.xy + uL.xy * (depth / uL.z);
   float rimSh = smoothstep(.94, 1.03, length(Q - uCore.xy) / uCore.z);
   float calm = 1. - .6 * dim;
   float drift = uT * .012 * (1. - .7 * dim);
-  float neb = fbm4(q2 * 1.9 + vec2(drift, -drift * .6) + 3.7);
+  vec2 q3 = lensQ(P, rdn, .55) * refr;  // deep layer: the nebula sits far below the glass
+  float neb = fbm4(q3 * 1.9 + vec2(drift, -drift * .6) + 3.7);
   float neb2 = fbm3(q2 * 4.7 - vec2(drift * 1.7, drift) + 11.);
   float centre = 1. - smoothstep(0., 1., d2);
   vec3 deep = vec3(.003, .007, .05);
@@ -367,18 +422,21 @@ void main(){
   glass = mix(glass, hi * 1.1, smoothstep(.5, .85, neb) * .5 * centre * calm);
   glass *= .78 + .32 * neb2;
   float stars = 0.;
-  for (int L = 0; L < 2; L++){
-    float sc = L == 0 ? 24. : 55.;
-    vec2 cell = q2 * sc + float(L) * 13.7;
+  // three star layers at different depths: parallax when the camera moves round the lens
+  for (int L = 0; L < 3; L++){
+    float sc = L == 0 ? 18. : (L == 1 ? 34. : 62.);
+    float dep = L == 0 ? .04 : (L == 1 ? .22 : .6);
+    vec2 qs = lensQ(P, rdn, dep) * refr;
+    vec2 cell = qs * sc + float(L) * 13.7;
     vec2 id = floor(cell);
     float hh = hash12(id);
     vec2 sp = hash22(id + 4.1) * .7 + .15;
     float dd = length(fract(cell) - sp) / sc;
-    float rad = mix(.0028, .0062, hash12(id + 9.)) * (L == 0 ? 1. : .6);
+    float rad = mix(.0028, .0062, hash12(id + 9.)) * (L == 0 ? 1.1 : (L == 1 ? .7 : .5));
     float sz = max(rad, pr * .55);
     float st = exp(-dd * dd / (sz * sz)) * (rad * rad) / (sz * sz);
     float tw = .65 + .35 * sin(uT * (1.3 + 2. * hh) + hh * 40.) * (1. - dim);
-    stars += st * step(L == 0 ? .88 : .92, hh) * tw * (L == 0 ? 1. : .55);
+    stars += st * step(L == 0 ? .9 : (L == 1 ? .88 : .86), hh) * tw * (L == 0 ? 1.1 : (L == 1 ? .65 : .38));
   }
   stars *= (1. - smoothstep(.75, 1., d2)) * mix(1., .35, dim);
   float rings = 0.;
@@ -387,6 +445,15 @@ void main(){
   rings += hairline(length(q2 + vec2(.11, -.16)) - .77, pr, .002) * .55;
   float spokes = hairline(abs(fract(atan(q2.y, q2.x) / 6.2831853 * 24.) - .5) * 6.2831853 / 24. * d2, pr, .0016) * smoothstep(.2, .45, d2) * .25;
   glass += vec3(.1, .22, .75) * (rings + spokes) * .16 * calm;
+  // caustic: light focused by the lens onto the floor of the recess, a thin wavering ring
+  vec2 dir2 = q2 / max(d2, 1e-4);
+  float ang = atan(dir2.y, dir2.x);
+  float cr = .6 + .008 * sin(ang * 7. + uT * .35) + .035 * (vnoise(dir2 * 2.2 + uT * .12) - .5);
+  float cBright = .45 + .55 * vnoise(dir2 * 4. + vec2(uT * .2, 3.));
+  float caus = (hairline(d2 - cr, pr, .0035) + .3 * exp(-pow((d2 - cr) / .035, 2.))) * cBright;
+  caus += .45 * (hairline(d2 - cr * .52, pr, .0025) + .2 * exp(-pow((d2 - cr * .52) / .025, 2.))) * cBright;
+  caus *= calm * (1. - rimSh * .7) * (1. - wall);
+  glass += vec3(.18, .42, 1.) * caus * .2;
   float al2 = dot(q2, ld), ac2 = dot(q2, lp);
   glass += vec3(.04, .15, .6) * exp(-ac2 * ac2 / .02) * exp(-al2 * al2 / .3) * .3 * calm;
   glass = mix(glass, glass * .38, rimSh);
@@ -398,7 +465,10 @@ void main(){
   glass += vec3(.3, .5, 1.) * menisc * .4 * calm;
   float cres = smoothstep(.8, .955, d) * (1. - smoothstep(.97, .995, d)) * pow(max(-facing, 0.), 2.2);
   vec2 gq = q - ld * .4;
-  float glint = exp(-pow(dot(gq, ld) / .045, 2.) - pow(dot(gq, lp) / .13, 2.));
+  float ga = dot(gq, ld), gc = dot(gq, lp);
+  float gsz = max(.022, pr * 1.2);
+  float glint = exp(-(ga * ga + gc * gc) / (gsz * gsz)) + .5 * exp(-(ga * ga) / (gsz * gsz * .2) - gc * gc / .004)
+              + .5 * exp(-(gc * gc) / (gsz * gsz * .2) - ga * ga / .004);
   float streak = exp(-pow(dot(q, lp) / max(.012, pr), 2.)) * exp(-pow(dot(q, ld) / .35, 2.)) * min(1., .012 / pr);
   float spec = (cres * 1.6 + glint * .5 + streak * .08) * mix(1., .5, dim);
 
@@ -421,6 +491,7 @@ void main(){
   em += vec3(.7, .85, 1.2) * stars * inner * (.6 + .8 * glow);
   em += vec3(.75, .88, 1.2) * spec * inner * (.35 + .8 * glow);
   em += uCobaltE * menisc * inner * glow * .45;
+  em += vec3(.3, .6, 1.4) * caus * inner * (.12 + .45 * glow);
   col += vec3(.35, .5, 1.) * stars * inner * .45;
 
   // --- waves
@@ -468,6 +539,8 @@ uniform float uHashAlpha;
 uniform vec3 uCobalt;
 uniform vec3 uAir;
 uniform vec3 uTint;
+uniform vec3 uKeyT;
+uniform float uTileEdge;
 in vec3 vPos; in vec2 vLP;
 flat in vec3 vN; flat in vec3 vTx; flat in vec3 vTy; flat in vec4 vC; flat in vec4 vD; flat in vec2 vHalf;
 layout(location = 0) out vec4 oScene;
@@ -507,6 +580,7 @@ void main(){
   float seed = vD.w;
   float alpha = vC.a;
   float lines = vD.x, glow = vD.y, hue = vD.z;
+  float rest = smoothstep(.992, .999, abs(vN.z)) * (1. - smoothstep(30., 60., vPos.z));
 
   // --- paper: sheet-scale mottling continuous across neighbours, per-tile tone, tooth, fibres
   vec3 alb = toLin(vC.rgb);
@@ -526,7 +600,7 @@ void main(){
   vec2 gfw = fwv / gs;
   vec2 gd = abs(fract(gu - .5) - .5) / max(gfw, vec2(1e-4));
   float grid = (1. - min(min(gd.x, gd.y), 1.)) * (1. - smoothstep(.12, .32, max(gfw.x, gfw.y)));
-  alb *= 1. - grid * .06 * (1. - back * .6);
+  alb *= 1. - grid * (.06 + .03 * rest) * (1. - back * .6);
 
   // --- ruled text lines, box-filtered so they average out cleanly when small
   float nl = 3. + floor(seed * 3.999);
@@ -538,7 +612,7 @@ void main(){
     float fi = float(i);
     float live = step(fi, nl - 1.);
     float head = step(fi, .5);
-    float thick = pitch * mix(.2, .3, head);
+    float thick = pitch * mix(.2, .3, head) * (1. + .5 * smoothstep(0., .6, glow));
     float yc = top - pitch * (fi + .5);
     float len = mix(.84, 1., hash12(vec2(seed * 91.7, fi * 7.1)));
     len = mix(len, .3 + .35 * hash12(vec2(seed * 13.3, 5.)), step(nl - 1.5, fi));
@@ -548,11 +622,14 @@ void main(){
     float cov = boxCov(yc - .5 * thick, yc + .5 * thick, lp.y, fwv.y) * boxCov(x0, x1, lp.x, fwv.x);
     text = max(text, cov * live);
   }
-  vec3 glowAlb = mix(uCobalt, vec3(.86, .33, .003), hue);
+  vec3 glowAlb = mix(vec3(.012, .085, .62), vec3(.86, .33, .003), hue);
   vec3 inkC = mix(alb * vec3(.42, .43, .46), glowAlb, smoothstep(0., .5, glow));
   float textA = text * mix(lines, max(lines, 1.), smoothstep(0., .4, glow)) * mix(mix(.6, .95, smoothstep(0., .5, glow)), .14, back);
 
-  // --- edges: dark hairline plus a faint bevel, lighter on the lit side
+  // --- edges: dark hairline plus a faint bevel, lighter on the lit side. A tile resting flat
+  // and low among flush neighbours reads as part of a printed sheet: its edge fades towards a
+  // faint grid line (more so when it carries few ruled lines). Tilted or lifted cards keep it.
+  float edgeK = uTileEdge * mix(1., mix(.28, .6, smoothstep(.2, .9, lines)), rest);
   vec2 ed = vHalf - abs(lp);
   vec2 edPx = ed / fwv;
   float hair = 1. - smoothstep(0., 1.05, min(edPx.x, edPx.y));
@@ -566,28 +643,32 @@ void main(){
   float dif = wrapDiff(nl0);
   float tilt = clamp(length(vN.xy) / max(abs(vN.z), .05), 0., 3.);
   float sh = tileShadow(vPos, tilt);
-  vec3 E = (uAmb + uKey * dif * (1. - sh)) * uTint;
+  vec3 E = (uAmb + uKeyT * dif * (1. - sh)) * uTint;
   vec3 Hh = normalize(uL + V);
   float sheen = pow(max(dot(n, Hh), 0.), 28.) * .05 * (1. - back * .7) * (1. - sh);
-  vec3 trans = uKey * max(-nl0, 0.) * .22;
+  vec3 trans = uKeyT * max(-nl0, 0.) * .22;
 
   vec3 col = alb * (E + trans);
   col = mix(col, inkC * E, textA);
-  col *= 1. - hair * .2;
-  col *= 1. + bev * .09;
-  col += uKey * sheen;
+  col *= 1. - hair * .2 * edgeK;
+  col *= 1. + bev * .09 * edgeK * mix(1., .4, rest);
+  // glowing cards: the rim itself turns to cobalt (or amber) ink, crisp, so the light reads
+  // as light on the edge and not as a tint of the paper
+  float rim = max(hair, max(bnd.x, bnd.y)) * mix(.7, 1., edgeK);
+  col = mix(col, glowAlb * E, rim * smoothstep(0., .6, glow) * .85);
+  col += uKeyT * sheen;
 
   // --- emitted light: glow on the printed marks and edge; waves wash over marks
   vec3 gcol = mix(uCobaltE, uAmberE, hue);
   float edgeM = max(hair, max(bnd.x, bnd.y) * .6);
-  vec3 em = gcol * glow * (text * max(lines, .4) * .42 + edgeM * .5 + .018);
+  vec3 em = gcol * glow * (text * max(lines, .4) * .5 + rim * .7);
   vec3 wem, wt;
   waveField(vPos.xy, px, 0., wem, wt);
   float wAtt = exp(-max(vPos.z, 0.) / 55.);
   float marks = max(text * lines, edgeM);
-  float marksW = max(text * lines, hair * .5);
-  col = mix(col, col * wt, wAtt * (.55 + .45 * marksW));
-  em += wem * wAtt * (.12 + .6 * marksW);
+  float marksW = max(text * lines, hair * .6);
+  col = mix(col, col * wt, wAtt * mix(.6, 1., marksW));
+  em += wem * wAtt * .65 * marksW;
 
   // --- distance haze (tilted cameras)
   float hz = hazeAt(length(vPos - uEye));
@@ -659,8 +740,8 @@ void main(){
   float flow = .82 + .18 * sin(vUV.x * .07 - uT * 6.);
   vec3 col = mix(uCobaltE, uAmberE, hue);
   vec3 light = col * k * ends * (core * 1.5 * flow + halo * .28) + vec3(.8, .9, 1.) * k * ends * core * core * .6;
-  vec3 tintC = mix(uCobalt * 2.2, vec3(1., .55, .08), hue);
-  vec3 tint = mix(vec3(1.), tintC, clamp(core * k * ends * .75, 0., 1.));
+  vec3 tintC = mix(vec3(.015, .108, .85), vec3(.6, .165, .004), hue); // ink colour over cream
+  vec3 tint = mix(vec3(1.), tintC, clamp(exp(-x * x * 9.) * min(k * 1.6, 1.) * ends * .92, 0., 1.));
   oScene = vec4(tint, 1.);
   oLight = vec4(light * (1. - uTint), 1.);
 }`;
@@ -707,6 +788,7 @@ uniform vec3 uFadeCol;
 uniform sampler2D uDbg;
 uniform float uDebug;
 uniform float uGuardO;
+uniform vec3 uVigTint; // per-channel vignette weight: warm umber falloff on cream, blue-black on ink
 out vec4 o;
 vec3 toSrgb(vec3 c){ c = max(c, 0.); return mix(c * 12.92, 1.055 * pow(c, vec3(1. / 2.4)) - .055, step(.0031308, c)); }
 void main(){
@@ -715,7 +797,12 @@ void main(){
   float m = max3(sc);
   float mc = mix(m, .86 + .14 * (1. - exp(-(m - .86) / .14)), step(.86, m));
   sc *= mc / max(m, 1e-5);
-  vec3 L = clean(texture(uLight, uv).rgb) + clean(texture(uB1, uv).rgb * .6 + texture(uB2, uv).rgb * .9) * uBloom;
+  // Bloom is a halo of light: it reads over dark ground, and backs off over saturated or bright
+  // paper so cobalt over persimmon never turns magenta and a glowing sector never washes lavender.
+  float chroma = max3(sc) - min(sc.r, min(sc.g, sc.b));
+  float sl = dot(sc, vec3(.2126, .7152, .0722));
+  vec3 L = clean(texture(uLight, uv).rgb) + clean(texture(uB1, uv).rgb * .6 + texture(uB2, uv).rgb * .9) * uBloom
+         * (1. - .85 * min(chroma * 1.4, 1.)) * mix(1., .4, smoothstep(.1, .7, sl));
   L *= uExposure;
   float lm = max3(L);
   vec3 Lt = L * (1. - exp(-lm)) / max(lm, 1e-5);
@@ -723,7 +810,7 @@ void main(){
   vec3 col = sc + (1. - sc) * Lt;
   vec2 q = uv - .5;
   float r = length(q * vec2(1., .5625)) / .5735;
-  col *= 1. - uVignette * .55 * smoothstep(.42, 1.05, r);
+  col *= 1. - uVignette * .55 * smoothstep(.42, 1.05, r) * uVigTint;
   vec3 s = toSrgb(col);
   s = mix(s, uFadeCol, uFade);
   vec2 fc = floor(gl_FragCoord.xy);
@@ -801,8 +888,6 @@ function invert4(m) {
   return o;
 }
 
-const fin = (v, d) => (Number.isFinite(v) ? v : d);
-const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 
 // ---------------------------------------------------------------- renderer
@@ -991,7 +1076,7 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
   function render(fs) {
     if (!T) resize(canvas.width || 1920, canvas.height || 1080);
     const t = fs.t || 0;
-    const cam = fs.cam;
+    const cam = fs.cam || defaultCam();
     const ground = { ...DEFAULTS.ground, ...(fs.ground || {}) };
     const lightS = { ...DEFAULTS.light, ...(fs.light || {}) };
     const core = { ...DEFAULTS.core, ...(fs.core || {}) };
@@ -1016,8 +1101,8 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
     // solved per channel so a flat, unshadowed surface gets exactly the intensity (ground
     // hex survives); tiles additionally take the light's own tint.
     const seg = (a, m, b) => (warm < 0.6 ? lerp3(a, m, warm / 0.6) : lerp3(m, b, (warm - 0.6) / 0.4));
-    const ambCol = seg([0.84, 0.92, 1.12], [0.92, 0.9, 0.98], [1.0, 0.96, 0.9]);
-    const tintRaw = seg([0.9, 0.97, 1.1], [1.16, 0.99, 0.8], [1.05, 1.0, 0.93]);
+    const ambCol = seg([0.84, 0.92, 1.12], [0.94, 0.91, 0.95], [1.0, 0.93, 0.83]);
+    const tintRaw = seg([0.9, 0.97, 1.1], [1.08, 1.0, 0.9], [1.08, 1.0, 0.88]);
     const tl = 0.2126 * tintRaw[0] + 0.7152 * tintRaw[1] + 0.0722 * tintRaw[2];
     const lightTint = tintRaw.map((v) => v / tl);
     const ink = Math.max(0, Math.min(1, ground.ink));
@@ -1025,6 +1110,7 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
     const inten = lightS.intensity ?? 1;
     const amb = ambCol.map((v) => v * ka * inten);
     const key = amb.map((a) => (inten - a) / difFlat);
+    const keyT = amb.map((a) => (inten - a) / Math.max(difFlat, 0.8));
 
     const hazeRef = Math.hypot(cam.x - cam.tx, cam.y - cam.ty, cam.z - cam.tz);
     const haze = fs.haze ?? HAZE;
@@ -1100,6 +1186,8 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
       gl.uniform1f(u.uHazeRef, hazeRef);
       gl.uniform3fv(u.uAir, air);
       if (u.uTint) gl.uniform3fv(u.uTint, lightTint);
+      if (u.uKeyT) gl.uniform3fv(u.uKeyT, keyT);
+      if (u.uTileEdge) gl.uniform1f(u.uTileEdge, clamp01(fin(fs.tileEdge, 1)));
     };
     const setWaves = (u) => {
       gl.uniform4fv(u.uWaveA, waveA);
@@ -1127,6 +1215,9 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
       gl.uniform3fv(p.u.uBase, baseLin);
       gl.uniform1f(p.u.uDawn, dawnAmt);
       gl.uniform2f(p.u.uGlowC, cam.tx, cam.ty);
+      gl.uniform1fv(p.u.uDawnU, DAWN_U);
+      gl.uniform3fv(p.u.uDawnLab, DAWN_LAB);
+      gl.uniform1f(p.u.uDawnP, 1 - ink);
       gl.uniform1f(p.u.uLines, ground.lines);
       gl.uniform2f(p.u.uLinesC, ground.linesX, ground.linesY);
       gl.uniform4f(p.u.uCore, core.x, core.y, Math.max(1, core.r), core.on);
@@ -1266,6 +1357,8 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
       bind(4, T.shadow.t, 'uDbg');
       gl.uniform1f(p.u.uDebug, fs.debug === 'shadow' ? 1 : 0);
       gl.uniform1f(p.u.uGuardO, GUARD);
+      const inkO = clamp01(fin(fs.ground?.ink, 0));
+      gl.uniform3fv(p.u.uVigTint, lerp3([0.78, 0.98, 1.34], [1.15, 1.02, 0.84], inkO));
       gl.uniform2f(p.u.uRes, W, H);
       gl.uniform1f(p.u.uExposure, post.exposure);
       gl.uniform1f(p.u.uBloom, bloomOn ? post.bloom : 0);

@@ -12,8 +12,9 @@ export function parseArgs(argv, booleans = []) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (!a.startsWith('--')) continue;
-    const [k, inline] = a.slice(2).split('=');
-    if (inline !== undefined) out[k] = inline;
+    const eq = a.indexOf('=');
+    const k = eq < 0 ? a.slice(2) : a.slice(2, eq); // split at the first '=' only: URLs carry their own
+    if (eq >= 0) out[k] = a.slice(eq + 1);
     else if (booleans.includes(k) || i + 1 >= argv.length || argv[i + 1].startsWith('--')) out[k] = true;
     else out[k] = argv[++i];
   }
@@ -58,14 +59,33 @@ export async function launchChrome({ place = process.env.CHROME_PLACE || 'offscr
   }
 }
 
-// Wait until the page exposes a usable window.__anim.
-export async function waitForAnim(page, timeoutMs = 30000) {
-  await page.waitForFunction(
-    () => window.__anim && typeof window.__anim.renderAt === 'function' && typeof window.__anim.seek === 'function' && window.__anim.duration > 0,
-    null,
-    { timeout: timeoutMs },
-  ).catch(() => { throw new Error('page did not expose a complete window.__anim within ' + timeoutMs + ' ms (needs seek, renderAt, duration)'); });
+// Wait for boot to finish, then insist on a real renderer.
+//   1. window.__anim exists (it appears before async boot completes)
+//   2. await __anim.ready (resolves once renderer, UI and transport are initialised; rejects on boot failure)
+//   3. the full API is present
+//   4. __anim.renderer === 'webgl2', unless the URL contains 'debug2d' (deliberate debug renderer)
+export async function waitForAnim(page, { url = '', timeoutMs = 30000 } = {}) {
+  await page.waitForFunction(() => !!window.__anim, null, { timeout: timeoutMs })
+    .catch(() => { throw new Error('page did not expose window.__anim within ' + timeoutMs + ' ms'); });
+  const boot = await page.evaluate(async (ms) => {
+    const a = window.__anim;
+    if (a.ready && typeof a.ready.then === 'function') {
+      let timer;
+      const timeout = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('__anim.ready did not settle within ' + ms + ' ms')), ms); });
+      try { await Promise.race([a.ready, timeout]); } catch (e) { return { error: String((e && e.message) || e) }; } finally { clearTimeout(timer); }
+    }
+    return { renderer: window.__anim.renderer ?? null, hasReady: !!a.ready };
+  }, timeoutMs);
+  if (boot.error) throw new Error('page boot failed: ' + boot.error);
+  const missing = await page.evaluate(() => ['seek', 'renderAt', 'captions'].filter((k) => typeof window.__anim[k] !== 'function')
+    .concat(window.__anim.duration > 0 ? [] : ['duration']));
+  if (missing.length) throw new Error('window.__anim is incomplete, missing: ' + missing.join(', '));
+  if (boot.renderer !== 'webgl2' && !/debug2d/.test(url)) {
+    throw new Error(`degraded rendering: __anim.renderer is ${JSON.stringify(boot.renderer)}, expected 'webgl2'. ` +
+      `Frames from a fallback renderer are not the film. (Add 'debug2d' to the URL only to test the debug renderer.)`);
+  }
   await page.evaluate(() => document.fonts && document.fonts.ready);
+  return boot;
 }
 
 export const fmtSec = (s) => `${s.toFixed(1)}s`;

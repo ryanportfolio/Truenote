@@ -33,15 +33,15 @@ export const COLORS = {
 // Bands of the archive, inner to outer. Angles in degrees, 0 = +x, clockwise
 // on screen (y is down). Each sector: [a0, a1, colour, z offset].
 const BANDS = [
-  { r0: 146, r1: 232, cell: 11.5, z: 4, lines: 0.25,
+  { r0: 146, r1: 232, cell: 11.5, z: 8, lines: 0.25,
     sectors: [[-180, 180, 'paper', 0]] },
-  { r0: 244, r1: 342, cell: 15, z: 12, lines: 0.5,
-    sectors: [[-160, -96, 'paper', 4], [-92, -20, 'sage', 0], [-16, 70, 'paper', 6], [74, 118, 'paper', 0], [122, 196, 'sage', 2]] },
-  { r0: 354, r1: 452, cell: 19, z: 7, lines: 0.7,
-    sectors: [[-176, -120, 'paper', 8], [-116, -50, 'paper', 2], [-46, 8, 'sage', 10], [12, 92, 'paper', 4], [96, 150, 'paper', 12], [154, 180, 'paper', 0]] },
-  { r0: 466, r1: 590, cell: 26, z: 16, lines: 0.85,
-    sectors: [[-150, -104, 'paper', 0], [-84, -30, 'paper', 6], [18, 44, 'coral', 10], [46, 58, 'coral', 4], [64, 128, 'paper', 2], [150, 206, 'sage', 8]] },
-  { r0: 604, r1: 1020, cell: 17, z: 1.5, lines: 0.12, field: true,
+  { r0: 244, r1: 342, cell: 15, z: 24, lines: 0.5,
+    sectors: [[-160, -96, 'paper', 8], [-92, -20, 'sage', 0], [-16, 70, 'paper', 12], [74, 118, 'paper', 0], [122, 196, 'sage', 4]] },
+  { r0: 354, r1: 452, cell: 19, z: 14, lines: 0.7,
+    sectors: [[-176, -120, 'paper', 16], [-116, -50, 'paper', 4], [-46, 8, 'sage', 20], [12, 92, 'paper', 8], [96, 150, 'paper', 24], [154, 180, 'paper', 0]] },
+  { r0: 466, r1: 590, cell: 26, z: 32, lines: 0.85,
+    sectors: [[-150, -104, 'paper', 0], [-84, -30, 'paper', 12], [18, 44, 'coral', 20], [46, 58, 'coral', 8], [64, 128, 'paper', 4], [150, 206, 'sage', 16]] },
+  { r0: 604, r1: 1020, cell: 17, z: 3, lines: 0.12, field: true,
     sectors: [[-180, 180, 'paperCool', 0]] },
 ];
 
@@ -87,8 +87,8 @@ export function buildLayout(seed = 7) {
           y: CENTER.y + r * Math.sin(a),
           z: b.z + sec[3] + (b.field ? 0 : rng() * 0.8),
           rz: a + Math.PI / 2,
-          w: b.cell * (b.field ? 0.82 : 0.9),
-          h: ((b.r1 - b.r0) / rows) * (b.field ? 0.82 : 0.9),
+          w: b.cell * (b.field ? 0.84 : 0.94),
+          h: ((b.r1 - b.r0) / rows) * (b.field ? 0.84 : 0.94),
           col: c,
           colKey: sec[2],
           lines: b.lines,

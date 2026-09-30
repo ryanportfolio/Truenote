@@ -9,6 +9,7 @@
 import { createWriteStream, mkdirSync, rmSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { finished } from 'node:stream/promises';
 import { launchChrome, parseArgs, waitForAnim } from './lib.mjs';
 
 const args = parseArgs(process.argv.slice(2), ['keep-raw']);
@@ -22,7 +23,14 @@ const height = Number(args.height ?? 1080);
 const bitrateMbps = Number(args.bitrate ?? 24);
 const out = resolve(args.out);
 const rawPath = out.replace(/\.mp4$/i, '') + '.h264';
-if (!(fps > 0) || width % 2 || height % 2) { console.error('fps must be > 0 and width/height must be even'); process.exit(2); }
+if (!(Number.isFinite(fps) && fps > 0) || !Number.isInteger(width) || !Number.isInteger(height) || width % 2 || height % 2 || !(bitrateMbps > 0)) {
+  console.error('fps and bitrate must be > 0, width/height must be even integers'); process.exit(2);
+}
+const fromArg = args.from !== undefined ? Number(args.from) : undefined;
+const toArg = args.to !== undefined ? Number(args.to) : undefined;
+if ((fromArg !== undefined && !Number.isFinite(fromArg)) || (toArg !== undefined && !Number.isFinite(toArg))) {
+  console.error(`--from and --to must be finite numbers of seconds (got from=${args.from}, to=${args.to})`); process.exit(2);
+}
 
 const ffmpeg = process.env.FFMPEG || 'ffmpeg';
 const ffprobe = process.env.FFPROBE || 'ffprobe';
@@ -30,15 +38,32 @@ for (const bin of [ffmpeg, ffprobe]) {
   if (spawnSync(bin, ['-version']).status !== 0) { console.error(`${bin} not found on PATH (set FFMPEG / FFPROBE to override)`); process.exit(1); }
 }
 
-mkdirSync(dirname(out), { recursive: true });
-const raw = createWriteStream(rawPath);
+let raw = null;
+let streamErr = null;
 let rawBytes = 0;
 let lastProgress = 0;
 const started = Date.now();
 
-const browser = await launchChrome();
+// Write with backpressure. Rejects on stream error or close instead of waiting for a 'drain' that never comes.
+function writeRaw(buf) {
+  if (streamErr) return Promise.reject(streamErr);
+  if (raw.write(buf)) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const done = (fn, v) => { raw.off('drain', onDrain); raw.off('error', onErr); raw.off('close', onClose); fn(v); };
+    const onDrain = () => done(res);
+    const onErr = (e) => done(rej, e);
+    const onClose = () => done(rej, streamErr || new Error('raw output stream closed early'));
+    raw.on('drain', onDrain); raw.on('error', onErr); raw.on('close', onClose);
+  });
+}
+
+let browser = null;
 let exitCode = 0;
 try {
+  mkdirSync(dirname(out), { recursive: true });
+  raw = createWriteStream(rawPath);
+  raw.on('error', (e) => { streamErr = e; });
+  browser = await launchChrome();
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
   page.on('pageerror', (e) => console.error('[pageerror]', e.message));
   page.on('console', (m) => { if (m.type() === 'error') console.error('[console.error]', m.text()); });
@@ -46,7 +71,7 @@ try {
   await page.exposeFunction('__filmChunk', (b64) => {
     const buf = Buffer.from(b64, 'base64');
     rawBytes += buf.length;
-    return new Promise((res) => (raw.write(buf) ? res() : raw.once('drain', res)));
+    return writeRaw(buf);
   });
   await page.exposeFunction('__filmProgress', (done, total) => {
     const now = Date.now();
@@ -58,7 +83,7 @@ try {
   });
 
   await page.goto(args.url, { waitUntil: 'load' });
-  await waitForAnim(page);
+  await waitForAnim(page, { url: args.url });
 
   const info = await page.evaluate(async (o) => {
     const anim = window.__anim;
@@ -68,6 +93,9 @@ try {
     anim.pause();
     const from = o.from ?? 0;
     const to = o.to ?? anim.duration;
+    if (!(Number.isFinite(from) && Number.isFinite(to) && from >= 0 && from < to && to <= anim.duration + 1e-9)) {
+      throw new Error(`invalid range: need 0 <= from < to <= duration (${anim.duration}), got from=${from}, to=${to}`);
+    }
     const total = Math.max(1, Math.round((to - from) * o.fps));
     const frameDur = Math.round(1e6 / o.fps);
 
@@ -143,7 +171,7 @@ try {
       try { encoder.close(); } catch { /* already closed */ }
     }
     return { codec: config.codec, total, chunks, keyframes, from, to, ms: performance.now() - t0 };
-  }, { from: args.from !== undefined ? Number(args.from) : undefined, to: args.to !== undefined ? Number(args.to) : undefined, fps, width, height, bitrateMbps });
+  }, { from: fromArg, to: toArg, fps, width, height, bitrateMbps });
 
   console.log(`encoded ${info.total} frames (${info.chunks} chunks, ${info.keyframes} keyframes) with ${info.codec} in ${(info.ms / 1000).toFixed(1)} s = ${(info.total / (info.ms / 1000)).toFixed(0)} fps, ${((info.to - info.from) / (info.ms / 1000)).toFixed(2)}x realtime`);
   if (info.chunks !== info.total) throw new Error(`encoder emitted ${info.chunks} chunks for ${info.total} frames`);
@@ -151,10 +179,14 @@ try {
   console.error('EXPORT FAILED:', e.message);
   exitCode = 1;
 } finally {
-  await browser.close().catch(() => {});
-  await new Promise((r) => raw.end(r));
+  await browser?.close().catch(() => {});
+  if (raw) {
+    raw.end();
+    await finished(raw).catch((e) => { streamErr ||= e; });
+  }
+  if (streamErr && !exitCode) { console.error('EXPORT FAILED: raw output write error:', streamErr.message); exitCode = 1; }
 }
-if (exitCode) { rmSync(rawPath, { force: true }); process.exit(exitCode); }
+if (exitCode) { try { rmSync(rawPath, { force: true }); } catch { /* not ours to clean */ } process.exit(exitCode); }
 
 // Mux: copy the stream, add faststart and colour tags. Chrome's H.264 has no colour VUI of its own.
 const mux = spawnSync(ffmpeg, [

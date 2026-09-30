@@ -7,60 +7,28 @@
 // `anim` needs: seek(t), play(), pause(), t, playing, duration, chapters [{ name, t0, t1 }].
 // Returns { show, hide, destroy, el }.
 
-const CSS = `
-.ftp{position:absolute;inset:0;z-index:5;pointer-events:none;container-type:inline-size;
-  font:400 13px/1.2 Verdana,Geneva,"DejaVu Sans",sans-serif;color:#FDFDFC;-webkit-font-smoothing:antialiased}
-.ftp *,.ftp *::before,.ftp *::after{box-sizing:border-box}
-.ftp-idle{cursor:none}
-.ftp-scrim{position:absolute;left:0;right:0;bottom:0;height:132px;
-  background:linear-gradient(to top,rgba(33,32,28,.80) 0,rgba(33,32,28,.64) 48%,rgba(33,32,28,0) 100%)}
-.ftp-bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:14px;padding:0 20px 16px}
-.ftp-scrim,.ftp-bar{transition:opacity .22s cubic-bezier(.25,1,.5,1),transform .22s cubic-bezier(.25,1,.5,1)}
-.ftp[data-hidden="true"] .ftp-scrim,.ftp[data-hidden="true"] .ftp-bar{opacity:0;transform:translateY(6px)}
-.ftp[data-hidden="true"] .ftp-bar{pointer-events:none}
-.ftp-bar{pointer-events:auto}
-
-.ftp-btn{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;
-  height:36px;min-width:36px;padding:0 16px 0 12px;margin:0;border-radius:9999px;cursor:pointer;
-  font:inherit;color:#FDFDFC;background:rgba(253,253,252,.14);border:1px solid rgba(253,253,252,.30);
-  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
-  transition:background-color .15s ease,border-color .15s ease}
-.ftp-btn:hover{background:rgba(253,253,252,.24);border-color:rgba(253,253,252,.5)}
-.ftp-btn:active{background:rgba(253,253,252,.32)}
-.ftp-btn svg{width:14px;height:14px;flex:none;display:block}
-.ftp-btn:focus-visible,.ftp-track:focus-visible{outline:2px solid #FDFDFC;outline-offset:2px;box-shadow:0 0 0 2px #0040AB}
-.ftp-btn:focus:not(:focus-visible),.ftp-track:focus:not(:focus-visible){outline:none}
-
-.ftp-time{flex:none;display:flex;gap:6px;font-variant-numeric:tabular-nums;color:rgba(253,253,252,.85);white-space:nowrap}
-.ftp-cur{color:#FDFDFC;min-width:4ch;text-align:right}
-
-.ftp-scrub{position:relative;flex:1 1 auto;min-width:60px;height:36px}
-.ftp-track{position:absolute;inset:0;border-radius:9999px;cursor:pointer;touch-action:none;outline-offset:2px}
-.ftp-rail{position:absolute;left:0;right:0;top:50%;height:4px;margin-top:-2px;border-radius:9999px;overflow:hidden;
-  background:rgba(253,253,252,.28);transition:height .12s ease,margin-top .12s ease}
-.ftp-track:hover .ftp-rail,.ftp-track:focus-visible .ftp-rail,.ftp-track[data-drag="true"] .ftp-rail{height:6px;margin-top:-3px}
-.ftp-fill{position:absolute;inset:0;background:#FDFDFC;transform-origin:0 50%;transform:scaleX(0)}
-.ftp-tick{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:rgba(33,32,28,.85)}
-.ftp-thumb{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:9999px;background:#FDFDFC;
-  box-shadow:0 0 0 1px rgba(33,32,28,.35);opacity:0;transition:opacity .12s ease}
-.ftp-track:hover .ftp-thumb,.ftp-track:focus-visible .ftp-thumb,.ftp-track[data-drag="true"] .ftp-thumb{opacity:1}
-.ftp-tip{position:absolute;bottom:34px;left:0;display:flex;gap:8px;white-space:nowrap;pointer-events:none;
-  padding:6px 12px;border-radius:9999px;background:rgba(33,32,28,.92);border:1px solid rgba(253,253,252,.22);
-  opacity:0;transition:opacity .12s ease}
-.ftp-tip[data-on="true"]{opacity:1}
-.ftp-tip-time{color:rgba(253,253,252,.8);font-variant-numeric:tabular-nums}
-
-.ftp-chap{flex:none;width:24ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(253,253,252,.85);text-align:right}
-
-@container (max-width:640px){.ftp-chap{display:none}.ftp-bar{gap:10px;padding:0 12px 12px}}
-@container (max-width:420px){.ftp-btn{padding:0;width:36px}.ftp-btn-label{display:none}}
-@media (prefers-reduced-motion:reduce){.ftp *,.ftp-scrim,.ftp-bar{transition:none!important}}
-`;
-
+// Element builders (no HTML strings, so this passes require-trusted-types-for 'script').
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function h(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  for (const k of kids) e.append(k);
+  return e;
+}
+function svgIcon(...paths) {
+  const s = document.createElementNS(SVG_NS, 'svg');
+  for (const [k, v] of Object.entries({ viewBox: '0 0 16 16', 'aria-hidden': 'true', focusable: 'false' })) s.setAttribute(k, v);
+  for (const attrs of paths) {
+    const p = document.createElementNS(SVG_NS, 'path');
+    for (const [k, v] of Object.entries(attrs)) p.setAttribute(k, v);
+    s.append(p);
+  }
+  return s;
+}
 const ICONS = {
-  play: '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 2.4v11.2a.5.5 0 0 0 .77.42l8.4-5.6a.5.5 0 0 0 0-.84l-8.4-5.6A.5.5 0 0 0 4 2.4z"/></svg>',
-  pause: '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M3.5 2h3v12h-3zM9.5 2h3v12h-3z"/></svg>',
-  replay: '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M2.6 8a5.4 5.4 0 1 0 1.7-3.9M2.6 2.6v2.9h2.9"/></svg>',
+  play: () => svgIcon({ fill: 'currentColor', d: 'M4 2.4v11.2a.5.5 0 0 0 .77.42l8.4-5.6a.5.5 0 0 0 0-.84l-8.4-5.6A.5.5 0 0 0 4 2.4z' }),
+  pause: () => svgIcon({ fill: 'currentColor', d: 'M3.5 2h3v12h-3zM9.5 2h3v12h-3z' }),
+  replay: () => svgIcon({ fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M2.6 8a5.4 5.4 0 1 0 1.7-3.9M2.6 2.6v2.9h2.9' }),
 };
 
 const fmt = (s) => {
@@ -68,16 +36,7 @@ const fmt = (s) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-function injectCss() {
-  if (document.querySelector('style[data-film-transport]')) return;
-  const el = document.createElement('style');
-  el.dataset.filmTransport = '';
-  el.textContent = CSS;
-  document.head.appendChild(el);
-}
-
 export function mountTransport(root, anim, { autoHideMs = 2200 } = {}) {
-  injectCss();
   if (getComputedStyle(root).position === 'static') root.style.position = 'relative';
 
   const duration = anim.duration;
@@ -89,24 +48,20 @@ export function mountTransport(root, anim, { autoHideMs = 2200 } = {}) {
   };
   const chapterIndex = (c) => chapters.indexOf(c);
 
-  const el = document.createElement('div');
-  el.className = 'ftp';
-  el.dataset.hidden = 'false';
-  el.innerHTML = `
-    <div class="ftp-scrim"></div>
-    <div class="ftp-bar" role="group" aria-label="Film controls">
-      <button type="button" class="ftp-btn ftp-play" aria-keyshortcuts="Space"></button>
-      <div class="ftp-time" aria-hidden="true"><span class="ftp-cur">0:00</span><span>/</span><span class="ftp-tot"></span></div>
-      <div class="ftp-scrub">
-        <div class="ftp-track" role="slider" tabindex="0" aria-label="Film timeline" aria-orientation="horizontal"
-             aria-valuemin="0" aria-valuemax="${Math.round(duration)}" aria-valuenow="0" aria-keyshortcuts="ArrowLeft ArrowRight Home End [ ]">
-          <div class="ftp-rail"><div class="ftp-fill"></div></div>
-          <div class="ftp-thumb"></div>
-        </div>
-        <div class="ftp-tip" aria-hidden="true"><span class="ftp-tip-name"></span><span class="ftp-tip-time"></span></div>
-      </div>
-      <div class="ftp-chap" aria-hidden="true"></div>
-    </div>`;
+  // Markup is built with createElement only (Trusted Types: no innerHTML).
+  const el = h('div', { class: 'ftp', 'data-hidden': 'false' },
+    h('div', { class: 'ftp-scrim' }),
+    h('div', { class: 'ftp-bar', role: 'group', 'aria-label': 'Film controls' },
+      h('button', { type: 'button', class: 'ftp-btn ftp-play', 'aria-keyshortcuts': 'Space' }),
+      h('div', { class: 'ftp-time', 'aria-hidden': 'true' },
+        h('span', { class: 'ftp-cur' }, '0:00'), h('span', {}, '/'), h('span', { class: 'ftp-tot' })),
+      h('div', { class: 'ftp-scrub' },
+        h('div', { class: 'ftp-track', role: 'slider', tabindex: '0', 'aria-label': 'Film timeline', 'aria-orientation': 'horizontal',
+          'aria-valuemin': '0', 'aria-valuemax': String(Math.round(duration)), 'aria-valuenow': '0', 'aria-keyshortcuts': 'ArrowLeft ArrowRight Home End [ ]' },
+          h('div', { class: 'ftp-rail' }, h('div', { class: 'ftp-fill' })),
+          h('div', { class: 'ftp-thumb' })),
+        h('div', { class: 'ftp-tip', 'aria-hidden': 'true' }, h('span', { class: 'ftp-tip-name' }), h('span', { class: 'ftp-tip-time' }))),
+      h('div', { class: 'ftp-chap', 'aria-hidden': 'true' })));
   root.appendChild(el);
 
   const $ = (s) => el.querySelector(s);
@@ -298,7 +253,7 @@ export function mountTransport(root, anim, { autoHideMs = 2200 } = {}) {
     if (state !== lastState) {
       lastState = state;
       const label = state === 'replay' ? 'Replay' : state === 'pause' ? 'Pause' : 'Play';
-      playBtn.innerHTML = `${ICONS[state]}<span class="ftp-btn-label">${label}</span>`;
+      playBtn.replaceChildren(ICONS[state](), h('span', { class: 'ftp-btn-label' }, label));
       playBtn.setAttribute('aria-label', label);
       playBtn.title = state === 'replay' ? 'Replay (Space)' : `${label} (Space)`;
     }

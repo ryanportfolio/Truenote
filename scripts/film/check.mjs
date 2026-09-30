@@ -46,7 +46,7 @@ try {
   page.on('response', (r) => { if (r.status() >= 400 && !/favicon\.ico/.test(r.url())) failedRequests.push(`${r.status()} ${r.url()}`); });
 
   await page.goto(args.url, { waitUntil: 'load' });
-  await waitForAnim(page);
+  await waitForAnim(page, { url: args.url });
   await page.waitForTimeout(500);
 
   const meta = await page.evaluate(() => ({
