@@ -1,5 +1,5 @@
 // Viewer controls for the film: play/pause/replay, scrubber with chapter ticks, time, keyboard.
-// Pure DOM overlay on the stage. It is never drawn into the canvas, so MP4 export stays clean.
+// Pure DOM overlay on the stage; auto-hides after 2.5 s idle, paused or playing. It is never drawn into the canvas, so MP4 export stays clean.
 //
 //   import { mountTransport } from './transport.js';
 //   const tp = mountTransport(document.getElementById('stage'), window.__anim);
@@ -36,7 +36,7 @@ const fmt = (s) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-export function mountTransport(root, anim, { autoHideMs = 2200 } = {}) {
+export function mountTransport(root, anim, { autoHideMs = 2500 } = {}) {
   if (getComputedStyle(root).position === 'static') root.style.position = 'relative';
 
   const duration = anim.duration;
@@ -114,12 +114,15 @@ export function mountTransport(root, anim, { autoHideMs = 2200 } = {}) {
     el.dataset.hidden = h ? 'true' : 'false';
     root.classList.toggle('ftp-idle', h);
   }
+  // The controls hide after autoHideMs without pointer movement, focus or a key press, playing or paused.
+  // They stay while the pointer is over the bar, during a scrub, and while a control has keyboard focus.
+  const mayHide = () => !hovering && !dragging && !focusVisibleInside();
   function show() {
     setHidden(false);
     clearTimeout(hideTimer);
-    if (anim.playing && !hovering && !dragging && !focusVisibleInside()) {
+    if (mayHide()) {
       hideTimer = setTimeout(() => {
-        if (anim.playing && !hovering && !dragging && !focusVisibleInside()) setHidden(true);
+        if (mayHide()) setHidden(true);
         else show();
       }, autoHideMs);
     }

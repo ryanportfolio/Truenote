@@ -20,7 +20,7 @@ The page links `/film/css/transport.css`; the transport injects no styles and no
 
 Stills go to `D:/screenshots/truenote/film/<name>/` (override with `--out`), with `report.json` and, with `--sheet`, `sheet.png`. The transport overlay is hidden in stills unless `--with-ui`.
 
-Seek robustness reruns any failing time once and fails only if the rerun fails too (both are logged; a pass on rerun is reported as flaky). Each failure writes the forward frame, the failing frame, a diff PNG (yellow box = diff bbox) and the split into the `#gl` and `#ui` canvases (`--gl-canvas`, `--ui-canvas`) to `--out`, and prints the bbox and layer. `--reduce` loads the page with `?motion=reduce`. `--dip-check` is a mode: it renders 22.2-23.7, 58.1-59.1 and 66.7-67.7 s at 1/60 s through `renderAt` and fails if any one-frame composite mean-luma jump is >= 10 levels (`--dip-windows a-b,c-d`, `--dip-max 10`).
+Seek robustness reruns any failing time once for diagnosis (both attempts are logged; a pass on rerun is labelled FLAKY), but any failed attempt fails the check. Each failure writes the forward frame, the failing frame, a diff PNG (yellow box = diff bbox) and the split into the `#gl` and `#ui` canvases (`--gl-canvas`, `--ui-canvas`) to `--out`, and prints the bbox and layer. `--reduce` loads the page with `?motion=reduce`. `--dip-check` is a mode: it renders 22.2-23.7, 58.1-59.1 and 66.7-67.7 s at 1/60 s through `renderAt` and fails if any one-frame composite mean-luma jump is >= 10 levels (`--dip-windows a-b,c-d`, `--dip-max 10`).
 
 **Export** (WebCodecs H.264 in the page, `ffmpeg -c copy` mux, faststart, BT.709 primaries and matrix, sRGB transfer tag):
 

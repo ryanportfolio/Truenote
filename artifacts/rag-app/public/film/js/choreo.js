@@ -26,7 +26,7 @@ export const COPY = {
   // Refusal copy as the API and AnswerView render it (answer.ts:54, AnswerView.tsx:225-231).
   refusal: "I couldn't find this in the knowledge base. Please escalate or check the source documents directly.",
   refusalHint: 'Search for the plan, form, or fee name used in the document.',
-  tagline: 'A cited answer, or a clear no.',
+  tagline: 'A cited answer, or a clear no',
   url: 'truenote.org',
 };
 
@@ -36,12 +36,12 @@ const EXCERPT_LINES = ['## Standard Fees', '', '| Plan | Cancellation Fee |', '|
 const EXCERPT = EXCERPT_LINES.join('\n');
 
 export const STATEMENTS = [
-  { text: 'The answer is in here. Somewhere.', accent: [5], t0: 6.4, t1: 10.5, x: 960, y: 866, align: 'center', theme: 'dark' },
-  { text: 'A guess sounds exactly like an answer.', accent: [3], t0: 13.6, t1: 18.0, x: 960, y: 880, align: 'center', theme: 'dark' },
-  { text: 'Only your approved documents can support an answer.', accent: [2], t0: 27.0, t1: 31.6, x: 110, y: 520, align: 'left', maxWidth: 720, theme: 'light' },
-  { text: 'Every answer shows its receipt.', accent: [4], t0: 41.8, t1: 45.6, x: 96, y: 950, align: 'left', maxWidth: 1300, theme: 'light' },
-  { text: 'When the documents stop, Truenote stops.', accent: [5], t0: 54.8, t1: 58.5, x: 96, y: 950, align: 'left', maxWidth: 860, theme: 'light' },
-  { text: "A rep's search never reaches another program.", accent: [3], t0: 62.2, t1: 66.6, x: 960, y: 985, align: 'center', maxWidth: 1700, theme: 'light' },
+  { text: 'The answer is in here, somewhere', accent: [5], t0: 6.4, t1: 10.5, x: 960, y: 866, align: 'center', theme: 'dark' },
+  { text: 'A guess sounds exactly like an answer', accent: [3], t0: 13.6, t1: 18.0, x: 960, y: 880, align: 'center', theme: 'dark' },
+  { text: 'Only your approved documents can support an answer', accent: [2], t0: 27.0, t1: 31.6, x: 110, y: 520, align: 'left', maxWidth: 720, theme: 'light' },
+  { text: 'Every answer shows its receipt', accent: [4], t0: 41.8, t1: 45.6, x: 96, y: 950, align: 'left', maxWidth: 1300, theme: 'light' },
+  { text: 'When the documents stop, Truenote stops', accent: [5], t0: 54.8, t1: 58.5, x: 96, y: 950, align: 'left', maxWidth: 860, theme: 'light' },
+  { text: "A rep's search never reaches another program", accent: [3], t0: 62.2, t1: 66.6, x: 960, y: 985, align: 'center', maxWidth: 1700, theme: 'light' },
 ];
 
 // Timed labels, so their reading budget is checked with the statements.
@@ -259,7 +259,7 @@ function stormColour(i) {
 
 function poseStorm(i, t, p) {
   const S = stormClock(t);
-  const clear = ramp(t, 18.8, 21.4);
+  const clear = REDUCED ? 0 : ramp(t, 18.8, 21.4);
   const rho = (190 + 1280 * Math.pow(R0[i], 0.72)) * (1 + 0.55 * clear);
   const arm = Math.floor(R1[i] * 3);
   const th0 = (arm * TAU) / 3 + Math.log(rho / 190) * 1.35 + (R2[i] - 0.5) * 1.1;
@@ -295,7 +295,7 @@ function applyFocus(t, p) {
   const c = COLORS.paper;
   if (REDUCED) {
     placeInView(p, t, 820, 330, 620, 380, 264, 0, 0);
-    p.r = c[0]; p.g = c[1]; p.b = c[2]; p.lines = 0; p.glow = 0;
+    p.r = c[0]; p.g = c[1]; p.b = c[2]; p.lines = 0; p.glow = 0.7; p.hue = 2;
     p.a = ramp(t, 4.4, 5.0) * (1 - ramp(t, 6.8, 7.4));
     return;
   }
@@ -304,10 +304,11 @@ function applyFocus(t, p) {
   const near = u < 0.52;
   const ua = easeOutCubic(u / 0.52), ub = easeInCubic((u - 0.52) / 0.48);
   const sx = near ? lerp(1500, 860, ua) : lerp(860, -700, ub);
-  const sy = near ? lerp(230, 380, ua) : lerp(380, 330, (u - 0.52) / 0.48);
+  const sy = near ? lerp(230, 380, ua) : lerp(380, 430, (u - 0.52) / 0.48);
   const d = near ? lerp(1500, 600, ua) : lerp(600, 420, ub);
   placeInView(p, t, sx, sy, d, 400, 278, lerp(0.75, -0.55, easeInOutSine(u)), 0.1 * Math.sin(u * 3.2));
-  p.r = c[0]; p.g = c[1]; p.b = c[2]; p.lines = 0; p.glow = 0; p.a = 1;
+  p.r = c[0]; p.g = c[1]; p.b = c[2]; p.lines = 0; p.a = 1;
+  p.glow = 0.7 * ramp(t, 4.4, 5.0) * (1 - ramp(t, 7.2, 7.7)); p.hue = 2;
 }
 
 // The stakes: two passages leave the storm and turn into the two bare answers.
@@ -560,10 +561,27 @@ const SEARCHES = [
 const WAVE_R0 = RIM, WAVE_R1 = 820;
 function waveRadius(sr, t) { return WAVE_R0 + (WAVE_R1 - WAVE_R0) * easeOutCubic((t - sr.t0) / sr.dur); }
 const EXACT_T0 = 35.2, EXACT_STEP = 0.08;
-const THRESH = { r: 520, z: 120 };
-const WEAK_Z = THRESH.z * 0.6;
+const THRESH = { r: 520, z: 170 };
+const WEAK_Z = 56;
 // The bar rises 49.4 to 50.0 and is gone before the stop statement (54.8).
 function barAmount(t) { return easeOutCubic((t - 49.4) / 0.6) * (1 - ramp(t, 54.3, 54.9)); }
+
+// The exact-word hit the label points at: the first one (after the hero) that
+// sits well inside the frame at 35.6 s, picked once per motion mode.
+const exactTick = {};
+function exactTickTile() {
+  const key = REDUCED ? 'r' : 'f';
+  if (exactTick[key] !== undefined) return exactTick[key];
+  const cam = cameraAt(35.6);
+  let pick = L.exact[1] ?? L.exact[0];
+  for (const i of L.exact) {
+    if (i === HERO) continue;
+    const p = project(cam, L.slots[i].x, L.slots[i].y, L.slots[i].z + 40);
+    if (p.depth > 0 && p.sx > 420 && p.sx < 1500 && p.sy > 260 && p.sy < 820) { pick = i; break; }
+  }
+  exactTick[key] = pick;
+  return pick;
+}
 
 // Where the hero passage opens into the citation panel (world, overhead camera over x=700).
 const PANEL = { x: 1119, y: 540, z: 70, w: 664, h: 454 };
@@ -587,8 +605,8 @@ function applyRetrieval(i, t, p) {
     if (t > th) {
       const k = Math.exp(-(t - th) * 3.2);
       const on = easeOutCubic((t - th) / 0.12) * (1 - ramp(t, 36.8, 37.4));
-      p.z += 24 * on;
-      mixCol(p, AMBER, 0.55 * on);
+      p.z += 40 * on;
+      mixCol(p, AMBER, on);
       p.glow = Math.max(p.glow, (0.35 + 0.65 * k) * (i === HERO ? 1 : 1 - ramp(t, 36.9, 37.5)));
       p.hue = Math.max(p.hue, on);
     }
@@ -645,6 +663,12 @@ function applyHero(t, p) {
   p.lines = 1 - unfold; p.glow = 0.7 * (1 - unfold) * out; p.hue = 0;
   const c = COLORS.paper;
   p.r = lerp(c[0], CARD[0], unfold); p.g = lerp(c[1], CARD[1], unfold); p.b = lerp(c[2], CARD[2], unfold);
+  if (t > 45.4 && REDUCED) {
+    if (t < 45.9) { p.x = PANEL.x; p.y = PANEL.y; p.z = PANEL.z; p.w = PANEL.w; p.h = PANEL.h; p.a = 1 - ramp(t, 45.4, 45.9); return; }
+    p.x = s.x; p.y = s.y; p.z = s.z; p.w = s.w; p.h = s.h; p.rx = 0; p.ry = 0; p.rz = s.rz;
+    p.r = s.col[0]; p.g = s.col[1]; p.b = s.col[2]; p.lines = s.lines; p.glow = 0; p.a = ramp(t, 45.95, 46.5);
+    return;
+  }
   if (t > 45.4) {
     x = lerp(PANEL.x, s.x, back); y = lerp(PANEL.y, s.y, back);
     z = lerp(PANEL.z, s.z, back) + Math.sin(Math.PI * back) * 60;
@@ -765,9 +789,10 @@ export function frameState(tIn) {
     fs.waves.push({ x: CENTER.x, y: CENTER.y, r: WAVE_R0 + u * 580, width: 5, intensity: 0.8 * Math.sin(Math.PI * u), hue: 1 });
   }
   // Impact of the implosion: one cobalt ring out to the frame edge.
-  if (t > 68.6 && t < 69.2 && !REDUCED) {
+  if (t > 68.6 && t < 69.3 && !REDUCED) {
     const u = (t - 68.6) / 0.6;
-    fs.waves.push({ x: CENTER.x, y: CENTER.y, r: MARK.coreR * 1.35 + easeOutCubic(u) * 1300, width: 60, intensity: 1.0 * (1 - u), hue: 0 });
+    // Opaque until 69.2 (the renderer strokes it solid at intensity >= 0.67), then out.
+    fs.waves.push({ x: CENTER.x, y: CENTER.y, r: MARK.coreR * 1.35 + easeOutCubic(u) * 1300, width: 60, intensity: 1 - ramp(t, 69.2, 69.3), hue: 0 });
   }
 
   // Tiles.
@@ -914,9 +939,10 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
   const wa = (-20 * Math.PI) / 180;
   const wp = proj(CENTER.x + Math.cos(wa) * 560, CENTER.y + Math.sin(wa) * 560, 0);
   label({ text: 'Meaning', x: wp.sx + 30, y: wp.sy - 70, tick: { x: wp.sx, y: wp.sy }, t, t0: lw('Meaning').t0, t1: lw('Meaning').t1, swatch: 'cobalt' });
-  const ek = L.exact[1] ?? L.exact[0];
+  const ek = exactTickTile();
   const ep = proj(L.slots[ek].x, L.slots[ek].y, 30);
-  label({ text: 'Exact words', x: ep.sx + 40, y: ep.sy + 70, tick: { x: ep.sx, y: ep.sy }, t, t0: lw('Exact words').t0, t1: lw('Exact words').t1, swatch: 'amber' });
+  const eq = ek * STRIDE, en = proj(tiles[eq], tiles[eq + 1], tiles[eq + 2]);
+  label({ text: 'Exact words', x: ep.sx + 40, y: ep.sy + 70, tick: { x: en.sx, y: en.sy }, t, t0: lw('Exact words').t0, t1: lw('Exact words').t1, swatch: 'amber' });
   const hs = proj(L.slots[HERO].x, L.slots[HERO].y, 170);
   const hk = HERO * STRIDE;
   const hn = proj(tiles[hk], tiles[hk + 1], tiles[hk + 2]);
@@ -986,7 +1012,7 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
     const m = proj(MARK.x, MARK.y, 0);
     ui.lockup(ctx, {
       x: m.sx, y: m.sy, scale: (m.scale * MARK.size) / 330, markAlpha: 0,
-      sheetsAlpha: ramp(t, 68.95, 69.3), holeR: fs.core.r * m.scale * 1.02,
+      sheetsAlpha: ramp(t, 68.95, 69.3), holeR: fs.core.r * m.scale,
       tAlpha: ramp(t, 69.4, 70.1), wordAlpha: ramp(t, 69.6, 70.5), tagline: COPY.tagline, taglineAlpha: ramp(t, 70.4, 71.3),
       url: COPY.url, urlAlpha: ramp(t, 71.2, 72.0), theme: 'light', layout: 'horizontal', reduced,
     });
@@ -1009,6 +1035,12 @@ function drawThreshold(ctx, t, proj) {
     return out;
   };
   const ring = pts(z), shade = pts(18);
+  // Keep the ring off the question row (x 96..856, y ~250..296) while it shows.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, 1920, 1080);
+  ctx.rect(80, 214, 800, 92);
+  ctx.clip('evenodd');
   // Adds dash j to the current path; returns its width, or 0 when behind the eye.
   const dash = (arr, j) => {
     const a = j * sub, b = a + Math.round(sub * 0.6);
@@ -1020,15 +1052,18 @@ function drawThreshold(ctx, t, proj) {
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  // Shadow on the paper, one blurred stroke for all dashes.
+  // Shadow on the paper: three widening low-alpha strokes stand in for a blur
+  // (a canvas filter stalls the first frame that uses it).
   ctx.globalAlpha *= bar * 0.5;
-  ctx.strokeStyle = 'rgba(33, 32, 28, 0.35)';
-  ctx.filter = 'blur(5px)';
   ctx.beginPath();
   let ws = 0, nw = 0;
   for (let j = 0; j < n; j++) { const w = dash(shade, j); if (w) { ws += w; nw++; } }
-  ctx.lineWidth = nw ? (ws / nw) * 1.6 : 4;
-  ctx.stroke();
+  const sw = nw ? ws / nw : 4;
+  for (const [k, a] of [[3.4, 0.08], [2.4, 0.1], [1.4, 0.14]]) {
+    ctx.strokeStyle = `rgba(33, 32, 28, ${a})`;
+    ctx.lineWidth = sw * k;
+    ctx.stroke();
+  }
   ctx.restore();
   ctx.save();
   ctx.lineCap = 'round';
@@ -1041,6 +1076,7 @@ function drawThreshold(ctx, t, proj) {
     ctx.strokeStyle = '#8A5300'; ctx.lineWidth = w + 2.5; ctx.stroke();
     ctx.strokeStyle = '#F59F0A'; ctx.lineWidth = w; ctx.stroke();
   }
+  ctx.restore();
   ctx.restore();
 }
 

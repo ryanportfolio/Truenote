@@ -3,8 +3,9 @@
   font:400 13px/1.2 Verdana,Geneva,"DejaVu Sans",sans-serif;color:#FDFDFC;-webkit-font-smoothing:antialiased}
 .ftp *,.ftp *::before,.ftp *::after{box-sizing:border-box}
 .ftp-idle{cursor:none}
-.ftp-scrim{position:absolute;left:0;right:0;bottom:0;height:132px;
-  background:linear-gradient(to top,rgba(33,32,28,.80) 0,rgba(33,32,28,.64) 48%,rgba(33,32,28,0) 100%)}
+/* The scrim is only as tall as the bar (36px pill row + 16px bottom padding) plus a short fade. */
+.ftp-scrim{position:absolute;left:0;right:0;bottom:0;height:60px;
+  background:linear-gradient(to top,rgba(33,32,28,.78) 0,rgba(33,32,28,.68) 72%,rgba(33,32,28,0) 100%)}
 .ftp-bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:14px;padding:0 20px 16px}
 .ftp-scrim,.ftp-bar{transition:opacity .22s cubic-bezier(.25,1,.5,1),transform .22s cubic-bezier(.25,1,.5,1)}
 .ftp[data-hidden="true"] .ftp-scrim,.ftp[data-hidden="true"] .ftp-bar{opacity:0;transform:translateY(6px)}
@@ -43,6 +44,6 @@
 
 .ftp-chap{flex:none;width:24ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(253,253,252,.85);text-align:right}
 
-@container (max-width:640px){.ftp-chap{display:none}.ftp-bar{gap:10px;padding:0 12px 12px}}
+@container (max-width:640px){.ftp-chap{display:none}.ftp-bar{gap:10px;padding:0 12px 12px}.ftp-scrim{height:54px}}
 @container (max-width:420px){.ftp-btn{padding:0;width:36px}.ftp-btn-label{display:none}}
 @media (prefers-reduced-motion:reduce){.ftp *,.ftp-scrim,.ftp-bar{transition:none!important}}

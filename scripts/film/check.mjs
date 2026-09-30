@@ -6,7 +6,7 @@
 //        [--gl-canvas #gl] [--ui-canvas #ui]
 //
 // Checks: (a) ms/frame while playing, (b) stills of #stage, (c) seek robustness via renderAt (forward vs reverse
-// vs after-jump-to-end; a failing time is rerun once and fails only if it fails twice, with the forward frame,
+// vs after-jump-to-end; a failing time is rerun once for diagnosis, but any failed attempt fails the check, with the forward frame,
 // the failing frame, a diff PNG, the diff bbox and a per-layer (GL / UI) split written to --out),
 // (d) caption reading budget, (e) console errors, (f) optional contact sheet.
 // --reduce loads the page with ?motion=reduce.
@@ -175,8 +175,8 @@ try {
   console.log(`(b) ${stills.length} stills -> ${outDir}`);
 
   // ---- (c) seek robustness via renderAt. Compares forward vs reverse vs after-jump-to-end frames. A failing time
-  // is localised (composite, GL layer, UI layer: PNGs and diff bbox go to --out), then rerun once; it fails the
-  // check only if the rerun fails as well. Both attempts are logged.
+  // is localised (composite, GL layer, UI layer: PNGs and diff bbox go to --out), then rerun once for diagnosis.
+  // Any failed attempt fails the check (contract E1), even if the rerun passes. Both attempts are logged.
   await page.evaluate(({ glSel, uiSel }) => {
     const anim = window.__anim;
     const scratch = document.createElement('canvas');
@@ -334,14 +334,14 @@ try {
     if (r.verdict === 'ok') continue;
     console.log(`        attempt 2 (fresh rerun of t=${r.t}): reverse ${fmtD(r.rerun.reverse)}  after-end ${fmtD(r.rerun.afterEnd)}  ${r.rerun.ok ? 'ok' : 'FAILED'}`);
     if (!r.rerun.ok) console.log(`        rerun layers: ${layerLine(r.rerun.layers)}`);
-    if (r.verdict === 'flaky') { flaky++; console.log('        FLAKY: passed on rerun (logged, not a failure)'); } else robFail++;
+    if (r.verdict === 'flaky') { flaky++; console.log('        FLAKY: attempt 1 failed and the rerun passed. Still a failure (contract: every attempt within tol); the evidence above is for diagnosis.'); } else robFail++;
   }
   for (const c of captures) {
     console.log(`    capture t=${c.t} ${c.kind}: composite max ${c.full.max}, ${fmtBox(c.full)}; ${c.referenceMatchesForward ? layerLine(c.layers) : 'no clean reference render to split layers'}`);
     for (const f of c.files) console.log(`        ${f}`);
   }
   if (flaky) report.checks.robustness.flakyTimes = rows.filter((r) => r.verdict === 'flaky').map((r) => r.t);
-  if (robFail) failures.push(`seek robustness: ${robFail} of ${rows.length} times failed twice (tol ${tol})`);
+  if (robFail || flaky) failures.push(`seek robustness: ${robFail + flaky} of ${rows.length} times had a failed attempt (${robFail} failed the rerun too, ${flaky} passed on rerun; any failed attempt fails the check; tol ${tol})`);
 
 
   // ---- (d) caption reading budget

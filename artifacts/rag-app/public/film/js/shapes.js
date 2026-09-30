@@ -45,13 +45,6 @@ const BANDS = [
     sectors: [[-176, -64, 'paperCool', 0], [-60, 58, 'paperCool', 2], [62, 176, 'paperCool', 1]] },
 ];
 
-function inSector(deg, s) {
-  let d = deg;
-  while (d < s[0]) d += 360;
-  while (d >= s[0] + 360) d -= 360;
-  return d <= s[1];
-}
-
 function tint(rng, key) {
   const base = COLORS[key];
   const j = (rng() - 0.5) * 0.035;
@@ -64,30 +57,33 @@ export function buildLayout(seed = 7) {
   const slots = [];
   BANDS.forEach((b, bi) => {
     const rows = Math.max(1, Math.floor((b.r1 - b.r0) / b.cell));
-    const rot = rng() * 0.5;
+    rng(); // kept so the seed sequence below is stable
+    // Each row divides each sector evenly, so every sector ends on a straight
+    // radial cut instead of a staircase of whole tiles.
     for (let j = 0; j < rows; j++) {
       const r = b.r0 + (j + 0.5) * ((b.r1 - b.r0) / rows);
-      const m = Math.floor((2 * Math.PI * r) / b.cell);
-      for (let k = 0; k < m; k++) {
-        const a = ((k + 0.5) / m) * Math.PI * 2 + rot;
-        let deg = (a * 180) / Math.PI;
-        deg = ((deg + 180) % 360 + 360) % 360 - 180;
-        const sec = b.sectors.find((s) => inSector(deg, s));
-        if (!sec) continue;
-        const c = tint(rng, sec[2]);
-        slots.push({
-          band: bi, r, a, deg,
-          x: CENTER.x + r * Math.cos(a),
-          y: CENTER.y + r * Math.sin(a),
-          z: b.z + sec[3] + (b.field ? 0 : rng() * 0.8),
-          rz: a + Math.PI / 2,
-          w: ((2 * Math.PI * r) / m) * 1.0,
-          h: ((b.r1 - b.r0) / rows) * 1.0,
-          col: c,
-          colKey: sec[2],
-          lines: b.lines,
-          field: !!b.field,
-        });
+      for (const sec of b.sectors) {
+        const a0 = (sec[0] * Math.PI) / 180, span = ((sec[1] - sec[0]) * Math.PI) / 180;
+        const m = Math.max(1, Math.round((span * r) / b.cell));
+        for (let k = 0; k < m; k++) {
+          const a = a0 + ((k + 0.5) / m) * span;
+          let deg = (a * 180) / Math.PI;
+          deg = ((deg + 180) % 360 + 360) % 360 - 180;
+          const c = tint(rng, sec[2]);
+          slots.push({
+            band: bi, r, a, deg,
+            x: CENTER.x + r * Math.cos(a),
+            y: CENTER.y + r * Math.sin(a),
+            z: b.z + sec[3] + (b.field ? 0 : rng() * 0.8),
+            rz: a + Math.PI / 2,
+            w: (span * r) / m,
+            h: (b.r1 - b.r0) / rows,
+            col: c,
+            colKey: sec[2],
+            lines: b.lines,
+            field: !!b.field,
+          });
+        }
       }
     }
   });
