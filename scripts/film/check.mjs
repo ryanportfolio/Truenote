@@ -100,7 +100,8 @@ try {
   }
 
   // ---- (b) stills
-  if (!args['with-ui']) await page.addStyleTag({ content: '.ftp{display:none!important}' });
+  // Hide the transport with CSSOM writes (an injected <style> would be blocked by the production CSP).
+  if (!args['with-ui']) await page.evaluate(() => document.querySelectorAll('.ftp').forEach((e) => { e.style.display = 'none'; }));
   await page.evaluate(() => window.__anim.pause());
   const stills = [];
   for (const t of times) {

@@ -19,6 +19,6 @@ Stills go to `D:/screenshots/truenote/film/<name>/` (override with `--out`), wit
 
 **Export** (WebCodecs H.264 in the page, `ffmpeg -c copy` mux, faststart, BT.709 primaries and matrix, sRGB transfer tag):
 
-    node scripts/film/export.mjs --url <url> --out film.mp4 [--fps 60] [--from 0 --to 80] [--width 1920 --height 1080] [--bitrate 24]
+    node scripts/film/export.mjs --url <url> --out film.mp4 [--fps 60] [--from 0 --to 77] [--width 1920 --height 1080] [--bitrate 24]
 
 It prints an ffprobe summary. `--from`/`--to` must satisfy `0 <= from < to <= duration`. Exits non-zero if the browser has no H.264 WebCodecs or the raw file cannot be written. Add `--keep-raw` to keep the `.h264`.

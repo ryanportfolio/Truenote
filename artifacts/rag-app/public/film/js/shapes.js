@@ -14,7 +14,7 @@ export function mulberry32(seed) {
 }
 
 export const CENTER = { x: 960, y: 540 };
-export const CORE_R = 118;
+export const CORE_R = 170;
 
 // Palette (sRGB 0..1). Paper follows the hero art; accents follow the tokens.
 const hex = (h) => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
@@ -33,16 +33,16 @@ export const COLORS = {
 // Bands of the archive, inner to outer. Angles in degrees, 0 = +x, clockwise
 // on screen (y is down). Each sector: [a0, a1, colour, z offset].
 const BANDS = [
-  { r0: 146, r1: 232, cell: 11.5, z: 8, lines: 0.25,
+  { r0: 232, r1: 312, cell: 12, z: 8, lines: 0.05,
     sectors: [[-180, 180, 'paper', 0]] },
-  { r0: 244, r1: 342, cell: 15, z: 24, lines: 0.5,
-    sectors: [[-160, -96, 'paper', 8], [-92, -20, 'sage', 0], [-16, 70, 'paper', 12], [74, 118, 'paper', 0], [122, 196, 'sage', 4]] },
-  { r0: 354, r1: 452, cell: 19, z: 14, lines: 0.7,
-    sectors: [[-176, -120, 'paper', 16], [-116, -50, 'paper', 4], [-46, 8, 'sage', 20], [12, 92, 'paper', 8], [96, 150, 'paper', 24], [154, 180, 'paper', 0]] },
-  { r0: 466, r1: 590, cell: 26, z: 32, lines: 0.85,
-    sectors: [[-150, -104, 'paper', 0], [-84, -30, 'paper', 12], [18, 44, 'coral', 20], [46, 58, 'coral', 8], [64, 128, 'paper', 4], [150, 206, 'sage', 16]] },
-  { r0: 604, r1: 1020, cell: 17, z: 3, lines: 0.12, field: true,
-    sectors: [[-180, 180, 'paperCool', 0]] },
+  { r0: 324, r1: 414, cell: 15, z: 26, lines: 0.12,
+    sectors: [[-160, -96, 'paper', 10], [-92, -20, 'sage', 0], [-16, 70, 'paper', 14], [74, 118, 'paper', 0], [122, 196, 'sage', 6]] },
+  { r0: 426, r1: 514, cell: 19, z: 14, lines: 0.18,
+    sectors: [[-176, -120, 'paper', 18], [-116, -50, 'paper', 4], [-46, 8, 'sage', 22], [12, 92, 'paper', 8], [96, 150, 'paper', 26], [154, 180, 'paper', 0]] },
+  { r0: 526, r1: 630, cell: 24, z: 40, lines: 0.22,
+    sectors: [[-150, -104, 'paper', 0], [-84, -30, 'paper', 14], [18, 44, 'coral', 22], [46, 58, 'coral', 8], [64, 128, 'paper', 4], [150, 206, 'sage', 18]] },
+  { r0: 644, r1: 820, cell: 15, z: 3, lines: 0.04, field: true,
+    sectors: [[-176, -64, 'paperCool', 0], [-60, 58, 'paperCool', 2], [62, 176, 'paperCool', 1]] },
 ];
 
 function inSector(deg, s) {
@@ -74,12 +74,6 @@ export function buildLayout(seed = 7) {
         deg = ((deg + 180) % 360 + 360) % 360 - 180;
         const sec = b.sectors.find((s) => inSector(deg, s));
         if (!sec) continue;
-        // The outer field thins with distance so the archive dissolves into the table.
-        if (b.field) {
-          const f = (r - b.r0) / (b.r1 - b.r0);
-          if (rng() < 0.18 + f * f * 0.8) continue;
-          if (Math.sin(a * 5 + r * 0.013) > 0.72 && rng() < 0.8) continue;
-        }
         const c = tint(rng, sec[2]);
         slots.push({
           band: bi, r, a, deg,
@@ -87,8 +81,8 @@ export function buildLayout(seed = 7) {
           y: CENTER.y + r * Math.sin(a),
           z: b.z + sec[3] + (b.field ? 0 : rng() * 0.8),
           rz: a + Math.PI / 2,
-          w: b.cell * (b.field ? 0.84 : 0.94),
-          h: ((b.r1 - b.r0) / rows) * (b.field ? 0.84 : 0.94),
+          w: ((2 * Math.PI * r) / m) * 1.0,
+          h: ((b.r1 - b.r0) / rows) * 1.0,
           col: c,
           colKey: sec[2],
           lines: b.lines,
@@ -106,7 +100,7 @@ export function buildLayout(seed = 7) {
   // land inside the archive. The hero passage (the Standard Fees table) is
   // page 0, row 3, col 2.
   const docCandidates = [];
-  for (let i = 0; i < n; i++) if (slots[i].band >= 1 && slots[i].band <= 2 && slots[i].colKey === 'paper') docCandidates.push(i);
+  for (let i = 0; i < n; i++) if (slots[i].band <= 1 && slots[i].colKey === 'paper') docCandidates.push(i);
   const docs = [];
   const used = new Set();
   const PAGE_COLS = 5, PAGE_ROWS = 7;
@@ -127,7 +121,7 @@ export function buildLayout(seed = 7) {
     for (let i = 0; i < n; i++) {
       const s = slots[i];
       if (s.band !== 1 || s.colKey !== 'paper' || used.has(i)) continue;
-      const d = Math.abs(s.deg - 140) + Math.abs(s.r - 300) * 0.3;
+      const d = Math.abs(s.deg - 140) + Math.abs(s.r - 370) * 0.3;
       if (d < bestD) { bestD = d; best = i; }
     }
     used.delete(hero.tile);
@@ -162,6 +156,13 @@ export function buildLayout(seed = 7) {
   for (const i of exact) if (shortlist.length < 5 && !shortlist.includes(i)) shortlist.push(i);
   for (let k = 0; shortlist.length < 7; k++) { const i = byDistToHero[5 + k * 3][1]; if (!shortlist.includes(i)) shortlist.push(i); }
 
+  const weak = [];
+  for (let k = 0; k < n && weak.length < 9; k++) {
+    const i = Math.floor(R[3][k] * n);
+    const s = slots[i];
+    if ((s.band === 2 || s.band === 3) && Math.abs(((s.deg - 170 + 540) % 360) - 180) < 45 && !weak.includes(i) && i !== hero.tile) weak.push(i);
+  }
+
   // Program wedges for the scope chapter: A, B, C.
   const WEDGES = [
     { name: 'Program A', a0: -150, a1: -30, hue: 262 },
@@ -181,12 +182,12 @@ export function buildLayout(seed = 7) {
 
   const mark = buildMark(slots, R, rng);
 
-  return { slots, n, R, docs, docOf, hero, semantic, exact, shortlist, WEDGES, wedgeOf, mark, PAGE_COLS, PAGE_ROWS };
+  return { slots, n, R, docs, docOf, hero, semantic, exact, shortlist, weak, WEDGES, wedgeOf, mark, PAGE_COLS, PAGE_ROWS };
 }
 
 // The Truenote mark as a mosaic: a mineral-green sheet rotated -21deg and a
 // persimmon sheet rotated 19deg behind the cobalt lens (the archive core).
-export const MARK = { x: CENTER.x, y: CENTER.y, size: 420, coreR: 151 };
+export const MARK = { x: CENTER.x, y: CENTER.y, size: 420, coreR: 150 };
 
 function superellipseInside(u, v, n = 3.2) {
   return Math.pow(Math.abs(u), n) + Math.pow(Math.abs(v), n) <= 1;

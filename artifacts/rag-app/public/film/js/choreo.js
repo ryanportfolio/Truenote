@@ -30,10 +30,10 @@ export const COPY = {
   url: 'truenote.org',
 };
 
-// The seeded Cancellation Policy passage (scripts/src/seed.ts), as the
-// citation panel shows it: raw markdown.
-const EXCERPT_ROWS = [['Plan', 'Cancellation Fee'], ['Basic', '$5'], ['Pro', '$10'], ['Enterprise', '$25']];
-const EXCERPT_LINES = ['## Standard Fees', '| Plan | Cancellation Fee |', '| --- | --- |', '| Basic | $5 |', '| Pro | $10 |', '| Enterprise | $25 |'];
+// The seeded Cancellation Policy passage (scripts/src/seed.ts), raw markdown as
+// the citation panel shows it: segments joined with a blank line.
+const EXCERPT_LINES = ['## Standard Fees', '', '| Plan | Cancellation Fee |', '| --- | --- |', '| Basic | $5 |', '| Pro | $10 |', '| Enterprise | $25 |'];
+const EXCERPT = EXCERPT_LINES.join('\n');
 
 export const STATEMENTS = [
   { text: 'The answer is in here. Somewhere.', accent: [5], t0: 6.4, t1: 10.5, x: 960, y: 866, align: 'center', theme: 'dark' },
@@ -44,9 +44,22 @@ export const STATEMENTS = [
   { text: "A rep's search never reaches another program.", accent: [3], t0: 62.2, t1: 66.6, x: 960, y: 985, align: 'center', maxWidth: 1700, theme: 'light' },
 ];
 
+// Timed labels, so their reading budget is checked with the statements.
+export const LABELS = [
+  { text: 'Approved documents', t0: 20.1, t1: 21.8 },
+  { text: 'Split into passages', t0: 21.8, t1: 23.6 },
+  { text: 'Meaning', t0: 34.4, t1: 36.9 },
+  { text: 'Exact words', t0: 35.3, t1: 36.9 },
+  { text: 'Best passage', t0: 36.2, t1: 37.8 },
+  { text: 'Minimum match', t0: 49.9, t1: 52.1 },
+  { text: 'No passage matched well enough', t0: 52.2, t1: 55.4 },
+  { text: 'Logged in Content gaps for review', t0: 55.9, t1: 58.6 },
+];
+
 export function captions() {
-  return STATEMENTS.map((s) => ({ text: s.text, t0: s.t0, t1: s.t1 }));
+  return [...STATEMENTS, ...LABELS].map((s) => ({ text: s.text, t0: s.t0, t1: s.t1 }));
 }
+const labelWin = (text) => LABELS.find((l) => l.text === text);
 
 // ---------------------------------------------------------------- math
 const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
@@ -63,6 +76,11 @@ const TAU = Math.PI * 2;
 const wrap = (a) => a - TAU * Math.floor((a + Math.PI) / TAU);
 const pulse = (t, a, b) => { const u = (t - a) / (b - a); return u <= 0 || u >= 1 ? 0 : Math.sin(Math.PI * u); };
 const angDiff = (a, b) => ((((a - b) % 360) + 540) % 360) - 180;
+const mixCol = (p, c, k) => { p.r = lerp(p.r, c[0], k); p.g = lerp(p.g, c[1], k); p.b = lerp(p.b, c[2], k); };
+const AMBER = [0.961, 0.624, 0.039];
+const CARD = [0.992, 0.992, 0.988];
+// The lens bezel reaches 1.35 x core radius; rings, waves and ripples start there.
+const RIM = CORE_R * 1.35;
 
 // ---------------------------------------------------------------- layout
 export const L = buildLayout();
@@ -75,21 +93,29 @@ const shortRank = new Int8Array(N).fill(-1);
 L.shortlist.forEach((i, k) => { shortRank[i] = k; });
 const exactRank = new Int8Array(N).fill(-1);
 L.exact.forEach((i, k) => { exactRank[i] = k; });
+const weakRank = new Int8Array(N).fill(-1);
+L.weak.forEach((i, k) => { weakRank[i] = k; });
 
-// The cold-open close-up: one passage tumbles past the lens with the answer
-// printed on it, before anyone knows it matters.
-const FOCUS = (() => { for (let i = 0; i < N; i++) if (L.slots[i].field && L.docOf[i] < 0 && L.mark.markOf[i] < 0) return i; return 0; })();
+// Storm tiles with a special role in the open and the stakes.
+function special(skip) {
+  for (let i = 0; i < N; i++) if (L.slots[i].field && L.docOf[i] < 0 && L.mark.markOf[i] < 0 && !skip.includes(i)) return i;
+  return 0;
+}
+const FOCUS = special([]);
+const WHIP = special([FOCUS]);
+const GUESS0 = special([FOCUS, WHIP]);
+const GUESS = [GUESS0, special([FOCUS, WHIP, GUESS0])];
 
 // Program walls: tiles lying on the three wedge boundaries stand up as palisades.
 const WALL_ANGLES = L.WEDGES.map((w) => w.a0);
 const wallOf = new Int8Array(N).fill(-1);
 for (let i = 0; i < N; i++) {
   const s = L.slots[i];
-  if (i === HERO || L.docOf[i] >= 0 || s.r < CORE_R + 40 || s.r > 900) continue;
-  for (let k = 0; k < 3; k++) if (Math.abs(angDiff(s.deg, WALL_ANGLES[k])) < (s.field ? 1.1 : 1.8)) wallOf[i] = k;
+  if (i === HERO || L.docOf[i] >= 0 || s.r < RIM) continue;
+  for (let k = 0; k < 3; k++) if (Math.abs(angDiff(s.deg, WALL_ANGLES[k])) < 1.8) wallOf[i] = k;
 }
 
-// End slate: every tile folds into the mark. Tiles without their own cell
+// End slate: every tile folds into the mark; tiles without their own cell
 // stack beneath a cell of the top layer.
 const CELLS = L.mark.cells;
 const markCell = new Int32Array(N);
@@ -110,45 +136,47 @@ const CAM_KEYS = [
   { t: 18.6, e: [1020, 1880, 1180], g: [960, 590, 130], fov: 33 },
   { t: 20.8, e: [980, 1760, 760], g: [960, 610, 150], fov: 32 },
   { t: 22.6, e: [990, 1740, 760], g: [960, 600, 120], fov: 32, r: -0.22 },
-  { t: 26.2, e: [770, 720, 2015], g: [770, 540, 0], fov: 30 },
-  { t: 27.4, e: [760, 700, 2015], g: [760, 540, 0], fov: 30 },
-  { t: 31.0, e: [745, 690, 1995], g: [745, 540, 0], fov: 30, r: 0.03 },
+  { t: 26.2, e: [770, 720, 2200], g: [770, 540, 0], fov: 30 },
+  { t: 27.4, e: [760, 700, 2200], g: [760, 540, 0], fov: 30 },
+  { t: 31.0, e: [745, 690, 2180], g: [745, 540, 0], fov: 30, r: 0.03 },
   // The search, seen low across the paper so the waves roll toward us.
-  { t: 33.8, e: [820, 1880, 640], g: [980, 470, 0], fov: 34 },
-  { t: 36.4, e: [720, 1360, 520], g: [860, 700, 60], fov: 34 },
-  { t: 37.9, e: [880, 1180, 860], g: [960, 560, 30], fov: 33 },
+  { t: 33.8, e: [820, 2060, 700], g: [980, 470, 0], fov: 34 },
+  { t: 36.4, e: [720, 1440, 560], g: [860, 700, 60], fov: 34 },
+  { t: 37.9, e: [880, 1240, 920], g: [960, 560, 30], fov: 33 },
   // Overhead for the receipt: the panel is drawn over the unfolded tile.
   { t: 40.4, e: [700, 540, 1830], g: [700, 540, 0], fov: 30 },
   { t: 45.5, e: [700, 540, 1810], g: [700, 540, 0], fov: 30 },
-  { t: 47.0, e: [740, 800, 1990], g: [740, 540, 0], fov: 30 },
+  { t: 47.0, e: [740, 800, 2150], g: [740, 540, 0], fov: 30 },
   // The second search, from the other side; then a held stop.
-  { t: 49.0, e: [-160, 980, 780], g: [900, 560, 20], fov: 34 },
-  { t: 52.2, e: [-120, 960, 790], g: [900, 560, 20], fov: 34 },
-  { t: 52.9, e: [-120, 960, 790], g: [900, 560, 20], fov: 34 },
-  { t: 56.8, e: [720, 760, 2000], g: [720, 540, 0], fov: 30 },
-  { t: 58.4, e: [730, 780, 2010], g: [730, 540, 0], fov: 30 },
-  { t: 60.6, e: [960, 1420, 2480], g: [960, 560, 0], fov: 30 },
-  { t: 66.4, e: [930, 1380, 2400], g: [960, 560, 0], fov: 30, r: 0.05 },
-  { t: 67.6, e: [960, 760, 2150], g: [960, 540, 0], fov: 30 },
-  { t: 69.8, e: [1330, 540, 2330], g: [1330, 540, 0], fov: 30 },
-  { t: DURATION, e: [1330, 540, 2230], g: [1330, 540, 0], fov: 30 },
+  { t: 49.0, e: [-260, 1000, 820], g: [880, 560, 20], fov: 34 },
+  { t: 52.2, e: [-220, 980, 830], g: [880, 560, 20], fov: 34 },
+  { t: 52.9, e: [-220, 980, 830], g: [880, 560, 20], fov: 34 },
+  { t: 56.8, e: [720, 760, 2150], g: [720, 540, 0], fov: 30 },
+  { t: 58.4, e: [730, 780, 2160], g: [730, 540, 0], fov: 30 },
+  { t: 60.6, e: [960, 1560, 2700], g: [960, 560, 0], fov: 30 },
+  { t: 66.4, e: [930, 1520, 2620], g: [960, 560, 0], fov: 30, r: 0.05 },
+  { t: 67.6, e: [960, 800, 2500], g: [960, 540, 0], fov: 30 },
+  { t: 69.8, e: [1546, 634, 2600], g: [1546, 634, 0], fov: 30 },
+  { t: DURATION, e: [1546, 634, 2500], g: [1546, 634, 0], fov: 30 },
 ];
 
-// prefers-reduced-motion: no camera travel, no vortex spin, no handheld
-// breath. The camera holds one pose per act and changes only under a short
-// dissolve through ink; every caption and state change stays.
+// prefers-reduced-motion: no camera travel, no vortex spin, no tumbling, no
+// handheld breath. The camera holds one pose per act and changes only under a
+// short dissolve through the scene's own colour; every caption and state stays.
 let REDUCED = false;
 export function setReducedMotion(on) { REDUCED = !!on; }
+export function isReduced() { return REDUCED; }
 const REDUCED_CUTS = [22.9, 58.6, 67.2];
 const REDUCED_POSES = [
   { e: [1080, 1950, 1250], g: [960, 560, 120], fov: 34 },
   { e: [700, 540, 1830], g: [700, 540, 0], fov: 30 },
-  { e: [960, 1420, 2480], g: [960, 560, 0], fov: 30 },
-  { e: [1330, 540, 2280], g: [1330, 540, 0], fov: 30 },
+  { e: [960, 1560, 2700], g: [960, 560, 0], fov: 30 },
+  { e: [1546, 634, 2560], g: [1546, 634, 0], fov: 30 },
 ];
-function reducedDip(t) {
+export function reducedDip(t) {
+  if (!REDUCED) return 0;
   let d = 0;
-  for (const c of REDUCED_CUTS) d = Math.max(d, 1 - clamp(Math.abs(t - c) / 0.45));
+  for (const c of REDUCED_CUTS) d = Math.max(d, 1 - clamp(Math.abs(t - c) / 0.5));
   return smooth(d);
 }
 
@@ -193,9 +221,27 @@ function camBasis(cam) {
   return { f, r, u };
 }
 
+// Place a tile in camera space: screen point (sx, sy) in design px at distance d,
+// facing the lens with a yaw, sized to (pw, ph) design px.
+function placeInView(p, t, sx, sy, d, pw, ph, yaw = 0, roll = 0) {
+  const cam = cameraAt(t);
+  const { f, r, u } = camBasis(cam);
+  const k = (d * Math.tan((cam.fov * Math.PI) / 360)) / 540;
+  const x = (sx - 960) * k, y = -(sy - 540) * k;
+  p.x = cam.x + f[0] * d + r[0] * x + u[0] * y;
+  p.y = cam.y + f[1] * d + r[1] * x + u[1] * y;
+  p.z = cam.z + f[2] * d + r[2] * x + u[2] * y;
+  const n = [-f[0] + r[0] * yaw, -f[1] + r[1] * yaw, -f[2] + r[2] * yaw];
+  const nl = Math.hypot(...n);
+  p.rx = Math.asin(clamp(-n[1] / nl, -1, 1));
+  p.ry = Math.atan2(n[0] / nl, n[2] / nl);
+  p.rz = roll;
+  p.w = pw * k; p.h = ph * k;
+}
+
 // ---------------------------------------------------------------- poses
 function P() { return { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, w: 10, h: 10, r: 1, g: 1, b: 1, a: 1, lines: 0, glow: 0, hue: 0 }; }
-const A = P(), B = P(), O = P();
+const A = P(), B = P(), O = P(), A0 = P(), G = P();
 
 // Storm time warp: full speed, decelerating through the stakes, slow drift after.
 function stormClock(t) {
@@ -214,9 +260,9 @@ function stormColour(i) {
 function poseStorm(i, t, p) {
   const S = stormClock(t);
   const clear = ramp(t, 18.8, 21.4);
-  const rho = (170 + 1280 * Math.pow(R0[i], 0.72)) * (1 + 0.55 * clear);
+  const rho = (190 + 1280 * Math.pow(R0[i], 0.72)) * (1 + 0.55 * clear);
   const arm = Math.floor(R1[i] * 3);
-  const th0 = (arm * TAU) / 3 + Math.log(rho / 170) * 1.35 + (R2[i] - 0.5) * 1.1;
+  const th0 = (arm * TAU) / 3 + Math.log(rho / 190) * 1.35 + (R2[i] - 0.5) * 1.1;
   const om = 0.2 * Math.pow(420 / rho, 0.6);
   const th = th0 + om * S;
   p.x = CENTER.x + rho * Math.cos(th);
@@ -233,30 +279,51 @@ function poseStorm(i, t, p) {
   p.a = 1; p.lines = 0.9; p.glow = 0; p.hue = 0;
 }
 
-// The close-up passage: a path in camera space, facing the lens mid-flight.
+// Cold open, first event: one sheet whips across the lens as the light comes on.
+function applyWhip(t, p) {
+  if (REDUCED || t < 0.3 || t > 1.4) { if (t < gatherStart(WHIP)) p.a = 0; return; }
+  const u = clamp((t - 0.3) / 1.1);
+  placeInView(p, t, lerp(2500, -700, easeInOutSine(u)), 470 + 120 * Math.sin(u * 3), 330, 520, 380, (u - 0.5) * 1.6, 0.4 - u * 0.5);
+  const c = COLORS.paperWarm;
+  p.r = c[0]; p.g = c[1]; p.b = c[2]; p.lines = 1; p.glow = 0; p.a = 1;
+}
+
+// Cold open, the plant: a passage carrying the answer drifts toward the lens,
+// turns as it passes (legible around 5 to 6.7 s), then leaves the frame.
 function applyFocus(t, p) {
-  // Hidden in the storm outside its flight, so it never blinks out of the swarm.
-  if (t < 4.0 || t > 7.8) { if (t < gatherStart(FOCUS)) p.a = 0; return; }
-  const u = clamp((t - 4.0) / 3.8);
-  const cam = cameraAt(t);
-  const { f, r, u: up } = camBasis(cam);
-  const d = 560;
-  const x = lerp(-620, 520, easeInOutSine(u));
-  const y = -40 + 50 * Math.sin(u * Math.PI);
-  p.x = cam.x + f[0] * d + r[0] * x + up[0] * y;
-  p.y = cam.y + f[1] * d + r[1] * x + up[1] * y;
-  p.z = cam.z + f[2] * d + r[2] * x + up[2] * y;
-  // Face the camera, turning a little as it passes.
-  const tilt = (u - 0.5) * 1.1;
-  const n = [-f[0] + r[0] * tilt, -f[1] + r[1] * tilt, -f[2] + r[2] * tilt];
-  const nl = Math.hypot(...n);
-  p.rx = Math.asin(clamp(-n[1] / nl, -1, 1));
-  p.ry = Math.atan2(n[0] / nl, n[2] / nl);
-  p.rz = 0.12 * Math.sin(u * 3);
-  p.w = 104; p.h = 72;
+  if (t < 3.6 || t > 7.8) { if (t < gatherStart(FOCUS)) p.a = 0; return; }
   const c = COLORS.paper;
-  p.r = c[0]; p.g = c[1]; p.b = c[2];
-  p.lines = 0; p.glow = 0; p.a = 1;
+  if (REDUCED) {
+    placeInView(p, t, 820, 330, 620, 380, 264, 0, 0);
+    p.r = c[0]; p.g = c[1]; p.b = c[2]; p.lines = 0; p.glow = 0;
+    p.a = ramp(t, 4.4, 5.0) * (1 - ramp(t, 6.8, 7.4));
+    return;
+  }
+  const u = (t - 3.6) / 4.2;
+  // Approach and slow near the lens (u 0 to 0.52), then accelerate out.
+  const near = u < 0.52;
+  const ua = easeOutCubic(u / 0.52), ub = easeInCubic((u - 0.52) / 0.48);
+  const sx = near ? lerp(1500, 860, ua) : lerp(860, -700, ub);
+  const sy = near ? lerp(160, 320, ua) : lerp(320, 260, (u - 0.52) / 0.48);
+  const d = near ? lerp(1500, 600, ua) : lerp(600, 420, ub);
+  placeInView(p, t, sx, sy, d, 400, 278, lerp(0.75, -0.55, easeInOutSine(u)), 0.1 * Math.sin(u * 3.2));
+  p.r = c[0]; p.g = c[1]; p.b = c[2]; p.lines = 0; p.glow = 0; p.a = 1;
+}
+
+// The stakes: two passages leave the storm and turn into the two bare answers.
+const GUESS_CARDS = [{ x: 520, y: 330, w: 380, h: 250 }, { x: 1020, y: 330, w: 380, h: 250 }];
+function applyGuess(k, t, p) {
+  const gi = GUESS[k];
+  if (t < 9.9) return;
+  if (t > 11.6 || REDUCED) { if (t < gatherStart(gi)) p.a = 0; return; }
+  const c = GUESS_CARDS[k];
+  const u = easeInOutCubic((t - 9.9 - k * 0.3) / 0.9);
+  placeInView(G, t, c.x + c.w / 2, c.y + c.h / 2, 700, c.w, c.h, 0, 0);
+  p.x = lerp(p.x, G.x, u); p.y = lerp(p.y, G.y, u); p.z = lerp(p.z, G.z, u);
+  p.rx = lerp(p.rx, G.rx, u); p.ry = G.ry + Math.PI * (1 - u); p.rz = lerp(p.rz, G.rz, u);
+  p.w = lerp(p.w, G.w, u); p.h = lerp(p.h, G.h, u);
+  mixCol(p, CARD, u); p.lines = 1 - u;
+  p.a = 1 - ramp(t, 10.9 + k * 0.3, 11.2 + k * 0.3);
 }
 
 // Two document pages that arrive whole and are cut into 5 x 7 passages.
@@ -266,7 +333,7 @@ function poseDoc(i, t, p) {
   const side = d.page === 0 ? -1 : 1;
   const home = { x: 960 + side * 250, y: 600, z: 150 };
   const inU = easeOutQuart((t - 19.3 - d.page * 0.25) / 1.6);
-  const cut = easeOutCubic((t - (21.5 + d.row * 0.12 + d.page * 0.05)) / 0.4);
+  const cut = easeOutCubic((t - (21.8 + d.row * 0.12 + d.page * 0.05)) / 0.4);
   const pitch = PAGE.cell + 1 + cut * 12;
   const lx = (d.col - (L.PAGE_COLS - 1) / 2) * pitch;
   const ly = (d.row - (L.PAGE_ROWS - 1) / 2) * (PAGE.cell + 1 + cut * 16);
@@ -281,10 +348,10 @@ function poseDoc(i, t, p) {
   const c = COLORS.paper;
   p.r = c[0]; p.g = c[1]; p.b = c[2];
   p.a = inU > 0 ? 1 : 0;
-  p.lines = 1; p.glow = 0.35 * pulse(t, 21.5 + d.row * 0.12, 21.95 + d.row * 0.12); p.hue = 0;
+  p.lines = 1; p.glow = 0.35 * pulse(t, 21.8 + d.row * 0.12, 22.25 + d.row * 0.12); p.hue = 0;
 }
 
-// Archive slot, with the program-wedge separation of the scope chapter.
+// Archive slot, with the program wedges and the inhale before the implosion.
 function sepAmount(t) { return ramp(t, 59.4, 60.6) * (1 - ramp(t, 66.4, 67.2)); }
 function poseArchive(i, t, p) {
   const s = L.slots[i];
@@ -306,38 +373,46 @@ function poseArchive(i, t, p) {
   if (k >= 0 && sep > 0) {
     const a = (WALL_ANGLES[k] * Math.PI) / 180;
     const up = easeOutCubic(sep);
-    const H = 38;
+    const H = 110;
     p.x = lerp(s.x, CENTER.x + Math.cos(a) * s.r, up);
     p.y = lerp(s.y, CENTER.y + Math.sin(a) * s.r, up);
     p.rz = lerp(s.rz, a, up);
     p.rx = (Math.PI / 2) * up;
-    p.w = lerp(s.w, Math.max(s.w, 20) * 1.15, up);
+    p.w = lerp(s.w, Math.max(s.w, 20) * 1.2, up);
     p.h = lerp(s.h, H, up);
     p.z = lerp(s.z, H / 2 + 2, up);
-    p.lines = lerp(s.lines, 0.2, up);
+    p.lines = lerp(s.lines, 0.15, up);
+    mixCol(p, COLORS.paperWarm, up * 0.6);
+  }
+  // Inhale: the whole archive lifts and breathes outward before it implodes.
+  const inhale = REDUCED ? 0 : easeOutCubic((t - 67.0) / 0.8);
+  if (inhale > 0) {
+    p.x = CENTER.x + (p.x - CENTER.x) * (1 + 0.05 * inhale);
+    p.y = CENTER.y + (p.y - CENTER.y) * (1 + 0.05 * inhale);
+    p.z += 60 * inhale;
   }
 }
 
 function poseMark(i, t, p) {
   const c = CELLS[markCell[i]];
   const layer = markLayer[i];
-  const fuse = ramp(t, 69.0, 70.0);
   p.x = c.x; p.y = c.y; p.z = c.z - layer * 1.2;
   p.rx = 0; p.ry = 0; p.rz = c.rz;
-  const grow = layer > 0 ? 0.9 : lerp(1, 1.12, fuse);
-  p.w = c.w * grow; p.h = c.h * grow;
+  p.w = c.w * (layer > 0 ? 0.9 : 1.05); p.h = c.h * (layer > 0 ? 0.9 : 1.05);
   const col = COLORS[c.colKey];
-  const j = (R2[i] - 0.5) * 0.04 * (1 - fuse);
-  p.r = col[0] + j; p.g = col[1] + j; p.b = col[2] + j;
-  p.a = 1; p.lines = 0.1 * (1 - fuse); p.glow = 0; p.hue = 0;
-  p.z += Math.sin(t * 0.9 + c.sheet * 1.7) * 1.2 * ramp(t, 71, 73);
+  p.r = col[0]; p.g = col[1]; p.b = col[2];
+  // The tile mosaic hands over to the drawn sheets (ui lockup) around 69.2 to 69.9.
+  p.a = 1 - ramp(t, 69.2, 69.9);
+  p.lines = 0.1; p.glow = 0; p.hue = 0;
 }
 
-function blend(a, b, u, i, lift, out) {
+// Blend two poses. `ref` (optional) is pose A at the transition's start: target
+// angles are unwrapped against it once, so a spinning source never re-picks
+// its direction mid-flight.
+function blend(a, b, u, i, lift, out, ref = null) {
   const up = easeInOutSine(u);
   out.x = lerp(a.x, b.x, up);
   out.y = lerp(a.y, b.y, up);
-  // Arc sideways so the swarm reads as a swarm, and lift through the flight.
   const dx = b.x - a.x, dy = b.y - a.y;
   const len = Math.hypot(dx, dy) || 1;
   const arc = Math.sin(Math.PI * up) * (R3[i] - 0.5) * 2 * Math.min(180, len * 0.25);
@@ -345,28 +420,36 @@ function blend(a, b, u, i, lift, out) {
   out.y += (dx / len) * arc;
   const zu = backOut(u, 0.7);
   out.z = lerp(a.z, b.z, zu) + Math.sin(Math.PI * clamp(u)) * lift;
-  out.rx = a.rx + wrap(b.rx - a.rx) * up;
-  out.ry = a.ry + wrap(b.ry - a.ry) * up;
-  out.rz = a.rz + wrap(b.rz - a.rz) * up;
+  if (REDUCED) { out.rx = b.rx; out.ry = b.ry; out.rz = b.rz; }
+  else if (ref) {
+    const un = (tgt, r0) => tgt + TAU * Math.round((r0 - tgt) / TAU);
+    out.rx = lerp(a.rx, un(b.rx, ref.rx), up);
+    out.ry = lerp(a.ry, un(b.ry, ref.ry), up);
+    out.rz = lerp(a.rz, un(b.rz, ref.rz), up);
+  } else {
+    out.rx = a.rx + wrap(b.rx - a.rx) * up;
+    out.ry = a.ry + wrap(b.ry - a.ry) * up;
+    out.rz = a.rz + wrap(b.rz - a.rz) * up;
+  }
   out.w = lerp(a.w, b.w, up); out.h = lerp(a.h, b.h, up);
   out.r = lerp(a.r, b.r, u); out.g = lerp(a.g, b.g, u); out.b = lerp(a.b, b.b, u);
   out.a = lerp(a.a, b.a, u); out.lines = lerp(a.lines, b.lines, u);
   out.glow = lerp(a.glow, b.glow, u); out.hue = lerp(a.hue, b.hue, u);
 }
 
-// Gather timing: passages file in first; the archive grows out from the core.
+// Gather timing: the pages' passages file in first and seed the inner rings.
 function gatherStart(i) {
   const s = L.slots[i];
   const d = L.docOf[i];
-  if (d >= 0) { const doc = L.docs[d]; return 22.7 + doc.row * 0.08 + doc.col * 0.03 + doc.page * 0.1; }
-  return 22.8 + 2.1 * ((s.r - 146) / 874) + R3[i] * 0.45;
+  if (d >= 0) { const doc = L.docs[d]; return 22.6 + doc.row * 0.07 + doc.col * 0.03 + doc.page * 0.1; }
+  return 23.2 + 2.0 * ((s.r - 232) / 588) + R3[i] * 0.45;
 }
 function gatherDur(i) { return L.docOf[i] >= 0 ? 1.4 : 1.5; }
 function markStart(i) {
   const s = L.slots[i];
-  return 67.3 + R2[i] * 0.45 + (s.field ? 0.15 : 0) + (L.mark.markOf[i] >= 0 ? 0 : 0.1);
+  return 67.8 + R2[i] * 0.25 + (s.field ? 0.08 : 0);
 }
-const MARK_DUR = 1.5;
+const MARK_DUR = 0.8;
 
 function basePose(i, t, out) {
   const isDoc = L.docOf[i] >= 0;
@@ -377,32 +460,44 @@ function basePose(i, t, out) {
   }
   const m0 = markStart(i);
   if (t < g0 + gd) {
-    if (isDoc) poseDoc(i, t, A); else poseStorm(i, t, A);
+    if (isDoc) { poseDoc(i, t, A); poseDoc(i, g0, A0); } else { poseStorm(i, t, A); poseStorm(i, g0, A0); }
     poseArchive(i, t, B);
-    blend(A, B, (t - g0) / gd, i, isDoc ? 60 : 90 + R1[i] * 140, out);
+    blend(A, B, (t - g0) / gd, i, isDoc ? 60 : 90 + R1[i] * 140, out, A0);
     return;
   }
   if (t < m0) { poseArchive(i, t, out); return; }
   if (t < m0 + MARK_DUR) {
     poseArchive(i, t, A); poseMark(i, t, B);
-    blend(A, B, (t - m0) / MARK_DUR, i, 50 + R1[i] * 90, out);
+    const u = (t - m0) / MARK_DUR;
+    // Implosion: accelerate in, spiralling around the core, and slam down.
+    const ui = easeInCubic(u);
+    blend(A, B, ui, i, 30, out);
+    if (!REDUCED) {
+      const sw = Math.sin(Math.PI * ui) * (0.9 + 0.6 * R1[i]);
+      const dx = out.x - CENTER.x, dy = out.y - CENTER.y;
+      out.x = CENTER.x + dx * Math.cos(sw) - dy * Math.sin(sw);
+      out.y = CENTER.y + dx * Math.sin(sw) + dy * Math.cos(sw);
+    }
     const cu = ramp(t, m0 + MARK_DUR * 0.6, m0 + MARK_DUR);
     out.r = lerp(A.r, B.r, cu); out.g = lerp(A.g, B.g, cu); out.b = lerp(A.b, B.b, cu);
     return;
   }
   poseMark(i, t, out);
+  // Sheets land with a small spring.
+  const land = t - m0 - MARK_DUR;
+  if (land < 0.35) out.z += 10 * (1 - backOut(land / 0.35, 1.4));
 }
 
 // ---------------------------------------------------------------- retrieval
-// Search passes as data, so the renderer waves and the tile glows agree.
 const SEARCHES = [
   { t0: 34.0, dur: 1.6, hit: true },
   { t0: 49.6, dur: 1.6, hit: false },
 ];
-const WAVE_R0 = CORE_R + 10, WAVE_R1 = 640;
+const WAVE_R0 = RIM, WAVE_R1 = 820;
 function waveRadius(sr, t) { return WAVE_R0 + (WAVE_R1 - WAVE_R0) * easeOutCubic((t - sr.t0) / sr.dur); }
 const EXACT_T0 = 35.2, EXACT_STEP = 0.08;
-const THRESH = { r: 430, z: 70 };
+const THRESH = { r: 520, z: 120 };
+const WEAK_Z = THRESH.z * 0.6;
 
 // Where the hero passage opens into the citation panel (world, overhead camera over x=700).
 const PANEL = { x: 1119, y: 540, z: 70, w: 664, h: 454 };
@@ -418,46 +513,48 @@ function applyRetrieval(i, t, p) {
     if (front > 0.02 && L.slots[i].colKey === 'coral') p.hue = Math.max(p.hue, 1);
     const passT = sr.t0 + sr.dur * clamp(Math.pow((dist - WAVE_R0) / (WAVE_R1 - WAVE_R0), 0.7));
     if (sr.hit && L.semantic[i] && t > passT) p.glow = Math.max(p.glow, 0.5 * (1 - ramp(t, 36.8, 37.4)));
-    if (!sr.hit && L.semantic[i] && t > passT) {
-      // Weak matches rise toward the bar, fall short, and settle.
-      const rise = easeOutCubic((t - 50.6 - R1[i] * 0.3) / 0.8) * (1 - easeInOutCubic((t - 51.8 - R2[i] * 0.2) / 0.6));
-      p.z += THRESH.z * 0.6 * rise * (0.6 + 0.4 * R3[i]);
-      p.glow = Math.max(p.glow, 0.28 * rise);
-    }
   }
-  // Exact words: sharp amber hits, one after another.
+  // Exact words: each hit snaps up and turns amber, one after another.
   const ek = exactRank[i];
   if (ek >= 0 && t > EXACT_T0 && t < 37.6) {
     const th = EXACT_T0 + ek * EXACT_STEP;
     if (t > th) {
       const k = Math.exp(-(t - th) * 3.2);
-      p.glow = Math.max(p.glow, 0.35 + 0.65 * k);
-      p.hue = Math.max(p.hue, (1 - ramp(t, 36.4, 36.9)) * (0.35 + 0.65 * Math.min(1, k * 3 + 0.4)));
-      p.glow *= 1 - ramp(t, 36.9, 37.5) * (i === HERO ? 0 : 1);
+      const on = easeOutCubic((t - th) / 0.12) * (1 - ramp(t, 36.8, 37.4));
+      p.z += 24 * on;
+      mixCol(p, AMBER, 0.55 * on);
+      p.glow = Math.max(p.glow, (0.35 + 0.65 * k) * (i === HERO ? 1 : 1 - ramp(t, 36.9, 37.5)));
+      p.hue = Math.max(p.hue, on);
     }
   }
-  // Rerank: the shortlist lifts, the best passage rises highest.
+  // Rerank: the shortlist rises as a set, the best passage highest.
   const sk = shortRank[i];
-  if (sk >= 0 && i !== HERO && t > 36.2 && t < 38.2) {
-    const up = easeOutCubic((t - 36.2 - sk * 0.06) / 0.6) * (1 - easeInOutCubic((t - 37.1) / 0.7));
-    p.z += up * (60 + (7 - sk) * 12);
+  if (sk >= 0 && i !== HERO && t > 36.0 && t < 38.2) {
+    const up = easeOutCubic((t - 36.0 - sk * 0.05) / 0.4) * (1 - easeInOutCubic((t - 37.1) / 0.7));
+    p.z += up * (40 + (7 - sk) * 12);
     p.glow = Math.max(p.glow, up * 0.6);
-    p.hue *= 1 - up * 0.6;
+  }
+  // The refused question: weak candidates rise toward the bar, fall short, hold, settle.
+  const wk = weakRank[i];
+  if (wk >= 0 && t > 50.2 && t < 53.8) {
+    const rise = easeOutCubic((t - 50.4 - wk * 0.06) / 0.9) * (1 - easeInOutCubic((t - 52.9 - wk * 0.03) / 0.6));
+    p.z += WEAK_Z * rise;
+    p.glow = Math.max(p.glow, 0.5 * rise);
+    p.rx = 0; p.ry = 0;
   }
 }
 
 // The hero passage: lift, fly into the core, come back out, turn over and
 // unfold into the citation panel, then return to its slot.
 function applyHero(t, p) {
-  if (t < 36.2 || t > 46.7) return;
+  if (t < 36.0 || t > 46.7) return;
   const s = L.slots[HERO];
   const home = { ...p };
-  const cardCol = [0.992, 0.99, 0.984];
   if (t < 39.0) {
-    const lift = easeOutCubic((t - 36.2) / 0.7);
+    const lift = easeOutCubic((t - 36.0) / 0.6);
     const toCore = easeInOutCubic((t - 37.2) / 0.7);
-    let x = home.x, y = home.y, z = home.z + lift * 150;
-    let w = home.w * (1 + lift * 1.3), h = home.h * (1 + lift * 1.3);
+    let x = home.x, y = home.y, z = home.z + lift * 170;
+    const w = home.w * (1 + lift * 1.4), h = home.h * (1 + lift * 1.4);
     x = lerp(x, CENTER.x, toCore); y = lerp(y, CENTER.y, toCore);
     z = lerp(z, 34, toCore) + Math.sin(Math.PI * toCore) * 80;
     const shrink = 1 - 0.85 * toCore;
@@ -468,14 +565,12 @@ function applyHero(t, p) {
     return;
   }
   const out = easeOutCubic((t - 39.0) / 0.6);
-  const flip = easeInOutCubic((t - 39.4) / 0.8);
+  const flip = REDUCED ? 0 : easeInOutCubic((t - 39.4) / 0.8);
   const unfold = easeInOutCubic((t - 40.1) / 0.7);
   const back = easeInOutCubic((t - 45.4) / 1.2);
   p.a = ramp(t, 39.0, 39.15);
-  const liftZ = lerp(40, 190, out);
-  let x = CENTER.x, y = CENTER.y + 40 * out, z = liftZ;
+  let x = CENTER.x, y = CENTER.y + 40 * out, z = lerp(40, 190, out);
   let w = lerp(16, 120, out), h = lerp(16, 90, out);
-  // Unfold: fly to the panel spot, flatten, grow.
   x = lerp(x, PANEL.x, unfold); y = lerp(y, PANEL.y, unfold); z = lerp(z, PANEL.z, unfold);
   w = lerp(w, PANEL.w, unfold); h = lerp(h, PANEL.h, unfold);
   p.rx = 0.35 * Math.sin(Math.PI * flip) * (1 - unfold);
@@ -483,61 +578,63 @@ function applyHero(t, p) {
   p.rz = 0;
   p.lines = 1 - unfold; p.glow = 0.7 * (1 - unfold) * out; p.hue = 0;
   const c = COLORS.paper;
-  p.r = lerp(c[0], cardCol[0], unfold); p.g = lerp(c[1], cardCol[1], unfold); p.b = lerp(c[2], cardCol[2], unfold);
+  p.r = lerp(c[0], CARD[0], unfold); p.g = lerp(c[1], CARD[1], unfold); p.b = lerp(c[2], CARD[2], unfold);
   if (t > 45.4) {
     x = lerp(PANEL.x, s.x, back); y = lerp(PANEL.y, s.y, back);
     z = lerp(PANEL.z, s.z, back) + Math.sin(Math.PI * back) * 60;
     w = lerp(PANEL.w, s.w, back); h = lerp(PANEL.h, s.h, back);
     p.rz = wrap(s.rz) * back; p.ry = 0; p.rx = 0; p.lines = lerp(0, s.lines, back); p.glow = 0; p.a = 1;
-    p.r = lerp(cardCol[0], s.col[0], back); p.g = lerp(cardCol[1], s.col[1], back); p.b = lerp(cardCol[2], s.col[2], back);
+    p.r = lerp(CARD[0], s.col[0], back); p.g = lerp(CARD[1], s.col[1], back); p.b = lerp(CARD[2], s.col[2], back);
   }
   p.x = x; p.y = y; p.z = z; p.w = w; p.h = h;
 }
 
-// Program scope: a sweep inside Program A that runs to its walls and stops.
+// Program scope: a sweep inside Program A that runs to its walls and stops there.
 const SWEEP = { t0: 61.4, from: -70, speed: 60 };
-function sweepSpread(t) { return Math.max(0, (t - SWEEP.t0) * SWEEP.speed); }
 function wallHitTime(k) { return SWEEP.t0 + Math.abs(angDiff(WALL_ANGLES[k], SWEEP.from)) / SWEEP.speed; }
 function applyScope(i, t, p) {
   if (t < SWEEP.t0 || t > 66.4) return;
   const fade = 1 - ramp(t, 65.2, 66.4);
   const k = wallOf[i];
   if (k === 0 || k === 1) {
-    // Wedge A's walls take the hit: an amber contact flash as the sweep lands.
     const th = wallHitTime(k);
-    p.glow = Math.max(p.glow, Math.exp(-Math.max(0, t - th) * 2.5) * (t > th ? 0.9 : 0) * fade);
+    const hit = t > th ? Math.exp(-(t - th) * 2.2) : 0;
+    mixCol(p, AMBER, 0.6 * hit * fade);
+    p.glow = Math.max(p.glow, 0.9 * hit * fade);
     p.hue = 1;
     return;
   }
-  if (L.wedgeOf[i] !== 0) return;
+  if (L.wedgeOf[i] !== 0 || k >= 0) return;
   const d = angDiff(L.slots[i].deg, SWEEP.from);
   const lo = angDiff(WALL_ANGLES[0], SWEEP.from), hi = angDiff(WALL_ANGLES[1], SWEEP.from);
-  const sp = sweepSpread(t);
+  const sp = Math.max(0, (t - SWEEP.t0) * SWEEP.speed);
   const reach = d < 0 ? Math.max(lo, -sp) : Math.min(hi, sp);
   const inside = d < 0 ? d >= reach : d <= reach;
   if (!inside) return;
   const edge = Math.abs(d - reach);
-  const on = 0.4 + 0.4 * Math.exp(-Math.pow(edge / 6, 2));
-  p.glow = Math.max(p.glow, on * fade);
+  const on = (0.45 + 0.4 * Math.exp(-Math.pow(edge / 6, 2))) * fade;
+  // Swept passages lift to card white with a cobalt edge: light, not a tint.
+  mixCol(p, CARD, 0.7 * on);
+  p.glow = Math.max(p.glow, on * 0.8);
+  p.z += 6 * on;
 }
 
-// Ripples: lift and light running out from the core when it ignites, when
-// the answer lands, and when the mark forms.
-const RIPPLES = [26.9, 37.95, 69.9];
+// Ripples: lift (and on the first two, light) running out from the core.
+const RIPPLES = [26.9, 37.95, 68.6];
 function applyRipple(i, t, p) {
   for (const t0 of RIPPLES) {
     const u = t - t0;
     if (u < 0 || u > 2.2) continue;
     const dist = Math.hypot(p.x - CENTER.x, p.y - CENTER.y);
-    const r = CORE_R + u * 620;
+    const r = RIM + u * 700;
     const env = Math.exp(-Math.pow((dist - r) / 70, 2)) * Math.exp(-u * 1.1);
     p.z += 12 * env;
-    // The end-slate ripple only lifts: cobalt light over the persimmon sheet reads pink.
     if (t0 < 60) p.glow = Math.max(p.glow, 0.3 * env);
   }
 }
 
 // ---------------------------------------------------------------- frame state
+const INK = [0.043, 0.063, 0.125], CREAM = [0.91, 0.902, 0.871];
 const fs = {
   t: 0, cam: null, tiles, count: N,
   ground: { ink: 1, lines: 0, linesX: CENTER.x, linesY: CENTER.y },
@@ -546,7 +643,7 @@ const fs = {
   core: { x: CENTER.x, y: CENTER.y, r: CORE_R, on: 0, glow: 0, dim: 0 },
   waves: [],
   beams: [],
-  post: { exposure: 1, bloom: 0.6, vignette: 0.35, grain: 0.4, fade: 0 },
+  post: { exposure: 1, bloom: 0.6, vignette: 0.35, grain: 0.4, fade: 0, fadeColor: INK },
   haze: 0,
   tileEdge: 1,
 };
@@ -559,27 +656,31 @@ export function frameState(tIn) {
   // Frame reset of every field a scene may write.
   const dawn = ramp(t, 20.0, 23.2);
   fs.ground.ink = 1 - dawn;
-  fs.ground.lines = ramp(t, 22.6, 26.0) * (1 - 0.65 * ramp(t, 67.5, 69.5));
+  fs.ground.lines = ramp(t, 22.6, 26.0) * (1 - ramp(t, 67.5, 69.5));
   fs.ground.linesX = CENTER.x; fs.ground.linesY = CENTER.y;
   fs.light.warmth = dawn;
-  fs.light.az = lerp(-2.6, -2.25, dawn);
+  fs.light.az = lerp(lerp(-3.0, -2.6, ramp(t, 0, 2)), -2.25, dawn);
   fs.light.el = lerp(0.42, 0.85, dawn);
-  fs.light.intensity = lerp(0.9, 1.0, dawn);
+  // Lights on: the room is dark for the first beat, then the key comes up.
+  fs.light.intensity = lerp(REDUCED ? 0.9 : 0.9 * easeOutCubic((t - 0.25) / 1.05), 1.0, dawn);
   fs.shadow = lerp(0.65, 1, dawn);
   fs.post.exposure = 1 - 0.1 * ramp(t, 52.9, 53.5) * (1 - ramp(t, 56.8, 57.8));
   fs.post.bloom = lerp(0.9, 0.55, dawn);
   fs.post.vignette = lerp(0.5, 0.28, dawn);
   fs.post.grain = lerp(0.5, 0.32, dawn);
-  fs.post.fade = Math.max(1 - ramp(t, 0, 1.4), REDUCED ? reducedDip(t) : 0);
+  const dip = reducedDip(t);
+  fs.post.fade = Math.max(1 - ramp(t, 0, 0.5), dip);
+  fs.post.fadeColor = dip > 0 && t > 23 ? CREAM : INK;
   fs.haze = 0.0003 * (1 - dawn);
-  fs.tileEdge = 1 - ramp(t, 69.0, 70.0);
+  fs.tileEdge = 1;
 
-  // Core.
+  // Core: a glimmer marks where the passages are headed, then it ignites.
   const c = fs.core;
   c.x = CENTER.x; c.y = CENTER.y;
-  c.r = CORE_R * (1 + 0.28 * easeInOutCubic((t - 68.0) / 1.8));
-  c.on = ramp(t, 25.8, 26.9);
-  c.glow = 0.25 * c.on + 0.8 * pulse(t, 37.8, 39.6) + 0.25 * pulse(t, 33.9, 34.6) + 0.35 * ramp(t, 69.0, 70.5);
+  c.r = lerp(CORE_R, MARK.coreR, easeInOutCubic((t - 68.0) / 1.8));
+  c.on = 0.3 * ramp(t, 22.6, 23.4) + 0.7 * ramp(t, 25.8, 26.9);
+  c.glow = 0.25 * c.on + 0.8 * pulse(t, 37.8, 39.6) + 0.25 * pulse(t, 33.9, 34.6)
+    + 0.5 * ramp(t, 67.0, 67.8) * (1 - ramp(t, 68.6, 69.4)) + 0.35 * ramp(t, 69.0, 70.5);
   c.dim = ramp(t, 52.9, 53.5) * (1 - ramp(t, 57.8, 58.8));
 
   // Waves.
@@ -593,14 +694,22 @@ export function frameState(tIn) {
   }
   if (t > EXACT_T0 && t < EXACT_T0 + 0.9) {
     const u = (t - EXACT_T0) / 0.9;
-    fs.waves.push({ x: CENTER.x, y: CENTER.y, r: WAVE_R0 + u * 520, width: 5, intensity: 0.8 * Math.sin(Math.PI * u), hue: 1 });
+    fs.waves.push({ x: CENTER.x, y: CENTER.y, r: WAVE_R0 + u * 580, width: 5, intensity: 0.8 * Math.sin(Math.PI * u), hue: 1 });
+  }
+  // Impact of the implosion: one cobalt ring out to the frame edge.
+  if (t > 68.6 && t < 69.2 && !REDUCED) {
+    const u = (t - 68.6) / 0.6;
+    fs.waves.push({ x: CENTER.x, y: CENTER.y, r: MARK.coreR * 1.35 + easeOutCubic(u) * 1300, width: 22, intensity: 0.8 * (1 - u), hue: 0 });
   }
 
   // Tiles.
   for (let i = 0; i < N; i++) {
     basePose(i, t, O);
-    if (i === FOCUS) applyFocus(t, O);
-    if ((t > 34 && t < 38.2) || (t > 49.6 && t < 52.8)) applyRetrieval(i, t, O);
+    if (i === WHIP) applyWhip(t, O);
+    else if (i === FOCUS) applyFocus(t, O);
+    else if (i === GUESS[0]) applyGuess(0, t, O);
+    else if (i === GUESS[1]) applyGuess(1, t, O);
+    if ((t > 34 && t < 38.2) || (t > 49.6 && t < 53.8)) applyRetrieval(i, t, O);
     if (i === HERO) applyHero(t, O);
     if (t > SWEEP.t0) applyScope(i, t, O);
     applyRipple(i, t, O);
@@ -619,17 +728,24 @@ export function frameState(tIn) {
     const k = HERO * STRIDE;
     fs.beams.push({ x0: tiles[k], y0: tiles[k + 1], z0: tiles[k + 2], x1: CENTER.x, y1: CENTER.y, z1: 30, width: 3, intensity: pulse(t, 37.2, 37.95), hue: 0 });
   }
-  // The bar a passage must clear: a dashed amber ring floating over the archive.
-  const bar = ramp(t, 49.3, 49.9) * (1 - ramp(t, 55.4, 56.2));
+  // The bar a passage must clear: a dashed amber ring rising over the archive,
+  // with light columns under the candidates that fall short of it.
+  const bar = easeOutCubic((t - 49.4) / 0.6) * (1 - ramp(t, 55.4, 56.2));
   if (bar > 0) {
-    const n = 56;
+    const n = 56, z = lerp(THRESH.z * 0.5, THRESH.z, bar);
     for (let j = 0; j < n; j++) {
       const a0 = (j / n) * TAU, a1 = a0 + (TAU / n) * 0.55;
       fs.beams.push({
-        x0: CENTER.x + Math.cos(a0) * THRESH.r, y0: CENTER.y + Math.sin(a0) * THRESH.r, z0: THRESH.z,
-        x1: CENTER.x + Math.cos(a1) * THRESH.r, y1: CENTER.y + Math.sin(a1) * THRESH.r, z1: THRESH.z,
-        width: 7, intensity: bar * 1.3, hue: 1,
+        x0: CENTER.x + Math.cos(a0) * THRESH.r, y0: CENTER.y + Math.sin(a0) * THRESH.r, z0: z,
+        x1: CENTER.x + Math.cos(a1) * THRESH.r, y1: CENTER.y + Math.sin(a1) * THRESH.r, z1: z,
+        width: 10, intensity: bar * 1.4, hue: 1,
       });
+    }
+    for (const i of L.weak) {
+      const k = i * STRIDE;
+      const hgt = tiles[k + 2] - L.slots[i].z;
+      if (hgt < 4) continue;
+      fs.beams.push({ x0: tiles[k], y0: tiles[k + 1], z0: L.slots[i].z, x1: tiles[k], y1: tiles[k + 1], z1: tiles[k + 2], width: 3, intensity: 0.7 * clamp(hgt / WEAK_Z), hue: 0 });
     }
   }
   return fs;
@@ -656,13 +772,23 @@ function tileQuad(cam, i) {
 // `cam` is the frame's camera. Must run after frameState(t) for the same t.
 export function drawUI(ctx, t, ui, cam) {
   const proj = (x, y, z = 0) => project(cam, x, y, z);
+  const dip = reducedDip(t);
+  ctx.save();
+  if (dip > 0) ctx.globalAlpha *= 1 - dip;
   drawVoice(ctx, t);
-  if (!ui) return;
-  const theme = t < 21.6 ? 'dark' : 'light';
+  if (ui) drawProduct(ctx, t, ui, cam, proj, REDUCED);
+  ctx.restore();
+}
 
-  // The passage that flies past in the cold open carries the answer.
-  if (t > 4.6 && t < 7.4 && ui.tileText) {
-    ui.tileText(ctx, { quad: tileQuad(cam, FOCUS), lines: EXCERPT_LINES, alpha: ramp(t, 4.6, 5.0) * (1 - ramp(t, 7.0, 7.4)), ink: '#21201C' });
+function drawProduct(ctx, t, ui, cam, proj, reduced) {
+  const theme = t < 21.6 ? 'dark' : 'light';
+  const lw = (text) => labelWin(text);
+  const label = (o) => ui.label(ctx, { size: 20, theme: 'light', reduced, ...o });
+
+  // The passage that drifts past in the cold open carries the answer.
+  if (t > 4.4 && t < 7.6 && ui.tileText) {
+    const a = ramp(t, 4.6, 5.0) * (1 - ramp(t, 7.0, 7.4)) * tiles[FOCUS * STRIDE + 11];
+    if (a > 0.001) ui.tileText(ctx, { quad: tileQuad(cam, FOCUS), lines: EXCERPT_LINES.filter(Boolean), alpha: a, ink: '#21201C' });
   }
 
   // Call bar: the cold open, then the payoff once the source is shown.
@@ -681,96 +807,104 @@ export function drawUI(ctx, t, ui, cam) {
     });
   }
 
-  // The stakes: two bare answers, indistinguishable, neither with a source.
-  const gA = ramp(t, 10.6, 11.4), gB = ramp(t, 11.0, 11.8);
+  // The stakes: two bare answers, born from the storm, neither with a source.
   const gOut = 1 - ramp(t, 17.8, 18.6);
-  if (gA * gOut > 0.001) {
-    const drift = ramp(t, 17.8, 18.6) * 14;
-    ui.guessCard(ctx, { x: 520, y: 330 + drift, w: 380, h: 250, text: '$5', kicker: 'No source', alpha: gA * gOut, progress: easeOutQuart((t - 10.6) / 0.8), crack: 0, theme: 'light' });
-    ui.guessCard(ctx, { x: 1020, y: 330 + drift, w: 380, h: 250, text: '$15', kicker: 'No source', alpha: gB * gOut, progress: easeOutQuart((t - 11.0) / 0.8), crack: 0, theme: 'light' });
-  }
+  GUESS_CARDS.forEach((c, k) => {
+    const a = (reduced ? ramp(t, 10.6 + k * 0.3, 11.2 + k * 0.3) : ramp(t, 10.75 + k * 0.3, 11.0 + k * 0.3)) * gOut;
+    if (a <= 0.001) return;
+    ui.guessCard(ctx, { x: c.x, y: c.y + ramp(t, 17.8, 18.6) * 14, w: c.w, h: c.h, text: k ? '$15' : '$5', kicker: 'No source', alpha: a, progress: 1, crack: 0, theme: 'light' });
+  });
+  drawFrayedThreads(ctx, t, reduced);
 
-  // The turn: titles ride above the pages, then the cut.
+  // The turn: titles ride above the pages until the cut.
   if (t > 19.3 && t < 24.2) {
-    const la = ramp(t, 19.9, 20.5) * (1 - ramp(t, 23.0, 23.6));
+    const la = ramp(t, 19.9, 20.5) * (1 - ramp(t, 21.0, 21.4));
     for (let pg = 0; pg < 2; pg++) {
       const side = pg === 0 ? -1 : 1;
       const inU = easeOutQuart((t - 19.3 - pg * 0.25) / 1.6);
       const top = proj(960 + side * 250 + side * (1 - inU) * 1300, 600 - 3.4 * 43 * Math.cos(-0.55), 150 - 3.4 * 43 * Math.sin(-0.55) + 40);
-      if (la > 0.001) ui.label(ctx, { text: pg === 0 ? COPY.doc1 : COPY.doc2, x: top.sx, y: top.sy - 24, t: 1, t0: 0, t1: 99, theme, align: 'center', size: 18, alpha: la });
+      if (la > 0.001) ui.label(ctx, { text: pg === 0 ? COPY.doc1 : COPY.doc2, x: top.sx, y: top.sy - 24, t: 1, t0: 0, t1: 99, theme, align: 'center', size: 20, alpha: la, reduced });
     }
-    ui.label(ctx, { text: 'Approved documents', x: 960, y: 150, t, t0: 20.1, t1: 21.5, theme, align: 'center', size: 18, swatch: 'cobalt' });
-    ui.label(ctx, { text: 'Split into passages', x: 960, y: 150, t, t0: 21.5, t1: 23.6, theme, align: 'center', size: 18, swatch: 'cobalt' });
+    for (const text of ['Approved documents', 'Split into passages']) {
+      ui.label(ctx, { text, x: 960, y: 150, t, t0: lw(text).t0, t1: lw(text).t1, theme, align: 'center', size: 20, swatch: 'cobalt', reduced });
+    }
   }
 
-  // Ask: composer, then the search, told where it happens.
-  const compA = ramp(t, 31.2, 31.8) * (1 - ramp(t, 37.2, 37.7)) + ramp(t, 46.8, 47.4) * (1 - ramp(t, 52.6, 53.2));
-  const q = t < 46.7 ? COPY.q1 : COPY.q2;
-  const typeStart = t < 46.7 ? 31.6 : 47.2;
-  const chars = Math.floor(clamp((t - typeStart) / 2.0) * q.length);
-  const pressAt = t < 46.7 ? 33.8 : 49.4;
-  const cleared = (t > pressAt + 0.25 && t < 46.7) || t > pressAt + 0.25;
+  // Ask: composer, the question held while the search runs, the search told where it happens.
+  const q1 = t < 46.7;
+  const q = q1 ? COPY.q1 : COPY.q2;
+  const pressAt = q1 ? 33.8 : 49.4;
+  const compIn = q1 ? 31.2 : 46.8;
+  const compA = ramp(t, compIn, compIn + 0.6) * (1 - ramp(t, pressAt + 0.1, pressAt + 0.5));
+  const chars = Math.floor(clamp((t - (compIn + 0.4)) / 2.0) * q.length);
   if (compA > 0.001) {
     ui.composer(ctx, {
-      x: 96, y: 790, w: 700, text: cleared ? '' : q, chars: cleared ? 0 : chars,
-      caretOn: Math.floor(t * 2) % 2 === 0, alpha: compA, theme: 'light', progress: easeOutQuart((t - (t < 46.7 ? 31.2 : 46.8)) / 0.6),
-      press: pulse(t, pressAt - 0.1, pressAt + 0.3),
+      x: 96, y: 790, w: 760, text: q, chars, caretOn: Math.floor(t * 2) % 2 === 0, alpha: compA, theme: 'light',
+      progress: easeOutQuart((t - compIn) / 0.6), press: pulse(t, pressAt - 0.1, pressAt + 0.3),
     });
   }
+  // The question lifts out of the composer and waits at the top while the search runs.
+  const cardAt = q1 ? 38.0 : 53.5;
+  const rowA = ramp(t, pressAt + 0.05, pressAt + 0.45) * (1 - ramp(t, cardAt + 0.1, cardAt + 0.3));
+  if (rowA > 0.001 && ui.questionRow) {
+    const u = easeOutCubic((t - pressAt) / 0.45);
+    ui.questionRow(ctx, { x: 96, y: lerp(800, 250, u), w: 760, text: q, alpha: rowA, progress: 1 });
+  }
   const wa = (-20 * Math.PI) / 180;
-  const wp = proj(CENTER.x + Math.cos(wa) * 470, CENTER.y + Math.sin(wa) * 470, 0);
-  ui.label(ctx, { text: 'Meaning', x: wp.sx + 30, y: wp.sy - 70, tick: { x: wp.sx, y: wp.sy }, t, t0: 34.4, t1: 36.9, theme: 'light', size: 18, swatch: 'cobalt' });
+  const wp = proj(CENTER.x + Math.cos(wa) * 560, CENTER.y + Math.sin(wa) * 560, 0);
+  label({ text: 'Meaning', x: wp.sx + 30, y: wp.sy - 70, tick: { x: wp.sx, y: wp.sy }, t, t0: lw('Meaning').t0, t1: lw('Meaning').t1, swatch: 'cobalt' });
   const ek = L.exact[1] ?? L.exact[0];
-  const ep = proj(L.slots[ek].x, L.slots[ek].y, 20);
-  ui.label(ctx, { text: 'Exact words', x: ep.sx + 40, y: ep.sy + 70, tick: { x: ep.sx, y: ep.sy }, t, t0: 35.3, t1: 36.9, theme: 'light', size: 18, swatch: 'amber' });
-  const hs = proj(L.slots[HERO].x, L.slots[HERO].y, 160);
-  ui.label(ctx, { text: 'Best passage', x: hs.sx - 60, y: hs.sy - 60, tick: { x: hs.sx, y: hs.sy }, t, t0: 36.4, t1: 37.4, theme: 'light', size: 18, align: 'right', swatch: 'cobalt' });
+  const ep = proj(L.slots[ek].x, L.slots[ek].y, 30);
+  label({ text: 'Exact words', x: ep.sx + 40, y: ep.sy + 70, tick: { x: ep.sx, y: ep.sy }, t, t0: lw('Exact words').t0, t1: lw('Exact words').t1, swatch: 'amber' });
+  const hs = proj(L.slots[HERO].x, L.slots[HERO].y, 170);
+  label({ text: 'Best passage', x: hs.sx - 60, y: hs.sy - 60, tick: { x: hs.sx, y: hs.sy }, t, t0: lw('Best passage').t0, t1: lw('Best passage').t1, align: 'right', swatch: 'cobalt' });
 
   // The answer, then its receipt: the passage unfolds into the source panel.
   if (t > 37.9 && t < 46.7) {
     const aA = 1 - ramp(t, 45.6, 46.4);
     const card = ui.answerCard(ctx, {
-      x: 96, y: 250, w: 700, question: COPY.q1, answer: COPY.a1, citeIndex: 1, docTitle: COPY.doc1,
+      x: 96, y: 250, w: 760, question: COPY.q1, answer: COPY.a1, citeIndex: 1, docTitle: COPY.doc1,
       progress: easeOutQuart((t - 38.0) / 0.5), receiptProgress: easeOutQuart((t - 38.7) / 0.5),
-      chipHot: ramp(t, 39.2, 39.6) * (1 - ramp(t, 44.6, 45.4)), alpha: aA, theme: 'light',
+      chipHot: ramp(t, 39.2, 39.6) * (1 - ramp(t, 44.6, 45.4)), alpha: aA, theme: 'light', questionAlpha: 1,
     });
     const pa = ramp(t, 40.7, 41.0) * (1 - ramp(t, 45.2, 45.5));
     if (pa > 0.001) {
       const tl = proj(PANEL.x - PANEL.w / 2, PANEL.y - PANEL.h / 2, PANEL.z);
       const br = proj(PANEL.x + PANEL.w / 2, PANEL.y + PANEL.h / 2, PANEL.z);
       const panel = ui.citationPanel(ctx, {
-        x: tl.sx, y: tl.sy, w: br.sx - tl.sx, h: br.sy - tl.sy, docTitle: COPY.doc1, section: 'Standard Fees',
-        rows: EXCERPT_ROWS, highlightRow: 1, progress: easeOutQuart((t - 40.7) / 0.5), alpha: pa, surface: false,
+        x: tl.sx, y: tl.sy, w: br.sx - tl.sx, h: br.sy - tl.sy, docTitle: COPY.doc1, version: 1, section: 'Standard Fees',
+        excerpt: EXCERPT, highlightRow: '| Basic | $5 |', progress: easeOutQuart((t - 40.7) / 0.5), alpha: pa, surface: false,
       });
       const anchor = card && (card.chipAnchor || card.chipCenter);
       const target = panel && (panel.rowAnchor || (panel.row && { x: panel.row.x - 8, y: panel.row.y + panel.row.h / 2 }));
-      if (anchor && target) drawThread(ctx, anchor, target, pa, clamp((t - 41.0) / 0.6));
+      if (anchor && target) drawThread(ctx, anchor, target, pa, reduced ? ramp(t, 41.0, 41.4) : clamp((t - 41.0) / 0.6));
     }
   }
 
   // The stop: the bar, the fall short, the refusal, the gap.
   const bp = proj(CENTER.x + Math.cos(2.7) * THRESH.r, CENTER.y + Math.sin(2.7) * THRESH.r, THRESH.z);
-  ui.label(ctx, { text: 'Minimum match', x: bp.sx + 36, y: bp.sy + 54, tick: { x: bp.sx, y: bp.sy }, t, t0: 49.9, t1: 52.1, theme: 'light', size: 18, swatch: 'amber' });
-  ui.label(ctx, { text: 'No passage matched well enough', x: bp.sx + 36, y: bp.sy + 54, tick: { x: bp.sx, y: bp.sy }, t, t0: 52.2, t1: 55.4, theme: 'light', size: 18, swatch: 'amber' });
+  label({ text: 'Minimum match', x: bp.sx + 36, y: bp.sy + 60, tick: { x: bp.sx, y: bp.sy }, t, t0: lw('Minimum match').t0, t1: lw('Minimum match').t1, swatch: 'amber' });
+  label({ text: 'No passage matched well enough', x: bp.sx + 36, y: bp.sy + 60, tick: { x: bp.sx, y: bp.sy }, t, t0: lw('No passage matched well enough').t0, t1: lw('No passage matched well enough').t1, swatch: 'amber' });
   if (t > 53.4 && t < 58.7) {
     const ra = ramp(t, 53.5, 53.9) * (1 - ramp(t, 57.9, 58.6));
-    const rc = ui.refusalCard(ctx, { x: 96, y: 130, w: 760, question: COPY.q2, answer: COPY.refusal, hint: COPY.refusalHint, progress: easeOutQuart((t - 53.5) / 0.5), alpha: ra, flagged: false });
-    const bottom = rc && rc.rect ? rc.rect.y + rc.rect.h : 470;
+    const rc = ui.refusalCard(ctx, { x: 96, y: 250, w: 760, question: COPY.q2, answer: COPY.refusal, hint: COPY.refusalHint, progress: easeOutQuart((t - 53.5) / 0.5), alpha: ra, flagged: 0, questionAlpha: 1 });
+    const bottom = rc && rc.rect ? rc.rect.y + rc.rect.h : 600;
     if (t > 55.6) {
       const u = easeOutQuart((t - 55.7) / 0.7);
       const ga = ramp(t, 55.7, 56.1) * (1 - ramp(t, 57.9, 58.6));
-      ui.label(ctx, { text: 'Logged in Content gaps for review', x: 96, y: bottom + 40, t, t0: 55.9, t1: 58.6, theme: 'light', size: 18, align: 'left' });
-      ui.gapItem(ctx, { x: 96, y: bottom + 70 + (1 - u) * 16, w: 760, question: COPY.q2, progress: u, alpha: ga });
+      const w = lw('Logged in Content gaps for review');
+      ui.label(ctx, { text: w.text, x: 96, y: bottom + 40, t, t0: w.t0, t1: w.t1, theme: 'light', size: 20, align: 'left', reduced });
+      ui.gapItem(ctx, { x: 96, y: bottom + 72 + (1 - u) * 16, w: 760, question: COPY.q2, progress: u, alpha: ga, time: 'now' });
     }
   }
 
-  // Program scope tags, one per wedge.
+  // Program scope tags, one per wedge, on the outer band.
   if (t > 60.2 && t < 67.4) {
     const ta = ramp(t, 60.4, 61.0) * (1 - ramp(t, 66.4, 67.2));
     const hues = [262, 48, 168];
     L.WEDGES.forEach((w, k) => {
       const m = (((w.a0 + w.a1) / 2) * Math.PI) / 180;
-      const p = proj(CENTER.x + Math.cos(m) * 560, CENTER.y + Math.sin(m) * 560, 0);
+      const p = proj(CENTER.x + Math.cos(m) * 730, CENTER.y + Math.sin(m) * 730, 0);
       ui.programTag(ctx, { x: p.sx, y: p.sy, name: w.name, hue: hues[k], alpha: ta, theme: 'light' });
     });
   }
@@ -778,18 +912,51 @@ export function drawUI(ctx, t, ui, cam) {
   // Statements.
   for (const s of STATEMENTS) {
     if (t < s.t0 - 0.05 || t > s.t1 + 0.05) continue;
-    ui.statement(ctx, { ...s, size: s.align === 'left' ? 60 : 66, maxWidth: s.maxWidth ?? 1400, t });
+    ui.statement(ctx, { ...s, size: s.align === 'left' ? 60 : 66, maxWidth: s.maxWidth ?? 1400, t, reduced });
   }
 
-  // End slate: the mark is tiles and the lens; the layer adds the T and the words.
-  if (t > 69.4) {
+  // End slate: the tiles hand over to the drawn sheets around the real glass lens.
+  if (t > 69.0) {
     const m = proj(MARK.x, MARK.y, 0);
     ui.lockup(ctx, {
-      x: m.sx, y: m.sy, scale: (m.scale * MARK.size) / 330, markAlpha: 0, tAlpha: ramp(t, 69.8, 70.6),
-      wordAlpha: ramp(t, 70.4, 71.4), tagline: COPY.tagline, taglineAlpha: ramp(t, 71.2, 72.1),
-      url: COPY.url, urlAlpha: ramp(t, 72.0, 72.8), theme: 'light', layout: 'horizontal',
+      x: m.sx, y: m.sy, scale: (m.scale * MARK.size) / 330, markAlpha: 0,
+      sheetsAlpha: ramp(t, 69.2, 69.9), holeR: fs.core.r * m.scale * 1.02,
+      tAlpha: ramp(t, 69.8, 70.6), wordAlpha: ramp(t, 70.4, 71.4), tagline: COPY.tagline, taglineAlpha: ramp(t, 71.2, 72.1),
+      url: COPY.url, urlAlpha: ramp(t, 72.0, 72.8), theme: 'light', layout: 'horizontal', reduced,
     });
   }
+}
+
+// The stakes: from each guess a thread searches the storm for a source, finds
+// none, frays and fades.
+function drawFrayedThreads(ctx, t, reduced) {
+  if (t < 14.2 || t > 16.2) return;
+  const grow = reduced ? 1 : easeOutCubic((t - 14.2) / 0.8);
+  const fray = ramp(t, 15.0, 15.8);
+  const a = ramp(t, 14.2, 14.4) * (1 - ramp(t, 15.6, 16.2));
+  GUESS_CARDS.forEach((c, k) => {
+    const x0 = c.x + c.w / 2, y0 = c.y + c.h + 4;
+    const tx = k ? 1480 : 380, ty = 180 + k * 60;
+    ctx.save();
+    ctx.globalAlpha *= a * 0.9;
+    ctx.strokeStyle = '#7DB0FF';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    const n = 60;
+    ctx.beginPath();
+    let pen = false;
+    for (let j = 0; j <= n * grow; j++) {
+      const u = j / n;
+      const x = lerp(x0, tx, u) + Math.sin(u * 9 + k * 2) * 40 * u;
+      const y = lerp(y0, ty, u) + Math.cos(u * 7 + k) * 30 * u + 60 * Math.sin(Math.PI * u);
+      // Fraying: the far end breaks into ever shorter dashes.
+      const gap = fray * u > 0.15 && ((j * 7 + k * 3) % Math.max(2, Math.round(6 - 5 * fray * u))) === 0;
+      if (gap) { pen = false; continue; }
+      if (!pen) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  });
 }
 
 // The caller's voice: a thin line across the lower frame, driven by a
@@ -799,7 +966,7 @@ function drawVoice(ctx, t) {
   if (a <= 0.001) return;
   const speaking = (u) => pulse(u, 1.8, 4.6) * (0.6 + 0.4 * Math.sin(u * 7.1) * Math.sin(u * 3.3));
   ctx.save();
-  ctx.globalAlpha = a * 0.8;
+  ctx.globalAlpha *= a * 0.8;
   ctx.lineWidth = 2;
   ctx.strokeStyle = 'rgba(233, 226, 210, 0.75)';
   ctx.shadowColor = 'rgba(160, 190, 255, 0.55)';
@@ -817,8 +984,8 @@ function drawVoice(ctx, t) {
   ctx.restore();
 }
 
-// A cobalt thread from the citation chip to the source line; a point of light
-// runs along it from the source to the chip once it has drawn.
+// A cobalt thread from the citation chip to the source line; its head runs
+// from the chip to the line as it draws.
 function drawThread(ctx, chip, row, a, draw) { // row: {x, y} anchor point
   if (a <= 0.001 || draw <= 0) return;
   const x0 = chip.x, y0 = chip.y;
@@ -830,7 +997,7 @@ function drawThread(ctx, chip, row, a, draw) { // row: {x, y} anchor point
   };
   const d = easeOutCubic(draw);
   ctx.save();
-  ctx.globalAlpha = a;
+  ctx.globalAlpha *= a;
   ctx.strokeStyle = 'rgba(0, 64, 171, 0.9)';
   ctx.lineWidth = 3;
   ctx.lineCap = 'round';

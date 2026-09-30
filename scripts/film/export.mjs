@@ -1,6 +1,6 @@
 // Export the film to MP4 in headed Chrome (parked offscreen) with WebCodecs H.264, then mux with ffmpeg.
 //
-//   node scripts/film/export.mjs --url <url> --out <file.mp4> [--fps 60] [--from 0 --to 80]
+//   node scripts/film/export.mjs --url <url> --out <file.mp4> [--fps 60] [--from 0 --to 77]
 //        [--width 1920 --height 1080] [--bitrate 24] [--keep-raw]
 //
 // The page must expose window.__anim.renderAt(t) returning the composited canvas (see docs/promo-film.md).
@@ -14,7 +14,7 @@ import { launchChrome, parseArgs, waitForAnim } from './lib.mjs';
 
 const args = parseArgs(process.argv.slice(2), ['keep-raw']);
 if (!args.url || !args.out) {
-  console.error('usage: node scripts/film/export.mjs --url <url> --out <file.mp4> [--fps 60] [--from 0 --to 80] [--width 1920 --height 1080] [--bitrate 24] [--keep-raw]');
+  console.error('usage: node scripts/film/export.mjs --url <url> --out <file.mp4> [--fps 60] [--from 0 --to 77] [--width 1920 --height 1080] [--bitrate 24] [--keep-raw]');
   process.exit(2);
 }
 const fps = Number(args.fps ?? 60);

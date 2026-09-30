@@ -6,8 +6,8 @@
 // times, or progress 0..1). Every function save()s and restore()s the context.
 //
 // Type: Georgia for display, Verdana for UI, a system mono stack for labels.
-// Product UI is the app's /chat surface scaled ~1.75x (14 px body -> 24 px) so it
-// reads on a phone feed; tokens are DESIGN.md's, copy is whatever the caller passes.
+// Product UI is the app's /chat surface scaled for a phone feed (14 px answer body -> 32 px,
+// cards <= 760 px wide); tokens are DESIGN.md's, copy is whatever the caller passes.
 
 export const FONTS = {
   display: 'Georgia, Cambria, "Times New Roman", serif',
@@ -275,9 +275,15 @@ function balancedText(ctx, text, maxW) {
   }
   return greedyLines(ctx, text, hi);
 }
+// Card text: full measure, rebalanced only when the last line would be a lone word.
+function niceText(ctx, text, maxW) {
+  const lines = greedyLines(ctx, text, maxW);
+  if (lines.length > 1 && !/\s/.test(lines[lines.length - 1].trim())) return balancedText(ctx, text, maxW);
+  return lines;
+}
 function clampLines(ctx, text, maxW, n) {
   const lines = greedyLines(ctx, text, maxW);
-  if (lines.length <= n) return balancedText(ctx, text, maxW);
+  if (lines.length <= n) return niceText(ctx, text, maxW);
   if (lines.length <= n) return lines;
   const out = lines.slice(0, n);
   let last = `${out[n - 1]} ${lines[n]}`;
@@ -479,12 +485,13 @@ export function label(ctx, props) {
     t1 = Infinity,
     theme = 'dark',
     align = 'left',
-    size = 14,
+    size = 20,
     tick = null,
     swatch = null,
     alpha = 1,
     track = 0.14,
     scrim = null,
+    reduced = false,
   } = props;
   if (t < t0 || t > t1) return null;
   const inK = Number.isFinite(t0) ? (t - t0) / 0.4 : 1;
@@ -503,10 +510,10 @@ export function label(ctx, props) {
   const w = tw + sw + sg;
   const left = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
   const color = theme === 'dark' ? rgba(TOKENS.paper, 0.86) : TOKENS.labelInk;
-  const rise = (1 - e) * 4;
+  const rise = reduced ? 0 : (1 - e) * 4;
 
   if (tick) {
-    const tk = easeOutQuart(Number.isFinite(t0) ? (t - t0 - 0.1) / 0.6 : 1);
+    const tk = reduced ? 1 : easeOutQuart(Number.isFinite(t0) ? (t - t0 - 0.1) / 0.6 : 1);
     const bx0 = left - 12;
     const bx1 = left + w + 12;
     let sx;
@@ -867,15 +874,18 @@ export function composer(ctx, props) {
 
 // ---------------------------------------------------------------- question row
 
-function questionRow(ctx, x, y, w, question, theme, a) {
+const Q_SIZE = 26;
+const Q_LH = Q_SIZE * 1.5;
+
+function drawQuestion(ctx, x, y, w, question, theme, a) {
   const dark = theme === 'dark';
   ctx.save();
   ctx.globalAlpha *= a;
   const bs = 44;
-  setFont(ctx, { size: 26 });
-  const qLines = balancedText(ctx, question, w - bs - 16);
+  setFont(ctx, { size: Q_SIZE });
+  const qLines = niceText(ctx, question, w - bs - 16);
   const qw = Math.max(...qLines.map((l) => textW(ctx, l)));
-  const qh = Math.max(bs, 4 + qLines.length * 39);
+  const qh = Math.max(bs, 4 + qLines.length * Q_LH);
   softScrim(ctx, x - 20, y - 12, bs + 16 + qw + 40, qh + 24, 24, dark ? rgba(TOKENS.night, SCRIM.labelDark) : rgba(TOKENS.canvas, SCRIM.questionLight), 24);
   rrPath(ctx, x, y, bs, bs, 14);
   ctx.fillStyle = dark ? TOKENS.paper : TOKENS.ink;
@@ -886,20 +896,37 @@ function questionRow(ctx, x, y, w, question, theme, a) {
   ctx.fillStyle = dark ? TOKENS.night : TOKENS.card;
   ctx.fillText('Q', x + bs / 2, y + bs / 2 + 22 * 0.35);
   ctx.textAlign = 'left';
-  setFont(ctx, { size: 26 });
+  setFont(ctx, { size: Q_SIZE });
   const lines = qLines;
-  const lh = 26 * 1.5;
+  const lh = Q_LH;
   ctx.fillStyle = dark ? TOKENS.paper : TOKENS.ink;
-  lines.forEach((ln, i) => ctx.fillText(ln, x + bs + 16, y + 4 + lh * i + lh * 0.5 + 26 * 0.36));
+  lines.forEach((ln, i) => ctx.fillText(ln, x + bs + 16, y + 4 + lh * i + lh * 0.5 + Q_SIZE * 0.36));
   ctx.restore();
   return Math.max(bs, 4 + lines.length * lh);
 }
 function measureQuestion(ctx, w, question) {
   ctx.save();
-  setFont(ctx, { size: 26 });
+  setFont(ctx, { size: Q_SIZE });
   const n = greedyLines(ctx, question, w - 44 - 16).length;
   ctx.restore();
-  return Math.max(44, 4 + n * 39);
+  return Math.max(44, 4 + n * Q_LH);
+}
+
+/**
+ * The "Q" chip + question, exactly as answerCard and refusalCard echo it (same
+ * x/y/w gives the same pixels), so the question can stay on screen between Ask and
+ * the card. progress: 4 px rise + fade. Returns { x, y, w, h }.
+ */
+export function questionRow(ctx, props) {
+  const { x = 96, y = 300, w = 760, text = '', alpha = 1, progress = 1, theme = 'light' } = props;
+  const a = alpha * clamp01(progress * 1.4);
+  if (a <= 0 || !text) return null;
+  const dy = (1 - easeOutQuart(progress)) * 4;
+  ctx.save();
+  ctx.globalAlpha *= a;
+  const h = drawQuestion(ctx, x, y + dy, w, text, theme, 1);
+  ctx.restore();
+  return { x, y: y + dy, w, h };
 }
 
 // ---------------------------------------------------------------- answer card
@@ -949,13 +976,14 @@ export function answerCard(ctx, props) {
     receiptLabel = null,
     kicker = 'Answer',
     showQuestion = true,
+    questionAlpha = 1,
     footer = true,
   } = props;
   const cardK = easeOutQuart(progress / 0.45);
   const a = alpha * clamp01((progress / 0.45) * 1.4);
   const pad = 32;
-  const bodySize = 24;
-  const lh = 36;
+  const bodySize = 32;
+  const lh = 46;
   ctx.save();
   let qh = 0;
   if (showQuestion && question) qh = measureQuestion(ctx, w, question) + 28;
@@ -966,7 +994,7 @@ export function answerCard(ctx, props) {
   const toks = tokenizeAnswer(answer, citeIndex);
   setFont(ctx, { size: bodySize });
   const space = textW(ctx, 'a a') - textW(ctx, 'aa');
-  const chipSize = 20;
+  const chipSize = 26;
   const items = toks.map((tk) => {
     if (tk.kind === 'word') {
       setFont(ctx, { size: bodySize, weight: tk.bold ? 600 : 400 });
@@ -976,27 +1004,38 @@ export function answerCard(ctx, props) {
       return { ...tk, bw, w: bw + tw };
     }
     setFont(ctx, { size: chipSize, weight: 400 });
-    const cw = textW(ctx, `[${tk.n}]`) + 28;
+    const cw = textW(ctx, `[${tk.n}]`) + 32;
     setFont(ctx, { size: bodySize });
     const tw = tk.tail ? textW(ctx, tk.tail) : 0;
     return { ...tk, cw, tw, w: cw + 8 + tw };
   });
-  const lines = balancedLines(items, innerW, () => space);
+  // Full measure unless the last line would hold one word (the chip does not count).
+  let lines = wrapItems(items, innerW, () => space);
+  const lastWords = lines[lines.length - 1].filter((it) => it.kind === 'word').length;
+  if (lines.length > 1 && lastWords <= 1) lines = balancedLines(items, innerW, () => space);
   const bodyH = lines.length * lh;
-  setFont(ctx, { size: 18, weight: 400, track: 0.04 });
+  const RS = 24; // receipt text
+  const RM = 28; // medallion radius
+  setFont(ctx, { size: RS, weight: 400, track: 0.04 });
   const rLabel = receiptLabel || (sourceCount === 1 ? 'Source passage' : 'Source passages');
   const rPrefix = `${rLabel} · `.toUpperCase();
   const rTitle = String(docTitle).toUpperCase();
-  const rTextW = innerW - 20 * 2 - 44 - 16;
+  const rTextW = innerW - 20 * 2 - RM * 2 - 16;
   const rFits = textW(ctx, rPrefix + rTitle) <= rTextW;
-  const receiptH = rFits ? 76 : 100;
-  const kickH = 20;
-  const H = 4 + pad + kickH + 20 + bodyH + (docTitle ? 28 + receiptH : 0) + (footer ? 28 + 1.5 + 20 + 32 : 0) + pad - 4;
+  const receiptH = rFits ? RM * 2 + 32 : 2 * 34 + 32;
+  const kickH = 24;
+  const H = 4 + pad + kickH + 20 + bodyH + (docTitle ? 28 + receiptH : 0) + (footer ? 28 + 1.5 + 20 + 36 : 0) + pad - 4;
 
   const dy = (1 - cardK) * 8;
   ctx.globalAlpha = a;
+  // The echo does not ride the card's arrival: same pixels as questionRow(), clean handover.
+  if (qh && questionAlpha > 0) {
+    ctx.save();
+    ctx.globalAlpha = alpha * questionAlpha;
+    drawQuestion(ctx, x, y, w, question, theme, 1);
+    ctx.restore();
+  }
   ctx.translate(0, dy);
-  if (qh) questionRow(ctx, x, y, w, question, theme, 1);
 
   cardSurface(ctx, x, cy, w, H, 28, theme);
   // Gradient hairline along the top edge (answer-surface::before).
@@ -1016,15 +1055,15 @@ export function answerCard(ctx, props) {
   let yy = cy + 4 + pad - 4;
   ctx.textBaseline = 'middle';
   ctx.beginPath();
-  ctx.arc(x + pad + 6, yy + kickH / 2, 12, 0, Math.PI * 2);
+  ctx.arc(x + pad + 7, yy + kickH / 2, 14, 0, Math.PI * 2);
   ctx.fillStyle = rgba(TOKENS.success, 0.12);
   ctx.fill();
   ctx.beginPath();
-  ctx.arc(x + pad + 6, yy + kickH / 2, 6, 0, Math.PI * 2);
+  ctx.arc(x + pad + 7, yy + kickH / 2, 7, 0, Math.PI * 2);
   ctx.fillStyle = TOKENS.success;
   ctx.fill();
-  setFont(ctx, { size: 18, weight: 600, track: 0.14 });
-  ctx.fillText(String(kicker).toUpperCase(), x + pad + 24, yy + kickH / 2 + 1);
+  setFont(ctx, { size: 20, weight: 600, track: 0.14 });
+  ctx.fillText(String(kicker).toUpperCase(), x + pad + 28, yy + kickH / 2 + 1);
   yy += kickH + 20;
 
   // Body words print across progress 0.3..1.
@@ -1051,7 +1090,7 @@ export function answerCard(ctx, props) {
         }
       } else {
         const chx = cx + 4;
-        const chh = 34;
+        const chh = 44;
         const chy = base - bodySize * 0.36 - chh / 2;
         const hot = clamp01(chipHot);
         chipRect = { x: chx, y: chy + dy, w: it.cw, h: chh };
@@ -1106,32 +1145,32 @@ export function answerCard(ctx, props) {
     rrPath(ctx, x + pad, ry, innerW, receiptH, 20);
     ctx.fillStyle = rgba(TOKENS.primary, 0.07);
     ctx.fill();
-    const mx = x + pad + 20 + 22;
+    const mx = x + pad + 20 + RM;
     const my = ry + receiptH / 2;
     ctx.beginPath();
-    ctx.arc(mx, my, 22, 0, Math.PI * 2);
+    ctx.arc(mx, my, RM, 0, Math.PI * 2);
     ctx.fillStyle = TOKENS.primary;
     ctx.fill();
-    setFont(ctx, { size: 20 });
+    setFont(ctx, { size: 26 });
     ctx.fillStyle = TOKENS.onPrimary;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(String(sourceCount), mx, my + 1);
     ctx.textAlign = 'left';
-    setFont(ctx, { size: 18, track: 0.04 });
+    setFont(ctx, { size: RS, track: 0.04 });
     ctx.fillStyle = TOKENS.primary;
-    const tx = mx + 22 + 16;
+    const tx = mx + RM + 16;
     const drawTitle = (s, px, py) => {
       ctx.fillText(s, px, py);
       const tw = textW(ctx, s);
-      ctx.fillRect(px, py + 13, tw, 1.5);
+      ctx.fillRect(px, py + 16, tw, 2);
     };
     if (rFits) {
       ctx.fillText(rPrefix, tx, my + 1);
-      drawTitle(rTitle, tx + textW(ctx, rPrefix) + 0.04 * 18, my + 1);
+      drawTitle(rTitle, tx + textW(ctx, rPrefix) + 0.04 * RS, my + 1);
     } else {
-      ctx.fillText(rPrefix.trim(), tx, my - 13);
-      drawTitle(rTitle, tx, my + 15);
+      ctx.fillText(rPrefix.trim(), tx, my - 16);
+      drawTitle(rTitle, tx, my + 18);
     }
     yy += receiptH;
   }
@@ -1143,7 +1182,7 @@ export function answerCard(ctx, props) {
     ctx.fillStyle = TOKENS.border;
     ctx.fillRect(x + pad, yy, innerW, 1.5);
     yy += 1.5 + 20;
-    const ic = 28;
+    const ic = 32;
     const names = ['copy', 'thumbsUp', 'thumbsDown'];
     names.forEach((n, i) => {
       icon(ctx, n, x + w - pad - (names.length - i) * (ic + 20) + 20, yy + 2, ic, TOKENS.mutedFg, 1.8);
@@ -1157,24 +1196,23 @@ export function answerCard(ctx, props) {
     chipCenter: chipRect ? { x: chipRect.x + chipRect.w / 2, y: chipRect.y + chipRect.h / 2 } : null,
     chipAnchor: chipRect ? { x: chipRect.x + chipRect.w, y: chipRect.y + chipRect.h / 2 } : null,
     receipt: receiptRect,
-    question: qh ? { x, y: y + dy, w, h: qh - 28 } : null,
+    question: qh ? { x, y, w, h: qh - 28 } : null,
   };
 }
 
 // ---------------------------------------------------------------- citation panel
 
-/** Raw markdown lines for a section + table, pipes aligned. Shared by citationPanel and tileText callers. */
+/**
+ * Raw markdown lines for a section + table, written the way the seeded document
+ * stores them ("| Basic | $5 |", "| --- | --- |"). Shared with tileText callers.
+ */
 export function markdownExcerpt(section, rows) {
   const lines = [];
   if (section) lines.push(`## ${section}`, '');
   if (rows && rows.length) {
-    // Raw markdown, as the product shows it, with the pipes aligned.
-    const cols = rows[0].length;
-    const wid = Array.from({ length: cols }, (_, c) => Math.max(3, ...rows.map((r) => String(r[c] ?? '').length)));
-    const fmt = (r) => `| ${wid.map((wd, c) => String(r[c] ?? '').padEnd(wd)).join(' | ')} |`;
-    lines.push(fmt(rows[0]));
-    lines.push(`| ${wid.map((wd) => '-'.repeat(wd)).join(' | ')} |`);
-    rows.slice(1).forEach((r) => lines.push(fmt(r)));
+    lines.push(`| ${rows[0].join(' | ')} |`);
+    lines.push(`| ${rows[0].map(() => '---').join(' | ')} |`);
+    rows.slice(1).forEach((r) => lines.push(`| ${r.join(' | ')} |`));
   }
   return lines;
 }
@@ -1183,11 +1221,12 @@ export function markdownExcerpt(section, rows) {
  * Source panel faithful to CitationPanel: eyebrow, doc title + version pill, close X,
  * the excerpt as raw markdown in a mono inset block (the product does not render or
  * tint rows). With `h`, the excerpt block grows to fill the panel: mono size fits
- * width and height (up to maxMono, default 26), leading opens up to 2.0.
+ * width and height (up to maxMono, default 30), leading opens up to 2.0.
  * Excerpt: `excerpt` (string, \n lines) or `section` + `rows` (first row = header),
- * printed as markdown with aligned pipes.
- * highlightRow: index into rows (or a substring of a line); that line's rect is
- * returned for the annotation thread. Nothing is tinted.
+ * via markdownExcerpt(). The excerpt renders verbatim, one ink, as the app's <pre>.
+ * highlightRow: a substring of a line ("| Basic | $5 |"), or with rows an index into
+ * rows (0 = header). That line's rect is returned for the thread. Nothing is tinted.
+ * version: the "Version N" badge beside the title, as the app shows it.
  * surface: false draws only the content (no card fill, border or shadow) for a
  * panel whose paper is a lit 3D tile.
  * Returns { rect, row, rowAnchor: {x,y} (left edge, centred), excerpt, mono }.
@@ -1210,7 +1249,7 @@ export function citationPanel(ctx, props) {
     eyebrow = 'Source passage',
     linkText = null,
     surface = true,
-    maxMono = 26,
+    maxMono = 30,
   } = props;
   const e = easeOutQuart(progress);
   const a = alpha * clamp01(progress * 1.4);
@@ -1221,19 +1260,21 @@ export function citationPanel(ctx, props) {
     lines = String(excerpt).split('\n');
   } else {
     lines = markdownExcerpt(section, rows);
-    if (typeof highlightRow === 'number' && rows) hiLine = lines.length - rows.length + highlightRow;
+    if (typeof highlightRow === 'number' && rows) {
+      const head = lines.length - rows.length - 1; // header line; separator follows it
+      hiLine = highlightRow === 0 ? head : head + 1 + highlightRow;
+    }
   }
   if (typeof highlightRow === 'string') hiLine = lines.findIndex((l) => l.includes(highlightRow));
 
   const dx = surface ? (1 - e) * 28 : 0;
   const px = x + dx;
   const padX = 28;
-  const headH = 20 + 18 + 12 + 32 + 20;
+  const headH = 20 + 20 + 12 + 34 + 22;
   const inset = 24;
   const bodyPad = 28;
   const linkH = linkText ? 20 + 52 : 0;
-  // Blank lines take half a line.
-  const units = lines.reduce((s, l) => s + (l.trim() ? 1 : 0.5), 0);
+  const units = lines.length;
   ctx.save();
   setFont(ctx, { family: FONTS.mono, size: 100 });
   const widest = Math.max(1, ...lines.map((l) => textW(ctx, l)));
@@ -1271,24 +1312,24 @@ export function citationPanel(ctx, props) {
 
   // Header.
   ctx.textBaseline = 'alphabetic';
-  setFont(ctx, { size: 18, track: 0.06 });
+  setFont(ctx, { size: 20, track: 0.06 });
   ctx.fillStyle = TOKENS.mutedFg;
-  ctx.fillText(String(eyebrow).toUpperCase(), px + padX, y + 20 + 15);
-  setFont(ctx, { size: 24 });
+  ctx.fillText(String(eyebrow).toUpperCase(), px + padX, y + 20 + 17);
+  setFont(ctx, { size: 28 });
   ctx.fillStyle = TOKENS.ink;
-  const ty = y + 20 + 18 + 12 + 16 + 8.5;
+  const ty = y + 20 + 20 + 12 + 17 + 10;
   ctx.fillText(docTitle, px + padX, ty);
   if (version != null) {
-    const vx = px + padX + textW(ctx, docTitle) + 14;
-    setFont(ctx, { size: 18 });
+    const vx = px + padX + textW(ctx, docTitle) + 16;
+    setFont(ctx, { size: 20 });
     const vs = `Version ${version}`;
-    const vw = textW(ctx, vs) + 24;
-    rrPath(ctx, vx, ty - 8.5 - 15, vw, 30, 15);
+    const vw = textW(ctx, vs) + 28;
+    rrPath(ctx, vx, ty - 10 - 17, vw, 34, 17);
     ctx.fillStyle = TOKENS.muted;
     ctx.fill();
     ctx.fillStyle = TOKENS.mutedFg;
     ctx.textBaseline = 'middle';
-    ctx.fillText(vs, vx + 12, ty - 8.5 + 1);
+    ctx.fillText(vs, vx + 14, ty - 10 + 1);
     ctx.textBaseline = 'alphabetic';
   }
   icon(ctx, 'x', px + w - padX - 26, y + headH / 2 - 13, 26, TOKENS.mutedFg, 2);
@@ -1308,14 +1349,10 @@ export function citationPanel(ctx, props) {
   setFont(ctx, { family: FONTS.mono, size: mono });
   let ly = ey + (blockH - units * lh) / 2;
   let rowRect = null;
+  ctx.fillStyle = TOKENS.ink;
   lines.forEach((ln, i) => {
-    const hh = ln.trim() ? lh : lh * 0.5;
-    if (ln.trim()) {
-      const isRule = /^\|[\s|-]+\|$/.test(ln);
-      const isHead = ln.startsWith('#');
-      ctx.fillStyle = isRule || isHead ? TOKENS.mutedFg : TOKENS.ink;
-      ctx.fillText(ln, ex + inset, ly + hh * 0.5 + mono * 0.34);
-    }
+    const hh = lh;
+    if (ln.trim()) ctx.fillText(ln, ex + inset, ly + hh * 0.5 + mono * 0.34);
     if (i === hiLine) rowRect = { x: ex + inset - 10, y: ly, w: textW(ctx, ln) + 20, h: hh };
     ly += hh;
   });
@@ -1427,6 +1464,7 @@ export function refusalCard(ctx, props) {
     flaggedText = 'Marked as missing',
     flagged = 0,
     showQuestion = true,
+    questionAlpha = 1,
     footer = true,
   } = props;
   const e = easeOutQuart(progress);
@@ -1438,26 +1476,32 @@ export function refusalCard(ctx, props) {
   let qh = 0;
   if (showQuestion && question) qh = measureQuestion(ctx, w, question) + 28;
   // The refusal sentence is the card's primary text: a size up from answer body.
-  const ansSize = 26;
+  const ansSize = 32;
   setFont(ctx, { size: ansSize });
-  const ansLines = balancedText(ctx, answer || REFUSAL_TEXT, innerW);
-  const alh = ansSize * 1.55;
-  setFont(ctx, { size: 20 });
-  const hintLines = hint ? balancedText(ctx, hint, innerW) : [];
-  const hlh = 20 * 1.625;
-  const chipH = 36;
-  const H = pad + chipH + 20 + ansLines.length * alh + (hintLines.length ? 12 + hintLines.length * hlh : 0) + (footer ? 28 + 1.5 + 20 + 48 : 0) + pad;
+  const ansLines = niceText(ctx, answer || REFUSAL_TEXT, innerW);
+  const alh = ansSize * 1.45;
+  setFont(ctx, { size: 24 });
+  const hintLines = hint ? niceText(ctx, hint, innerW) : [];
+  const hlh = 24 * 1.5;
+  const chipH = 40;
+  const H = pad + chipH + 20 + ansLines.length * alh + (hintLines.length ? 12 + hintLines.length * hlh : 0) + (footer ? 28 + 1.5 + 20 + 52 : 0) + pad;
   const dy = (1 - e) * 8;
   ctx.globalAlpha = a;
+  // The echo does not ride the card's arrival: same pixels as questionRow(), clean handover.
+  if (qh && questionAlpha > 0) {
+    ctx.save();
+    ctx.globalAlpha = alpha * questionAlpha;
+    drawQuestion(ctx, x, y, w, question, theme, 1);
+    ctx.restore();
+  }
   ctx.translate(0, dy);
-  if (qh) questionRow(ctx, x, y, w, question, theme, 1);
   const cy = y + qh;
   cardSurface(ctx, x, cy, w, H, 28, theme);
 
   let yy = cy + pad;
-  setFont(ctx, { size: 18, weight: 600, track: 0.06 });
+  setFont(ctx, { size: 20, weight: 600, track: 0.06 });
   const cs = String(chipText).toUpperCase();
-  const cw = textW(ctx, cs) + 32;
+  const cw = textW(ctx, cs) + 36;
   rrPath(ctx, x + pad, yy, cw, chipH, chipH / 2);
   ctx.fillStyle = TOKENS.card;
   ctx.fill();
@@ -1465,7 +1509,7 @@ export function refusalCard(ctx, props) {
   ctx.fill();
   ctx.fillStyle = TOKENS.warningFg;
   ctx.textBaseline = 'middle';
-  ctx.fillText(cs, x + pad + 16, yy + chipH / 2 + 1);
+  ctx.fillText(cs, x + pad + 18, yy + chipH / 2 + 1);
   const chip = { x: x + pad, y: yy + dy, w: cw, h: chipH };
   yy += chipH + 20;
 
@@ -1476,9 +1520,9 @@ export function refusalCard(ctx, props) {
   yy += ansLines.length * alh;
   if (hintLines.length) {
     yy += 12;
-    setFont(ctx, { size: 20 });
+    setFont(ctx, { size: 24 });
     ctx.fillStyle = TOKENS.mutedFg;
-    hintLines.forEach((ln, i) => ctx.fillText(ln, x + pad, yy + hlh * i + hlh * 0.5 + 20 * 0.36));
+    hintLines.forEach((ln, i) => ctx.fillText(ln, x + pad, yy + hlh * i + hlh * 0.5 + 24 * 0.36));
     yy += hintLines.length * hlh;
   }
 
@@ -1489,28 +1533,28 @@ export function refusalCard(ctx, props) {
     ctx.fillRect(x + pad, yy, innerW, 1.5);
     yy += 1.5 + 20;
     const fk = easeOutQuart(Number(flagged));
-    setFont(ctx, { size: 20 });
-    const fw = Math.max(textW(ctx, flagText), fk > 0 ? textW(ctx, flaggedText) : 0) + 20 + 22 + 10 + 20;
-    rrPath(ctx, x + pad, yy, fw, 48, 24);
+    setFont(ctx, { size: 22 });
+    const fw = Math.max(textW(ctx, flagText), fk > 0 ? textW(ctx, flaggedText) : 0) + 20 + 24 + 12 + 22;
+    rrPath(ctx, x + pad, yy, fw, 52, 26);
     ctx.fillStyle = fk > 0 ? mixHex(TOKENS.secondary, TOKENS.muted, fk) : TOKENS.secondary;
     ctx.fill();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = TOKENS.border;
     ctx.stroke();
-    icon(ctx, 'flag', x + pad + 20, yy + 13, 22, TOKENS.ink, 2);
+    icon(ctx, 'flag', x + pad + 20, yy + 14, 24, TOKENS.ink, 2);
     ctx.textBaseline = 'middle';
     ctx.fillStyle = TOKENS.ink;
     if (fk < 1) {
       ctx.globalAlpha = a * (1 - fk);
-      ctx.fillText(flagText, x + pad + 20 + 22 + 10, yy + 25);
+      ctx.fillText(flagText, x + pad + 20 + 24 + 12, yy + 27);
     }
     if (fk > 0) {
       ctx.globalAlpha = a * fk;
-      ctx.fillText(flaggedText, x + pad + 20 + 22 + 10, yy + 25);
+      ctx.fillText(flaggedText, x + pad + 20 + 24 + 12, yy + 27);
     }
     ctx.globalAlpha = a;
-    flag = { x: x + pad, y: yy + dy, w: fw, h: 48 };
-    const ic = 28;
+    flag = { x: x + pad, y: yy + dy, w: fw, h: 52 };
+    const ic = 32;
     ['thumbsUp', 'thumbsDown'].forEach((n, i) => {
       icon(ctx, n, x + w - pad - (2 - i) * (ic + 20) + 20, yy + 10, ic, TOKENS.mutedFg, 1.8);
     });
@@ -1520,7 +1564,7 @@ export function refusalCard(ctx, props) {
     rect: { x, y: cy + dy, w, h: H },
     chip,
     flag,
-    question: qh ? { x, y: y + dy, w, h: qh - 28 } : null,
+    question: qh ? { x, y, w, h: qh - 28 } : null,
   };
 }
 
@@ -1727,7 +1771,7 @@ export function gapItem(ctx, props) {
     progress = 1,
     alpha = 1,
     theme = 'light',
-    time = 'Just now',
+    time = 'now',
     signals = ['refused'],
     header = true,
     title = 'Content gaps',
@@ -1883,10 +1927,18 @@ export function programTag(ctx, props) {
 
 const MARK_UNIT = 330; // mark box in world units; scale = design px per unit
 
+// Mark sheet geometry shared by the tile formation and the vector sheets: 0.72*size
+// squares, centres offset from the mark centre (unrotated), then rotated in place.
+export const MARK_SHEETS = [
+  { color: TOKENS.green, alpha: 0.58, rot: -21, dx: -0.1, dy: 0.05 },
+  { color: TOKENS.coral, alpha: 0.72, rot: 19, dx: 0.11, dy: -0.05 },
+];
+const SHEET_RADII = [0.34, 0.48, 0.38, 0.46];
+
 /** Draw the vector mark (sheets + core + T) centred at (cx, cy) with box size B. */
 function drawMark(ctx, cx, cy, B, m, tA, theme, spread = 1, coreScale = 80 / 70) {
   const S = 0.72 * B;
-  const rad = [0.34, 0.48, 0.38, 0.46].map((v) => v * S);
+  const rad = SHEET_RADII.map((v) => v * S);
   const f = B / 32; // CSS px -> this box
   const sheet = (color, alphaMul, rotDeg, tx, ty, k) => {
     if (k <= 0) return;
@@ -1932,35 +1984,111 @@ function drawMark(ctx, cx, cy, B, m, tA, theme, spread = 1, coreScale = 80 / 70)
     ctx.restore();
     ctx.restore();
   }
-  // The T: 0.92rem in a 2rem box, scaled with the core.
-  if (tA > 0) {
-    const ts = ((0.92 * 16) / 32) * B * coreScale;
+  drawT(ctx, cx, cy, B * coreScale, tA);
+}
+
+function drawT(ctx, cx, cy, B, tA) {
+  if (tA <= 0) return;
+  // The T: 0.92rem in a 2rem box.
+  const ts = ((0.92 * 16) / 32) * B;
+  ctx.save();
+  ctx.globalAlpha *= tA;
+  setFont(ctx, { family: FONTS.display, size: ts, weight: 600 });
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = TOKENS.onPrimary;
+  ctx.fillText('T', cx, cy + ts * 0.345);
+  ctx.restore();
+}
+
+// Crisp vector sheets for the end slate, with a hole for the WebGL lens.
+function drawSheets(ctx, cx, cy, B, alpha, holeR, theme) {
+  const S = 0.72 * B;
+  const rad = SHEET_RADII.map((v) => v * S);
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  if (holeR > 0) {
+    const clip = new Path2D();
+    clip.rect(cx - B * 2, cy - B * 2, B * 4, B * 4);
+    clip.arc(cx, cy, holeR, 0, Math.PI * 2);
+    ctx.clip(clip, 'evenodd');
+  }
+  for (const s of MARK_SHEETS) {
     ctx.save();
-    ctx.globalAlpha *= tA;
-    setFont(ctx, { family: FONTS.display, size: ts, weight: 600 });
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = TOKENS.onPrimary;
-    ctx.fillText('T', cx, cy + ts * 0.345);
+    ctx.translate(cx + s.dx * B, cy + s.dy * B);
+    ctx.rotate((s.rot * Math.PI) / 180);
+    shadow(ctx, rgba(theme === 'dark' ? '#000000' : TOKENS.ink, theme === 'dark' ? 0.35 : 0.16), 20, 0, 4);
+    squirclePath(ctx, -S / 2, -S / 2, S, S, rad);
+    ctx.fillStyle = rgba(s.color, s.alpha);
+    ctx.fill();
     ctx.restore();
   }
+  ctx.restore();
+}
+
+// Layout shared by lockup() and lockupBounds(). No drawing.
+function lockupLayout(ctx, p) {
+  const { x = 960, y = 420, scale = 1, word = 'Truenote', tagline = '', url = '', layout = 'stacked', sheetsAlpha = 0, markAlpha = 1 } = p;
+  const B = MARK_UNIT * scale;
+  const stacked = layout !== 'horizontal';
+  // Sheets reach ~0.58 B from the centre; the vector mark (spread 2.4) ~0.5 B.
+  const reach = sheetsAlpha > 0 ? 0.58 * B : markAlpha > 0 ? 0.52 * B : 0.41 * B;
+  const ws = stacked ? B * 0.44 : B * 0.56;
+  ctx.save();
+  setFont(ctx, { family: FONTS.display, size: ws, weight: 600, track: -0.025 });
+  const ww = textW(ctx, word);
+  const wx = stacked ? x - ww / 2 : x + reach + B * 0.16;
+  const wBase = stacked ? y + reach + B * 0.2 + ws * 0.72 : y + ws * 0.345;
+  const tx = stacked ? x : wx;
+  const tAlign = stacked ? 'center' : 'left';
+  let yy = wBase + ws * 0.28;
+  let tag = null;
+  if (tagline) {
+    const ts = stacked ? Math.max(30, ws * 0.3) : Math.max(28, ws * 0.28);
+    yy += ts * 1.25;
+    setFont(ctx, { family: FONTS.display, size: ts, italic: true, weight: 400 });
+    const tw = textW(ctx, tagline);
+    tag = { ts, base: yy, x: tAlign === 'center' ? tx - tw / 2 : tx, w: tw };
+    yy += ts * 0.5;
+  }
+  let u = null;
+  if (url) {
+    const us = Math.max(22, ws * 0.2);
+    yy += us * 2.4;
+    setFont(ctx, { family: FONTS.mono, size: us, track: 0.08 });
+    const uw = textW(ctx, url);
+    u = { us, base: yy, x: tAlign === 'center' ? tx - uw / 2 : tx, w: uw };
+  }
+  ctx.restore();
+  const left = Math.min(x - reach, wx, tag ? tag.x : Infinity, u ? u.x : Infinity);
+  const right = Math.max(x + reach, wx + ww, tag ? tag.x + tag.w : -Infinity, u ? u.x + u.w : -Infinity);
+  const top = Math.min(y - reach, wBase - ws * 0.75);
+  const bottom = Math.max(y + reach, yy + 10);
+  return { B, stacked, ws, ww, wx, wBase, tx, tAlign, tag, u, reach, rect: { x: left, y: top, w: right - left, h: bottom - top } };
+}
+
+/** Bounding box the lockup would occupy with these props, without drawing: centre it with this. */
+export function lockupBounds(ctx, props) {
+  return lockupLayout(ctx, props).rect;
 }
 
 /**
  * End slate. The anchor (x, y) is the mark centre; the mark box is 330 * scale
- * design px (the .brand-mark box; sheets and core are 72% of it, core x80/70).
- * markAlpha 0..1 builds the mark (sheets fan in, then the core); pass 0 when the
- * mark is drawn in WebGL, and use tAlpha for the Georgia T on the core.
- * layout 'stacked' (default): wordmark, tagline, url centred below the mark.
- * layout 'horizontal': wordmark right of the mark, tagline + url under the wordmark.
- * Returns { rect, mark: {x, y, size}, word: {x,y,w,h} }.
+ * design px (the .brand-mark box; sheets and core are 72% of it).
+ * markAlpha 0..1 builds the full vector mark (sheets fan in, then the core).
+ * With the mark in WebGL: markAlpha 0, sheetsAlpha 0..1 draws only the two sheets
+ * (MARK_SHEETS geometry, crisp, soft shadow) with a hole of radius holeR at the
+ * centre so the lens shows through; tAlpha draws the Georgia T.
+ * layout 'stacked' (default) or 'horizontal'.
+ * Returns { rect (full bounding box), mark: {x, y, size}, word: {x,y,w,h} }.
  */
 export function lockup(ctx, props) {
   const {
     x = 960,
     y = 420,
-    scale = 1,
     markAlpha = 1,
+    sheetsAlpha = 0,
+    holeR = 0,
     tAlpha = null,
     wordAlpha = 1,
     word = 'Truenote',
@@ -1974,82 +2102,53 @@ export function lockup(ctx, props) {
     coreScale = 1,
     scrim = 0,
   } = props;
-  const B = MARK_UNIT * scale;
+  const L = lockupLayout(ctx, props);
+  const { B } = L;
   const dark = theme === 'dark';
   const ink = dark ? TOKENS.paper : TOKENS.ink;
   const sub = dark ? rgba(TOKENS.paper, 0.74) : TOKENS.mutedFg;
   const urlC = dark ? TOKENS.cobaltOnDark : TOKENS.primary;
   ctx.save();
   if (scrim > 0) {
-    const a = scrim * Math.max(clamp01(markAlpha), clamp01(wordAlpha));
-    ctx.globalAlpha = a;
+    ctx.globalAlpha = scrim * Math.max(clamp01(markAlpha), clamp01(wordAlpha), clamp01(sheetsAlpha));
     const sc = dark ? rgba(TOKENS.night, 0.8) : rgba(TOKENS.canvas, 0.9);
-    if (layout !== 'horizontal') softScrim(ctx, x - B * 1.6, y - B * 0.9, B * 3.2, B * 2.6, B, sc, B * 0.8);
-    else softScrim(ctx, x - B * 0.9, y - B * 0.9, B * 4.4, B * 1.9, B * 0.8, sc, B * 0.8);
+    const r = L.rect;
+    softScrim(ctx, r.x - B * 0.3, r.y - B * 0.3, r.w + B * 0.6, r.h + B * 0.6, B * 0.6, sc, B * 0.6);
     ctx.globalAlpha = 1;
   }
-  if (markAlpha > 0 || (tAlpha ?? 0) > 0) {
+  if (sheetsAlpha > 0) drawSheets(ctx, x, y, B, clamp01(sheetsAlpha), holeR, theme);
+  if (markAlpha > 0) {
     drawMark(ctx, x, y, B, markAlpha, tAlpha ?? clamp01((markAlpha - 0.55) / 0.45), theme, spread, coreScale);
-  }
-  const stacked = layout !== 'horizontal';
-  const ws = stacked ? B * 0.44 : B * 0.56;
-  setFont(ctx, { family: FONTS.display, size: ws, weight: 600, track: -0.025 });
-  const ww = textW(ctx, word);
-  let wx;
-  let wBase;
-  let tx;
-  let tAlign;
-  if (stacked) {
-    wx = x - ww / 2;
-    wBase = y + B * 0.5 + B * 0.2 + ws * 0.72;
-    tx = x;
-    tAlign = 'center';
-  } else {
-    const gap = B * 0.2;
-    wx = x + B * 0.41 + gap;
-    wBase = y + ws * 0.345;
-    tx = wx;
-    tAlign = 'left';
+  } else if ((tAlpha ?? 0) > 0) {
+    drawT(ctx, x, y, B * coreScale, tAlpha);
   }
   const wk = easeOutQuart(wordAlpha);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   if (wordAlpha > 0) {
     ctx.globalAlpha = clamp01(wordAlpha);
+    setFont(ctx, { family: FONTS.display, size: L.ws, weight: 600, track: -0.025 });
     ctx.fillStyle = ink;
-    ctx.fillText(word, wx, wBase + (1 - wk) * 8);
+    ctx.fillText(word, L.wx, L.wBase + (1 - wk) * 8);
   }
-  let yy = wBase + ws * 0.28;
-  let tagRect = null;
-  if (tagline) {
-    const ts = stacked ? Math.max(30, ws * 0.3) : Math.max(28, ws * 0.28);
-    yy += ts * 1.25;
+  if (L.tag && taglineAlpha > 0) {
     const k = easeOutQuart(taglineAlpha);
     ctx.globalAlpha = clamp01(taglineAlpha);
-    setFont(ctx, { family: FONTS.display, size: ts, italic: true, weight: 400 });
-    ctx.textAlign = tAlign;
+    setFont(ctx, { family: FONTS.display, size: L.tag.ts, italic: true, weight: 400 });
     ctx.fillStyle = sub;
-    if (taglineAlpha > 0) ctx.fillText(tagline, tx, yy + (1 - k) * 6);
-    const tw = textW(ctx, tagline);
-    tagRect = { x: tAlign === 'center' ? tx - tw / 2 : tx, y: yy - ts, w: tw, h: ts * 1.3 };
-    yy += ts * 0.5;
+    ctx.fillText(tagline, L.tag.x, L.tag.base + (1 - k) * 6);
   }
-  if (url) {
-    const us = Math.max(22, ws * 0.2);
-    yy += us * 2.4;
+  if (L.u && urlAlpha > 0) {
     const k = easeOutQuart(urlAlpha);
     ctx.globalAlpha = clamp01(urlAlpha);
-    setFont(ctx, { family: FONTS.mono, size: us, track: 0.08 });
-    ctx.textAlign = tAlign;
+    setFont(ctx, { family: FONTS.mono, size: L.u.us, track: 0.08 });
     ctx.fillStyle = urlC;
-    if (urlAlpha > 0) ctx.fillText(url, tx, yy + (1 - k) * 4);
+    ctx.fillText(url, L.u.x, L.u.base + (1 - k) * 4);
   }
   ctx.restore();
-  const left = stacked ? Math.min(x - B / 2, wx, tagRect ? tagRect.x : Infinity) : x - B / 2;
-  const right = stacked ? Math.max(x + B / 2, wx + ww, tagRect ? tagRect.x + tagRect.w : -Infinity) : Math.max(wx + ww, tagRect ? tagRect.x + tagRect.w : -Infinity);
   return {
-    rect: { x: left, y: y - B / 2, w: right - left, h: yy + 12 - (y - B / 2) },
+    rect: L.rect,
     mark: { x, y, size: B },
-    word: { x: wx, y: wBase - ws * 0.72, w: ww, h: ws },
+    word: { x: L.wx, y: L.wBase - L.ws * 0.72, w: L.ww, h: L.ws },
   };
 }

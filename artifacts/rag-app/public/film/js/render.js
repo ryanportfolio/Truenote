@@ -19,7 +19,7 @@ import { cameraMatrices, defaultCam } from './camera.js';
 
 export const STRIDE = 16;
 const MAX_WAVES = 8;
-const MAX_BEAMS = 32;
+const MAX_BEAMS = 128;
 const GUARD = 1.18; // shadow buffer covers 18% beyond each screen edge
 const SHADOW_SCALE = 0.75; // shadow buffer resolution relative to the canvas
 // Master look constants.
@@ -56,7 +56,12 @@ const oklabToLin = ([L, a, b]) => {
     -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * q];
 };
 const lch = (L, C, h) => [L, C * Math.cos((h * Math.PI) / 180), C * Math.sin((h * Math.PI) / 180)];
-const DAWN_STOPS = [
+const labMix = (x, y, k) => x.map((v, i) => v + (y[i] - v) * k);
+const LAB_INK = linToOklab(hexLin('#0B1020'));
+const LAB_COBALT = linToOklab(hexLin('#13245A'));
+const LAB_DAWN = linToOklab(hexLin('#DCE3EE'));
+const LAB_CREAM = linToOklab(hexLin('#E8E6DE'));
+const DAWN_STOPS_OLD = [
   [0.0, linToOklab(hexLin('#0B1020'))],
   [0.3, lch(0.29, 0.115, 264)],    // deep cobalt ink
   [0.5, lch(0.43, 0.075, 258)],    // blue dusk, lighter
@@ -65,6 +70,12 @@ const DAWN_STOPS = [
   [0.92, lch(0.9, 0.018, 84)],
   [1.0, linToOklab(hexLin('#E8E6DE'))],
 ];
+// ink -> deep cobalt ink -> cold dawn white -> cream. Every segment stays blue or near-white.
+const DAWN_STOPS = [
+  [0.0, LAB_INK], [0.18, labMix(LAB_INK, LAB_COBALT, 0.5)], [0.35, LAB_COBALT],
+  [0.58, labMix(LAB_COBALT, LAB_DAWN, 0.5)], [0.8, LAB_DAWN], [0.9, labMix(LAB_DAWN, LAB_CREAM, 0.5)], [1.0, LAB_CREAM],
+];
+void DAWN_STOPS_OLD;
 const DAWN_U = new Float32Array(DAWN_STOPS.map((d) => d[0]));
 const DAWN_LAB = new Float32Array(DAWN_STOPS.flatMap((d) => d[1]));
 function dawnGround(ink) {
@@ -358,7 +369,6 @@ void main(){
   float uLoc = clamp(uDawnP + .12 * uDawn * (sideL * 2. - 1.), 0., 1.);
   vec3 base = mix(dawnColor(uLoc), uBase, step(.9999, uDawnP) + step(uDawnP, 1e-4));
   // the warmth stays local: a soft peach-gold light strongest on the light's side
-  base *= 1. + uDawn * vec3(.09, .05, .012) * sideL * sideL;
   vec3 alb = base;
   float mottle = fbm3(P.xy * .0065) - .5;
   float cloud = fbm3(P.xy * .0021 + 7.3) - .5;
@@ -389,15 +399,20 @@ void main(){
   vec2 ld = normalize(uL.xy + vec2(1e-5, 0.));
   vec2 lp = vec2(-ld.y, ld.x);
   float facing = dot(qn, ld);
-  float bt = clamp((d - 1.05) / .08, 0., 1.);
-  float slope = 6. * bt * (1. - bt) * (.028 / .08);
+  // bezel: dark lip (1.0-1.035), raised rounded paper bead (1.035-1.2), recessed well ring
+  // (1.2-1.34) with a stepped outer edge. The bead is lit by its own normal and throws a
+  // soft shadow outward on the side away from the light.
+  float bx = clamp((d - 1.035) / .165, 0., 1.);
+  float slope = .055 * 3.14159 / .165 * cos(3.14159 * bx) * step(1.035, d) * step(d, 1.2);
   vec3 nb = normalize(vec3(-qn * slope, 1.));
   float mGl = boxCov(-1., 1.0, d, pr);
-  float mLip = boxCov(1.0, 1.05, d, pr);
-  float mBev = boxCov(1.05, 1.13, d, pr);
-  float mCol = boxCov(1.13, 1.245, d, pr);
-  float groove = hairline(d - 1.165 - .004 * facing, pr, .0022) + hairline(d - 1.215 - .004 * facing, pr, .0022);
-  float ridge = hairline(d - 1.165 + .004 * facing, pr, .0022) + hairline(d - 1.215 + .004 * facing, pr, .0022);
+  float mLip = boxCov(1.0, 1.035, d, pr);
+  float mBev = boxCov(1.035, 1.2, d, pr);
+  float mCol = boxCov(1.2, 1.345, d, pr);
+  float away = max(-facing, 0.);
+  float beadSh = (1. - smoothstep(1.2, 1.2 + .015 + .07 * away, d)) * away * .5;
+  float groove = hairline(d - 1.275 - .003 * facing, pr, .002) + .8 * hairline(d - 1.343, pr, .0025) * away;
+  float ridge = hairline(d - 1.275 + .003 * facing, pr, .002) + .8 * hairline(d - 1.343, pr, .0025) * max(facing, 0.);
 
   float depth = .16 * uCore.z;
   // refraction: towards the rim the glass bends the view inwards
@@ -478,9 +493,9 @@ void main(){
   vec3 lipC = vec3(.012, .017, .042) * (1. + .8 * max(-facing, 0.))
             + vec3(.4, .46, .62) * hairline(d - 1.004, pr, .0025) * max(-facing, 0.)
             + alb * Eb * .5 * hairline(d - 1.047, pr, .0025) * max(facing, 0.);
-  vec3 collarC = alb * 1.012 * E * (1. - .16 * groove + .1 * ridge);
-  vec3 lensC = glass * mGl + lipC * mLip + alb * Eb * mBev + collarC * mCol;
-  float lensMask = boxCov(-1., 1.245, d, pr) * on;
+  vec3 collarC = alb * .965 * E * (1. - beadSh) * (1. - .16 * groove + .1 * ridge);
+  vec3 lensC = glass * mGl + lipC * mLip + alb * 1.03 * Eb * mBev + collarC * mCol;
+  float lensMask = boxCov(-1., 1.345, d, pr) * on;
   vec3 col = mix(table, lensC, lensMask);
   col += vec3(.85, .92, 1.) * spec * mGl * on * .6;
 
@@ -541,6 +556,11 @@ uniform vec3 uAir;
 uniform vec3 uTint;
 uniform vec3 uKeyT;
 uniform float uTileEdge;
+uniform float uNight;   // 0 day model, 1 dark-room model (follows ground.ink)
+uniform vec3 uKeyN;     // cold key colour x intensity
+uniform vec3 uBounceN;  // warm bounce from below x intensity
+uniform vec3 uAmbN;     // near-black room fill
+uniform vec3 uRimC;     // fresnel rim colour x strength
 in vec3 vPos; in vec2 vLP;
 flat in vec3 vN; flat in vec3 vTx; flat in vec3 vTy; flat in vec4 vC; flat in vec4 vD; flat in vec2 vHalf;
 layout(location = 0) out vec4 oScene;
@@ -559,14 +579,18 @@ float tileShadow(vec3 q, float slope){
   float hb = 0.;
   for (int i = 0; i < 5; i++) hb = max(hb, texture(uShadowTex, u0 + J * (BS[i] * 8.)).g * uHScaleInv);
   float dz = max(hb - q.z, 0.);
-  float pr = clamp(penW(dz), .9, 26.);
+  // a sheet stepping 24 to 48 units above its neighbour throws a soft 12 to 20 px shadow
+  float pr = clamp(1.2 + .3 * dz, 1.2, 26.);
   float bias = .9 + slope * pr * 1.1;
   float s = smoothstep(q.z + bias, q.z + bias + 1.6, texture(uShadowTex, u0).g * uHScaleInv);
   for (int i = 0; i < 8; i++){
     float g = texture(uShadowTex, u0 + J * (PD[i] * pr)).g * uHScaleInv;
     s += smoothstep(q.z + bias, q.z + bias + 1.6, g);
+    vec2 o2 = vec2(PD[i].y, -PD[i].x) * .3 * pr;
+    g = texture(uShadowTex, u0 + J * o2).g * uHScaleInv;
+    s += smoothstep(q.z + bias, q.z + bias + 1.6, g);
   }
-  return s / 9. * darkAt(dz) * 1.1;
+  return s / 17. * darkAt(dz) * 1.1;
 }
 
 void main(){
@@ -591,7 +615,7 @@ void main(){
   vec2 fr = vec2(cs * gp.x - sn * gp.y, sn * gp.x + cs * gp.y);
   float tooth = (vnoise(gp * .9) - .5) * (1. - smoothstep(.5, 1.4, px * .9));
   float fibre = (vnoise(fr * vec2(.22, 1.6)) - .5) * (1. - smoothstep(.5, 1.4, px * 1.6));
-  alb *= 1. + (sheet * .09 + tv * .03 + tooth * .07 + fibre * .055) * mix(1., 1.5, back);
+  alb *= 1. + (sheet * .09 + tv * mix(.03, .008, rest) + tooth * .07 + fibre * .06) * mix(1., 1.5, back);
   alb *= mix(1., .9, back);
 
   // --- fine printed grid, faded out once cells get small on screen
@@ -643,25 +667,35 @@ void main(){
   float dif = wrapDiff(nl0);
   float tilt = clamp(length(vN.xy) / max(abs(vN.z), .05), 0., 3.);
   float sh = tileShadow(vPos, tilt);
-  vec3 E = (uAmb + uKeyT * dif * (1. - sh)) * uTint;
+  vec3 Eday = (uAmb + uKeyT * dif * (1. - sh)) * uTint;
+  // Dark room: one cold key from the light side, a warm bounce from below and behind it,
+  // almost no fill. Faces turning away from the key go warm cream-amber.
+  vec3 bdir = normalize(vec3(-uL.xy * .6, -1.));
+  float bnc = max((dot(n, bdir) + .35) / 1.35, 0.);
+  vec3 En = uAmbN + uKeyN * max((nl0 + .25) / 1.25, 0.) * (1. - sh) + uBounceN * bnc;
+  vec3 E = mix(Eday, En, uNight);
+  // fresnel rim: cards seen edge-on flare
+  float fres = pow(1. - abs(dot(vN, V)), 3.);
   vec3 Hh = normalize(uL + V);
   float sheen = pow(max(dot(n, Hh), 0.), 28.) * .05 * (1. - back * .7) * (1. - sh);
   vec3 trans = uKeyT * max(-nl0, 0.) * .22;
 
   vec3 col = alb * (E + trans);
   col = mix(col, inkC * E, textA);
-  col *= 1. - hair * .2 * edgeK;
-  col *= 1. + bev * .09 * edgeK * mix(1., .4, rest);
+  // at rest the seam between flush neighbours is a 1 px engraved line, ~8% ink, no bevel
+  col *= 1. - hair * mix(.2, .085, rest) * uTileEdge * mix(1., edgeK / max(uTileEdge, 1e-3), 1. - rest);
+  col *= 1. + bev * .09 * edgeK * (1. - rest);
   // glowing cards: the rim itself turns to cobalt (or amber) ink, crisp, so the light reads
   // as light on the edge and not as a tint of the paper
   float rim = max(hair, max(bnd.x, bnd.y)) * mix(.7, 1., edgeK);
   col = mix(col, glowAlb * E, rim * smoothstep(0., .6, glow) * .85);
-  col += uKeyT * sheen;
+  col += uKeyT * sheen * (1. - uNight) + uKeyN * sheen * 1.4 * uNight;
+  col += alb * uRimC * fres;
 
   // --- emitted light: glow on the printed marks and edge; waves wash over marks
   vec3 gcol = mix(uCobaltE, uAmberE, hue);
   float edgeM = max(hair, max(bnd.x, bnd.y) * .6);
-  vec3 em = gcol * glow * (text * max(lines, .4) * .5 + rim * .7);
+  vec3 em = gcol * glow * (text * max(lines, .4) * .5 + rim * .7) + uRimC * fres * fres * .35 * uNight;
   vec3 wem, wt;
   waveField(vPos.xy, px, 0., wem, wt);
   float wAtt = exp(-max(vPos.z, 0.) / 55.);
@@ -899,89 +933,97 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
   });
   if (!gl) throw new Error('render.js: WebGL2 unavailable');
 
-  const floatOK = !!gl.getExtension('EXT_color_buffer_float');
-  gl.getExtension('OES_texture_float_linear');
-  const HDR = floatOK ? gl.RGBA16F : gl.RGBA8;
-  const HDR_TYPE = floatOK ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
-  const maxSamples = gl.getParameter(gl.MAX_SAMPLES) | 0;
-  const SAMPLES = Math.min(4, maxSamples);
-  const H_SCALE = floatOK ? 1 : 1 / 512;
-
-  const P = {
-    shadow: program(gl, VS_SHADOW, FS_SHADOW, 'shadow'),
-    ground: program(gl, VS_FULL, FS_GROUND, 'ground'),
-    tile: program(gl, VS_TILE, FS_TILE, 'tile'),
-    pre: program(gl, VS_TILE, FS_PRE, 'prepass'),
-    beam: program(gl, VS_BEAM, FS_BEAM, 'beam'),
-    down: program(gl, VS_FULL, FS_DOWN4, 'down'),
-    blur: program(gl, VS_FULL, FS_BLUR, 'blur'),
-    out: program(gl, VS_FULL, FS_OUT, 'out'),
-  };
-
-  // geometry
-  const fullVao = gl.createVertexArray();
-  gl.bindVertexArray(fullVao);
-  const fullBuf = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, fullBuf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(0);
-  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-
-  const quadBuf = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5]), gl.STATIC_DRAW);
-
-  const tileVao = gl.createVertexArray();
-  gl.bindVertexArray(tileVao);
-  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
-  gl.enableVertexAttribArray(0);
-  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-  const instBuf = gl.createBuffer();
-  let instCap = 0;
-  gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
-  for (let i = 0; i < 4; i++) {
-    gl.enableVertexAttribArray(1 + i);
-    gl.vertexAttribPointer(1 + i, 4, gl.FLOAT, false, STRIDE * 4, i * 16);
-    gl.vertexAttribDivisor(1 + i, 1);
-  }
-
-  // shadow footprints: quad 0 (light-projected) and quad 1 (vertical AO) in one strip
-  const shQuadBuf = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, shQuadBuf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-    -0.5, -0.5, 0, 0.5, -0.5, 0, -0.5, 0.5, 0, 0.5, 0.5, 0, 0.5, 0.5, 0,
-    -0.5, -0.5, 1, -0.5, -0.5, 1, 0.5, -0.5, 1, -0.5, 0.5, 1, 0.5, 0.5, 1,
-  ]), gl.STATIC_DRAW);
-  const shadowVao = gl.createVertexArray();
-  gl.bindVertexArray(shadowVao);
-  gl.bindBuffer(gl.ARRAY_BUFFER, shQuadBuf);
-  gl.enableVertexAttribArray(0);
-  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-  gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
-  for (let i = 0; i < 4; i++) {
-    gl.enableVertexAttribArray(1 + i);
-    gl.vertexAttribPointer(1 + i, 4, gl.FLOAT, false, STRIDE * 4, i * 16);
-    gl.vertexAttribDivisor(1 + i, 1);
-  }
-
-  const beamQuad = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, beamQuad);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, -1, 1, -1, 0, 1, 1, 1]), gl.STATIC_DRAW);
-  const beamVao = gl.createVertexArray();
-  gl.bindVertexArray(beamVao);
-  gl.bindBuffer(gl.ARRAY_BUFFER, beamQuad);
-  gl.enableVertexAttribArray(0);
-  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-  const beamBuf = gl.createBuffer();
+  let floatOK, HDR, HDR_TYPE, SAMPLES, H_SCALE, P, fullVao, fullBuf, quadBuf, tileVao, instBuf, instCap;
+  let shQuadBuf, shadowVao, beamQuad, beamVao, beamBuf;
   const beamData = new Float32Array(MAX_BEAMS * 12);
-  gl.bindBuffer(gl.ARRAY_BUFFER, beamBuf);
-  gl.bufferData(gl.ARRAY_BUFFER, beamData.byteLength, gl.DYNAMIC_DRAW);
-  for (let i = 0; i < 3; i++) {
-    gl.enableVertexAttribArray(1 + i);
-    gl.vertexAttribPointer(1 + i, 4, gl.FLOAT, false, 48, i * 16);
-    gl.vertexAttribDivisor(1 + i, 1);
+  let warnedBeams = false;
+  let lost = false;
+
+  function buildGL() {
+    floatOK = !!gl.getExtension('EXT_color_buffer_float');
+    gl.getExtension('OES_texture_float_linear');
+    HDR = floatOK ? gl.RGBA16F : gl.RGBA8;
+    HDR_TYPE = floatOK ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
+    const maxSamples = gl.getParameter(gl.MAX_SAMPLES) | 0;
+    SAMPLES = Math.min(4, maxSamples);
+    H_SCALE = floatOK ? 1 : 1 / 512;
+
+    P = {
+      shadow: program(gl, VS_SHADOW, FS_SHADOW, 'shadow'),
+      ground: program(gl, VS_FULL, FS_GROUND, 'ground'),
+      tile: program(gl, VS_TILE, FS_TILE, 'tile'),
+      pre: program(gl, VS_TILE, FS_PRE, 'prepass'),
+      beam: program(gl, VS_BEAM, FS_BEAM, 'beam'),
+      down: program(gl, VS_FULL, FS_DOWN4, 'down'),
+      blur: program(gl, VS_FULL, FS_BLUR, 'blur'),
+      out: program(gl, VS_FULL, FS_OUT, 'out'),
+    };
+
+    // geometry
+    fullVao = gl.createVertexArray();
+    gl.bindVertexArray(fullVao);
+    fullBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, fullBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+    quadBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5]), gl.STATIC_DRAW);
+
+    tileVao = gl.createVertexArray();
+    gl.bindVertexArray(tileVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    instBuf = gl.createBuffer();
+    instCap = 0;
+    gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
+    for (let i = 0; i < 4; i++) {
+      gl.enableVertexAttribArray(1 + i);
+      gl.vertexAttribPointer(1 + i, 4, gl.FLOAT, false, STRIDE * 4, i * 16);
+      gl.vertexAttribDivisor(1 + i, 1);
+    }
+
+    // shadow footprints: quad 0 (light-projected) and quad 1 (vertical AO) in one strip
+    shQuadBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, shQuadBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      -0.5, -0.5, 0, 0.5, -0.5, 0, -0.5, 0.5, 0, 0.5, 0.5, 0, 0.5, 0.5, 0,
+      -0.5, -0.5, 1, -0.5, -0.5, 1, 0.5, -0.5, 1, -0.5, 0.5, 1, 0.5, 0.5, 1,
+    ]), gl.STATIC_DRAW);
+    shadowVao = gl.createVertexArray();
+    gl.bindVertexArray(shadowVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, shQuadBuf);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
+    for (let i = 0; i < 4; i++) {
+      gl.enableVertexAttribArray(1 + i);
+      gl.vertexAttribPointer(1 + i, 4, gl.FLOAT, false, STRIDE * 4, i * 16);
+      gl.vertexAttribDivisor(1 + i, 1);
+    }
+
+    beamQuad = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, beamQuad);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, -1, 1, -1, 0, 1, 1, 1]), gl.STATIC_DRAW);
+    beamVao = gl.createVertexArray();
+    gl.bindVertexArray(beamVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, beamQuad);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    beamBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, beamBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, beamData.byteLength, gl.DYNAMIC_DRAW);
+    for (let i = 0; i < 3; i++) {
+      gl.enableVertexAttribArray(1 + i);
+      gl.vertexAttribPointer(1 + i, 4, gl.FLOAT, false, 48, i * 16);
+      gl.vertexAttribDivisor(1 + i, 1);
+    }
+    gl.bindVertexArray(null);
   }
-  gl.bindVertexArray(null);
+  buildGL();
 
   // render targets
   let T = null;
@@ -1013,6 +1055,7 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
   }
 
   function resize(pw, ph) {
+    if (gl.isContextLost()) { W = Math.max(1, Math.round(pw)); H = Math.max(1, Math.round(ph)); return; }
     pw = Math.max(1, Math.round(pw));
     ph = Math.max(1, Math.round(ph));
     if (pw === W && ph === H && T) return;
@@ -1073,7 +1116,20 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
   const amberE = [1.0, 0.44, 0.035].map((v) => v * 1.8);
   const inkSrgb = hexSrgb(INK);
 
+  const onLost = (e) => { e.preventDefault(); lost = true; };
+  const onRestored = () => {
+    buildGL();
+    T = null; // old targets died with the context
+    const w = W || canvas.width, h = H || canvas.height;
+    W = 0; H = 0;
+    resize(w, h);
+    lost = false;
+  };
+  canvas.addEventListener('webglcontextlost', onLost, false);
+  canvas.addEventListener('webglcontextrestored', onRestored, false);
+
   function render(fs) {
+    if (lost || gl.isContextLost()) return;
     if (!T) resize(canvas.width || 1920, canvas.height || 1080);
     const t = fs.t || 0;
     const cam = fs.cam || defaultCam();
@@ -1101,7 +1157,7 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
     // solved per channel so a flat, unshadowed surface gets exactly the intensity (ground
     // hex survives); tiles additionally take the light's own tint.
     const seg = (a, m, b) => (warm < 0.6 ? lerp3(a, m, warm / 0.6) : lerp3(m, b, (warm - 0.6) / 0.4));
-    const ambCol = seg([0.84, 0.92, 1.12], [0.94, 0.91, 0.95], [1.0, 0.93, 0.83]);
+    const ambCol = seg([0.84, 0.92, 1.12], [0.94, 0.91, 0.95], [1.0, 0.91, 0.78]);
     const tintRaw = seg([0.9, 0.97, 1.1], [1.08, 1.0, 0.9], [1.08, 1.0, 0.88]);
     const tl = 0.2126 * tintRaw[0] + 0.7152 * tintRaw[1] + 0.0722 * tintRaw[2];
     const lightTint = tintRaw.map((v) => v / tl);
@@ -1111,9 +1167,14 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
     const amb = ambCol.map((v) => v * ka * inten);
     const key = amb.map((a) => (inten - a) / difFlat);
     const keyT = amb.map((a) => (inten - a) / Math.max(difFlat, 0.8));
+    const keyN = hexLin('#BFD2FF').map((v) => v * 1.3 * inten);
+    const bounceN = hexLin('#F2C9A0').map((v) => v * 0.48 * inten);
+    const ambN = [0.035, 0.04, 0.055].map((v) => v * inten);
+    const rimK = ink * 0.35 * (0.12 + 0.88 * inten) + (1 - ink) * 0.04 * inten;
+    const rimC = hexLin('#FFF4E0').map((v) => v * rimK);
 
     const hazeRef = Math.hypot(cam.x - cam.tx, cam.y - cam.ty, cam.z - cam.tz);
-    const haze = fs.haze ?? HAZE;
+    const haze = fin(fs.haze, HAZE + 0.00042 * ink);
     const baseLin = dawnGround(ink);
     const dawnAmt = Math.pow(4 * ink * (1 - ink), 1.5);
     const air = baseLin.map((v, i) => v * (1 + 0.1 * ink) + [0, 0.004, 0.012][i] * ink);
@@ -1188,6 +1249,11 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
       if (u.uTint) gl.uniform3fv(u.uTint, lightTint);
       if (u.uKeyT) gl.uniform3fv(u.uKeyT, keyT);
       if (u.uTileEdge) gl.uniform1f(u.uTileEdge, clamp01(fin(fs.tileEdge, 1)));
+      if (u.uNight) {
+        gl.uniform1f(u.uNight, ink);
+        gl.uniform3fv(u.uKeyN, keyN); gl.uniform3fv(u.uBounceN, bounceN);
+        gl.uniform3fv(u.uAmbN, ambN); gl.uniform3fv(u.uRimC, rimC);
+      }
     };
     const setWaves = (u) => {
       gl.uniform4fv(u.uWaveA, waveA);
@@ -1262,6 +1328,7 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
 
     // beams: tint the scene (multiply), then add light
     const beams = fs.beams || [];
+    if (beams.length > MAX_BEAMS && !warnedBeams) { warnedBeams = true; console.warn(`render.js: ${beams.length} beams sent, drawing the first ${MAX_BEAMS}`); }
     const nb = Math.min(MAX_BEAMS, beams.length);
     if (nb > 0) {
       for (let i = 0; i < nb; i++) {
@@ -1366,18 +1433,25 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
       gl.uniform1f(p.u.uGrain, post.grain);
       gl.uniform1f(p.u.uFade, post.fade);
       gl.uniform1f(p.u.uSeed, Math.round(t * 60) % 4096);
-      gl.uniform3fv(p.u.uFadeCol, inkSrgb);
+      const fc = Array.isArray(post.fadeColor) && post.fadeColor.length >= 3 ? post.fadeColor.slice(0, 3).map((v) => clamp01(fin(v, 0))) : inkSrgb;
+      gl.uniform3fv(p.u.uFadeCol, fc);
       drawFull();
     }
     gl.bindVertexArray(null);
   }
 
   function destroy() {
+    canvas.removeEventListener('webglcontextlost', onLost);
+    canvas.removeEventListener('webglcontextrestored', onRestored);
     freeTargets();
     for (const k in P) gl.deleteProgram(P[k].p);
     for (const b of [fullBuf, quadBuf, shQuadBuf, instBuf, beamQuad, beamBuf]) gl.deleteBuffer(b);
     for (const v of [fullVao, tileVao, shadowVao, beamVao]) gl.deleteVertexArray(v);
   }
 
-  return { gl, resize, render, destroy, info: { floatTargets: floatOK, samples: SAMPLES } };
+  return {
+    gl, resize, render, destroy,
+    get lost() { return lost || gl.isContextLost(); },
+    get info() { return { floatTargets: floatOK, samples: SAMPLES }; },
+  };
 }
