@@ -468,7 +468,7 @@ function poseMark(i, t, p) {
   const col = COLORS[c.colKey];
   p.r = col[0]; p.g = col[1]; p.b = col[2];
   // The tile mosaic hands over to the drawn sheets (ui lockup): sheets 68.85 to 69.1, then tiles out by 69.35 under them.
-  p.a = 1 - ramp(t, 69.1, 69.35);
+  p.a = REDUCED ? 0 : 1 - ramp(t, 69.1, 69.35);
   p.lines = 0.1; p.glow = 0; p.hue = 0;
 }
 
@@ -796,13 +796,13 @@ export function frameState(tIn) {
   // Core: a glimmer marks where the passages are headed, then it ignites.
   const c = fs.core;
   c.x = CENTER.x; c.y = CENTER.y;
-  c.r = lerp(CORE_R, MARK.coreR, easeInOutCubic((t - 68.0) / 1.8));
+  c.r = REDUCED ? (t < RC_MARK ? CORE_R : MARK.coreR) : lerp(CORE_R, MARK.coreR, easeInOutCubic((t - 68.0) / 1.8));
   c.on = 0.65 * ramp(t, 22.6, 23.6) + 0.35 * ramp(t, 25.8, 26.9);
   c.glow = 0.25 * c.on + 0.35 * pulse(t, 23.8, 25.2) + 0.8 * pulse(t, 37.8, 39.6) + 0.25 * pulse(t, 33.9, 34.6)
     + 0.5 * ramp(t, 67.0, 67.8) * (1 - ramp(t, 68.6, 69.4)) + 0.35 * ramp(t, 69.0, 70.5);
   c.dim = ramp(t, 52.9, 53.5) * (1 - ramp(t, 57.8, 58.8));
   // The bezel outline goes once the core has grown into the mark.
-  c.bezel = 1 - ramp(t, 69.0, 69.6);
+  c.bezel = REDUCED ? (t < RC_MARK ? 1 : 0) : 1 - ramp(t, 69.0, 69.6);
 
   // Waves.
   fs.waves.length = 0;
@@ -1033,11 +1033,11 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
   }
 
   // End slate: the tiles hand over to the drawn sheets around the real glass lens.
-  if (t > 69.0) {
+  if (t > (REDUCED ? RC_MARK : 69.0)) {
     const m = proj(MARK.x, MARK.y, 0);
     ui.lockup(ctx, {
       x: m.sx, y: m.sy, scale: (m.scale * MARK.size) / 330, markAlpha: 0,
-      sheetsAlpha: ramp(t, 68.85, 69.1), holeR: fs.core.r * m.scale,
+      sheetsAlpha: REDUCED ? 1 : ramp(t, 68.85, 69.1), holeR: fs.core.r * m.scale,
       tAlpha: ramp(t, 69.4, 70.1), wordAlpha: ramp(t, 69.6, 70.5), tagline: COPY.tagline, taglineAlpha: ramp(t, 70.4, 71.3),
       url: COPY.url, urlAlpha: ramp(t, 71.2, 72.0), theme: 'light', layout: 'horizontal', reduced,
     });
@@ -1060,11 +1060,20 @@ function drawThreshold(ctx, t, proj) {
     return out;
   };
   const ring = pts(z), shade = pts(18);
-  // Keep the ring off the question row (x 96..856, y ~250..296) while it shows.
+  // Two passes: everywhere but the question row, the stop label and the refusal
+  // card's area at full strength; inside the card's area fading out as the card
+  // fades in (53.5-53.9 s), so no dash vanishes in one frame.
+  const cardIn = ramp(t, 53.5, 53.9);
+  paintThreshold(ctx, bar, ring, shade, n, sub, 1, [[0, 0, 1920, 1080], [80, 214, 800, 92], [1360, 176, 500, 48], [80, 306, 800, 488]]);
+  if (cardIn < 1) paintThreshold(ctx, bar, ring, shade, n, sub, 1 - cardIn, [[80, 306, 800, 488]]);
+}
+
+// One pass of the dashed ring and its paper shadow, clipped (even-odd) to rects.
+function paintThreshold(ctx, bar, ring, shade, n, sub, alpha, rects) {
   ctx.save();
+  ctx.globalAlpha *= alpha;
   ctx.beginPath();
-  ctx.rect(0, 0, 1920, 1080);
-  ctx.rect(80, 214, 800, t > 53.4 ? 580 : 92);
+  for (const r of rects) ctx.rect(r[0], r[1], r[2], r[3]);
   ctx.clip('evenodd');
   // Adds dash j to the current path; returns its width, or 0 when behind the eye.
   const dash = (arr, j) => {

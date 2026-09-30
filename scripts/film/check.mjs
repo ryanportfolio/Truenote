@@ -2,7 +2,7 @@
 //
 //   node scripts/film/check.mjs --url <url> [--name <run>] [--out <dir>] [--times 2,10,17.5]
 //        [--sheet] [--fps 60] [--tol 2] [--frames 90] [--with-ui] [--width 1920 --height 1080] [--selector #stage]
-//        [--reduce] [--dip-check [--dip-windows 22.2-23.7,58.1-59.1,66.7-67.7] [--dip-max 10]]
+//        [--reduce] [--dip-check [--dip-windows 22.2-23.7,46.4-47.4,58.1-59.1,66.7-67.7] [--dip-max 10]]
 //        [--gl-canvas #gl] [--ui-canvas #ui]
 //
 // Checks: (a) ms/frame while playing, (b) stills of #stage, (c) seek robustness via renderAt (forward vs reverse
@@ -25,7 +25,7 @@ if (!args.url) {
 }
 const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
 const name = args.name || `run-${stamp}`;
-const outDir = resolve(args.out || `D:/screenshots/truenote/film/${name}`);
+const outDir = resolve(args.out || `.tmp/film/${name}`);
 const fps = Number(args.fps ?? 60);
 const tol = Number(args.tol ?? 2);
 const nFrames = Number(args.frames ?? 90);
@@ -70,7 +70,7 @@ try {
 
   if (dipOnly) {
     // ---- dip check: one-frame composite mean-luma jumps through each window (renderAt at 1/fps)
-    const wins = String(args['dip-windows'] || '22.2-23.7,58.1-59.1,66.7-67.7').split(',').map((w) => w.split('-').map(Number));
+    const wins = String(args['dip-windows'] || '22.2-23.7,46.4-47.4,58.1-59.1,66.7-67.7').split(',').map((w) => w.split('-').map(Number));
     if (wins.some((w) => w.length !== 2 || !w.every(Number.isFinite) || w[0] >= w[1])) throw new Error('bad --dip-windows, expected a-b,c-d');
     const dipMax = Number(args['dip-max'] ?? 10);
     const dip = await page.evaluate(({ wins, fps, dipMax }) => {

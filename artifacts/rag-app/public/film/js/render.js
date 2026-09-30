@@ -126,8 +126,12 @@ float boxCov(float a0, float a1, float x, float fw){ return clamp((min(x + .5 * 
 const SHADOW_CURVES = `
 uniform float uShadowAmt;
 uniform vec4 uShadowK; // darkness, penumbra per unit height, AO strength, AO radius per unit height
-float darkAt(float z){ return uShadowAmt * uShadowK.x / (1. + pow(max(z, 0.) / 70., 1.4)); }
-float penW(float z){ return min(2.2 + uShadowK.y * z, 44.); }
+uniform float uFlightK; // ground shadow pass on a light table: 1. Tiles in flight keep a firm shadow.
+float darkAt(float z){
+  float d = uShadowAmt * uShadowK.x / (1. + pow(max(z, 0.) / 70., 1.4));
+  return max(d, uFlightK * uShadowAmt * uShadowK.x * .5 * (1. - smoothstep(700., 1100., z)));
+}
+float penW(float z){ return min(2.2 + uShadowK.y * z, mix(44., 16., uFlightK)); }
 float aoAmt(float z){ return uShadowAmt * uShadowK.z / (1. + z / 18.) * (1. - smoothstep(50., 90., z)); }
 float aoRad(float z){ return 3. + uShadowK.w * z; }
 `;
@@ -433,7 +437,7 @@ void main(){
   float d = length(q);
   vec2 qn = q / max(d, 1e-4);
   float pr = px / uCore.z;
-  float on = uCore.w, glow = uCore2.x, dim = uCore2.y;
+  float on = smoothstep(0., .5, uCore.w), glow = uCore2.x, dim = uCore2.y; // resting glass from on >= 0.5
   vec2 ld = normalize(uL.xy + vec2(1e-5, 0.));
   vec2 lp = vec2(-ld.y, ld.x);
   float facing = dot(qn, ld);
@@ -588,7 +592,8 @@ void main(){
   vD = vec4(clamp(iD.xy, 0., 1.), clamp(iD.z, 0., 2.), clamp(iD.w, 0., 1.)); vHalf = max(.5 * size, vec2(1e-3));
   // a card-sized sheet (short side >= 40) part way through a fade is drawn in the blended pass,
   // so it fades smoothly instead of in alpha-to-coverage steps
-  float card = step(40., min(iB.z, iB.w)) * step(iC.a, .995);
+  // blended pass: card-sized sheets anywhere, and every tile on a light table, while they fade
+  float card = max(step(40., min(iB.z, iB.w)), uDayG) * step(iC.a, .995);
   vCard = uCardPass;
   float mine = mix(1. - card, card, uCardPass);
   gl_Position = mix(vec4(2., 2., 2., 1.), uVP * vec4(pos, 1.), step(1e-4, iC.a) * mine);
@@ -749,6 +754,9 @@ void main(){
   float tilt = clamp(length(vN.xy) / max(abs(vN.z), .05), 0., 3.);
   float sh = tileShadow(vPos, tilt, 6. * restL);
   vec3 Eday = (uAmb + uKeyT * dif * (1. - sh)) * uTint;
+  // cards in flight on a light table: faces turned to the key brighten, faces turned away darken,
+  // a flat card keeps exactly the paper tone
+  Eday *= 1. + .35 * (dif - wrapDiff(uL.z)) * (1. - restL) * uDayG;
   // Dark room: one key from the light side, a warm bounce from below and behind it, almost no
   // fill. The key's cold tint is capped (blue <= 0.97 red) so warm paper stays warm.
   vec3 bdir = normalize(vec3(-uL.xy * .6, -1.));
@@ -1200,15 +1208,15 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
       gl.bindRenderbuffer(gl.RENDERBUFFER, c1);
       gl.renderbufferStorageMultisample(gl.RENDERBUFFER, SAMPLES, HDR, W, H);
       gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
-      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, SAMPLES, gl.DEPTH_COMPONENT24, W, H);
+      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, SAMPLES, gl.DEPTH24_STENCIL8, W, H);
       gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, c0);
       gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.RENDERBUFFER, c1);
     } else {
-      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, W, H);
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH24_STENCIL8, W, H);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, scene.t, 0);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, light.t, 0);
     }
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, depth);
     const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
     if (status !== gl.FRAMEBUFFER_COMPLETE) throw new Error('render.js: main framebuffer incomplete ' + status);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -1333,6 +1341,7 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
       gl.uniform4fv(p.u.uShadowK, SHADOW_K);
       gl.uniform1f(p.u.uHScale, H_SCALE);
       gl.uniform1f(p.u.uDayG, dayG);
+      gl.uniform1f(p.u.uFlightK, dayG);
       gl.bindVertexArray(shadowVao);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 10, count);
       gl.blendEquation(gl.FUNC_ADD);
@@ -1347,7 +1356,8 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
     gl.depthFunc(gl.ALWAYS);
     gl.depthMask(true);
     gl.clearDepth(1);
-    gl.clear(gl.DEPTH_BUFFER_BIT);
+    gl.clearStencil(0);
+    gl.clear(gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
 
     const setLight = (u) => {
       gl.uniform3fv(u.uL, Lv);
@@ -1445,7 +1455,11 @@ export function createRenderer(canvas, { preserveDrawingBuffer = false } = {}) {
       gl.uniform1f(p.u.uHashAlpha, 0); // blended: never hash-discard, even without MSAA
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.enable(gl.STENCIL_TEST);
+      gl.stencilFunc(gl.EQUAL, 0, 0xff);
+      gl.stencilOp(gl.KEEP, gl.KEEP, gl.INCR);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+      gl.disable(gl.STENCIL_TEST);
       gl.disable(gl.BLEND);
       gl.depthMask(true);
     }
