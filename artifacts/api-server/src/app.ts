@@ -125,6 +125,12 @@ export function createApp(): Express {
       ["/security", "/security/", "/security/index.html"],
       serveHtml(path.join(dist, "security/index.html")),
     );
+    // The promo film. Its page uses absolute /film/ asset paths, so the
+    // slashless URL works too.
+    app.get(
+      ["/film", "/film/", "/film/index.html"],
+      serveHtml(path.join(dist, "film/index.html")),
+    );
 
     // HTML is transformed above or by the SPA fallback so its script nonces
     // match the response policy. Other public files remain static.

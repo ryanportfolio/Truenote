@@ -52,3 +52,6 @@ yarn-error.log*
 # Replit upload/paste scratch artifacts
 /attached_assets/
 
+
+# scratch (CLAUDE.md: .tmp/ for scratch)
+.tmp/

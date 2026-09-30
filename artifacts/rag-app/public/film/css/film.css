@@ -1,0 +1,7 @@
+/* Stage styles. External file: production CSP allows style elements from 'self' only. */
+html, body { margin: 0; height: 100%; background: #0B1020; overflow: hidden; }
+body { display: grid; place-items: center; }
+#stage { position: relative; overflow: hidden; background: #0B1020; }
+#stage .film-picture { position: absolute; inset: 0; }
+#stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
