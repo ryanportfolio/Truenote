@@ -569,8 +569,8 @@ const SEARCHES = [
 const WAVE_R0 = RIM, WAVE_R1 = 820;
 function waveRadius(sr, t) { return WAVE_R0 + (WAVE_R1 - WAVE_R0) * easeOutCubic((t - sr.t0) / sr.dur); }
 const EXACT_T0 = 35.2, EXACT_STEP = 0.08;
-const THRESH = { r: 520, z: 170 };
-const WEAK_Z = 80;
+const THRESH = { r: 520, z: 200 };
+const WEAK_Z = 84;
 const WEAK_CARD = { w: 64, h: 50 };
 // The bar rises 49.9 to 50.5 (after the question row settles) and is gone before the stop statement (54.8).
 function barAmount(t) { return easeOutCubic((t - 49.9) / 0.6) * (1 - ramp(t, 54.3, 54.9)); }
@@ -691,7 +691,7 @@ function applyHero(t, p) {
   const c = COLORS.paper;
   p.r = lerp(c[0], CARD[0], unfold); p.g = lerp(c[1], CARD[1], unfold); p.b = lerp(c[2], CARD[2], unfold);
   if (t > 45.2 && REDUCED) {
-    if (t < 45.9) { p.x = PANEL.x; p.y = PANEL.y; p.z = PANEL.z; p.w = PANEL.w; p.h = PANEL.h; p.a = 1 - ramp(t, 45.2, 45.5); return; }
+    if (t < 45.9) { p.x = PANEL.x; p.y = PANEL.y; p.z = PANEL.z; p.w = PANEL.w; p.h = PANEL.h; p.a = 1 - ramp(t, 45.2, 45.65); return; }
     p.x = s.x; p.y = s.y; p.z = s.z; p.w = s.w; p.h = s.h; p.rx = 0; p.ry = 0; p.rz = s.rz;
     p.r = s.col[0]; p.g = s.col[1]; p.b = s.col[2]; p.lines = s.lines; p.glow = 0; p.a = ramp(t, 45.95, 46.5);
     return;
@@ -1064,12 +1064,6 @@ function drawThreshold(ctx, t, proj) {
   ctx.beginPath();
   ctx.rect(0, 0, 1920, 1080);
   ctx.rect(80, 214, 800, 92);
-  const cam = fs.cam;
-  L.weak.forEach((i, wk) => {
-    if (weakRise(wk, t) <= 0.05) return;
-    const q = tileQuad(cam, i);
-    ctx.moveTo(q[0][0], q[0][1]); for (let j = 1; j < 4; j++) ctx.lineTo(q[j][0], q[j][1]); ctx.closePath();
-  });
   ctx.clip('evenodd');
   // Adds dash j to the current path; returns its width, or 0 when behind the eye.
   const dash = (arr, j) => {
@@ -1123,7 +1117,8 @@ function drawShortfall(ctx, t, proj) {
     if (rise <= 0.02) return;
     const k = i * STRIDE;
     const a = L.slots[i].a;
-    const top = proj(tiles[k], tiles[k + 1], tiles[k + 2] + (tiles[k + 7] / 2) * Math.sin(tiles[k + 3]));
+    const quad = tileQuad(fs.cam, i).slice().sort((p, q) => p[1] - q[1]);
+    const top = { sx: (quad[0][0] + quad[1][0]) / 2, sy: Math.min(quad[0][1], quad[1][1]) };
     const ringAt = (da) => proj(CENTER.x + Math.cos(a + da) * THRESH.r, CENTER.y + Math.sin(a + da) * THRESH.r, zBar);
     const tick = ringAt(0);
     ctx.globalAlpha = bar * rise;

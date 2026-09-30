@@ -47,7 +47,7 @@ export const REFUSAL_TEXT =
 // Scrim alpha under text, per surface. Measured on the film's densest frames
 // (storm t 3, 8, 17; rings t 39, 58) so the worst pixel under text passes
 // 4.5:1 for labels and 3:1 for large statement text. See the lab's measure script.
-export const SCRIM = { statementDark: 0.8, statementLight: 0.7, labelDark: 0.94, labelLight: 0.95, callerDark: 0.82, callerLight: 0.9, questionLight: 0.9 };
+export const SCRIM = { statementDark: 0.8, statementLight: 0.3, labelDark: 0.94, labelLight: 0.95, callerDark: 0.82, callerLight: 0.9, questionLight: 0.9 };
 
 const EASE_STAGGER = 0.07; // statement word stagger, s
 const WORD_IN = 0.6; // statement word arrival, s
