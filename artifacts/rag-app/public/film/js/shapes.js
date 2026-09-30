@@ -193,8 +193,11 @@ export function buildLayout(seed = 7) {
 // persimmon sheet rotated 19deg behind the cobalt lens (the archive core).
 export const MARK = { x: CENTER.x, y: CENTER.y, size: 420, coreR: 150 };
 
-function superellipseInside(u, v, n = 3.2) {
-  return Math.pow(Math.abs(u), n) + Math.pow(Math.abs(v), n) <= 1;
+// Inside a rounded square of half-size h with corner radius r, inset by m.
+function roundedInside(x, y, h, r, m) {
+  const hx = h - m, rr = Math.max(0, r - m);
+  const qx = Math.abs(x) - (hx - rr), qy = Math.abs(y) - (hx - rr);
+  return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) <= rr;
 }
 
 function buildMark(slots, R, rng) {
@@ -209,12 +212,12 @@ function buildMark(slots, R, rng) {
     const half = S / 2;
     for (let gy = -half + cell / 2; gy < half; gy += cell) {
       for (let gx = -half + cell / 2; gx < half; gx += cell) {
-        if (!superellipseInside(gx / half, gy / half)) continue;
+        if (!roundedInside(gx, gy, half, 0.48 * S, cell * 0.6)) continue;
         const c = Math.cos(sh.rot), s = Math.sin(sh.rot);
         const x = MARK.x + sh.dx * MARK.size + gx * c - gy * s;
         const y = MARK.y + sh.dy * MARK.size + gx * s + gy * c;
         // Skip cells hidden under the lens.
-        if (Math.hypot(x - MARK.x, y - MARK.y) < MARK.coreR * 0.97) continue;
+        if (Math.hypot(x - MARK.x, y - MARK.y) < MARK.coreR + cell * 0.8) continue;
         cells.push({ x, y, z: sh.z + rng() * 0.6, rz: sh.rot, w: cell * 0.9, h: cell * 0.9, colKey: sh.col, sheet: si });
       }
     }

@@ -596,9 +596,9 @@ void main(){
   vPos = pos; vLP = lp; vN = R[2]; vTx = R[0]; vTy = R[1];
   vC = clamp(iC, 0., 1.);
   vD = vec4(clamp(iD.xy, 0., 1.), clamp(iD.z, 0., 2.), clamp(iD.w, 0., 1.)); vHalf = max(.5 * size, vec2(1e-3));
-  // a card-sized sheet (short side >= 40) part way through a fade is drawn in the blended pass,
-  // so it fades smoothly instead of in alpha-to-coverage steps
-  // blended pass: card-sized sheets anywhere, and every tile on a light table, while they fade
+  // pass choice: a tile part way through a fade (alpha <= .995) goes to the blended pass when it is
+  // a card-sized sheet (short side >= 40) anywhere, or any tile on a light table, so it fades with
+  // true alpha instead of alpha-to-coverage steps; everything else draws in the coverage pass
   float card = max(step(40., min(iB.z, iB.w)), step(.5, uDayG)) * step(iC.a, .995);
   vCard = uCardPass;
   float mine = mix(1. - card, card, uCardPass);
@@ -814,10 +814,6 @@ void main(){
   float hz = hazeAt(length(vPos - uEye));
   col = mix(col, uAir, hz);
   em *= 1. - hz;
-  // a small tile fading in the blended pass on a light table holds its colour toward the table
-  // as it goes, so a persimmon or sage face never mixes with the cobalt lens into mauve.
-  // Card-sized sheets keep their colour (they are paper-toned already).
-  col = mix(col, uAir, smoothstep(.995, .6, alpha) * vCard * step(.5, uDayG) * (1. - step(20., min(vHalf.x, vHalf.y))));
 
   // --- order-independent alpha: alpha-to-coverage with MSAA, else hashed discard
   float h = hash12(floor(gl_FragCoord.xy) + seed * 131.);

@@ -823,7 +823,7 @@ export function frameState(tIn) {
   if (t > 68.6 && t < 69.3 && !REDUCED) {
     const u = (t - 68.6) / 0.6;
     // Opaque until 69.2 (the renderer strokes it solid at intensity >= 0.67), then out.
-    fs.waves.push({ x: CENTER.x, y: CENTER.y, r: MARK.coreR * 1.35 + easeOutCubic(u) * 1300, width: 60, intensity: 1 - ramp(t, 69.2, 69.3), hue: 0 });
+    fs.waves.push({ x: CENTER.x, y: CENTER.y, r: MARK.coreR * 1.35 + easeOutCubic(u) * 1900, width: 60, intensity: 1 - ramp(t, 69.2, 69.3), hue: 0 });
   }
 
   // Tiles.
@@ -1066,7 +1066,7 @@ function drawThreshold(ctx, t, proj) {
   // area at full strength; under the card and each label the ring fades with
   // that element's own alpha, so no dash vanishes in one frame.
   const cardIn = ramp(t, 53.5, 53.9);
-  const labelA = (text) => { const w = labelWin(text); return ramp(t, w.t0, w.t0 + 0.3) * (1 - ramp(t, w.t1 - 0.3, w.t1)); };
+  const labelA = (text) => { const w = labelWin(text); return ramp(t, w.t0 - 0.2, w.t0) * (1 - ramp(t, w.t1, w.t1 + 0.2)); };
   const noA = labelA('No passage matched well enough'), minA = labelA('Minimum match');
   const WIDE = [1360, 176, 500, 48], NARROW = [1600, 176, 260, 48];
   paintThreshold(ctx, bar, ring, shade, n, sub, 1, [[0, 0, 1920, 1080], [80, 214, 800, 92], WIDE, [80, 306, 800, 488]]);

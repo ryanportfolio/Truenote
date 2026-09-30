@@ -146,7 +146,7 @@ try {
     report.checks.playback = { rafMeanMs: mean, rafP95Ms: p95, rafMaxMs: dts[dts.length - 1], framesOver20ms: over, clockAdvancedTo: advanced, renderAt: renderCost };
     console.log(`(a) playing: rAF ${mean.toFixed(1)} ms/frame mean, p95 ${p95.toFixed(1)}, max ${dts[dts.length - 1].toFixed(1)}, ${over}/${dts.length} over 20 ms; clock advanced to ${advanced.toFixed(2)}s`);
     console.log(`    renderAt (GPU-synced): mean ${renderCost.mean.toFixed(1)} ms, p95 ${renderCost.p95.toFixed(1)}, max ${renderCost.max.toFixed(1)}`);
-    if (!(advanced > 0.5)) { failures.push('playback: clock did not advance while playing'); console.log('    FAIL clock did not advance'); }
+    if (!(advanced > 0.25 * (nFrames / 60))) { failures.push('playback: clock did not advance while playing'); console.log('    FAIL clock did not advance'); }
   }
 
   // ---- times
