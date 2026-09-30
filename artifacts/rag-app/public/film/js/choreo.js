@@ -467,8 +467,8 @@ function poseMark(i, t, p) {
   p.w = c.w * (layer > 0 ? 0.9 : 1.05); p.h = c.h * (layer > 0 ? 0.9 : 1.05);
   const col = COLORS[c.colKey];
   p.r = col[0]; p.g = col[1]; p.b = col[2];
-  // The tile mosaic hands over to the drawn sheets (ui lockup): sheets 68.95 to 69.3, tiles out by 69.35.
-  p.a = 1 - ramp(t, 69.0, 69.35);
+  // The tile mosaic hands over to the drawn sheets (ui lockup): sheets 68.85 to 69.1, then tiles out by 69.35 under them.
+  p.a = 1 - ramp(t, 69.1, 69.35);
   p.lines = 0.1; p.glow = 0; p.hue = 0;
 }
 
@@ -797,8 +797,8 @@ export function frameState(tIn) {
   const c = fs.core;
   c.x = CENTER.x; c.y = CENTER.y;
   c.r = lerp(CORE_R, MARK.coreR, easeInOutCubic((t - 68.0) / 1.8));
-  c.on = 0.3 * ramp(t, 22.6, 23.4) + 0.7 * ramp(t, 25.8, 26.9);
-  c.glow = 0.25 * c.on + 0.8 * pulse(t, 37.8, 39.6) + 0.25 * pulse(t, 33.9, 34.6)
+  c.on = 0.65 * ramp(t, 22.6, 23.6) + 0.35 * ramp(t, 25.8, 26.9);
+  c.glow = 0.25 * c.on + 0.35 * pulse(t, 23.8, 25.2) + 0.8 * pulse(t, 37.8, 39.6) + 0.25 * pulse(t, 33.9, 34.6)
     + 0.5 * ramp(t, 67.0, 67.8) * (1 - ramp(t, 68.6, 69.4)) + 0.35 * ramp(t, 69.0, 70.5);
   c.dim = ramp(t, 52.9, 53.5) * (1 - ramp(t, 57.8, 58.8));
   // The bezel outline goes once the core has grown into the mark.
@@ -947,7 +947,7 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
   const chars = Math.floor(clamp((t - (compIn + 0.4)) / 2.0) * q.length);
   if (compA > 0.001) {
     ui.composer(ctx, {
-      x: 96, y: 790, w: 840, text: q, chars, caretOn: Math.floor(t * 2) % 2 === 0, alpha: compA, theme: 'light',
+      x: 96, y: 740, w: 840, text: q, chars, caretOn: Math.floor(t * 2) % 2 === 0, alpha: compA, theme: 'light',
       progress: easeOutQuart((t - compIn) / 0.6), press: pulse(t, pressAt - 0.1, pressAt + 0.3),
     });
   }
@@ -956,7 +956,7 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
   const rowA = ramp(t, pressAt + 0.05, pressAt + 0.45) * (1 - ramp(t, cardAt + 0.1, cardAt + 0.3));
   if (rowA > 0.001 && ui.questionRow) {
     const u = easeOutCubic((t - pressAt) / 0.45);
-    ui.questionRow(ctx, { x: 96, y: lerp(800, 250, u), w: 760, text: q, alpha: rowA, progress: 1 });
+    ui.questionRow(ctx, { x: 96, y: lerp(750, 250, u), w: 760, text: q, alpha: rowA, progress: 1 });
   }
   const wa = (-20 * Math.PI) / 180;
   const wp = proj(CENTER.x + Math.cos(wa) * 560, CENTER.y + Math.sin(wa) * 560, 0);
@@ -1011,13 +1011,13 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
       const w = lw('Logged in Content gaps for review');
       const gy = 985 - 278;
       ui.label(ctx, { text: w.text, x: 1010, y: gy - 34, t, t0: w.t0, t1: w.t1, theme: 'light', size: 20, align: 'left', reduced });
-      ui.gapItem(ctx, { x: 1010, y: gy + (1 - u) * 16, w: 760, question: COPY.q2, progress: u, alpha: ga, time: 'now' });
+      ui.gapItem(ctx, { x: 1010, y: gy - (1 - u) * 16, w: 760, question: COPY.q2, progress: u, alpha: ga, time: 'now' });
     }
   }
 
   // Program scope tags, one per wedge, on the outer band.
   if (t > 60.2 && t < 67.4) {
-    const ta = ramp(t, 60.4, 61.0) * (1 - ramp(t, 66.4, 67.2));
+    const ta = ramp(t, 60.4, 61.0) * (1 - ramp(t, 66.2, 66.9));
     const hues = [262, 48, 168];
     L.WEDGES.forEach((w, k) => {
       const m = (((w.a0 + w.a1) / 2) * Math.PI) / 180;
@@ -1037,7 +1037,7 @@ function drawProduct(ctx, t, ui, cam, proj, reduced) {
     const m = proj(MARK.x, MARK.y, 0);
     ui.lockup(ctx, {
       x: m.sx, y: m.sy, scale: (m.scale * MARK.size) / 330, markAlpha: 0,
-      sheetsAlpha: ramp(t, 68.95, 69.3), holeR: fs.core.r * m.scale,
+      sheetsAlpha: ramp(t, 68.85, 69.1), holeR: fs.core.r * m.scale,
       tAlpha: ramp(t, 69.4, 70.1), wordAlpha: ramp(t, 69.6, 70.5), tagline: COPY.tagline, taglineAlpha: ramp(t, 70.4, 71.3),
       url: COPY.url, urlAlpha: ramp(t, 71.2, 72.0), theme: 'light', layout: 'horizontal', reduced,
     });
@@ -1064,7 +1064,7 @@ function drawThreshold(ctx, t, proj) {
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, 1920, 1080);
-  ctx.rect(80, 214, 800, 92);
+  ctx.rect(80, 214, 800, t > 53.4 ? 580 : 92);
   ctx.clip('evenodd');
   // Adds dash j to the current path; returns its width, or 0 when behind the eye.
   const dash = (arr, j) => {
