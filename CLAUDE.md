@@ -13,7 +13,7 @@ Retrieval-augmented knowledge assistant for call-center Customer Service Reps. A
 Safety rails. Violations = bugs, not "improvements."
 
 1. **Every CSR-facing answer ships with ≥1 clickable citation OR is an explicit refusal.** No naked answers. LLM returns one → treat as refusal.
-2. **Hybrid retrieval, not vector-only.** Vector + BM25 keyword + reranker. Pure vector misses exact-match queries CSRs actually ask ("what's the cancellation fee for plan X?").
+2. **Hybrid retrieval, not vector-only.** Vector + PostgreSQL full-text search + reranker. Pure vector misses exact-match queries CSRs actually ask ("what's the cancellation fee for plan X?").
 3. **Program scoping is a security boundary, enforced server-side.** A CSR on Program A must never retrieve a chunk from Program B. Server-side filter on `program_id`; never rely on UI scoping alone.
 4. **Refusal over hallucination.** Retrieval confidence below threshold, or a claim the LLM can't ground in excerpts → `"I couldn't find this in the knowledge base."` Never invent fees, dates, policy numbers, procedures.
 5. **Eval harness is first-class.** Every change touching ingestion, retrieval, or generation runs the eval suite. "Looks good in the demo" is not a quality gate.
