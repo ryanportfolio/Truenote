@@ -49,6 +49,7 @@ A check couldn't run → *flag the risk plainly* — never fabricate verificatio
 - **Plan before acting.** Outline the plan first; break large changes into atomic, verifiable steps.
 - **Verify before declaring done.** Reproduce bugs before fixing; run the eval harness before claiming retrieval improvements.
 - **Scope discipline.** Only changes requested or clearly necessary. No unrequested refactors, features, abstractions, defensive coding.
+- No unit tests or type tests unless the user asks.
 - **Solve generally.** Never hard-code to pass specific tests or eval questions. Wrong test/requirement → say so, don't work around it.
 - **`.tmp/` for scratch** (gitignored). Reusable → promote to `scripts/`; otherwise delete.
 - **Consult `.claude/reference/` before non-trivial work in unfamiliar areas** (`recall` skill or grep directly).

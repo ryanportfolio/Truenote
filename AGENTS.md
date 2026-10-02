@@ -23,6 +23,7 @@ hooks, and `.claude/skills/` exactly as before.
 ## Runtime Boundary
 
 - Do not execute `.claude/hooks/session-start.sh` in Codex.
+- No unit tests or type tests unless the user asks.
 - Do not inherit Claude-only runtime behavior: popup-tool rules, SessionStart
   directives, default `caveman` activation, Anthropic model names, Claude skill
   invocation syntax, or automatic git integration.
