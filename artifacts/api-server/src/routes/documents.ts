@@ -80,10 +80,13 @@ const UUID_RE =
 
 // Multer in-memory storage. The 20MB cap is enforced both by multer and by
 // the post-parse check below so an attacker can't sneak past the limits with
-// a chunked or content-length-misreported upload.
+// a chunked or content-length-misreported upload. Upload fields are scalars, so
+// fieldArrayIndexLimit 0 rejects names like `title[4294967294]` that make
+// multer build huge sparse arrays (GHSA-535w-7cp7-47q4); multer's default is
+// unlimited.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_BYTES }
+  limits: { fileSize: MAX_BYTES, fieldArrayIndexLimit: 0 }
 });
 
 export interface DocumentListItem {

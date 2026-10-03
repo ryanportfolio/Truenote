@@ -243,11 +243,21 @@ function finalDecision(provisional = provisionalDecision(), receipt = traceRecei
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// The CLI checks records against the real clock. Move every fixture date forward by whole
-// days so the latest fixture time (2026-07-15) lands before today and the authorization
-// window stays open, keeping the CLI test independent of the calendar.
-function shiftFixtureDatesToToday(record: object): void {
-  const offsetMs = Math.max(0, Math.floor((Date.now() - Date.parse("2026-07-16T00:00:00.000Z")) / DAY_MS)) * DAY_MS;
+// The CLI checks records against the real clock. The CLI test dates its records 2026-07-14
+// and 2026-07-15; move them forward by whole days so they land before today and the
+// authorization window stays open, keeping the test independent of the calendar. Read the
+// clock once so every record in a bundle gets the same shift.
+function fixtureDateShift(): { offsetMs: number; year: string } {
+  let offsetMs = Math.max(0, Math.floor((Date.now() - Date.parse("2026-07-16T00:00:00.000Z")) / DAY_MS)) * DAY_MS;
+  const shiftedYear = (date: string) => new Date(Date.parse(date) + offsetMs).getUTCFullYear();
+  // Record IDs carry their decision year, so keep both record days inside one year.
+  if (shiftedYear("2026-07-14T00:00:00.000Z") !== shiftedYear("2026-07-15T00:00:00.000Z")) {
+    offsetMs -= DAY_MS;
+  }
+  return { offsetMs, year: String(shiftedYear("2026-07-15T00:00:00.000Z")) };
+}
+
+function shiftFixtureDates(record: object, { offsetMs, year }: { offsetMs: number; year: string }): void {
   const shift = (value: unknown): unknown => {
     if (typeof value === "string") {
       if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
@@ -255,6 +265,9 @@ function shiftFixtureDatesToToday(record: object): void {
       }
       if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
         return new Date(Date.parse(`${value}T00:00:00.000Z`) + offsetMs).toISOString().slice(0, 10);
+      }
+      if (/^TN-[A-Z0-9-]+-2026-\d{3,}$/.test(value)) {
+        return value.replace(/-2026-(\d{3,})$/, `-${year}-$1`);
       }
       return value;
     }
@@ -607,9 +620,10 @@ describe("PCI scope decision record", () => {
       final.decisionDate = "2026-07-15";
       final.signoffs[0]!.decidedAt = "2026-07-15T22:00:00.000Z";
       final.signoffs[1]!.decidedAt = "2026-07-15T23:00:00.000Z";
-      shiftFixtureDatesToToday(provisional);
-      shiftFixtureDatesToToday(receipt);
-      shiftFixtureDatesToToday(final);
+      const dateShift = fixtureDateShift();
+      shiftFixtureDates(provisional, dateShift);
+      shiftFixtureDates(receipt, dateShift);
+      shiftFixtureDates(final, dateShift);
       const provisionalText = `${JSON.stringify(provisional, null, 2)}\n`;
       receipt.provisionalRecordSha256 = createHash("sha256").update(provisionalText).digest("hex").toUpperCase();
       const receiptText = `${JSON.stringify(receipt, null, 2)}\n`;
@@ -635,8 +649,8 @@ describe("PCI scope decision record", () => {
       writeFileSync(
         duplicateProvisionalPath,
         provisionalText.replace(
-          '"recordId": "TN-PCI-SCOPE-2026-001",',
-          '"recordId": "TN-PCI-SCOPE-2026-001",\n  "recordId": "TN-PCI-SCOPE-2026-999",'
+          `"recordId": "${provisional.recordId}",`,
+          `"recordId": "${provisional.recordId}",\n  "recordId": "TN-PCI-SCOPE-${dateShift.year}-999",`
         ),
         "utf8"
       );
