@@ -10,12 +10,13 @@ Offer web-app, backend/CLI/library, data/notebooks, or writing/docs when the pro
 profile. Keep the full skill set by default. For projects without a UI, forge-repo-ui-skill
 and lab are candidates to disable, not proof those workflows will never be useful.
 
-An optional minimal preset omits situational extras: advocate, enhance-prompt, fable-mode,
-forge-repo-ui-skill, handoff-audit, lab, and why. Caveman can also be omitted if it is not the
-configured prose default. Preserve skills referenced by active instructions and user
-customizations. Show the concrete selection before applying it unless already approved.
-Prefer reversible discovery settings over deleting skill folders. A request for minimal
-configuration does not by itself authorize deleting custom resources.
+An optional minimal preset omits the situational extras listed under
+`skills.presets.minimal.omit` in `.agents/template-manifest.json`; never omit a skill
+listed under `skills.required`. Caveman can also be omitted if it is not the configured
+prose default. Preserve skills referenced by active instructions and user customizations.
+Show the concrete selection before applying it unless already approved. Prefer reversible
+discovery settings over deleting skill folders. A request for minimal configuration does
+not by itself authorize deleting custom resources.
 
 In this starter, inspect the Codex sync check and ownership registry before applying
 settings: Claude legacy skillOverrides and Codex .agents/skill-modes.json have distinct
@@ -50,12 +51,13 @@ origin, README and distribution assets together. A canonical template origin is 
 to stop initialization; an ambiguous fork needs clarification. Preserve intentional
 placeholders in template maintenance work.
 
-Potential template-only paths are .claude-plugin/, bootstrap/,
-.github/workflows/validate-template.yml, .github/ISSUE_TEMPLATE/, CHANGELOG.md, and
-CONTRIBUTING.md. Compare each with the template and inspect project modifications and
-references before proposing removal. Keep customized or used assets; never delete the
-list blindly. Remove empty parent directories only if they remain inside the authorized
-workspace. Existing authorization for this exact cleanup need not be requested again.
+Potential template-only paths are the `templateOnly` entries in
+`.agents/template-manifest.json` (read the template's copy when the project has none). The
+template README among them is replaced from `readmeStub`, not deleted. Compare each path
+with the template and inspect project modifications and references before proposing
+removal. Keep customized or used assets; never delete the list blindly. Remove empty parent
+directories only if they remain inside the authorized workspace. Existing authorization for
+this exact cleanup need not be requested again.
 
 Seed commands and stack references from manifests, deployment from actual configuration
 or user answers, and leave unknown facts explicit. Preserve useful architecture, secrets

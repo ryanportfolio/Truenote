@@ -20,12 +20,14 @@ git fetch starter
 Only these paths are sync candidates:
 
 ```
-git diff --stat HEAD starter/main -- AGENTS.md .agents/CODEX-SKILL-COMPATIBILITY.md .agents/skill-modes.json .agents/skill-sources.json .agents/skills .claude/skills .claude/hooks .claude/scripts .claude/output-styles .claude/settings.json
+git diff --stat HEAD starter/main -- AGENTS.md .agents/CODEX-SKILL-COMPATIBILITY.md .agents/skill-modes.json .agents/skill-sources.json .agents/template-manifest.json .agents/skills .claude/skills .claude/hooks .claude/scripts .claude/output-styles .claude/settings.json
 ```
 
 **Diverged-by-design — NEVER bulk-pull these:**
 - `CLAUDE.md` — project-configured (FILL IN sections replaced). If the template's kernel changed, read the template version (`git show starter/main:CLAUDE.md`), and hand-merge the relevant rule into the project copy.
 - `.claude/reference/*` — project knowledge. Template only ships skeletons.
+
+**Template-only: NEVER pull these.** Every path under `templateOnly` in the template's `.agents/template-manifest.json` (`git show starter/main:.agents/template-manifest.json`). They maintain or distribute the template itself (its README, changelog, bootstrap scripts, CI workflow, research docs), and new projects are created without them. Leave them out of every selection, even when they differ.
 
 ### Step 3: Present and pick
 
@@ -80,6 +82,7 @@ When the user authorized propagation of a generic skill fix / new skill / hook i
 
 - Don't `git checkout starter/main -- .claude` wholesale — it clobbers diverged-by-design files.
 - Don't overwrite `settings.json` — union the permission lists.
+- Don't pull a `templateOnly` path from the template's manifest into the project.
 - Don't push project-flavored content back to the template — genericize or leave it.
 - Don't treat a CLAUDE.md diff as pullable — kernel changes are always a hand-merge.
 - Don't ship a generated `.agents/skills/` adapter. Write a native port under
