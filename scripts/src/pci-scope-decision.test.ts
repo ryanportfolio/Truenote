@@ -241,6 +241,36 @@ function finalDecision(provisional = provisionalDecision(), receipt = traceRecei
   return final;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// The CLI checks records against the real clock. Move every fixture date forward by whole
+// days so the latest fixture time (2026-07-15) lands before today and the authorization
+// window stays open, keeping the CLI test independent of the calendar.
+function shiftFixtureDatesToToday(record: object): void {
+  const offsetMs = Math.max(0, Math.floor((Date.now() - Date.parse("2026-07-16T00:00:00.000Z")) / DAY_MS)) * DAY_MS;
+  const shift = (value: unknown): unknown => {
+    if (typeof value === "string") {
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
+        return new Date(Date.parse(value) + offsetMs).toISOString();
+      }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return new Date(Date.parse(`${value}T00:00:00.000Z`) + offsetMs).toISOString().slice(0, 10);
+      }
+      return value;
+    }
+    if (Array.isArray(value)) {
+      return value.map(shift);
+    }
+    if (value !== null && typeof value === "object") {
+      for (const [key, child] of Object.entries(value)) {
+        (value as Record<string, unknown>)[key] = shift(child);
+      }
+    }
+    return value;
+  };
+  shift(record);
+}
+
 const provisionalOptions = { now: new Date("2026-07-17T00:00:00.000Z") };
 
 function finalOptions(
@@ -573,13 +603,16 @@ describe("PCI scope decision record", () => {
       receipt.startedAt = "2026-07-15T19:00:00.000Z";
       receipt.completedAt = "2026-07-15T20:00:00.000Z";
       receipt.reviewedAt = "2026-07-15T21:00:00.000Z";
-      const provisionalText = `${JSON.stringify(provisional, null, 2)}\n`;
-      receipt.provisionalRecordSha256 = createHash("sha256").update(provisionalText).digest("hex").toUpperCase();
-      const receiptText = `${JSON.stringify(receipt, null, 2)}\n`;
       const final = finalDecision(provisional, receipt);
       final.decisionDate = "2026-07-15";
       final.signoffs[0]!.decidedAt = "2026-07-15T22:00:00.000Z";
       final.signoffs[1]!.decidedAt = "2026-07-15T23:00:00.000Z";
+      shiftFixtureDatesToToday(provisional);
+      shiftFixtureDatesToToday(receipt);
+      shiftFixtureDatesToToday(final);
+      const provisionalText = `${JSON.stringify(provisional, null, 2)}\n`;
+      receipt.provisionalRecordSha256 = createHash("sha256").update(provisionalText).digest("hex").toUpperCase();
+      const receiptText = `${JSON.stringify(receipt, null, 2)}\n`;
       final.provisionalRecordSha256 = createHash("sha256").update(provisionalText).digest("hex").toUpperCase();
       final.syntheticTestAuthorization.traceReceiptSha256 = createHash("sha256").update(receiptText).digest("hex").toUpperCase();
       const provisionalPath = join(directory, "provisional.json");
