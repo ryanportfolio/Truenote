@@ -27,21 +27,16 @@ hooks, and `.claude/skills/` exactly as before.
 - Do not inherit Claude-only runtime behavior: popup-tool rules, SessionStart
   directives, default `caveman` activation, Anthropic model names, Claude skill
   invocation syntax, or automatic git integration.
-- Translate Claude-only tool names inside canonical skills to the available
-  Codex equivalent. Current Codex system, developer, sandbox, approval, and tool
-  instructions take precedence.
-- Treat `$ARGUMENTS` inside a canonical skill as the current invocation's
-  free-form input.
+- Translate Claude-only tool names to the available Codex equivalent per
+  `.agents/codex-tools.md`. Current Codex system, developer, sandbox, approval,
+  and tool instructions take precedence.
+- Treat `$ARGUMENTS` in a skill as the current invocation's free-form input.
 
 ## Skills
 
-- `.claude/skills/` is the canonical workflow library for both runtimes.
-- Codex discovers generated adapters under `.agents/skills/`. When an adapter
-  is selected, read its canonical `.claude/skills/<name>/SKILL.md` completely
-  and resolve relative resources from that canonical skill directory.
-- After adding, removing, or editing a canonical skill or `skillOverrides`, run
-  `node .claude/scripts/sync-codex-skills.mjs --write`.
-- Do not hand-edit generated adapters.
+- `.claude/skills/` remains Claude's library. Codex uses standalone native skills under `.agents/skills/`, registered in `.agents/skill-modes.json` as `native` or `disabled` (Claude-only). Read them directly and resolve resources from their Codex skill directory.
+- Adding or editing a skill updates its standalone Codex version in the same change and registers it `native` (or `disabled`) in `.agents/skill-modes.json`; never ship a generated adapter. For a `native` skill, once its port matches, run `node .claude/scripts/sync-codex-skills.mjs --baseline <name>` (`disabled` skills skip it), then `--check`, which fails on drift or a missing registration.
+- Tool mapping: `.agents/codex-tools.md`. Maintenance and personal copies: `docs/codex-skills.md`.
 
 ## Safety And Verification
 
