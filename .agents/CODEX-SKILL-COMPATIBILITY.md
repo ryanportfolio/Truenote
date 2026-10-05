@@ -22,8 +22,8 @@ for comparison, backup, reconciliation, and discovery checks.
 
 | Status | Skills |
 |---|---|
-| Native | `babysit-ci`, `bro`, `caveman`, `design-truenote-ui`, `enhance-prompt`, `fable-mode`, `forge-repo-ui-skill`, `handoff-audit`, `recall`, `refine`, `review-security-posture`, `servers`, `session-hub`, `showpiece`, `wrapup`, `writing` |
-| Adapted | `astra-review`, `claude-review`, `codex-review`, `init-project`, `optimize-context`, `sync-starter` |
+| Native | `babysit-ci`, `bro`, `caveman`, `design-truenote-ui`, `enhance-prompt`, `external-review`, `fable-mode`, `forge-repo-ui-skill`, `handoff-audit`, `recall`, `refine`, `review-security-posture`, `servers`, `session-hub`, `showpiece`, `wrapup`, `writing` |
+| Adapted | `astra-review`, `claude-review`, `codex-review`, `deep-plan`, `init-project`, `optimize-context`, `opus-fullreview`, `sync-starter` |
 | Capability-gated | `advocate`, `arena`, `dare`, `impartial-review`, `long-horizon`, `perf-loop`, `wow-loop` |
 | Dangerous | `adopt-repo` |
 | Claude-only | `astra-fullreview`, `codex-fullreview`, `compact-review`, `long-horizon-workflows`, `merge` |
