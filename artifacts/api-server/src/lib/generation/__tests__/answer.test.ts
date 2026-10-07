@@ -16,7 +16,7 @@ const MERCURY_ROUTE = APPROVED_MODEL_ROUTES.find(
   (route) => route.id === "mercury-2-inception"
 )!;
 const GRANITE_ROUTE = APPROVED_MODEL_ROUTES.find(
-  (route) => route.id === "granite-4.1-8b-wandb"
+  (route) => route.id === "granite-4.2-8b-coreweave"
 )!;
 
 interface CapturedRequest {
@@ -205,7 +205,7 @@ describe("generateAnswer ZDR route fallback", () => {
         model: "nvidia/nemotron-3-super-120b-a12b:nitro",
         reasoning_effort: "medium",
         provider: {
-          only: ["digitalocean"],
+          only: ["deepinfra"],
           zdr: true,
           data_collection: "deny",
           allow_fallbacks: false
@@ -256,7 +256,7 @@ describe("generateAnswer ZDR route fallback", () => {
     expect(userMessage?.content).not.toContain("csr@example.com");
   });
 
-  it("routes Granite 4.1 8B only to its live WandB ZDR endpoint", async () => {
+  it("routes Granite 4.2 8B only to its CoreWeave ZDR endpoint", async () => {
     const requests: CapturedRequest[] = [];
 
     await generateAnswer(
@@ -266,12 +266,17 @@ describe("generateAnswer ZDR route fallback", () => {
 
     expect(requests[0]).toEqual(
       expect.objectContaining({
-        model: "ibm-granite/granite-4.1-8b",
-        temperature: 0,
-        provider: expect.objectContaining({ only: ["wandb"], zdr: true })
+        model: "ibm-granite/granite-4.2-8b",
+        reasoning_effort: "low",
+        provider: {
+          only: ["coreweave"],
+          zdr: true,
+          data_collection: "deny",
+          allow_fallbacks: false
+        }
       })
     );
-    expect(requests[0]?.reasoning_effort).toBeUndefined();
+    expect(requests[0]?.temperature).toBeUndefined();
   });
 
   it("cascades to the next ZDR route when a request throws", async () => {
