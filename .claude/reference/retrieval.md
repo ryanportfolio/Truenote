@@ -7,7 +7,7 @@
 ```
 question
   → follow-up rewrite (only when the client sent conversation history:
-    Granite 4.1 8B via the OpenRouter ZDR utility resolves "that plan"/"the
+    Mercury 2 via the OpenRouter ZDR utility resolves "that plan"/"the
     fee" into a standalone question; failure falls back to the raw question;
     first turn = passthrough)
   → embed (text-embedding-3-small)
@@ -38,7 +38,7 @@ question
 - **Trigram fallback (2026-07):** when `websearch_to_tsquery` matches zero rows, `word_similarity(question, content) > 0.3` supplies BM25-leg candidates instead — catches typos ("cancelation") and exact codes tsvector stems away. Plain function call, no trgm index yet; if the KB passes ~100k chunks, add a `gin (content gin_trgm_ops)` index via DDL and switch to the `<%` operator form.
 - **Neighbor expansion (2026-07):** after the gate passes, ordinal ±1 siblings (same active document version) of the top `RETRIEVAL_NEIGHBOR_ANCHORS` (default 3) reranked chunks are appended as context — procedures routinely span a chunk boundary. Neighbors carry `relevanceScore: 0` and `neighbor: true`, never affect the gate, and are citable (they're real chunks). Set the env to 0 to disable.
 - **Eval trace:** `retrieve({ withTrace: true })` returns pre-rerank candidates + post-rerank top-K (chunk id → doc id) so the eval harness attributes failures to a stage. `/api/ask` doesn't request it.
-- **Multi-turn (2026-07):** the Chat client sends its last 3 completed exchanges; `lib/generation/rewrite.ts` (Granite 4.1 8B via the OpenRouter ZDR utility, `lib/generation/utility-model.ts`) rewrites a follow-up into a standalone question used for retrieval AND generation. HARD boundary: conversation history is used ONLY for reference resolution — answer generation still sees excerpts + standalone question, so an ungrounded fact from a previous answer can never leak into a new one. `query_log.question` stores what the CSR typed; the rewrite is returned as `rewrittenQuestion` (manager+ debug footer shows "Searched as: …"). Rewrite failure falls back to the raw question. "New conversation" button clears history between calls.
+- **Multi-turn (2026-07):** the Chat client sends its last 3 completed exchanges; `lib/generation/rewrite.ts` (Mercury 2 via the OpenRouter ZDR utility, `lib/generation/utility-model.ts`) rewrites a follow-up into a standalone question used for retrieval AND generation. HARD boundary: conversation history is used ONLY for reference resolution — answer generation still sees excerpts + standalone question, so an ungrounded fact from a previous answer can never leak into a new one. `query_log.question` stores what the CSR typed; the rewrite is returned as `rewrittenQuestion` (manager+ debug footer shows "Searched as: …"). Rewrite failure falls back to the raw question. "New conversation" button clears history between calls.
 
 ## Generation contract (the part most demos botch)
 
@@ -71,9 +71,11 @@ QUESTION: {question}
 
 The model emits plain text and short source tokens only inline. Excerpts are numbered `SOURCE [S1]`, `SOURCE [S2]`, and so on; the server maps those aliases to retrieved chunk UUIDs and rewrites the answer to canonical `[uuid]` citations. Legacy direct UUIDs plus harmless `[chunk_id:uuid]` and `【uuid】` variants remain accepted when exact. Missing, out-of-range, or genuinely unknown IDs are rejected. There is no fuzzy UUID correction, model-authored JSON, or sources array.
 
-The approved routes form a server-owned allowlist that a super user orders into a fallback chain on `/admin/model-routing`: Nemotron 3 Super Nitro on DigitalOcean (default primary), GPT-5.4 Nano Nitro on Azure, Nemotron 3 Ultra Nitro on Together, Mercury 2 on Inception at low reasoning, and Granite 4.1 8B on WandB. The order lives in `app_settings`; unknown or removed ids are dropped and missing approved routes appended. Every request pins one provider and enforces `provider.zdr=true`, `data_collection="deny"`, and `allow_fallbacks=false`. OpenRouter rejects a route before prompt delivery when no matching ZDR endpoint exists. Generation advances on request, empty-answer, or citation failure. Chain exhaustion returns the safe refusal. There is deliberately no direct-provider backup that can bypass OpenRouter's per-request ZDR enforcement.
+The approved routes form a server-owned allowlist that a super user orders into a fallback chain on `/admin/model-routing`: Nemotron 3 Super Nitro on DeepInfra (default primary), GPT-5.4 Nano Nitro on Azure, Nemotron 3 Ultra Nitro on BaseTen, Mercury 2 on Inception at low reasoning, and Granite 4.2 8B on CoreWeave at low reasoning. The order lives in `app_settings`; retired ids map to their replacement route, unknown ids are dropped and missing approved routes appended. Every request pins one provider and enforces `provider.zdr=true`, `data_collection="deny"`, and `allow_fallbacks=false`. OpenRouter rejects a route before prompt delivery when no matching ZDR endpoint exists. Generation advances on request, empty-answer, or citation failure. Chain exhaustion returns the safe refusal. There is deliberately no direct-provider backup that can bypass OpenRouter's per-request ZDR enforcement.
 
-Granite 4.1 8B is a standard instruct model, not a hybrid-thinking model. Its WandB OpenRouter endpoint does not expose `reasoning_effort`; the route omits that parameter and uses deterministic `temperature: 0`. There are no low, medium, or high thinking options for this model.
+Each model/provider pair must appear in OpenRouter's ZDR endpoint index (`GET https://openrouter.ai/api/v1/endpoints/zdr`). On 2026-10-07 the earlier pins failed that check: Nemotron 3 Super had no DigitalOcean endpoint, Nemotron 3 Ultra had no Together endpoint, and Granite 4.1 8B had no endpoints at all (OpenRouter lists no `wandb` provider). Those routes were re-pinned, with their old ids mapped to the new ones so a saved admin order keeps its positions. Re-check the index before adding or re-pinning a route.
+
+The auxiliary utility calls (follow-up rewrite, session naming) are pinned to Mercury 2 on Inception, the fastest approved route; the rewrite runs before retrieval under a 5 s deadline. Granite 4.2 8B is a reasoning model, unlike Granite 4.1, so its route sends `reasoning_effort: "low"` instead of `temperature: 0`.
 
 ## UI contract
 

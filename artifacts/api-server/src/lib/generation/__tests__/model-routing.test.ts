@@ -10,20 +10,20 @@ import {
 describe("approved model routing", () => {
   it("defaults to Nemotron 3 Super on a ZDR-capable route", () => {
     expect(DEFAULT_MODEL_ROUTE).toMatchObject({
-      id: "nemotron-3-super-digitalocean-nitro",
+      id: "nemotron-3-super-deepinfra-nitro",
       model: "nvidia/nemotron-3-super-120b-a12b:nitro",
-      provider: "digitalocean",
+      provider: "deepinfra",
       reasoningEffort: "medium"
     });
   });
 
   it("contains only the reviewed routes, primary first", () => {
     expect(APPROVED_MODEL_ROUTES.map((route) => route.id)).toEqual([
-      "nemotron-3-super-digitalocean-nitro",
+      "nemotron-3-super-deepinfra-nitro",
       "gpt-5.4-nano-azure-nitro",
-      "nemotron-3-ultra-together-nitro",
+      "nemotron-3-ultra-baseten-nitro",
       "mercury-2-inception",
-      "granite-4.1-8b-wandb"
+      "granite-4.2-8b-coreweave"
     ]);
   });
 
@@ -35,11 +35,23 @@ describe("approved model routing", () => {
     });
   });
 
-  it("pins Granite 4.1 8B to WandB without unsupported reasoning controls", () => {
-    expect(findApprovedModelRoute("granite-4.1-8b-wandb")).toMatchObject({
-      model: "ibm-granite/granite-4.1-8b",
-      provider: "wandb",
-      reasoningEffort: "none"
+  it("pins every route to a provider with a listed ZDR endpoint", () => {
+    expect(
+      APPROVED_MODEL_ROUTES.map((route) => [route.model, route.provider])
+    ).toEqual([
+      ["nvidia/nemotron-3-super-120b-a12b:nitro", "deepinfra"],
+      ["openai/gpt-5.4-nano:nitro", "azure"],
+      ["nvidia/nemotron-3-ultra-550b-a55b:nitro", "baseten"],
+      ["inception/mercury-2", "inception"],
+      ["ibm-granite/granite-4.2-8b", "coreweave"]
+    ]);
+  });
+
+  it("pins Granite 4.2 8B to CoreWeave at low reasoning", () => {
+    expect(findApprovedModelRoute("granite-4.2-8b-coreweave")).toMatchObject({
+      model: "ibm-granite/granite-4.2-8b",
+      provider: "coreweave",
+      reasoningEffort: "low"
     });
   });
 
@@ -57,10 +69,10 @@ describe("resolveModelRouteOrder", () => {
     ]);
     expect(chain.map((route) => route.id)).toEqual([
       "mercury-2-inception",
-      "nemotron-3-super-digitalocean-nitro",
+      "nemotron-3-super-deepinfra-nitro",
       "gpt-5.4-nano-azure-nitro",
-      "nemotron-3-ultra-together-nitro",
-      "granite-4.1-8b-wandb"
+      "nemotron-3-ultra-baseten-nitro",
+      "granite-4.2-8b-coreweave"
     ]);
   });
 
@@ -72,10 +84,27 @@ describe("resolveModelRouteOrder", () => {
     ]);
     expect(chain.map((route) => route.id)).toEqual([
       "gpt-5.4-nano-azure-nitro",
-      "nemotron-3-super-digitalocean-nitro",
-      "nemotron-3-ultra-together-nitro",
+      "nemotron-3-super-deepinfra-nitro",
+      "nemotron-3-ultra-baseten-nitro",
       "mercury-2-inception",
-      "granite-4.1-8b-wandb"
+      "granite-4.2-8b-coreweave"
+    ]);
+  });
+
+  it("keeps the positions of retired route ids by mapping them to their replacements", () => {
+    const chain = resolveModelRouteOrder([
+      "granite-4.1-8b-wandb",
+      "mercury-2-inception",
+      "nemotron-3-ultra-together-nitro",
+      "nemotron-3-super-digitalocean-nitro",
+      "nemotron-3-super-deepinfra-nitro"
+    ]);
+    expect(chain.map((route) => route.id)).toEqual([
+      "granite-4.2-8b-coreweave",
+      "mercury-2-inception",
+      "nemotron-3-ultra-baseten-nitro",
+      "nemotron-3-super-deepinfra-nitro",
+      "gpt-5.4-nano-azure-nitro"
     ]);
   });
 
