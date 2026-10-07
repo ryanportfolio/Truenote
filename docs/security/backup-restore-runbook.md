@@ -4,7 +4,17 @@
 **Owner:** Truenote maintainer
 **Related:** [`incident-response-plan.md`](./incident-response-plan.md), threat model entry TN-TM-024 in [`../compliance/pci/threat-model.md`](../compliance/pci/threat-model.md), evidence gaps in [`../compliance/pci/evidence-index.md`](../compliance/pci/evidence-index.md).
 
-One person must be able to follow every step. Commands are written for a shell with `psql` and `pg_dump` (PostgreSQL 16 client tools) unless a step says to use the Replit or Neon web console.
+One person must be able to follow every step. Shell commands are written for bash or zsh: Git Bash on Windows, a macOS or Linux terminal running bash or zsh, or the Replit shell. Plain POSIX shells such as dash reject the `read -rs` form in the table below. The shell needs `psql`, `pg_dump`, and `pg_restore` (PostgreSQL 16 client tools) on its path. SQL blocks run inside `psql`. Steps that say to use the Replit or Neon web console need no shell.
+
+PowerShell does not read the two bash patterns these commands use. Each command that uses one has its PowerShell form beside it.
+
+| Pattern | bash | PowerShell |
+|---|---|---|
+| Set a connection string for this session only (paste it at the prompt, so it stays out of shell history) | `read -rs PROD_DATABASE_URL && export PROD_DATABASE_URL` | `$env:PROD_DATABASE_URL = Read-Host 'Connection string'` |
+| Read it in a command | `"$PROD_DATABASE_URL"` | `$env:PROD_DATABASE_URL` |
+| Set variables before starting a server | `API_PORT=3001 pnpm ...` (applies to that one command) | `$env:API_PORT = '3001'; pnpm ...` (stays set until the PowerShell window closes) |
+
+`TARGET_DATABASE_URL` and `DATABASE_URL` follow the same pattern.
 
 ## 1. What holds data and what backs it up
 
@@ -90,6 +100,12 @@ Measure RPO as the gap between the chosen restore point and the last good write 
    pg_dump --format=custom --no-owner --file=truenote-prod-before-restore-<UTC date>.dump "$PROD_DATABASE_URL"
    ```
 
+   PowerShell:
+
+   ```
+   pg_dump --format=custom --no-owner --file=truenote-prod-before-restore-<UTC date>.dump $env:PROD_DATABASE_URL
+   ```
+
    `[CONFIRM: how to obtain a production connection string for pg_dump from the Replit database tool, and that the export file is stored encrypted outside the repository]`
 
 ### 4.2 Create the non-production target
@@ -113,6 +129,13 @@ Create an empty PostgreSQL 16 database that you control and that holds no other 
 ```
 psql "$TARGET_DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
 pg_restore --no-owner --no-acl --dbname="$TARGET_DATABASE_URL" truenote-prod-before-restore-<UTC date>.dump
+```
+
+PowerShell:
+
+```
+psql $env:TARGET_DATABASE_URL -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+pg_restore --no-owner --no-acl "--dbname=$env:TARGET_DATABASE_URL" truenote-prod-before-restore-<UTC date>.dump
 ```
 
 Path C tests Truenote's own export, not the provider's point-in-time restore. It restores the current production state as of the export time, not a past point, which is why it is the weaker path: it cannot show that a chosen restore point is recoverable or free of the damage, and during an incident the export contains the damage. Record which path you used. Until path A or B is available, the provider PITR path is untested.
@@ -267,7 +290,21 @@ Run the baseline query from step 4.1.3 against the target.
 
 Pass, for a restore point in the past:
 
-- each count is no higher than the production baseline;
+- each count is no higher than the production baseline, unless the record explains the excess by rows deleted after the restore point. A correct restore brings those rows back, so it can hold more rows than production holds now. Deletions that raise restored counts: users removed through `DELETE /api/admin/users/<id>`, and documents removed by a purge, which also removes their versions and chunks. Find them in the `security_events` exported in step 4.1.4, or for a scheduled test run against production: `SELECT occurred_at, action, resource_id FROM security_events WHERE occurred_at > '<restore point>' AND outcome = 'success' AND (action = 'document.purge' OR resource_id LIKE 'DELETE /api/admin/users/%') ORDER BY sequence;`. Count only rows with `outcome = 'success'`. The audit middleware also records refused and failed requests, with `outcome` set to `denied` (HTTP status 400 to 499) or `failure` (500 and above), and those deleted nothing. A purge writes its `document.purge` event in the same transaction as the delete, so that event exists only for a completed purge. A higher count that no recorded deletion explains fails;
+- `chunks` can also differ because a version's chunks were replaced after the restore point. A rescan (`POST /api/documents/<versionId>/rescan`, allowed only for a quarantined or failed version) queues the version for ingestion again, and ingestion deletes the version's chunks and inserts a new set in one transaction (`artifacts/api-server/src/lib/ingestion/run.ts`). The re-ingest script (`scripts/src/reingest.ts`) does the same for every active, ready version, or one program's with `--program`, and the new set can have a different number of chunks. The target then holds the chunk set from before the replacement, which can be larger or smaller than production's, with no purge or user delete behind it. A rescan appears in `security_events` as an `http.security_mutation` event with `resource_id` `POST /api/documents/<versionId>/rescan` and `outcome = 'success'`. The re-ingest script writes no security event. Find both from the chunk timestamps instead: replaced chunks get a new `created_at`. Run against production:
+
+  ```sql
+  SELECT c.document_version_id, count(*) AS production_chunks,
+         min(c.created_at) AS chunks_written_at
+  FROM chunks c
+  JOIN document_versions dv ON dv.id = c.document_version_id
+  WHERE dv.uploaded_at <= '<restore point>'
+  GROUP BY c.document_version_id
+  HAVING min(c.created_at) > '<restore point>'
+  ORDER BY chunks_written_at;
+  ```
+
+  Each row is a version that existed at the restore point and whose current chunks were all written after it: a rescan, a re-ingest, or a first ingestion that finished after the restore point. Run `SELECT document_version_id, count(*) FROM chunks WHERE document_version_id IN (<listed ids>) GROUP BY document_version_id;` on the target and record the per-version difference. The `chunks` count difference passes when these per-version differences, together with recorded deletions and uploads after the restore point, account for it. The same rows explain why the target holds more chunks than the "as of restore point" `chunks` count from step 4.1.3, which leaves out every replaced chunk;
 - tables with timestamps match the "as of restore point" counts recorded in 4.1.3, or differ only by rows explained in the record;
 - tables that only grow (`security_events`, `query_log`) are within 10% of their restore-point counts (proposed tolerance);
 - `users`, `programs`, and `documents` are not zero unless production is also zero.
@@ -324,11 +361,23 @@ Against the target, with the isolation settings from section 3. The API server s
    API_PORT=3001 pnpm --filter @workspace/api-server run dev
    ```
 
+   PowerShell:
+
+   ```
+   $env:API_PORT = '3001'; pnpm --filter @workspace/api-server run dev
+   ```
+
    Startup must log `[api-server] listening on http://0.0.0.0:3001`.
 2. In a second shell, start the frontend on port 5173, pointed at that API:
 
    ```
    API_PORT=3001 PORT=5173 pnpm --filter @workspace/rag-app run dev
+   ```
+
+   PowerShell:
+
+   ```
+   $env:API_PORT = '3001'; $env:PORT = '5173'; pnpm --filter @workspace/rag-app run dev
    ```
 
    `artifacts/rag-app/vite.config.ts` reads `API_PORT` to proxy `/api` to `http://localhost:3001` and `PORT` for its own port. Set both explicitly: each defaults to a different port when unset (API 5000, frontend 5173). The frontend needs no `DATABASE_URL`.
