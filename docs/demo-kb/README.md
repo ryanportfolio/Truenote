@@ -67,7 +67,7 @@ Suggested additions, one per format, so the eval covers each parser path:
 
 1. Sign in to Truenote as a super user or senior manager. Their uploads activate as soon as parsing finishes; a manager's upload waits for approval. The public demo accounts cannot upload, because demo mode blocks writes.
 2. Upload every file in `files/` to the demo program from the admin documents page, choosing the existing approved content source, and wait until each one shows as ready. The external malware scan is turned off in the demo's Security settings, so uploads are not quarantined for lack of a scanner.
-3. Open each of the two older demo documents ("Cancellation Policy v4" and "Refund Procedure v4") and choose **Revoke now**, so citations point at the new set. Their original files were never copied to Railway, so they can be read but not rescanned.
+3. Open each of the two older demo documents ("Cancellation Policy v4" and "Refund Procedure v4") and choose **Revoke now**, so citations point at the new set. Their original files were never copied to Railway, so they can be read but not rescanned. Revoking is safe for the eval on the Railway demo: none of its 10 eval questions has an expected document bound (`expected_doc_id` is empty on all of them, checked 2026-10-07), so citation scoring does not look for the old documents. On a database seeded with `scripts/src/seed.ts`, which binds `expected_doc_id` to the seeded documents, point those questions at the new documents before revoking, or their citation checks fail even when the answer is right.
 4. Ask one question per format from the table above and check that each answer cites the expected file.
 
 ## Rebuilding the files
