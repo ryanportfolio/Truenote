@@ -93,7 +93,7 @@ def refund_procedure(out):
         "Open the most recent charge in the billing console.",
         "Select Issue Refund.",
         "Choose Full or Partial. A partial refund needs the amount in dollars and cents.",
-        "Add a one-line reason code (RF-01 to RF-05).",
+        "Add a one-line reason code (RF-01, RF-02, RF-03 or RF-05).",
         "Submit the refund. It will post to the original card within 5-7 business days.",
     ], style="List Number")
     h(doc, "Reason codes")
@@ -102,9 +102,9 @@ def refund_procedure(out):
         ["RF-01", "Service not as described", "None"],
         ["RF-02", "Duplicate charge", "None; also open a Billing Operations ticket"],
         ["RF-03", "Accidental purchase or renewal", "None"],
-        ["RF-04", "Outage credit (Enterprise SLA)", "Billing Operations confirms uptime"],
         ["RF-05", "Courtesy refund", "Tier 2 supervisor approval ID required"],
     ])
+    para(doc, "RF-04 is retired. Enterprise outage credits are not refunds: they go on the next invoice through Credits > Outage credit in the billing console, never to a card (see the Outages and Service Credits FAQ).", "Outage credits: ")
     h(doc, "Escalation and approval")
     para(doc, "If the customer disputes the amount or the refund window, escalate the request to a Tier 2 supervisor within 15 minutes.")
     para(doc, "Do not issue a courtesy refund without approval from a Tier 2 supervisor.")

@@ -21,7 +21,7 @@ Basic and Pro plans have no uptime commitment and no automatic credit. A Tier 2 
 
 ## How does an Enterprise customer claim a credit?
 
-The account administrator must request it within 30 days after the end of the month in which the outage happened. Submit the request with reason code RF-04 (Outage credit). Billing Operations confirms the uptime figure and applies the credit to the next invoice. Credits are never paid out as cash refunds.
+The account administrator must request it within 30 days after the end of the month in which the outage happened. Submit the request in the billing console under Credits > Outage credit, not through Issue Refund. Billing Operations confirms the uptime figure and applies the credit to the next invoice. Credits are never paid out as cash refunds or to a card.
 
 ## What if the customer wants to cancel because of an outage?
 
