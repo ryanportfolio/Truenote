@@ -65,11 +65,11 @@ Applied: `0001_schema_migrations.sql` (2026-10-07, sha256 `f33bb30e…`). Baseli
 - Dump from inside `pgvector` (`pg_dump` 18.6, read-only transaction, custom format, `--no-owner --no-acl`), excluding the `_system` and `pgboss` schemas and the data of `sessions` and `password_reset_tokens`. `CREATE EXTENSION` for `vector`, `pg_trgm`, `pgcrypto` ran first; `pg_restore --single-transaction --exit-on-error` succeeded. The dump was deleted from the container afterwards.
 - Checked: exact row counts equal in 18 of 19 public tables (`sessions` 3 → 0 by design); check, foreign-key, primary-key and unique constraint definitions hash-identical; `append_security_event` body identical; index count 58 = 58. Postgres 18 adds 106 `NOT NULL` rows to `pg_constraint` that 16 does not list.
 - Every user signs in again. The pg-boss schema was recreated empty by the first boot.
-- Stored files: the database references 8 objects under `uploads/` (2 distinct PDFs, 4 versions each). They are only read when a document is (re)ingested; answers and citations come from the database.
+- Stored files: not copied (owner decision, 2026-10-07). The database references 8 objects under `uploads/` (2 demo PDFs, 4 versions each) that stay in the Replit bucket. Answers and citations still work because they come from the database, but a rescan or re-ingest of those 8 versions fails on Railway. The owner replaces them with a new demo set (`docs/demo-kb/`) uploaded through the app.
 
 ## Cutover
 
-Gate before the switch: the 8 objects under `uploads/` that `document_versions.source_url` references are in `truenote-storage` under the same keys, and each object's SHA-256 equals the row's `file_sha256`. Until that holds, a rescan or re-ingest on Railway fails for those documents. Do not delete the Replit bucket, or the Replit deployment it belongs to, before the copy is verified.
+Before the switch, the old demo documents and their missing originals are the only known gap (see "Data copy"); no other stored file exists.
 
 Owner actions in Replit's DNS screen for `truenote.org` (domain registered at Name.com through Replit; the screen offers A, TXT, CNAME and MX only, so no ALIAS and no apex CNAME):
 
