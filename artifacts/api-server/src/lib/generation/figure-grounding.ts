@@ -1031,8 +1031,19 @@ function extractFigures(text: string, marked: string = text): Figure[] {
   return figures;
 }
 
+/** CommonMark backslash escape: a backslash before any ASCII punctuation character. */
+const MARKDOWN_ESCAPE = /\\([!-/:-@[-`{-~])/g;
+
+/**
+ * Document conversion stores excerpts with Markdown escapes (`RF\-01`,
+ * `5\-7`, `\$25`). Both excerpt readings decode them, so the backslash never
+ * splits or changes a figure; decoding adds no digit the document lacks.
+ * Answers keep their two readings as is.
+ */
 function indexExcerpt(content: string, view: View): Set<string> {
-  const { text } = displayText(content.replace(PRIVATE_USE, ""), view, false);
+  let source = content.replace(PRIVATE_USE, "");
+  if (!view.decode) source = source.replace(MARKDOWN_ESCAPE, "$1");
+  const { text } = displayText(source, view, false);
   return new Set(extractFigures(text).map((figure) => figure.key));
 }
 
