@@ -1,0 +1,21 @@
+# Docker build context whitelist. Keep identical to .railwayignore.
+*
+!Dockerfile.railway
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!.npmrc
+!tsconfig.base.json
+!tsconfig.json
+!artifacts/
+!artifacts/**
+!lib/
+!lib/**
+!scripts/
+!scripts/**
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+**/*.log
+.tmp
