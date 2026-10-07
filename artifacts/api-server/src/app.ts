@@ -13,7 +13,10 @@ import {
   safeErrorMessage
 } from "./lib/observability/error-log.js";
 import { robotsHeaderForSpaPath } from "./lib/seo.js";
-import { securityAuditMiddleware } from "./middleware/security-audit.js";
+import {
+  AUDITED_ROUTE_BASES,
+  securityAuditMiddleware
+} from "./middleware/security-audit.js";
 import { SecurityControlsNotReadyError } from "./lib/security/errors.js";
 import { compressedAssetFileName } from "./lib/security/static-assets.js";
 import {
@@ -198,7 +201,7 @@ export function createApp(): Express {
   });
   app.use("/api", cookieParser());
   app.use("/api", attachCurrentUser);
-  app.use("/api", securityAuditMiddleware);
+  app.use(AUDITED_ROUTE_BASES, securityAuditMiddleware);
   app.use("/api", trustedMutationOriginMiddleware());
   app.use("/api", express.json({ limit: "1mb" }));
 
