@@ -35,10 +35,9 @@ checks. It is not a compliance, certification, or independent-assessment claim.
 
 ### Internal PCI session ledger
 
-The living
-[`security-readiness session ledger`](../compliance/pci/security-readiness-session-report-2026-07-16.html)
-retains completed work, exact verification, pending decisions, evidence grades,
-owners, blockers, and next actions. It is not published as a Truenote web page.
+The living security-readiness session ledger retains completed work, exact
+verification, pending decisions, evidence grades, owners, blockers, and next
+actions. The maintainer keeps it outside this public repository.
 
 ### Database controls
 
@@ -63,10 +62,7 @@ These migrations are forward-only operational changes. Review the embedded guard
 repository and missing operational evidence to PCI DSS secure-software controls and related
 scope, provider, change-control, and penetration-testing dependencies. It is a
 draft readiness package for the existing CDE assessment process, not a compliance
-or certification claim. The
-[`security-readiness session ledger`](../compliance/pci/security-readiness-session-report-2026-07-16.html)
-preserves security-team feedback, completed changes, verification, open work, and
-next actions across long-running tasks and context compaction.
+or certification claim.
 
 ## Reporting
 
