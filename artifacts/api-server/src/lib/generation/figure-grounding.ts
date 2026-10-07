@@ -75,6 +75,11 @@ const HTML_LONE_TAG = /^<\/?[A-Za-z][A-Za-z0-9-]*(?:[ \t][^<>]*)?\/?>[ \t]*$/;
 /** CommonMark HTML block types 1-5 run to an end marker, across blank lines. */
 const HTML_BLOCKS_WITH_END: Array<[start: RegExp, end: RegExp]> = [
   [/^<(?:script|pre|style|textarea)(?:[ \t>]|$)/i, /<\/(?:script|pre|style|textarea)>/i],
+  // Not a sanitizer, so CodeQL's `--!>` warning does not apply: this mirrors
+  // CommonMark type 2 (ends on a line containing `-->`), as micromark in the
+  // answer view reads it, and the view never hands raw HTML to the browser.
+  // Ending at `--!>` would close the comment before the renderer does and
+  // count citations still hidden inside it as visible. Keep it as is.
   [/^<!--/, /-->/],
   [/^<\?/, /\?>/],
   [/^<!\[CDATA\[/, /\]\]>/],
@@ -833,7 +838,23 @@ const FRACTION_SLASH = /[⁄∕]/g;
 const NUMBER = /^(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)$/;
 const CURRENCY_CODES =
   "USD|EUR|GBP|CAD|AUD|NZD|JPY|CNY|INR|MXN|CHF|SEK|NOK|DKK|ZAR|BRL|HKD|SGD|PHP";
-const CURRENCY_BEFORE = new RegExp(`(?:(\\p{Sc})|(?<![\\p{L}\\p{N}])(${CURRENCY_CODES})) ?$`, "u");
+/**
+ * Signs after display normalization: ASCII `-` and `+` (every `\p{Pd}`, U+2212
+ * and NFKC's minus and plus forms already read as these), plus the minus and
+ * plus forms NFKC leaves (U+02D6, U+02D7, U+2052, U+2795, U+2796).
+ */
+const MINUS_SIGNS = "\\-\u02d7\u2052\u2796";
+const SIGNS = `${MINUS_SIGNS}+\u02d6\u2795`;
+const MINUS = new RegExp(`^[${MINUS_SIGNS}]$`, "u");
+/**
+ * A currency symbol or code before the number, with an optional sign between
+ * it and the digits (`$-40`, `USD -40`); group 3 is the sign, group 4 any
+ * space between the sign and the digits.
+ */
+const CURRENCY_BEFORE = new RegExp(
+  `(?:(\\p{Sc})|(?<![\\p{L}\\p{N}])(${CURRENCY_CODES}))(?: ?([${SIGNS}])( ?)| ?)$`,
+  "u"
+);
 const CURRENCY_AFTER = new RegExp(`^ ?(?:(\\p{Sc})|(${CURRENCY_CODES})(?![\\p{L}\\p{N}]))`, "u");
 /**
  * A money word after the number makes it currency in that unit, with one
@@ -854,7 +875,8 @@ const SCALE_EXPONENTS: Record<string, number> = {
   k: 3, m: 6, mm: 6, mn: 6, b: 9, bn: 9, t: 12, tn: 12
 };
 const PERCENT_AFTER = /^(?: ?[%‰]| (?:percent|per cent|pct)(?![\p{L}\p{N}]))/iu;
-const SIGN_BEFORE = /(?<![\p{L}\p{N}])-$/u;
+const SIGN_BEFORE = new RegExp(`(?<![\\p{L}\\p{N}])[${MINUS_SIGNS}]$`, "u");
+const ANY_SIGN_BEFORE = new RegExp(`(?<![\\p{L}\\p{N}])[${SIGNS}]$`, "u");
 
 function canonicalNumber(token: string): string {
   let digits = token.replace(/,/g, "");
@@ -931,11 +953,20 @@ function extractFigures(text: string): Figure[] {
 
     const percent = take(PERCENT_AFTER.exec(after));
     const percentMark = percent ? (percent[0].includes("‰") ? "‰" : "%") : "";
-    const sign = SIGN_BEFORE.test(before) ? "-" : "";
-    const prefixLength = (currencyBefore?.[0].length ?? 0) + sign.length;
+    const leadingMinus = SIGN_BEFORE.test(before);
+    const innerSign = currencyBefore?.[3];
+    // `-$40`, `$-40` and `USD -40` are all minus 40 in that unit, and `$+40`
+    // is 40. Two signs (`-$-40`, `+$-40`) or a sign set apart from the digits
+    // (`$ - 40`) is ambiguous: such a figure matches only the same text.
+    const twoSigns = innerSign !== undefined && ANY_SIGN_BEFORE.test(before);
+    const ambiguousSign = twoSigns || (innerSign !== undefined && currencyBefore![4] !== "");
+    const sign = leadingMinus || (innerSign !== undefined && MINUS.test(innerSign)) ? "-" : "";
+    const prefixLength = (currencyBefore?.[0].length ?? 0) + (leadingMinus || twoSigns ? 1 : 0);
     const figureText = text.slice(start - prefixLength, end + consumed).trim();
 
-    if (NUMBER.test(base) && !(unit && percent)) {
+    if (ambiguousSign) {
+      figures.push({ kind: "compound", key: `ambiguous:${figureText}`, text: figureText, start, end });
+    } else if (NUMBER.test(base) && !(unit && percent)) {
       const number = `${sign}${scaleNumber(canonicalNumber(base), exponent)}`;
       const kind: FigureKind = unit ? "currency" : percent ? "percent" : "plain";
       const key =
