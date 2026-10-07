@@ -1,12 +1,12 @@
 # Secrets & Environment Variables
 
-Replit Secrets are the source of truth in production. `.env.example` documents what's needed locally.
+Railway service variables are the source of truth in production (names and per-service split: `deployment.md`). `.env.example` documents what's needed locally.
 
 ## Required
 
 | Var | Used for | Notes |
 |---|---|---|
-| `DATABASE_URL` | Neon Postgres (Replit-managed) | Must have `vector` and `pg_trgm` extensions enabled |
+| `DATABASE_URL` | Railway Postgres (`pgvector` service), set as `${{pgvector.DATABASE_URL_PRIVATE}}` | Needs the `vector`, `pg_trgm` and `pgcrypto` extensions |
 | `OPENROUTER_API_KEY` | Answer generation through the approved model-routing presets, plus the auxiliary utility calls (follow-up rewrite, session naming) pinned to the Mercury 2 (Inception) ZDR route | Assign key to the ZDR guardrail. Every request pins one provider, sends `provider.zdr=true`, denies data collection, and disables provider fallback. No direct answer-generation escape hatch exists. |
 | `OPENAI_API_KEY` | Embeddings (`text-embedding-3-small`) and the opt-in eval judge | These direct utilities are outside OpenRouter's ZDR boundary; configure required retention controls on the OpenAI organization. They are never used as an answer-generation fallback. Follow-up rewrite and session naming moved to the OpenRouter ZDR utility (2026-07) and no longer touch this key. |
 | `VISION_AGENT_API_KEY` | LandingAI ADE Parse v2 for document parsing (OCR + inline figure description) | Model `dpt-3-pro-latest`. ZDR is account-level (Team/Enterprise plan + Org-Settings toggle), NOT a request parameter — the key alone does not guarantee ZDR. |
@@ -39,13 +39,15 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 | `RETRIEVAL_TOP_K` | Final chunks sent to LLM after reranking | `8` |
 | `RETRIEVAL_CANDIDATE_K` | Candidates pulled from vector + BM25 before reranking | `40` each |
 | `RETRIEVAL_NEIGHBOR_ANCHORS` | Top reranked chunks whose ordinal ±1 siblings are appended as unscored context. `0` disables neighbor expansion | `3` |
-| `RAG_STORAGE_DRIVER` | Set to `memory` to use the in-memory adapter (local scripts / tests). Any other value (or unset) selects Replit Object Storage | unset → Replit SDK |
+| `RAG_STORAGE_DRIVER` | `s3` selects the S3-compatible adapter (Railway). `memory` selects the in-memory adapter (local scripts / tests). Unset selects Replit Object Storage, kept until the Replit pieces are removed | unset → Replit SDK |
+| `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Bucket settings for `RAG_STORAGE_DRIVER=s3`; on Railway they come from `railway bucket credentials -b truenote-storage`. A missing one fails the first storage call with the missing names | required with `s3` |
+| `S3_FORCE_PATH_STYLE` | `true` for providers that need path-style URLs (MinIO). Railway Buckets use virtual-host style | `false` |
 | `BOOTSTRAP_SUPER_USER_NAME` | Display name for the bootstrap super_user | `Super User` |
-| `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for cross-origin credentialed requests. Leave unset for same-origin Replit deploys. | unset → no cross-origin |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for cross-origin credentialed requests. Production sets it to the Railway service URL so that host passes the CSRF origin check while `APP_BASE_URL` names `truenote.org`. | unset → no cross-origin |
 | `MIN_PASSWORD_LENGTH` | Floor enforced by bootstrap and the change-password form (server-side zod + client UI mirror via `/api/config`). Read once at api-server startup; restart to apply. Enforced within `[15, 1024]`; out-of-range falls back to 15. | `15` |
 | `RESEND_API_KEY` | Transactional email API key (resend.com). Used to send self-service password-reset links. **Both** this and `RESEND_FROM_EMAIL` must be set. Local development may use the console sender; production fails closed instead of logging reset/invite links. | unset → dev console; production send error |
 | `RESEND_FROM_EMAIL` | Sender address for outgoing emails. Must be a verified Resend domain or `onboarding@resend.dev` for testing. Must accompany `RESEND_API_KEY`; production fails closed when either is absent. | unset → dev console; production send error |
-| `APP_BASE_URL` | Public base URL used when constructing links in outgoing emails (e.g. `https://kbase.replit.app`). When unset we infer from `X-Forwarded-Proto` / `X-Forwarded-Host`, which works on Replit but is spoofable in unusual proxy setups. Set this explicitly for production. | unset → inferred from request headers |
+| `APP_BASE_URL` | Public base URL used when constructing links in outgoing emails (production: `https://truenote.org`). Also the only origin the CSRF check trusts in production besides `CORS_ALLOWED_ORIGINS`, and `www.<its host>` redirects to it. When unset outside production we infer from `X-Forwarded-Proto` / `X-Forwarded-Host`; the api-server refuses to start in production without it. | unset → inferred from request headers |
 
 ## Pitfalls
 
@@ -54,4 +56,4 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 - The scanner receives raw source bytes and the SIEM receives security-event metadata. Both endpoints and contracts require Security/vendor review before configuration.
 - Embedding model is `text-embedding-3-small` (1536 dim). The `chunks.embedding VECTOR(1536)` column hardcodes that — changing models requires re-ingestion.
 - LandingAI ADE Parse v2 takes a `multipart/form-data` upload (`document` field) via direct HTTP — no SDK, Node's global `fetch`/`FormData`/`Blob`. See `lib/parsing/landing-parse.ts` and `.claude/reference/landingai-ade.md`.
-- Replit reserves port 5000 for the public webview, so on Replit `PORT=5000` (frontend) and `API_PORT=3001` (or any non-5000). The defaults in `.env.example` reflect this. Local-only dev can flip them back to the donor's `API_PORT=5000`/`PORT=5173` Express+Vite convention. See `.claude/reference/pitfalls.md`.
+- Ports: in local dev, `PORT` is the Vite frontend and `API_PORT` the api-server (Vite proxies `/api` to it). On Railway, `scripts/railway-start.sh` copies Railway's `PORT` (8080 on `web`) into `API_PORT`; the api-server serves the SPA itself, so there is no Vite process.

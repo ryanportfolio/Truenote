@@ -1,6 +1,6 @@
 # Data Model
 
-> Postgres on Replit (Neon). `vector` and `pg_trgm` extensions required.
+> Postgres 18 on Railway (`pgvector` service). `vector`, `pg_trgm` and `pgcrypto` extensions required.
 
 ## Core tables
 
@@ -226,4 +226,4 @@ CREATE UNIQUE INDEX eval_runs_program_baseline_uidx ON eval_runs (program_id)
 
 ## Schema change protocol
 
-Claude Code cannot run migrations. For any schema change: write raw DDL only, hand it to the user for the Replit Agent. No `drizzle-kit push`, no `shared/schema.ts` edits in the same task. See CLAUDE.md → "Database Schema Changes."
+One schema change = one raw SQL file in `lib/db/sql/` plus the matching `lib/db/src/schema.ts` edit, applied to production with `scripts/railway-apply-sql.mjs` after the owner's go. No `drizzle-kit`. See CLAUDE.md → "Database schema changes" and `deployment.md`.

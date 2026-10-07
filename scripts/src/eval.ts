@@ -1,7 +1,7 @@
 /**
  * Eval harness runner.
  *
- * Usage (Replit or local with secrets loaded):
+ * Usage (inside the Railway worker over `railway ssh`, or locally with secrets loaded):
  *   pnpm --filter @workspace/scripts run eval
  *   pnpm --filter @workspace/scripts run eval -- --program <uuid>
  *   pnpm --filter @workspace/scripts run eval -- --question <uuid>
@@ -82,7 +82,7 @@ Options:
   --help, -h              Show this help
 
 Parameter-sweep overrides (set the corresponding env var for this run only —
-use to tune before changing Replit Secrets):
+use to tune before changing the Railway variables):
   --top-k <int>           RETRIEVAL_TOP_K
   --candidate-k <int>     RETRIEVAL_CANDIDATE_K
   --threshold <float>     RERANK_CONFIDENCE_THRESHOLD
@@ -192,7 +192,7 @@ async function main(): Promise<void> {
 
   // Parameter-sweep overrides: retrieve() reads these env vars per call, so
   // setting them here scopes the override to this run without touching
-  // Replit Secrets.
+  // Railway variables.
   for (const [key, value] of Object.entries(args.overrides)) {
     process.env[key] = value;
   }

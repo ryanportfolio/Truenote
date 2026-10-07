@@ -46,7 +46,7 @@ SDK only if we later want Section/Split/Classify; v1 and v2 response shapes are 
 ## Auth
 
 `Authorization: Bearer <key>`. Read from `VISION_AGENT_API_KEY` (the vendor-canonical name and
-the TS SDK default; Replit secret renamed from `LANDINGAI_API` to this on 2026-07-13). For
+the TS SDK default; secret renamed from `LANDINGAI_API` to this on 2026-07-13). For
 direct HTTP the env-var name is arbitrary; we standardize on `VISION_AGENT_API_KEY`.
 
 ## Parse v2 request

@@ -33,7 +33,7 @@ export interface RerankResult {
 
 /**
  * Default stays on rerank-english-v3.0. Upgrading (e.g. to rerank-v3.5) is a
- * deliberate, eval-gated act: set COHERE_RERANK_MODEL in Replit Secrets, run
+ * deliberate, eval-gated act: set COHERE_RERANK_MODEL in the Railway variables, run
  * the eval suite, and RETUNE RERANK_CONFIDENCE_THRESHOLD — score
  * distributions differ between rerank model versions, so the old threshold
  * is invalid the moment the model changes.

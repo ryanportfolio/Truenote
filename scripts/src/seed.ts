@@ -1,7 +1,7 @@
 /**
  * Controlled demo-corpus seed.
  *
- * Usage on Replit after the P0/P1 controls are applied:
+ * Usage on the deployed service after the P0/P1 controls are applied:
  *   pnpm --filter @workspace/scripts run seed
  *
  * Idempotent and narrowly scoped:

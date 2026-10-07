@@ -44,7 +44,9 @@ The eval set is only as good as its questions. Bias toward:
 ## Running the harness
 
 ```bash
-# Replit (or any env with secrets loaded):
+# Production (inside the worker container; it holds the secrets):
+#   railway ssh -s worker -- "cd /app/scripts && ./node_modules/.bin/tsx src/eval.ts --limit 5"
+# Any env with secrets loaded:
 pnpm --filter @workspace/scripts run eval
 
 # Filter to one program:
@@ -62,7 +64,7 @@ pnpm --filter @workspace/scripts run eval -- --json > .tmp/eval-result.json
 # Claim-level faithfulness judge (extra gpt-4o call per non-refused answer):
 pnpm --filter @workspace/scripts run eval -- --judge
 
-# Parameter sweep without touching Replit Secrets (run-scoped env overrides):
+# Parameter sweep without touching the Railway variables (run-scoped env overrides):
 pnpm --filter @workspace/scripts run eval -- --threshold 0.25 --top-k 12
 pnpm --filter @workspace/scripts run eval -- --rerank-model rerank-v3.5 --threshold 0.2
 pnpm --filter @workspace/scripts run eval -- --neighbors 0   # A/B neighbor expansion
@@ -118,7 +120,7 @@ numbers move"; protected questions detect "did we cheat to move them."
   Aim for ~30–40% protected, weighted toward exact-value questions (fees,
   dates, policy numbers) and out-of-KB refusal cases.
 
-Column DDL — Replit Agent, run once (idempotent):
+Column DDL, applied once (idempotent):
 
 ```sql
 ALTER TABLE eval_questions

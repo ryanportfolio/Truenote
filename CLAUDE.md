@@ -35,11 +35,11 @@ Invoke the `caveman` skill at **ultra** at session start. All prose replies, thi
 
 Which checks you can run depends on the sandbox — full detail: `.claude/reference/environment.md`.
 
-- **Local desktop session** (local checkout): `corepack pnpm install`, `pnpm -r run check`, `pnpm -r run test` = standard pre-PR gate. Baseline is **zero type errors** workspace-wide (8 legacy api-server errors fixed 2026-07-04) — any error `check` reports is yours. Runtime verification still impossible locally: no DATABASE_URL, no API keys.
-- **Cloud sandbox session**: do NOT run `npm install`/`pnpm install` just to enable a one-shot check — fresh sandbox per session = high-cost/low-signal. Read code, inspect logs, state Replit verification is the next step, stop.
-- ❌ Never claim "I verified visually" / "I tested the UI" — no session type has a browser against the live app.
+- **Local desktop session** (local checkout): `corepack pnpm install`, `pnpm -r run check`, `pnpm -r run test` = standard pre-PR gate. Baseline is **zero type errors** workspace-wide (8 legacy api-server errors fixed 2026-07-04) — any error `check` reports is yours. The app does not run locally (no DATABASE_URL, no API keys); runtime checks happen on Railway.
+- **Cloud sandbox session**: do NOT run `npm install`/`pnpm install` just to enable a one-shot check — fresh sandbox per session = high-cost/low-signal. No Railway CLI there: read code, state that a Railway deploy check is the next step, stop.
+- ✅ Runtime verification = the deployed Railway service after a deploy: `/health`, the affected pages or API routes on the public URL, and `railway logs` for `web` and `worker`. A build or deploy `SUCCESS` alone proves nothing. Procedure: `.claude/reference/deployment.md`.
 - ✅ Run the eval harness against a local fixture set when retrieval/generation changes.
-- ✅ Runtime verification is Replit's job. Say so explicitly when it's the next step.
+- ❌ Never claim a UI check you did not run in a browser against the deployed URL.
 
 A check couldn't run → *flag the risk plainly* — never fabricate verification.
 - Browser per session, never shared. The desktop app's Browser pane (`mcp__Claude_Browser__*`, `preview_start`) is one Chrome per app: a second session or subagent gets "Another task's Chrome owns browser slot". The official playwright plugin is one persistent profile: the second connection gets "Browser is already in use ... use --isolated" and deadlocks. Parallel or subagent browser work uses `@playwright/mcp --isolated` (in-memory profile; copy `.mcp.json` from claude-starter).
@@ -75,35 +75,34 @@ Overrides the Bash tool's built-in "commit only when asked" default: task comple
 - "Complete" = requested change finished AND verified to the current session type's limits. Mid-task or exploratory work is NOT a commit trigger.
 - End commit messages with the standard `Co-Authored-By:` trailer.
 
-## Two sandboxes (summary — full detail: `.claude/reference/environment.md`)
+## Where things run (full detail: `.claude/reference/environment.md`, `.claude/reference/deployment.md`)
 
-1. **Dev session (you)**: local Windows desktop (pnpm via corepack; local installs for VERIFICATION ONLY) or Claude Code cloud sandbox (ephemeral, NOT Replit — commit anything worth keeping). Neither can run the deployed app (no DATABASE_URL, no API keys).
-2. **Deployed app**: **Replit** (Neon Postgres with `vector` + `pg_trgm`, Replit Secrets, Replit Agent for installs). You have NO direct access.
+1. **Dev session (you)**: local Windows desktop (pnpm via corepack) or Claude Code cloud sandbox (ephemeral; commit anything worth keeping). Neither runs the app.
+2. **Production: Railway** project `truenote`, environment `production`: services `web` (api-server + built SPA) and `worker` (pg-boss ingestion/eval), `pgvector` (Postgres 18 with `vector`, `pg_trgm`, `pgcrypto`), bucket `truenote-storage`. The local desktop has the Railway CLI logged in; run it yourself. There is no separate dev database. Replit served production until the DNS cutover and is being retired.
 
-**Requires user action (flag explicitly, copy/paste-ready):** app-runtime installs, DB schema changes, globally-installed Claude tooling, anything destructive/irreversible.
+**Ask the owner first:** every production deploy, every schema change applied to production, variable changes, and anything destructive, paid or irreversible.
 
-## Installs: two paths
+## Installs
 
-Decision rule: affects the **deployed site** → Replit Agent path (manual copy/paste). Affects **Claude Code** → do it yourself when possible. Templates: `.claude/reference/environment.md`.
-
-- **Path A — app-runtime deps** (`npm`/`pip` the deployed site imports): Claude Code **must not** run the install. **Stop**, name the package(s) + why, provide the copy/paste Replit Agent prompt, **wait** for confirmation.
-- **Path B — Claude Code dev tooling** (skills, hooks, MCP config, settings): commit under `.claude/` yourself. Globally-installed CLI tooling → give the user the exact command for their own CLI (NOT Replit Agent).
+- **App-runtime deps**: `corepack pnpm --filter <workspace> add <pkg>` locally, then commit `package.json` + `pnpm-lock.yaml`. pnpm on Windows drops `libc:` lines from the lockfile; restore them before committing (`pitfalls.md`). The image builds with `--frozen-lockfile`, so the dep reaches production with the next deploy.
+- **Claude Code dev tooling** (skills, hooks, MCP config, settings): commit under `.claude/` yourself. Globally-installed CLI tooling → give the user the exact command for their own CLI.
 
 ## Database schema changes
 
-Claude Code cannot run migrations. Any schema change → **raw DDL only** for the Replit Agent (prompt template: `.claude/reference/environment.md`).
+One change = one raw SQL file `lib/db/sql/NNNN_<name>.sql` plus the matching `lib/db/src/schema.ts` edit, in the same PR. Procedure and log: `.claude/reference/deployment.md`.
 
-- ✅ Single minimal SQL block (`ALTER TABLE`, `CREATE TABLE`, `CREATE INDEX`…); prefer `IF [NOT] EXISTS`.
-- ❌ NO `shared/schema.ts` edits (no table definitions, no `index()` declarations on `pgTable`).
-- ❌ NO `drizzle-kit` commands (`push`, `generate`, …).
-- ❌ Never label the SQL a "production migration" or point it at production. Replit's publish flow diffs dev vs. prod and promotes automatically.
+- ✅ Minimal DDL; prefer `IF [NOT] EXISTS`. Constraints, functions and triggers are part of the file, not left implicit.
+- ✅ After merge and the owner's go: apply it to production in one transaction over `railway ssh` (`psql --single-transaction`), then deploy the code that needs it. Check the resulting definition in the database.
+- ❌ NO `drizzle-kit` commands (`push`, `generate`, `migrate`). The production database, not `schema.ts`, is the schema's source of truth.
+- ❌ New extensions beyond `vector`, `pg_trgm`, `pgcrypto` need the owner's go.
 
 ## Project reference library
 
 | Topic | File | When to consult |
 |---|---|---|
 | Env vars / API keys | `.claude/reference/secrets.md` | Wiring new env, debugging auth/key issues |
-| Sandboxes, installs, schema protocol | `.claude/reference/environment.md` | Install prompts, DDL templates, sandbox mechanics |
+| Sandboxes, installs | `.claude/reference/environment.md` | Install mechanics, what each session type can run |
+| Railway deploys, schema changes, DNS | `.claude/reference/deployment.md` | Deploying, applying SQL, rollback, domain records |
 | Ingestion pipeline | `.claude/reference/ingestion.md` | Upload, parsing, chunking, embedding |
 | Retrieval & generation | `.claude/reference/retrieval.md` | Search ranking, reranker thresholds, citation contract |
 | Data model | `.claude/reference/data-model.md` | Schema changes, versioning, scoping rules |
@@ -112,7 +111,7 @@ Claude Code cannot run migrations. Any schema change → **raw DDL only** for th
 
 **Capture new learnings:** `/recall save <text>` — picks the right topic file, appends a dated entry, commits.
 
-Stays in this file: cross-cutting safety/process rules (popup ban, verification, two-sandbox model, install paths, schema protocol, non-negotiables). Moves out: anything area-specific.
+Stays in this file: cross-cutting safety/process rules (verification, where things run, installs, schema protocol, non-negotiables). Moves out: anything area-specific.
 
 ## Codex compatibility
 

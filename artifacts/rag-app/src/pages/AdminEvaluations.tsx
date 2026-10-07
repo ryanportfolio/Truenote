@@ -388,7 +388,7 @@ function EvaluationCenter(): JSX.Element {
       ) : !loading && runsState?.persistenceReady === false ? (
         <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-foreground">
           Evaluation storage is not installed yet. Questions remain editable, but runs
-          are disabled until the Replit DDL is applied and the worker is restarted.
+          are disabled until the reviewed DDL is applied and the worker is restarted.
         </div>
       ) : null}
 

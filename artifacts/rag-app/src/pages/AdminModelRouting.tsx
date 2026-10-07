@@ -150,7 +150,7 @@ function ModelRoutingPanel(): JSX.Element {
           {!config.persistenceReady ? (
             <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning-foreground">
               Storage setup required. The default order is active, but changes
-              cannot be saved until the Replit DDL is applied.
+              cannot be saved until the reviewed DDL is applied.
             </p>
           ) : null}
 

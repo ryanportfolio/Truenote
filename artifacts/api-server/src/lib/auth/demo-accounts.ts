@@ -5,7 +5,7 @@ import { z } from "zod";
  * the config route and unit tests can use it without side effects; the
  * DB work lives in bootstrap-demo.ts.
  *
- * DEMO_LOGIN_ACCOUNTS (Replit Secrets) is a JSON array:
+ * DEMO_LOGIN_ACCOUNTS (service variable) is a JSON array:
  *
  *   [{"label":"Manager","email":"manager@demo.truenote","password":"...","role":"manager"},
  *    {"label":"CSR","email":"csr@demo.truenote","password":"..."}]

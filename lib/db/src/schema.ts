@@ -13,7 +13,7 @@ import {
 
 // pgvector — Drizzle has no first-class vector type that we want to lock to a
 // specific dimension. customType keeps the DDL source-of-truth in the
-// reference data-model.md and the Replit-handoff SQL, while giving us typed
+// reference data-model.md and the reviewed raw SQL (docs/security, lib/db/sql), while giving us typed
 // reads/writes in TS. driverData is a pg-formatted "[n,n,...]" literal.
 const vector1536 = customType<{ data: number[]; driverData: string }>({
   dataType() {

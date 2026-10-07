@@ -43,8 +43,8 @@ function trustedOrigins(req: Request, env: NodeJS.ProcessEnv): Set<string> {
     if (origin) origins.add(origin);
   }
 
-  // Production must use explicit configuration. Replit's public host and its
-  // internal API port differ, so trusting forwarded host data there would
+  // Production must use explicit configuration. The public host is set by the
+  // hosting proxy, so trusting forwarded host data there would
   // weaken the configured boundary. Local/Vite development can safely derive
   // the public request origin to avoid requiring a fake deployment URL.
   if (env.NODE_ENV !== "production") {

@@ -70,3 +70,19 @@ Fix (Replit Agent, commit `cfc2ea8` on main), in `artifacts/rag-app/src/pages/Ad
 ### 2026-07-17: PR checks reflect only pushed commits, and CodeQL cannot see custom controls
 
 GitHub PR checks and review suggestions remain attached to the last pushed commit; a locally passing fix does not change the PR until the branch is pushed. Gitleaks scans the complete PR commit range, so replacing a synthetic credential-shaped fixture at the tip does not remove the historical finding; retain only the exact historical fingerprint in `.gitleaksignore` after verifying the bytes are synthetic. CodeQL's Express queries do not recognize Truenote's custom Postgres-backed workload limiter or application-wide Origin/Fetch-Metadata CSRF middleware, so verify the exact middleware implementation, route order, and negative tests before recording a narrow false-positive disposition. The PR change-record gate permits an explicitly pending decision with a specifically explained unassigned reviewer, while the verifier's default strict mode still requires real approval and a distinct reviewer.
+
+### 2026-10-07: pnpm on Windows drops `libc:` lines from the lockfile
+
+`corepack pnpm --filter @workspace/api-server add ...` on Windows rewrote `pnpm-lock.yaml` without the 17 `libc: [glibc]` / `libc: [musl]` lines under `packages:` (argon2, rollup and esbuild Linux binaries). Linux builds then cannot tell the glibc and musl variants apart. Restore them from `origin/main`'s lock before committing; they belong only in the `packages:` section, never under `snapshots:` (a first restore pass that matched both sections had to be undone). Check: `git diff pnpm-lock.yaml` shows no removed lines for a pure add, and `corepack pnpm install --frozen-lockfile` passes. Cost: two fix passes.
+
+### 2026-10-07: Inside the Railway `pgvector` container, `PGPORT` points at the TCP proxy
+
+The pgvector template sets `PGPORT` (and `PGHOST`) to its public TCP proxy. `psql`/`pg_dump` apply `PGPORT` to any URL without an explicit port, so connecting from that container to another database (the Replit Neon source) went to port 40423 and timed out. Put `:5432` in external URLs, and pass `-h localhost -p 5432` for the local database. Cost: one retry.
+
+### 2026-10-07: `railway environment edit --service-config` changes nothing (CLI 5.26)
+
+`railway environment edit --service-config web deploy.healthcheckPath /health` (by service name or ID, one flag or several) answered `{"committed":false,"message":"No changes to apply"}`. Set service-instance settings through GraphQL instead: `serviceInstanceUpdate(serviceId, environmentId, input: { dockerfilePath, healthcheckPath, healthcheckTimeout, restartPolicyType, restartPolicyMaxRetries })` at `https://backboard.railway.com/graphql/v2` with the CLI's token from `~/.railway/config.json`. The `Builder` enum has no `DOCKERFILE` value; setting `dockerfilePath` switches the builder on its own. Cost: three failed attempts.
+
+### 2026-10-07: The SPA build needs `docs/security/` in the Railway upload
+
+`artifacts/rag-app/vite.config.ts` embeds `docs/security/truenote-security-capabilities.html` and the PCI page into the build. With `docs/` missing from the `.railwayignore` whitelist, the image build failed with the misleading `ENOENT: no such file or directory, scandir '/app/artifacts/rag-app/dist/assets'` from the precompress plugin, which runs after the real failure. Keep `!docs/` and `!docs/**` in both `.railwayignore` and `.dockerignore`. Cost: one failed build.
