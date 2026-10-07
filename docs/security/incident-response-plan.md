@@ -191,7 +191,7 @@ Collect evidence before cleanup. Store it in the restricted evidence location, n
 4. **Logs.** Save the Replit deployment logs for the window `[CONFIRM: how long Replit keeps deployment logs and how to export them]` and the application error log (`GET /api/admin/errors`).
 5. **GitHub.** Save links to the relevant alerts, workflow runs, and commits.
 6. **Provider records.** Ask the provider for usage logs of a leaked key before revoking it, if the provider supports that.
-7. **Before any database restore**, export every security event and session newer than the restore point; a restore removes them. See the runbook.
+7. **Before any database restore**, export every security event and session newer than the restore point, and a snapshot of every user's authorization fields; a restore removes or reverts them. See the runbook, step 4.1.4.
 
 Use UTC everywhere. Note clock source differences: database times come from Postgres `clock_timestamp()`; GitHub and providers use their own clocks.
 
