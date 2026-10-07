@@ -34,7 +34,7 @@
         "description": "See how Truenote turns approved documents into source-backed customer service answers, visible refusals, and inspectable controls.",
         "isPartOf": { "@id": "https://truenote.org/#website" },
         "about": { "@id": "https://truenote.org/#organization" },
-        "dateModified": "2026-07-16",
+        "dateModified": "2026-10-07",
         "publisher": {
           "@type": "Organization",
           "@id": "https://truenote.org/#organization",
@@ -49,7 +49,7 @@
   <body>
     <h1 class="visually-hidden">About Truenote — a retrieval-augmented knowledge assistant that gives customer service teams cited, verifiable answers from approved documents</h1>
     <a class="about-home" href="/">Sign in to Truenote</a>
-    <p class="page-updated">Updated <time datetime="2026-07-16">16 Jul 2026</time></p>
+    <p class="page-updated">Updated <time datetime="2026-10-07">7 Oct 2026</time></p>
     <canvas id="atmosphere" aria-hidden="true"></canvas>
     <main class="deck" aria-live="polite">
       <section class="slide new-workflow active" data-title="The Truenote workflow" data-theme="light">
@@ -203,35 +203,37 @@ Enterprise    $25</pre>
             <p class="index">ANSWER MODEL</p>
             <h2>Control comes before model choice</h2>
             <div class="model-identity fragment">
-              <span>PRIMARY ANSWER MODEL</span>
-              <strong>IBM Granite 4.1 8B</strong>
+              <span>APPROVED ANSWER MODEL</span>
+              <strong>IBM Granite 4.2 8B</strong>
+              <code>ibm-granite/granite-4.2-8b</code>
             </div>
             <div class="model-capabilities" aria-label="Granite capabilities used by Truenote">
-              <article class="fragment"><span>WORK</span><strong>RAG · structured output · extraction · classification</strong></article>
-              <article class="fragment"><span>CONTEXT</span><strong>131K-token window · 12 languages</strong></article>
+              <article class="fragment"><span>WORK</span><strong>Reasoning · tool calling · multilingual dialog</strong></article>
+              <article class="fragment"><span>CONTEXT</span><strong>128K-token window · 12 languages</strong></article>
               <article class="fragment"><span>CONTROL</span><strong>Published weights · Apache 2.0 license</strong></article>
             </div>
           </div>
 
-          <div class="route-instrument fragment" aria-label="Answer route controls and observed provider performance">
+          <div class="route-instrument fragment" aria-label="Answer route controls and the Granite route snapshot">
             <div class="route-locks">
               <span><i></i><b>ZDR required</b></span>
               <span><i></i><b>Training use denied</b></span>
               <span><i></i><b>Silent fallback off</b></span>
             </div>
             <div class="route-snapshot">
-              <header><span>ROUTE SNAPSHOT</span><small>CAPTURED 11 JUL 2026</small></header>
+              <header><span>ROUTE SNAPSHOT</span><small>CAPTURED 7 OCT 2026 · 24H WINDOW</small></header>
               <div class="telemetry-row">
-                <span><b>LATENCY</b><strong>0.11s</strong></span>
-                <span><b>THROUGHPUT</b><strong>113 tps</strong></span>
-                <span class="uptime-reading"><b>UPTIME</b><strong><i></i>100.00%</strong></span>
+                <span><b>PROVIDER</b><strong>CoreWeave</strong></span>
+                <span><b>CONTEXT</b><strong>131K</strong></span>
+                <span class="uptime-reading"><b>UPTIME</b><strong><i></i>99.99%</strong></span>
               </div>
+              <small>FALLBACK CHAIN · 5 ZDR ROUTES · ADMIN-ORDERED · DEFAULT PRIMARY NEMOTRON 3 SUPER · GRANITE LAST</small>
             </div>
           </div>
 
-          <p class="model-source">Model facts: <a href="https://huggingface.co/ibm-granite/granite-4.1-8b" target="_blank" rel="noreferrer">IBM model card</a> · Route policy: <a href="https://openrouter.ai/docs/guides/features/zdr" target="_blank" rel="noreferrer">OpenRouter ZDR</a></p>
+          <p class="model-source">Model facts: <a href="https://huggingface.co/ibm-granite/granite-4.2-8b" target="_blank" rel="noreferrer">IBM model card</a> · Route policy: <a href="https://openrouter.ai/docs/guides/features/zdr" target="_blank" rel="noreferrer">OpenRouter ZDR</a></p>
         </div>
-        <aside class="speaker-note">The model receives selected passages, not the document library; each answer request requires a ZDR-capable route, denies provider data collection, and disables silent provider fallback; the telemetry is a dated observation, not a promise</aside>
+        <aside class="speaker-note">Granite 4.2 8B is one of five approved ZDR routes that a super user orders into a fallback chain; by default Nemotron 3 Super answers first and Granite is tried last. The model receives selected passages, not the document library; each answer request requires a ZDR-capable route, denies provider data collection, and disables silent provider fallback; the telemetry is a dated observation, not a promise</aside>
       </section>
 
       <section class="slide source-control" data-title="Operational control" data-theme="paper">

@@ -7,7 +7,7 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 | Var | Used for | Notes |
 |---|---|---|
 | `DATABASE_URL` | Neon Postgres (Replit-managed) | Must have `vector` and `pg_trgm` extensions enabled |
-| `OPENROUTER_API_KEY` | Answer generation through the approved model-routing presets, plus the auxiliary utility calls (follow-up rewrite, session naming) pinned to the Mercury 2 (Inception) ZDR route | Assign key to the ZDR guardrail. Every request pins one provider, sends `provider.zdr=true`, denies data collection, and disables provider fallback. No direct answer-generation escape hatch exists. |
+| `OPENROUTER_API_KEY` | Answer generation through the approved model-routing presets, plus the auxiliary utility calls (follow-up rewrite, session naming) pinned to the Mercury 2.5 (Inception) ZDR route | Assign key to the ZDR guardrail. Every request pins one provider, sends `provider.zdr=true`, denies data collection, and disables provider fallback. No direct answer-generation escape hatch exists. |
 | `OPENAI_API_KEY` | Embeddings (`text-embedding-3-small`) and the opt-in eval judge | These direct utilities are outside OpenRouter's ZDR boundary; configure required retention controls on the OpenAI organization. They are never used as an answer-generation fallback. Follow-up rewrite and session naming moved to the OpenRouter ZDR utility (2026-07) and no longer touch this key. |
 | `VISION_AGENT_API_KEY` | LandingAI ADE Parse v2 for document parsing (OCR + inline figure description) | Model `dpt-3-pro-latest`. ZDR is account-level (Team/Enterprise plan + Org-Settings toggle), NOT a request parameter — the key alone does not guarantee ZDR. |
 | `COHERE_API_KEY` | Rerank v3 | Cuts irrelevant chunks from final LLM context |
@@ -35,7 +35,7 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 |---|---|---|
 | `DEMO_LOGIN_ACCOUNTS` | Demo deployments only: JSON account list the login page pre-fills. PUBLISHED via unauthenticated /api/config (deliberate); users bootstrapped at startup with must_reset_password=false; roles capped at manager. Never set where real content lives. | unset → no demo mode |
 | `RERANK_CONFIDENCE_THRESHOLD` | Refusal gate — if top reranker score is below this, refuse. MUST be retuned (via eval) whenever `COHERE_RERANK_MODEL` changes | `0.3` |
-| `COHERE_RERANK_MODEL` | Cohere rerank model. Upgrade (e.g. `rerank-v3.5`) is eval-gated — see retrieval.md | `rerank-english-v3.0` |
+| `COHERE_RERANK_MODEL` | Cohere rerank model override. Upgrade target `rerank-v4.0-pro`; any change is eval-gated and is set together with a retuned `RERANK_CONFIDENCE_THRESHOLD`; see retrieval.md | `rerank-english-v3.0` |
 | `RETRIEVAL_TOP_K` | Final chunks sent to LLM after reranking | `8` |
 | `RETRIEVAL_CANDIDATE_K` | Candidates pulled from vector + BM25 before reranking | `40` each |
 | `RETRIEVAL_NEIGHBOR_ANCHORS` | Top reranked chunks whose ordinal ±1 siblings are appended as unscored context. `0` disables neighbor expansion | `3` |

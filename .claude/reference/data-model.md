@@ -53,7 +53,7 @@ CREATE INDEX chunks_tsv_idx ON chunks USING gin (content_tsv);
 CREATE INDEX chunks_program_idx ON chunks (program_id);
 
 -- Chat session grouping for CSR history (added 2026-07-05). Auto-named
--- (Mercury 2 via the OpenRouter ZDR utility) server-side from the
+-- (Mercury 2.5 via the OpenRouter ZDR utility) server-side from the
 -- opening exchange; title NULL until named.
 CREATE TABLE chat_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

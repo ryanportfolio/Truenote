@@ -93,7 +93,7 @@ export interface EvalRunOptions {
   limit?: number;
   /**
    * Run the claim-level faithfulness judge on every non-refused answer.
-   * One extra gpt-4o call per judged question — opt-in to keep the default
+   * One extra gpt-6.1-sol call per judged question — opt-in to keep the default
    * run cheap.
    */
   judge?: boolean;

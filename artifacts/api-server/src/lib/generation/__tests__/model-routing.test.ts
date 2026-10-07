@@ -22,14 +22,14 @@ describe("approved model routing", () => {
       "nemotron-3-super-deepinfra-nitro",
       "gpt-5.4-nano-azure-nitro",
       "nemotron-3-ultra-baseten-nitro",
-      "mercury-2-inception",
+      "mercury-2.5-inception",
       "granite-4.2-8b-coreweave"
     ]);
   });
 
-  it("includes Mercury 2 through Inception at low reasoning", () => {
-    expect(findApprovedModelRoute("mercury-2-inception")).toMatchObject({
-      model: "inception/mercury-2",
+  it("includes Mercury 2.5 through Inception at low reasoning", () => {
+    expect(findApprovedModelRoute("mercury-2.5-inception")).toMatchObject({
+      model: "inception/mercury-2.5",
       provider: "inception",
       reasoningEffort: "low"
     });
@@ -42,7 +42,7 @@ describe("approved model routing", () => {
       ["nvidia/nemotron-3-super-120b-a12b:nitro", "deepinfra"],
       ["openai/gpt-5.4-nano:nitro", "azure"],
       ["nvidia/nemotron-3-ultra-550b-a55b:nitro", "baseten"],
-      ["inception/mercury-2", "inception"],
+      ["inception/mercury-2.5", "inception"],
       ["ibm-granite/granite-4.2-8b", "coreweave"]
     ]);
   });
@@ -64,11 +64,11 @@ describe("approved model routing", () => {
 describe("resolveModelRouteOrder", () => {
   it("honors stored approved routes and drops the removed non-ZDR Luna route", () => {
     const chain = resolveModelRouteOrder([
-      "mercury-2-inception",
+      "mercury-2.5-inception",
       "gpt-5.6-luna-openai"
     ]);
     expect(chain.map((route) => route.id)).toEqual([
-      "mercury-2-inception",
+      "mercury-2.5-inception",
       "nemotron-3-super-deepinfra-nitro",
       "gpt-5.4-nano-azure-nitro",
       "nemotron-3-ultra-baseten-nitro",
@@ -86,7 +86,7 @@ describe("resolveModelRouteOrder", () => {
       "gpt-5.4-nano-azure-nitro",
       "nemotron-3-super-deepinfra-nitro",
       "nemotron-3-ultra-baseten-nitro",
-      "mercury-2-inception",
+      "mercury-2.5-inception",
       "granite-4.2-8b-coreweave"
     ]);
   });
@@ -101,7 +101,7 @@ describe("resolveModelRouteOrder", () => {
     ]);
     expect(chain.map((route) => route.id)).toEqual([
       "granite-4.2-8b-coreweave",
-      "mercury-2-inception",
+      "mercury-2.5-inception",
       "nemotron-3-ultra-baseten-nitro",
       "nemotron-3-super-deepinfra-nitro",
       "gpt-5.4-nano-azure-nitro"

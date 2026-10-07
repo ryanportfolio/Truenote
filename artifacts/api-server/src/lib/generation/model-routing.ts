@@ -7,7 +7,7 @@ export const ApprovedModelRouteIdSchema = z.enum([
   "gpt-5.4-nano-azure-nitro",
   "nemotron-3-super-deepinfra-nitro",
   "nemotron-3-ultra-baseten-nitro",
-  "mercury-2-inception",
+  "mercury-2.5-inception",
   "granite-4.2-8b-coreweave"
 ]);
 
@@ -60,9 +60,9 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     description: "Larger open model for harder multi-step questions."
   },
   {
-    id: "mercury-2-inception",
-    label: "Mercury 2",
-    model: "inception/mercury-2",
+    id: "mercury-2.5-inception",
+    label: "Mercury 2.5",
+    model: "inception/mercury-2.5",
     provider: "inception",
     providerLabel: "Inception",
     reasoningEffort: "low",
@@ -82,14 +82,16 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
 export const DEFAULT_MODEL_ROUTE = APPROVED_MODEL_ROUTES[0]!;
 
 /**
- * Route ids retired when a route was re-pinned to a ZDR provider, mapped to
- * their replacement. An admin order saved before the re-pin keeps its
- * positions instead of losing those entries and promoting the next route.
+ * Route ids retired when a route was re-pinned to a ZDR provider or moved to
+ * a newer model version, mapped to their replacement. An admin order saved
+ * before the change keeps its positions instead of losing those entries and
+ * promoting the next route.
  */
 const RETIRED_ROUTE_ID_REPLACEMENTS: ReadonlyMap<string, ApprovedModelRouteId> = new Map([
   ["nemotron-3-super-digitalocean-nitro", "nemotron-3-super-deepinfra-nitro"],
   ["nemotron-3-ultra-together-nitro", "nemotron-3-ultra-baseten-nitro"],
-  ["granite-4.1-8b-wandb", "granite-4.2-8b-coreweave"]
+  ["granite-4.1-8b-wandb", "granite-4.2-8b-coreweave"],
+  ["mercury-2-inception", "mercury-2.5-inception"]
 ]);
 
 function currentRouteId(id: string): string {
