@@ -56,6 +56,8 @@ These migrations are forward-only operational changes. Review the embedded guard
 - The security workflow runs type checks, a production build, unit tests, dependency audit, SBOM generation, Gitleaks, and CodeQL.
 - OIDC and MFA, malware scanning, durable SIEM delivery, browser policy, and provider settings have defined configuration and verification paths. Backup/recovery procedures, RTO/RPO, and a retained restore exercise remain operational evidence requirements.
 - Hash-chained application events preserve tamper-evident receipts; the SIEM outbox provides durable external delivery with retry and dead-letter handling.
+- [`incident-response-plan.md`](./incident-response-plan.md) defines severity levels, detection sources, containment steps, proposed customer-notice windows, evidence preservation, and tabletop exercises. It is proposed and not yet exercised.
+- [`backup-restore-runbook.md`](./backup-restore-runbook.md) defines proposed RPO/RTO targets, a restore-to-non-production-first procedure, verification checks, and the restore evidence record. No restore test has been run yet.
 
 ## PCI DSS readiness
 
