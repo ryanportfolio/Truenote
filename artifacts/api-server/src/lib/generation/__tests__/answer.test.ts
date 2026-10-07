@@ -8,6 +8,7 @@ import {
 } from "../answer.js";
 import { APPROVED_MODEL_ROUTES, DEFAULT_MODEL_ROUTE } from "../model-routing.js";
 import { getDeadlineConfig } from "../../deadlines.js";
+import { protectProviderText } from "../../security/provider-input-firewall.js";
 
 const NANO_ROUTE = APPROVED_MODEL_ROUTES.find(
   (route) => route.id === "gpt-5.4-nano-azure-nitro"
@@ -164,6 +165,59 @@ describe("validateGeneratedAnswer", () => {
     expect(result.failure).toBeNull();
     expect(result.payload?.answer).toBe("Refunds arrive in 5-7 days[chunk-1].");
     expect(result.payload?.sources[0]?.chunk_id).toBe("chunk-1");
+  });
+
+  it("keeps a quoted redaction placeholder as text, not a citation", () => {
+    // Railway 2026-10-07: OpenRouter's guardrail redacted "Larkspur Cloud" to
+    // [PERSON_NAME] and every route failed with unknown_citation_ids.
+    const returnedText =
+      '"Thank you for calling [PERSON_NAME], this is (your first name)." [S1]';
+    const result = validateGeneratedAnswer(returnedText, chunks);
+
+    expect(result.failure).toBeNull();
+    expect(result.payload?.answer).toBe(
+      '"Thank you for calling [PERSON_NAME], this is (your first name)." [chunk-1]'
+    );
+    expect(result.payload?.sources.map((source) => source.chunk_id)).toEqual([
+      "chunk-1"
+    ]);
+  });
+
+  it("accepts quoted provider-firewall placeholders next to a valid citation", () => {
+    const protectedExcerpt = protectProviderText(
+      "Email csr@example.com, call 212-555-0198, or note host 192.0.2.10."
+    ).text;
+    const placeholders = protectedExcerpt.match(/\[[^\]]+\]/g) ?? [];
+    expect(placeholders.length).toBe(3);
+
+    const result = validateGeneratedAnswer(`${protectedExcerpt} [S1]`, chunks);
+
+    expect(result.failure).toBeNull();
+    expect(result.payload?.sources).toHaveLength(1);
+  });
+
+  it("still refuses an answer whose only bracket is a redaction placeholder", () => {
+    const result = validateGeneratedAnswer(
+      "Thank you for calling [PERSON_NAME].",
+      chunks
+    );
+
+    expect(result.payload).toBeNull();
+    expect(result.failure?.reason).toBe("missing_inline_citation");
+    expect(result.failure?.inlineCitationIds).toEqual([]);
+  });
+
+  it("rejects malformed citation-shaped brackets instead of ignoring them", () => {
+    for (const returnedText of [
+      "The fee is $25 [S1, S2].",
+      "The fee is $25 [Source 1].",
+      "The fee is $25 [3f2a9c1e-77b0-4c1d].",
+      "The fee is $25 [chunk_id:invented-chunk]."
+    ]) {
+      expect(validateGeneratedAnswer(returnedText, chunks).failure?.reason).toBe(
+        "unknown_citation_ids"
+      );
+    }
   });
 
   it("reports an empty answer before citation problems", () => {
@@ -327,7 +381,7 @@ describe("generateAnswer ZDR route fallback", () => {
       {
         client: routingClient(
           {
-            "openai/gpt-5.4-nano:nitro": "The fee is $25 [unknown].",
+            "openai/gpt-5.4-nano:nitro": "The fee is $25 [S2].",
             "inception/mercury-2.5": answer
           },
           []
