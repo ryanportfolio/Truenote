@@ -29,6 +29,10 @@ Set per service (values never in git or chat; the owner's source file is `Deskto
 
 `railway variable set KEY --stdin --skip-deploys -s <service>` batches changes without a redeploy; `railway variable delete` always redeploys.
 
+### Agent account
+
+The owner authorized an agent account for operating and testing the site (2026-10-07): `claude-agent@truenote.org`, role `super_user`, user id `af8a8c7a-6369-4813-8c6e-fec0ccbf3cb6`, with the owner's data clearance. It was created inside the worker with the app's `hashPassword` and recorded as security event `admin.user.create`, because the admin create-user route needs working invite email. The credentials live only on the owner's machine in `~/.claude/secrets/truenote-agent.json`; never print or commit them. Use the account through the app's own API (`POST /api/auth/login`, then the session cookie with `Origin` and, for program-scoped calls, `X-Program-Id: 00000000-0000-0000-0000-0000000000aa`), and log out when done. The demo set in `docs/demo-kb/` was uploaded this way. Deactivate the account from the admin users page if it is no longer wanted.
+
 ## Deploying
 
 Merging to `main` deploys nothing. Each production deploy waits for the owner's go. From a worktree checked out at freshly fetched `origin/main`:
