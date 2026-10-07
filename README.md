@@ -128,8 +128,12 @@ artifacts/
   api-server/     Express API, auth, retrieval, ingestion, and security controls
 lib/
   db/             Shared Drizzle schema bindings and database client
-scripts/          Evaluation, seeding, re-ingestion, and maintenance workers
+  db/sql/         Schema baseline (0000) and numbered schema changes, applied
+                  to production by scripts/railway-apply-sql.mjs
+scripts/          Evaluation, seeding, re-ingestion, and maintenance workers,
+                  plus the Railway start and schema-apply scripts
 docs/security/    Control DDL and the technical security capabilities brief
+Dockerfile.railway  Production image for the Railway web and worker services
 PRODUCT.md        Product users, principles, and boundaries
 DESIGN.md         Interface tokens, components, motion, and accessibility rules
 ```
@@ -143,7 +147,14 @@ DESIGN.md         Interface tokens, components, motion, and accessibility rules
 - PostgreSQL with the `vector`, `pg_trgm`, and `pgcrypto` extensions
 - Provider credentials listed in [`.env.example`](./.env.example)
 
-The current database model and invariants are documented in [`.claude/reference/data-model.md`](./.claude/reference/data-model.md). Reviewed security DDL lives under [`docs/security/`](./docs/security/). The project manages schema changes with explicit SQL rather than `drizzle-kit`.
+The current database model and invariants are documented in [`.claude/reference/data-model.md`](./.claude/reference/data-model.md). The project manages schema changes with explicit SQL rather than `drizzle-kit`. [`lib/db/sql/0000_baseline.sql`](./lib/db/sql/0000_baseline.sql) is a schema-only dump of the production database as of 2026-10-07; it already contains the security DDL from [`docs/security/`](./docs/security/) that production has. Every later change is a numbered file in [`lib/db/sql/`](./lib/db/sql/). Build an empty local database by applying the baseline, then each numbered file in order:
+
+```bash
+psql -v ON_ERROR_STOP=1 -d truenote -f lib/db/sql/0000_baseline.sql
+psql -v ON_ERROR_STOP=1 -d truenote -f lib/db/sql/0001_schema_migrations.sql
+```
+
+Continue with `0002` and later files when they exist. The baseline creates the `vector`, `pg_trgm`, and `pgcrypto` extensions, so the database role needs permission to create them. Like production, the result has the `siem_delivery_outbox` table but not the SIEM outbox functions or trigger from [`docs/security/p1-siem-delivery-outbox.sql`](./docs/security/p1-siem-delivery-outbox.sql). pg-boss creates its own queue schema the first time the API or worker starts it.
 
 Install locked dependencies and create a local environment file:
 

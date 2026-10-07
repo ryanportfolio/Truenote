@@ -33,7 +33,7 @@ export async function enqueueIngestion(documentVersionId: string): Promise<strin
  * Start a worker that consumes the queue and runs the ingestion pipeline.
  *
  * Concurrency is intentionally low (batchSize: 1, one fetch loop) because
- * each job calls Mistral OCR + OpenAI embeddings — bottlenecks are upstream
+ * each job calls LandingAI ADE Parse + OpenAI embeddings; bottlenecks are upstream
  * rate limits, not our process. Increase only after monitoring. (The old
  * teamSize/teamConcurrency options were v9 API; every v10 ignores them, so
  * dropping them changes nothing at runtime.)
@@ -76,7 +76,7 @@ export async function startIngestionWorker(): Promise<void> {
 
 /**
  * Graceful stop. The 30s timeout caps how long we wait for in-flight jobs to
- * drain — without it, a hung Mistral OCR call or stalled OpenAI request
+ * drain. Without it, a hung LandingAI parse call or stalled OpenAI request
  * blocks shutdown forever and the platform has to SIGKILL the process.
  */
 export { stopBoss };

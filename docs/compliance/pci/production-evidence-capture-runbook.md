@@ -204,6 +204,10 @@ report plus restricted monitoring/provider artifact references. Every case must
 pass; failures enter the vulnerability/change process and require retest. This
 internal execution does not replace the independent AI red-team engagement.
 
+**Blocked (2026-10-07):** Railway hosts a single `production` environment and
+has no non-production environment yet, so this synthetic-suite run is blocked
+until an authorized non-production environment exists.
+
 ## 7. Close or escalate
 
 The evidence owner and independent reviewer complete the result record. A passing

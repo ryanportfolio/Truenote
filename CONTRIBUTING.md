@@ -31,7 +31,7 @@ pnpm install --frozen-lockfile
 cp .env.example .env
 ```
 
-On PowerShell, use `Copy-Item .env.example .env`. No process loads `.env` on its own; set its variables in each shell before starting a process. The root README lists the database requirements; `.env.example` documents the ports.
+On PowerShell, use `Copy-Item .env.example .env`. No process loads `.env` on its own; set its variables in each shell before starting a process. The root README lists the database requirements and how to build a local database from `lib/db/sql/`; `.env.example` documents the ports. Production runs on Railway from the image in `Dockerfile.railway`.
 
 Run the API and web app separately:
 
@@ -67,7 +67,7 @@ If a required runtime check cannot run locally, state that in the pull request. 
 - Never log credentials, raw sensitive matches, prompts, excerpts, session tokens, or provider response bodies without redaction.
 - Keep external calls bounded by timeouts and retry caps.
 - Fail closed when a required scanner, scope, signature, or validation result is missing.
-- Use reviewed raw SQL for database changes. Do not run `drizzle-kit push` or generate migrations from the TypeScript bindings.
+- Use reviewed raw SQL for database changes: one numbered file `lib/db/sql/NNNN_<name>.sql` after [`0000_baseline.sql`](./lib/db/sql/0000_baseline.sql), applied to production with `scripts/railway-apply-sql.mjs` (status run first, then `--apply`) after merge and owner approval. Do not run `drizzle-kit push` or generate migrations from the TypeScript bindings.
 - Keep unresolved configuration and operational evidence visible in documentation. Code is not proof of deployed operation.
 
 Report vulnerabilities through [`SECURITY.md`](./SECURITY.md), not a public issue.

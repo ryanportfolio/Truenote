@@ -1,7 +1,7 @@
 # Truenote PCI DSS readiness evidence
 
 **Status:** Draft control package for Security/QSA review  
-**Current as of:** 2026-07-17
+**Current as of:** 2026-10-07
 **Scope:** Repository and known provider/data paths; deployed CDE scope is not yet determined
 
 **Normative engineering basis:** [PCI DSS v4.0.1, published June 2024](https://www.pcisecuritystandards.org/document_library/?class=pcidss&doc=pci_dss), accessed 2026-07-17. This repository mapping is non-authoritative; the compliance-accepting entity and QSA determine applicability and evidence sufficiency.
@@ -90,6 +90,9 @@ and evidence sufficiency.
    work completed and what remains blocked on external decisions or runtime proof.
 14. [`verification-record-2026-07-16.md`](./verification-record-2026-07-16.md)
    records exact local checks and the current-main integration limitation.
+   [`verification-record-2026-10-07.md`](./verification-record-2026-10-07.md)
+   is the current record the evidence gate reads; it pins the Railway-era threat
+   model.
 15. [`change-record-2026-07-16-security-readiness.md`](./change-record-2026-07-16-security-readiness.md)
    is the populated pre-release Requirement 6.5 record for this tranche; its
    unchecked approval, hosted-check, deployment, and runtime gates block closure.
