@@ -13,7 +13,7 @@ import {
 
 // pgvector — Drizzle has no first-class vector type that we want to lock to a
 // specific dimension. customType keeps the DDL source-of-truth in the
-// reference data-model.md and the Replit-handoff SQL, while giving us typed
+// reference data-model.md and the reviewed raw SQL (docs/security, lib/db/sql), while giving us typed
 // reads/writes in TS. driverData is a pg-formatted "[n,n,...]" literal.
 const vector1536 = customType<{ data: number[]; driverData: string }>({
   dataType() {
@@ -142,8 +142,9 @@ export type NewChunk = typeof chunks.$inferInsert;
 // match query_log.user_id (both store the app user id as text). Program-
 // scoped like everything else.
 //
-// Table lives in the dev DB via raw DDL (see the schema-handoff SQL) —
-// never drizzle-kit. Binding declared here so app queries typecheck.
+// Table exists in the production database via raw DDL (see
+// .claude/reference/data-model.md); never drizzle-kit. Binding declared here
+// so app queries typecheck.
 export const chatSessions = pgTable("chat_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
   programId: uuid("program_id").notNull(),
@@ -169,12 +170,13 @@ export const queryLog = pgTable("query_log", {
   latencyMs: integer("latency_ms"),
   feedback: integer("feedback"),
   // CSR flagged a refusal as content the knowledge base should have had.
-  // Column already exists in the dev DB (raw DDL, 2026-07-04) — never drizzle-kit.
+  // Column already exists in the production database (raw DDL, 2026-07-04);
+  // never drizzle-kit.
   flaggedMissing: boolean("flagged_missing").default(false),
   // Groups this row into a chat_sessions conversation. Nullable: older rows
   // and any ungrouped ask predate/skip a session. ON DELETE SET NULL in the
   // DDL so deleting a session never drops ops/gap analytics rows.
-  // Column lives in the dev DB via raw DDL — never drizzle-kit.
+  // Column exists in the production database via raw DDL; never drizzle-kit.
   sessionId: uuid("session_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow()
 });
@@ -201,9 +203,9 @@ export type NewEvalQuestion = typeof evalQuestions.$inferInsert;
 //
 // A users.program_id of NULL is reserved for super_user; every other role
 // requires a non-null program_id. The DB enforces this with a CHECK
-// constraint (see the schema-handoff DDL); we mirror the nullability in the
-// type system so a TS query result correctly carries `programId: string |
-// null`. Callers MUST handle the null branch — typically by rejecting
+// constraint (users_role_program_check, see .claude/reference/data-model.md);
+// we mirror the nullability in the type system so a TS query result
+// correctly carries `programId: string | null`. Callers MUST handle the null branch — typically by rejecting
 // program-scoped operations for super_user or routing them through a
 // program-picker (Phase 2C).
 export const users = pgTable("users", {

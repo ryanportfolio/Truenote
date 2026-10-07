@@ -36,7 +36,7 @@ export interface RerankResult {
  * default (0.3) was tuned on it. The upgrade target is rerank-v4.0-pro
  * (2026-10-07). Switching is a deliberate, eval-gated act: run the eval suite
  * with COHERE_RERANK_MODEL=rerank-v4.0-pro, RETUNE the threshold, then set the
- * model and the retuned threshold together in Replit Secrets. Score
+ * model and the retuned threshold together in the Railway variables. Score
  * distributions differ between rerank model versions, so the old threshold
  * is invalid the moment the model changes. Change this default only together
  * with DEFAULT_RERANK_THRESHOLD in query.ts.

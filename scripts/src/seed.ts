@@ -1,8 +1,11 @@
 /**
  * Controlled demo-corpus seed.
  *
- * Usage on Replit after the P0/P1 controls are applied:
- *   pnpm --filter @workspace/scripts run seed
+ * Usage after the P0/P1 controls are applied:
+ *   Railway, inside the worker (the runtime image has no pnpm):
+ *     railway ssh -s worker -- "cd /app/scripts && ./node_modules/.bin/tsx src/seed.ts"
+ *   Locally, with DATABASE_URL and OPENAI_API_KEY loaded:
+ *     pnpm --filter @workspace/scripts run seed
  *
  * Idempotent and narrowly scoped:
  *   - reuses the existing Demo Program used by demo accounts;

@@ -34,11 +34,41 @@ async function sendHtmlWithNonce(res: Response, filePath: string): Promise<void>
   res.type("html").send(addScriptNonceToHtml(html, scriptNonce));
 }
 
+/**
+ * Permanently redirect `www.<canonical host>` to the canonical origin from
+ * APP_BASE_URL. The CSRF origin check trusts only the configured origin, so
+ * a page served on www could read but never log in or save. Returns null
+ * when APP_BASE_URL is unset, invalid, or already a www host.
+ */
+export function wwwToCanonicalRedirect(
+  appBaseUrl: string | undefined
+): ((req: Request, res: Response, next: NextFunction) => void) | null {
+  if (!appBaseUrl) return null;
+  let canonical: URL;
+  try {
+    canonical = new URL(appBaseUrl);
+  } catch {
+    return null;
+  }
+  if (canonical.hostname.startsWith("www.")) return null;
+  const wwwHost = `www.${canonical.hostname}`;
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const host = (req.get("host") ?? "").split(":")[0]?.toLowerCase();
+    if (host !== wwwHost) {
+      next();
+      return;
+    }
+    res.redirect(308, `${canonical.origin}${req.originalUrl}`);
+  };
+}
+
 export function createApp(): Express {
   const app = express();
   const dist = path.resolve(__dirname, "../../rag-app/dist");
 
   app.disable("x-powered-by");
+  const wwwRedirect = wwwToCanonicalRedirect(process.env.APP_BASE_URL);
+  if (wwwRedirect) app.use(wwwRedirect);
   app.use((_req: Request, res: Response, next: NextFunction) => {
     const scriptNonce = randomBytes(16).toString("base64");
     res.locals.cspNonce = scriptNonce;
@@ -95,7 +125,8 @@ export function createApp(): Express {
 
       // res.type() treats any string containing "/" as a literal MIME type.
       // Passing the absolute path therefore emitted an invalid Content-Type
-      // like "/home/runner/.../index.js", which browsers refuse for modules.
+      // like "/app/artifacts/rag-app/dist/assets/index.js", which browsers
+      // refuse for modules.
       res.type(path.extname(relativePath));
       res.setHeader("Content-Encoding", suffix === ".br" ? "br" : "gzip");
       res.vary("Accept-Encoding");

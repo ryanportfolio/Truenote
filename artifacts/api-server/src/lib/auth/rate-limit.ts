@@ -1,8 +1,8 @@
 /**
  * Lightweight in-memory rate limiter for unauthenticated endpoints.
  *
- * Scope: single-process. Replit's standard deploy runs a single
- * api-server process so this is sufficient; if we ever scale
+ * Scope: single-process. Production runs one `web` replica
+ * (.claude/reference/deployment.md) so this is sufficient; if we ever scale
  * horizontally, swap to a Redis-backed counter (the API here is
  * deliberately small to make that swap one file).
  *
@@ -139,7 +139,7 @@ export const loginIpLimiter = new SlidingWindowLimiter({
 });
 
 /**
- * Best-effort client IP. Reads X-Forwarded-For first since Replit's
+ * Best-effort client IP. Reads X-Forwarded-For first since Railway's
  * proxy sits in front of us; falls back to req.ip (Express's own
  * resolution) for direct-connection dev. Takes only the FIRST entry
  * in XFF — that's the originating client per the RFC; later entries
@@ -148,7 +148,7 @@ export const loginIpLimiter = new SlidingWindowLimiter({
  * In a header-untrusted environment an attacker can claim any IP by
  * forging XFF, evading the per-IP counter. The mitigation is the
  * per-email counter (silent suppression, independent of IP) and the
- * fact that Replit's proxy overwrites XFF with the real client
+ * fact that Railway's edge proxy overwrites XFF with the real client
  * address. If we ever sit behind an untrusted proxy this needs to
  * change.
  */

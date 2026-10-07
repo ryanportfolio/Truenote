@@ -1,11 +1,11 @@
 -- Truenote P0/P1 security controls
--- Target: Replit-managed PostgreSQL (Neon)
+-- Target: Railway PostgreSQL (pgvector service)
 -- Apply in a maintenance window BEFORE deploying the matching application code.
--- Idempotent for repeated Replit Agent execution.
+-- Idempotent for repeated execution.
 
 BEGIN;
 
--- Replit/Neon prerequisite used by the audit hash chain. The existing project
+-- pgcrypto prerequisite used by the audit hash chain. The existing project
 -- already uses gen_random_uuid(); this check makes a missing pgcrypto digest
 -- fail with a clear message before any schema change is applied.
 DO $$

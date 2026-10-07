@@ -204,7 +204,7 @@ describe("SIEM outbox delivery", () => {
     expect(store.claim).toHaveBeenCalledWith(25, 60);
   });
 
-  it("ships transactional, lease-fenced Replit-ready DDL", async () => {
+  it("ships transactional, lease-fenced DDL", async () => {
     const ddlPath = fileURLToPath(
       new URL(
         "../../../../../../docs/security/p1-siem-delivery-outbox.sql",

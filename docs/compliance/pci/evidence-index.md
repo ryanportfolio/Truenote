@@ -53,7 +53,7 @@ public repository:
 | Secure-development training records | Product Security | Missing |
 | Approved threat-model review and treatment record | Product Security/PCI | Engineering model/template prepared; named sign-off and treatment evidence missing |
 | Vulnerability inventory, approved SLAs, exceptions, closure/retest records | Product Security | Initial CodeQL import exists; remaining sources, ownership, disposition, and operation missing |
-| Production Replit/Neon object/configuration verification | Platform/database | Read-only query/runbook prepared; execution and retained output missing |
+| Production Railway/PostgreSQL object/configuration verification | Platform/database | Read-only query/runbook prepared; execution and retained output missing |
 | OpenRouter guardrail assignment and synthetic redaction receipt | Vendor-risk/AppSec | Screenshot evidence supplied; runtime receipt missing |
 | Local firewall OpenAI/Cohere/OpenRouter downstream canaries | Product Security/Platform | Portable repository boundary suite passed six input cases plus one model-output case; hosted released-commit run and deployed receipts missing |
 | Provider DPAs, retention/ZDR, subprocessor, and PCI/CDE suitability evidence | Vendor-risk | Missing |

@@ -68,7 +68,7 @@ Treat these as release blockers:
 - Make responsive behavior structural. Prefer CSS Grid/Flexbox and content-driven breakpoints; never add JavaScript breakpoint state for layout.
 - Motion communicates state, hierarchy, causality, or retrieval progress. Prefer CSS, transform, and opacity; honor reduced motion; add no decorative ambient motion to task surfaces.
 - Keep one primary action per surface. Subordinate everything else using the documented whisper/icon patterns.
-- No new runtime dependency unless the current stack cannot solve a demonstrated requirement and the user authorizes the Replit install path.
+- No new runtime dependency unless the current stack cannot solve a demonstrated requirement and the user authorizes the install (`.claude/reference/environment.md`).
 
 ## Verification contract
 
@@ -77,6 +77,6 @@ Verify in proportion to the change:
 1. Inspect the diff for contract, token, component, copy, and scope drift.
 2. Run targeted tests plus the repository-required checks from `CLAUDE.md` when the environment supports them.
 3. If a runnable UI and browser capability exist, exercise the affected route, keyboard path, relevant states, reduced motion, and narrow/wide viewports. Capture screenshots only when they help judge hierarchy or regression.
-4. If runtime/browser verification is unavailable, say exactly what was verified and what remains for Replit or the user's environment. Never claim visual verification from code inspection.
+4. If runtime/browser verification is unavailable, say exactly what was verified and what remains for the deployed Railway service or the user's environment. Never claim visual verification from code inspection.
 
 Finish with the outcome, files changed, checks run, and remaining risk. Do not narrate every design thought.

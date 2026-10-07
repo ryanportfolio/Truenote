@@ -1,7 +1,0 @@
-kind = "react-vite"
-slug = "rag-app"
-title = "RAG App"
-previewPath = "/"
-
-[workflow]
-command = "pnpm --filter @workspace/rag-app run dev"

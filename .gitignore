@@ -39,7 +39,6 @@ yarn-debug.log*
 yarn-error.log*
 
 # cache
-.cache/replit/
 .turbo/
 
 # claude code local-only settings (per-user permissions)
@@ -48,9 +47,6 @@ yarn-error.log*
 # donor archive (staging tarball; remove after smoke test)
 /rag-donor/
 /rag-donor.tar.gz
-
-# Replit upload/paste scratch artifacts
-/attached_assets/
 
 # agent scratch space (CLAUDE.md: .tmp/ for scratch)
 .tmp/

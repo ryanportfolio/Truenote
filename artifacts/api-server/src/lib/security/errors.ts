@@ -1,6 +1,6 @@
 /**
  * Security-control DDL is intentionally applied outside the application by
- * the Replit Agent. This error lets routes distinguish "run the reviewed
+ * an operator (lib/db/sql, .claude/reference/deployment.md). This error lets routes distinguish "run the reviewed
  * setup DDL" from an ordinary database outage without exposing schema detail.
  */
 export class SecurityControlsNotReadyError extends Error {

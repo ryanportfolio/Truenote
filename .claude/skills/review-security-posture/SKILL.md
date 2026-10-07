@@ -12,7 +12,7 @@ Use the public capabilities brief as the baseline claim inventory. Repository, r
 1. Read `docs/security/truenote-security-capabilities.html` and `docs/security/README.md` completely.
 2. Read `docs/security/p0-p1-security-controls.sql`, `docs/security/p1-siem-delivery-outbox.sql`, `CLAUDE.md`, and the relevant `.claude/reference/` files.
 3. Inspect implementation, tests, CI, configuration defaults, `.env.example`, DDL, diffs, and verification output. Find fail-open behavior and conflicts with published claims.
-4. Request missing Replit, configuration, IdP/MFA, scanner, SIEM, vendor, branch-protection, incident, recovery, and assessment evidence.
+4. Request missing hosting (Railway), configuration, IdP/MFA, scanner, SIEM, vendor, branch-protection, incident, recovery, and assessment evidence.
 5. Recheck time-sensitive claims using official regulatory/provider sources. Record URL and access date; label unavailable verification explicitly.
 
 ## Evidence grades

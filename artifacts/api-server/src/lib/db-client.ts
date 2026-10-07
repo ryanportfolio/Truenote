@@ -31,7 +31,7 @@ export const db = drizzle(getPool(), { schema });
 /**
  * Drain and dispose the pg Pool. Call from worker shutdown handlers — without
  * this, Postgres holds onto idle connection slots until tcp_keepalives_idle
- * fires (expensive on Neon).
+ * fires.
  */
 export async function closePool(): Promise<void> {
   const existing = globalThis.__ragPgPool;
