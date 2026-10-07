@@ -29,20 +29,25 @@ const sha = createHash("sha256").update(sql).digest("hex");
 
 const psql =
   'psql -h localhost -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -X -v ON_ERROR_STOP=1';
-// Two queries: a reference to a missing table fails at parse time even
-// inside a CASE branch that would never run.
-const recorded = `if [ -z "$(${psql} -A -t -c "SELECT to_regclass('public.schema_migrations')")" ]; then echo no-table; else ${psql} -A -t -c "SELECT coalesce((SELECT sha256 FROM schema_migrations WHERE filename = '${name}'), 'not-applied')"; fi`;
+// Sets $state to no-table, not-applied or the recorded sha256. Two queries:
+// a reference to a missing table fails at parse time even inside a CASE
+// branch that would never run. Both run as plain assignments so `set -e`
+// stops on a database error instead of reading it as an empty ledger.
+const readState = [
+  `ledger=$(${psql} -A -t -c "SELECT to_regclass('public.schema_migrations')")`,
+  `if [ -z "$ledger" ]; then state=no-table; else state=$(${psql} -A -t -c "SELECT coalesce((SELECT sha256 FROM schema_migrations WHERE filename = '${name}'), 'not-applied')"); fi`
+];
 const script = apply
   ? [
       "set -eu",
-      `state=$(${recorded})`,
+      ...readState,
       `if [ "$state" != "not-applied" ] && [ "$state" != "no-table" ]; then echo "already applied: $state"; exit 3; fi`,
       `echo ${Buffer.from(sql).toString("base64")} | base64 -d > /tmp/${name}`,
       `${psql} --single-transaction -f /tmp/${name} -c "INSERT INTO schema_migrations (filename, sha256) VALUES ('${name}', '${sha}')"`,
       `rm -f /tmp/${name}`,
       `echo "applied ${name} ${sha}"`
     ].join("\n")
-  : ["set -eu", `echo "status ${name}: $(${recorded})"`, `echo "local sha256: ${sha}"`].join("\n");
+  : ["set -eu", ...readState, `echo "status ${name}: $state"`, `echo "local sha256: ${sha}"`].join("\n");
 
 const b64 = Buffer.from(script).toString("base64");
 if (b64.length > MAX_B64) {
