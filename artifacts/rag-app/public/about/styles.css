@@ -494,7 +494,7 @@ h2 { max-width: 13ch; font-size: clamp(3rem, 5.35vw, 6.4rem); line-height: .94; 
 .uptime-reading strong { display: inline-flex; align-items: center; gap: .35rem; }
 .uptime-reading strong i { width: 1.05rem; height: .72rem; background: repeating-linear-gradient(90deg, #52bd91 0 3px, transparent 3px 4px); transform: scaleY(.15); transform-origin: bottom; transition: transform 480ms var(--ease) 80ms; }
 .route-instrument.visible .uptime-reading strong i { transform: scaleY(1); }
-.model-source { position: absolute; bottom: 2rem; left: clamp(2.5rem,7vw,8.5rem); z-index: 4; color: rgba(255,255,255,.4); font-size: .54rem; }
+.model-source { position: absolute; right: clamp(2.5rem,7vw,8.5rem); bottom: 2rem; z-index: 4; color: rgba(255,255,255,.4); font-size: .54rem; }
 .model-source a { color: #9fc3ff; }
 
 .public-sector { background: radial-gradient(circle at 85% 15%, #133b79 0, #07172f 27%, #020916 68%); }
@@ -949,7 +949,7 @@ body:hover .key-hint { opacity: 1; }
   .route-locks span { padding: 0 .35rem; }
   .route-locks b { font-size: .55rem; }
   .route-snapshot { padding-right: .75rem; padding-left: .75rem; }
-  .model-source { bottom: 1.8rem; left: 2rem; }
+  .model-source { right: 2rem; bottom: 1.8rem; }
   .truth-layout { grid-template-columns: .8fr 1.2fr; gap: 3vw; }
   .truth-row { grid-template-columns: 7rem 1fr; gap: 1rem; }
   .comparison-axis { grid-template-columns: 1fr 3.5rem 1fr; }
@@ -1152,7 +1152,7 @@ body:hover .key-hint { opacity: 1; }
   .telemetry-row { grid-template-columns: 1fr; }
   .telemetry-row > span { border-right: 0; border-bottom: 1px solid rgba(255,255,255,.1); }
   .telemetry-row > span:last-child { border-bottom: 0; }
-  .model-source { position: relative; bottom: auto; left: auto; margin-top: 1rem; padding-bottom: 2rem; line-height: 1.5; }
+  .model-source { position: relative; right: auto; bottom: auto; left: auto; margin-top: 1rem; padding-bottom: 2rem; line-height: 1.5; }
   .control-stage { grid-template: auto auto auto / 1fr; min-height: 0; }
   .control-operator { border-right: 0; border-bottom: 1px solid rgba(255,255,255,.13); }
   .control-actions article { grid-template-columns: 1fr; align-content: center; gap: .65rem; }
