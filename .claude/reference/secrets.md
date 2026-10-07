@@ -35,7 +35,7 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 |---|---|---|
 | `DEMO_LOGIN_ACCOUNTS` | Demo deployments only: JSON account list the login page pre-fills. PUBLISHED via unauthenticated /api/config (deliberate); users bootstrapped at startup with must_reset_password=false; roles capped at manager. Never set where real content lives. | unset → no demo mode |
 | `RERANK_CONFIDENCE_THRESHOLD` | Refusal gate — if top reranker score is below this, refuse. MUST be retuned (via eval) whenever `COHERE_RERANK_MODEL` changes | `0.3` |
-| `COHERE_RERANK_MODEL` | Cohere rerank model override. Any model change is eval-gated and needs a `RERANK_CONFIDENCE_THRESHOLD` retune; see retrieval.md | `rerank-v4.0-pro` |
+| `COHERE_RERANK_MODEL` | Cohere rerank model override. Upgrade target `rerank-v4.0-pro`; any change is eval-gated and is set together with a retuned `RERANK_CONFIDENCE_THRESHOLD`; see retrieval.md | `rerank-english-v3.0` |
 | `RETRIEVAL_TOP_K` | Final chunks sent to LLM after reranking | `8` |
 | `RETRIEVAL_CANDIDATE_K` | Candidates pulled from vector + BM25 before reranking | `40` each |
 | `RETRIEVAL_NEIGHBOR_ANCHORS` | Top reranked chunks whose ordinal ±1 siblings are appended as unscored context. `0` disables neighbor expansion | `3` |

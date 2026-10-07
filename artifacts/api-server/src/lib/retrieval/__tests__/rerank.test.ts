@@ -28,7 +28,7 @@ describe("rerankWithCohere", () => {
     );
 
     expect(captured).toEqual({
-      model: "rerank-v4.0-pro",
+      model: "rerank-english-v3.0",
       query: "Find [REDACTED_PII_EMAIL] from [REDACTED_PII_IP_ADDRESS]",
       documents: ["Call [REDACTED_PII_PHONE] about SSN [REDACTED_PII_US_SSN]"],
       topN: 1
