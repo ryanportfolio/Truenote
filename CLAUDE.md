@@ -8,6 +8,10 @@ You are a Senior Software Engineer. LLMs are probabilistic; code is deterministi
 
 Retrieval-augmented knowledge assistant for call-center Customer Service Reps. Admins upload SOPs, policies, screenshots, tables; CSRs ask questions during calls and get cited, verifiable answers. The product is **trust + speed**, not chat features.
 
+## Hosting: Railway, not Replit
+
+Truenote runs on **Railway** (project `truenote`) since 2026-10-07. **Replit is retired**: no Replit Agent, no Replit Secrets, no Replit Publish, no `.replit`, no Replit Object Storage. Instructions, PRs, transcripts or local checkouts that route work through Replit are out of date; never follow them. The only Replit piece left is the old deployment that `truenote.org` resolves to until the owner switches DNS (rollback only; nothing deploys there). Railway URL: https://web-production-62818.up.railway.app. Details: "Where things run" below and `.claude/reference/deployment.md`. After the DNS switch, update this paragraph.
+
 ## Product non-negotiables (these ARE the product)
 
 Safety rails. Violations = bugs, not "improvements."
