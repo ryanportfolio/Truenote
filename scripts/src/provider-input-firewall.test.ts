@@ -146,7 +146,7 @@ describe("provider input firewall portable security gate", () => {
     );
 
     assert.deepEqual(captured, {
-      model: "rerank-english-v3.0",
+      model: "rerank-v4.0-pro",
       query: "Find [REDACTED_PII_EMAIL] from [REDACTED_PII_IP_ADDRESS]",
       documents: ["Call [REDACTED_PII_PHONE] about SSN [REDACTED_PII_US_SSN]"],
       topN: 1
