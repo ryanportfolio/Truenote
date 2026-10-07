@@ -161,8 +161,13 @@ function splitCells(row: string): string[] {
  * Splits the answer into leaf blocks the way a CommonMark/GFM renderer does.
  * Errs toward literal text: when a line could be read either way, a leading
  * number stays in the text, where it must be grounded.
+ *
+ * With `excerpt` set, text the renderer hides is kept, because an excerpt is
+ * the source document: each ordered-list number and each fence info string
+ * becomes a block of its own, and table rows keep cells past the header's
+ * column count.
  */
-function parseBlocks(answer: string): Block[] {
+function parseBlocks(answer: string, excerpt = false): Block[] {
   const blocks: Block[] = [];
   const stack: Container[] = [];
   let paragraph: Block | null = null;
@@ -338,6 +343,8 @@ function parseBlocks(answer: string): Block[] {
         openContainers();
         closeLeaves();
         // The info string is not displayed; the code lines are.
+        const info = content.replace(FENCE_OPEN, "").trim();
+        if (excerpt && info) blocks.push({ kind: "prose", lines: [info], inline: false });
         const block: Block = { kind: "prose", lines: [], inline: false };
         blocks.push(block);
         fence = { closer, block };
@@ -397,6 +404,9 @@ function parseBlocks(answer: string): Block[] {
         if (canStart) {
           openContainers();
           closeLeaves();
+          if (excerpt && ordinal !== undefined) {
+            blocks.push({ kind: "prose", lines: [ordinal], inline: false });
+          }
           const spaces = emptyItem ? 1 : leadingSpaces(afterMarker);
           const contentIndent = indent + marker[0].length + (spaces >= 5 ? 1 : spaces);
           stack.push({ type: "item", contentIndent, hasContent: !emptyItem });
@@ -439,7 +449,8 @@ function parseBlocks(answer: string): Block[] {
       // column count are not rendered: their figures and citations are invisible.
       if (tableMode) {
         openContainers();
-        blocks.push({ kind: "row", lines: splitCells(content).slice(0, tableColumns), inline: true });
+        const cells = splitCells(content);
+        blocks.push({ kind: "row", lines: excerpt ? cells : cells.slice(0, tableColumns), inline: true });
         break;
       }
 
@@ -1039,12 +1050,22 @@ const MARKDOWN_ESCAPE = /\\([!-/:-@[-`{-~])/g;
  * `5\-7`, `\$25`). Both excerpt readings decode them, so the backslash never
  * splits or changes a figure; decoding adds no digit the document lacks.
  * Answers keep their two readings as is.
+ *
+ * Figures are read per block (paragraph, list item, heading, table row, code
+ * or HTML block), split as `parseBlocks` splits answers, so a unit, scale,
+ * sign or digit group never attaches across a block boundary:
+ * `Fee: $40\n\nMillion customers` holds `$40`, not `$40 million`. Lines of
+ * one paragraph still read as one text, so `$40\nmillion` is `$40 million`.
  */
 function indexExcerpt(content: string, view: View): Set<string> {
-  let source = content.replace(PRIVATE_USE, "");
-  if (!view.decode) source = source.replace(MARKDOWN_ESCAPE, "$1");
-  const { text } = displayText(source, view, false);
-  return new Set(extractFigures(text).map((figure) => figure.key));
+  const keys = new Set<string>();
+  for (const block of parseBlocks(content.replace(PRIVATE_USE, ""), true)) {
+    let source = block.lines.join(block.kind === "row" ? " | " : "\n");
+    if (!view.decode) source = source.replace(MARKDOWN_ESCAPE, "$1");
+    const { text } = displayText(source, view, false);
+    for (const figure of extractFigures(text)) keys.add(figure.key);
+  }
+  return keys;
 }
 
 /** Same kind, unit and value: a plain number matches only a plain number. */
