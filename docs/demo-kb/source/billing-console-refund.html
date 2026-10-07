@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Billing console</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #eef1f5; color: #1f2a44; width: 1440px; height: 900px; }
+.top { height: 52px; background: #1f2a44; color: #fff; display: flex; align-items: center; padding: 0 20px; gap: 28px; font-size: 14px; }
+.top b { font-size: 16px; letter-spacing: .03em; }
+.top span { opacity: .8; } .top .active { opacity: 1; border-bottom: 2px solid #1c9c8c; padding-bottom: 14px; margin-top: 16px; }
+.wrap { display: grid; grid-template-columns: 360px 1fr; gap: 20px; padding: 20px; }
+.card { background: #fff; border: 1px solid #d9dee7; border-radius: 8px; padding: 18px 20px; }
+h2 { font-size: 15px; margin: 0 0 12px; text-transform: uppercase; letter-spacing: .05em; color: #5b6475; }
+.kv { display: grid; grid-template-columns: 130px 1fr; row-gap: 8px; font-size: 14px; }
+.kv div:nth-child(odd) { color: #5b6475; }
+.badge { display: inline-block; background: #e3f4f1; color: #136f64; border-radius: 10px; padding: 1px 9px; font-size: 12px; font-weight: 600; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid #e6e9ef; }
+th { color: #5b6475; font-weight: 600; font-size: 12px; text-transform: uppercase; }
+tr.sel { background: #f1f8f7; }
+.panel { margin-top: 18px; border: 2px solid #1c9c8c; border-radius: 8px; padding: 16px 18px; background: #fbfefd; }
+.panel h3 { margin: 0 0 12px; font-size: 17px; }
+.row { display: flex; gap: 28px; align-items: flex-start; margin-bottom: 12px; font-size: 14px; }
+.radio { display: flex; gap: 18px; } .radio label::before { content: "◉ "; color: #1c9c8c; } .radio label.off::before { content: "○ "; color: #8b93a3; }
+.select { border: 1px solid #b9c1ce; border-radius: 6px; width: 460px; background: #fff; }
+.select div { padding: 7px 10px; border-bottom: 1px solid #eef1f5; } .select .hdr { font-weight: 600; background: #f6f8fb; }
+.select .hi { background: #e3f4f1; }
+.note { font-size: 13px; color: #5b6475; margin-top: 4px; }
+.btns { display: flex; gap: 12px; margin-top: 14px; }
+.btn { padding: 9px 18px; border-radius: 6px; font-weight: 600; font-size: 14px; border: 1px solid #b9c1ce; background: #fff; }
+.btn.primary { background: #1c9c8c; color: #fff; border-color: #1c9c8c; }
+.lock { font-size: 13px; color: #8a4b12; background: #fff4e5; border-radius: 6px; padding: 8px 10px; margin-top: 10px; }
+</style></head>
+<body>
+<div class="top"><b>LARKSPUR CLOUD</b><span>Customers</span><span class="active">Billing</span><span>Privacy</span><span>Reports</span><span style="margin-left:auto">Agent: T1-0417</span></div>
+<div class="wrap">
+  <div class="card">
+    <h2>Customer</h2>
+    <div class="kv">
+      <div>Name</div><div>Jordan Rivera</div>
+      <div>Account ID</div><div>LC-208-55731</div>
+      <div>Plan</div><div>Pro, annual</div>
+      <div>Customer since</div><div>March 14, 2024</div>
+      <div>State</div><div>Oregon</div>
+      <div>Identity</div><div><span class="badge">Verified: 2 factors</span></div>
+      <div>Card on file</div><div>Visa ending 4417</div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Charges</h2>
+    <table>
+      <tr><th>Date</th><th>Description</th><th>Amount</th><th>Status</th><th>Refundable</th></tr>
+      <tr class="sel"><td>Sep 30, 2026</td><td>Pro annual renewal</td><td>$119.00</td><td>Cleared</td><td>Yes, until Oct 30, 2026</td></tr>
+      <tr><td>Sep 30, 2025</td><td>Pro annual renewal</td><td>$119.00</td><td>Cleared</td><td>No, outside 30-day window</td></tr>
+      <tr><td>Mar 14, 2024</td><td>Pro monthly</td><td>$11.99</td><td>Refunded</td><td>No, already refunded</td></tr>
+    </table>
+    <div class="panel">
+      <h3>Issue Refund: Pro annual renewal, $119.00</h3>
+      <div class="row"><div style="width:120px">Refund type</div><div class="radio"><label>Full ($119.00)</label><label class="off">Partial</label></div></div>
+      <div class="row"><div style="width:120px">Reason code</div>
+        <div><div class="select">
+          <div class="hdr">Select a reason code</div>
+          <div>RF-01 Service not as described</div>
+          <div>RF-02 Duplicate charge</div>
+          <div class="hi">RF-03 Accidental purchase or renewal</div>
+          <div>RF-05 Courtesy refund (Tier 2 approval required)</div>
+        </div>
+        <div class="note">One reason code per refund. RF-05 cannot be submitted without a Tier 2 supervisor approval ID. Outage credits are not refunds: use Credits &gt; Outage credit.</div></div></div>
+      <div class="row"><div style="width:120px">Note</div><div>Customer forgot to turn off auto-renew.</div></div>
+      <div class="note">Refunds post to the original card within 5-7 business days. The customer receives an email receipt immediately.</div>
+      <div class="btns"><span class="btn primary">Submit refund</span><span class="btn">Cancel</span></div>
+      <div class="lock">Courtesy refunds and refunds outside the 30-day window need a Tier 2 supervisor. Use the escalation path.</div>
+    </div>
+  </div>
+</div>
+</body></html>

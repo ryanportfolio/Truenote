@@ -440,7 +440,7 @@ function SetupRequired(): JSX.Element {
       <h2 className="text-xl font-semibold tracking-tight">Error storage needs setup</h2>
       <p className="mt-2 max-w-2xl text-sm leading-relaxed">
         Runtime behavior is unchanged, but diagnostics cannot be retained until this
-        idempotent DDL is applied through the Replit Agent and both API and worker restart.
+        idempotent DDL is applied to the production database and both API and worker restart.
       </p>
       <pre className="mt-4 max-h-[28rem] overflow-auto rounded-md border border-warning/40 bg-card px-3 py-3 font-mono text-xs text-foreground">
         <code>{ERROR_LOG_DDL}</code>

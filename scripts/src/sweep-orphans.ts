@@ -1,8 +1,11 @@
 /**
  * Object Storage orphan sweep.
  *
- * Usage on Replit (one-shot, ad-hoc — there's no scheduler yet):
- *   pnpm --filter @workspace/scripts exec tsx src/sweep-orphans.ts
+ * Usage (one-shot, ad hoc; there's no scheduler yet):
+ *   Railway, inside the worker (the runtime image has no pnpm):
+ *     railway ssh -s worker -- "cd /app/scripts && ./node_modules/.bin/tsx src/sweep-orphans.ts"
+ *   Locally, with DATABASE_URL loaded:
+ *     pnpm --filter @workspace/scripts exec tsx src/sweep-orphans.ts
  *
  * What it does:
  *   - Walks every distinct source_url referenced by document_versions
@@ -23,15 +26,16 @@
  * else in the bucket is left alone. If the bucket ever grows another
  * prefix (snapshots, exports), this script needs to learn about it.
  *
- * Replit Object Storage doesn't expose a list() call through the
- * minimal interface we wrap, so this script can NOT enumerate the
- * bucket directly — it only deletes keys it can prove are orphaned.
- * Listing would require expanding ObjectStorage with a list() method
- * and is left for a follow-up when there's a real growth signal.
+ * The minimal ObjectStorage interface has no list() call, so this
+ * script can NOT enumerate the bucket directly; it only deletes keys
+ * it can prove are orphaned. S3 buckets support listing
+ * (ListObjectsV2), but using it would require expanding ObjectStorage
+ * with a list() method and is left for a follow-up when there's a
+ * real growth signal.
  *
  * For now: this script reports the count of still-referenced source_urls
  * the DB knows about, so an operator can compare against bucket-level
- * stats (Replit's UI) and notice drift. The actual blob deletion path
+ * stats (the Railway bucket view) and notice drift. The actual blob deletion path
  * is exercised by the eager delete-after-response in the documents
  * route; this script is a placeholder runner so the operator pattern
  * exists.
@@ -57,7 +61,8 @@ async function main(): Promise<void> {
 
   // Without a list() on ObjectStorage we can't enumerate the bucket.
   // Surface what we know so the operator can do a manual diff against
-  // the Replit Object Storage UI if blob count looks suspicious.
+  // the bucket's object list (Railway bucket view) if blob count looks
+  // suspicious.
   for (const key of referenced) {
     console.log(`[sweep] keep: ${key}`);
   }

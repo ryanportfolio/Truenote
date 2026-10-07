@@ -8,7 +8,8 @@ import { hash, verify } from "@node-rs/argon2";
  *
  * If we ever raise these (e.g., bigger memoryCost), existing hashes in the
  * DB stay valid — verify() reads the parameters from the hash string itself.
- * Login latency on Replit's shared CPU is ~50–100ms at these settings.
+ * Login latency was ~50-100ms at these settings on the earlier shared-CPU
+ * host; not re-measured on Railway.
  */
 const ARGON2_OPTIONS = {
   // Algorithm.Argon2id. The library's Algorithm is an ambient const enum,

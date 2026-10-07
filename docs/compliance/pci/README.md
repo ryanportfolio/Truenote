@@ -14,10 +14,9 @@ and evidence sufficiency.
 
 ## Start here
 
-1. [`security-readiness-session-report-2026-07-16.html`](./security-readiness-session-report-2026-07-16.html)
-   is the durable living ledger for security-team feedback, completed work,
-   verification, lessons, open blockers, and next actions. Update it as work
-   changes so the record survives task handoffs and context compaction.
+1. The security-readiness session ledger is the living record of security-team
+   feedback, completed work, verification, lessons, open blockers, and next
+   actions. The maintainer keeps it outside this public repository.
 2. [`pci-decision-meeting-pack.md`](./pci-decision-meeting-pack.md) gives the
    authorized Security/QSA meeting a dependency-ordered agenda, required
    attendees, pre-reads, exact outputs, stop conditions, action register, and

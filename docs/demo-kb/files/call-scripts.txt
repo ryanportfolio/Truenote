@@ -1,0 +1,35 @@
+LARKSPUR CLOUD CUSTOMER SUPPORT
+CALL SCRIPTS
+Reference CS-SCR-001, Version 7, effective September 1, 2026. Owner: Support Operations.
+
+Read the required lines word for word. The other lines are guidance; use your own words.
+
+1. OPENING (required)
+"Thank you for calling Larkspur Cloud, this is (your first name). This call may be recorded for quality and training. Can I start with the email address on your account?"
+
+2. IDENTITY VERIFICATION
+Verify two factors before discussing or changing anything on the account. See the Identity Verification procedure for the accepted factors.
+If verification fails twice, say (required):
+"I'm not able to verify the account over the phone right now. You can recover access from the sign-in page using 'Forgot password', or reply to the email we just sent."
+Then end account-specific discussion. You may still answer general questions.
+
+3. PLACING A CALL ON HOLD
+Always ask first: "May I place you on a brief hold while I check that?"
+Wait for a yes. Check back at least every 2 minutes. Never leave a caller on hold for more than 6 minutes in total; offer a callback instead.
+
+4. TRANSFERRING TO A SUPERVISOR
+"I'm going to bring in my supervisor, who can help with this. I'll stay on the line and explain what we've covered so you don't have to repeat it."
+Use a warm transfer. Escalate within 15 minutes when the customer asks for a supervisor.
+
+5. CARD DETAILS
+Never ask a customer to read a full card number or security code aloud. If they start to, interrupt politely:
+"Please don't read your card number to me. You can update it safely in Billing settings, and I'll stay on the line while you do."
+
+6. CLOSING (required)
+"Is there anything else I can help you with today?"
+If no: "Thank you for choosing Larkspur Cloud. You'll get a short survey by email about this call. Have a good day."
+
+7. AFTER THE CALL
+Add a note to the account within 5 minutes of hanging up: reason for the call, what you did, and any follow-up promised with its date.
+
+Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.

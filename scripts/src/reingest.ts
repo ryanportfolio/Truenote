@@ -4,7 +4,10 @@
  * Needed when chunking or embedding-input logic changes (e.g. contextual
  * headers, 2026-07) and the existing corpus must pick it up.
  *
- * Usage (Replit or any env with DATABASE_URL + OPENAI_API_KEY):
+ * Usage on Railway, inside the worker (the runtime image has no pnpm):
+ *   railway ssh -s worker -- "cd /app/scripts && ./node_modules/.bin/tsx src/reingest.ts --dry-run"
+ *
+ * Usage locally (any env with DATABASE_URL + OPENAI_API_KEY):
  *   pnpm --filter @workspace/scripts run reingest
  *   pnpm --filter @workspace/scripts run reingest -- --program <uuid>
  *   pnpm --filter @workspace/scripts run reingest -- --dry-run

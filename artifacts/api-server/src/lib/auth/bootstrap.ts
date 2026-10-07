@@ -8,7 +8,7 @@ import { getMinPasswordLength } from "../config.js";
  * Ensure a super_user exists so the operator can log in to a fresh
  * deployment. Called once at api-server startup.
  *
- * Source of truth for the bootstrap creds is Replit Secrets:
+ * Source of truth for the bootstrap creds is the service variables:
  *   BOOTSTRAP_SUPER_USER_EMAIL
  *   BOOTSTRAP_SUPER_USER_PASSWORD
  *   BOOTSTRAP_SUPER_USER_NAME   (optional; defaults to "Super User")
@@ -34,7 +34,7 @@ export async function bootstrapSuperUser(): Promise<void> {
   if (!email || !password) {
     console.log(
       "[bootstrap] BOOTSTRAP_SUPER_USER_EMAIL / _PASSWORD not set — " +
-        "skipping super_user bootstrap. Set both in Replit Secrets to " +
+        "skipping super_user bootstrap. Set both as service variables to " +
         "seed the first login."
     );
     return;

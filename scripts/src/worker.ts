@@ -1,11 +1,11 @@
 /**
  * Standalone ingestion worker process.
  *
- * Usage on Replit (in a separate process or as a one-shot run):
+ * Runs as the Railway `worker` service (TRUENOTE_PROCESS=worker), or locally:
  *   pnpm --filter @workspace/scripts run worker
  *
  * Reads DATABASE_URL, OPENAI_API_KEY, VISION_AGENT_API_KEY from process env
- * (Replit Secrets in production). Exits non-zero on fatal errors so the platform
+ * (Railway variables in production). Exits non-zero on fatal errors so the platform
  * can restart it.
  */
 import { closePool } from "../../artifacts/api-server/src/lib/db-client.js";

@@ -3,8 +3,8 @@
  *
  * 'resend' is deliberately NOT in package.json: sender.ts dynamic-imports it
  * so an api-server without the package (or without RESEND_API_KEY) still
- * boots and falls back to ConsoleEmailSender. On Replit the package is
- * installed by the Replit Agent when email is enabled.
+ * boots and falls back to ConsoleEmailSender. The package is a declared
+ * dependency of @workspace/api-server.
  *
  * This shorthand declaration exists so `tsc --noEmit` passes in dev
  * environments where the package is absent. sender.ts casts the import to

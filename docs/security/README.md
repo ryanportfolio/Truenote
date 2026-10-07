@@ -35,10 +35,9 @@ checks. It is not a compliance, certification, or independent-assessment claim.
 
 ### Internal PCI session ledger
 
-The living
-[`security-readiness session ledger`](../compliance/pci/security-readiness-session-report-2026-07-16.html)
-retains completed work, exact verification, pending decisions, evidence grades,
-owners, blockers, and next actions. It is not published as a Truenote web page.
+The living security-readiness session ledger retains completed work, exact
+verification, pending decisions, evidence grades, owners, blockers, and next
+actions. The maintainer keeps it outside this public repository.
 
 ### Database controls
 
@@ -52,7 +51,7 @@ These migrations are forward-only operational changes. Review the embedded guard
 
 ## Evidence and operations
 
-- The base P0/P1 database controls passed owner-attested acceptance checks in the development database.
+- The base P0/P1 database controls passed owner-attested acceptance checks in the former Replit development database. Railway has no development database; its production database is a 2026-10-07 copy of Replit production with constraint definitions and the `append_security_event` body checked identical to the source (`.claude/reference/deployment.md`). Production verification of these controls on Railway is still pending.
 - The security workflow runs type checks, a production build, unit tests, dependency audit, SBOM generation, Gitleaks, and CodeQL.
 - OIDC and MFA, malware scanning, durable SIEM delivery, browser policy, and provider settings have defined configuration and verification paths. Backup/recovery procedures, RTO/RPO, and a retained restore exercise remain operational evidence requirements.
 - Hash-chained application events preserve tamper-evident receipts; the SIEM outbox provides durable external delivery with retry and dead-letter handling.
@@ -65,10 +64,7 @@ These migrations are forward-only operational changes. Review the embedded guard
 repository and missing operational evidence to PCI DSS secure-software controls and related
 scope, provider, change-control, and penetration-testing dependencies. It is a
 draft readiness package for the existing CDE assessment process, not a compliance
-or certification claim. The
-[`security-readiness session ledger`](../compliance/pci/security-readiness-session-report-2026-07-16.html)
-preserves security-team feedback, completed changes, verification, open work, and
-next actions across long-running tasks and context compaction.
+or certification claim.
 
 ## Reporting
 

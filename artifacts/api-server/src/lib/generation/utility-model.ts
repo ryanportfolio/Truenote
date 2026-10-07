@@ -14,7 +14,9 @@ import {
  * itself — no auxiliary call quietly ships that content to a provider whose
  * retention policy is not pinned here.
  *
- * Pinned to one approved route (Granite 4.1 8B on WandB's ZDR endpoint). These
+ * Pinned to one approved route (Mercury 2.5 on Inception's ZDR endpoint). The
+ * rewrite runs before retrieval under a 5 s deadline, so the utility route is
+ * the fastest approved model, a diffusion LLM at low reasoning effort. These
  * calls are low-stakes and fail open in their callers (rewrite → raw question,
  * naming → truncated title), so a single pinned route with no fallback is
  * deliberate: a failure degrades to the caller's fallback, never to a
@@ -22,7 +24,7 @@ import {
  */
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
-const UTILITY_MODEL_ROUTE_ID: ApprovedModelRouteId = "granite-4.1-8b-wandb";
+const UTILITY_MODEL_ROUTE_ID: ApprovedModelRouteId = "mercury-2.5-inception";
 
 /** The pinned ZDR route for auxiliary utility calls. */
 export const UTILITY_MODEL_ROUTE: ApprovedModelRoute =

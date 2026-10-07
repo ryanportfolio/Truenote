@@ -386,7 +386,7 @@ usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), async
     //   - no real email provider in production: getEmailSender fails closed;
     //     checking here also prevents accounts from being created before that
     //     delivery failure is discovered.
-    // Both are operator-fixable Replit Secrets, hence 503 + "an
+    // Both are operator-fixable service variables, hence 503 + "an
     // administrator" rather than a 4xx the importing manager could act on.
     const baseUrl = resolveAppBaseUrl(req);
     if (baseUrl === null) {
@@ -407,7 +407,7 @@ usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), async
     const emails = normalizeBulkEmails(parsed.data.emails);
     // Sequential hashing intentionally bounds memory. Each Argon2 operation
     // uses ~19 MiB; Promise.all over a 100-row import could exhaust a small
-    // Replit instance even though it appears faster locally.
+    // container even though it appears faster locally.
     //
     // The hashed value is a throwaway: a fresh random string per user,
     // discarded immediately. Login with it is impossible (no one knows

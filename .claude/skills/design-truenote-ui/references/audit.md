@@ -78,6 +78,6 @@ If nothing actionable exists, say so plainly and name verification limits. Disti
 - code inspection;
 - automated tests/checks;
 - rendered browser acceptance;
-- unverified Replit/runtime behavior.
+- unverified deployed/runtime behavior.
 
 Never convert taste preference into a defect without grounding it in product intent, design-system drift, task performance, or accessibility.

@@ -5,10 +5,10 @@ import { recordAppError } from "../observability/error-log.js";
 
 export const ApprovedModelRouteIdSchema = z.enum([
   "gpt-5.4-nano-azure-nitro",
-  "nemotron-3-super-digitalocean-nitro",
-  "nemotron-3-ultra-together-nitro",
-  "mercury-2-inception",
-  "granite-4.1-8b-wandb"
+  "nemotron-3-super-deepinfra-nitro",
+  "nemotron-3-ultra-baseten-nitro",
+  "mercury-2.5-inception",
+  "granite-4.2-8b-coreweave"
 ]);
 
 export type ApprovedModelRouteId = z.infer<typeof ApprovedModelRouteIdSchema>;
@@ -23,13 +23,21 @@ export interface ApprovedModelRoute {
   description: string;
 }
 
+/**
+ * Every route pins one provider that lists a ZDR endpoint for its model in
+ * OpenRouter's public ZDR index (GET /api/v1/endpoints/zdr). Re-checked
+ * 2026-10-07: the earlier DigitalOcean (Nemotron 3 Super), Together (Nemotron
+ * 3 Ultra) and "wandb" (Granite 4.1 8B) pins had no ZDR endpoint, so every
+ * request to them was rejected. Before adding or re-pinning a route, confirm
+ * the model/provider pair appears in that index.
+ */
 export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
   {
-    id: "nemotron-3-super-digitalocean-nitro",
+    id: "nemotron-3-super-deepinfra-nitro",
     label: "Nemotron 3 Super",
     model: "nvidia/nemotron-3-super-120b-a12b:nitro",
-    provider: "digitalocean",
-    providerLabel: "DigitalOcean",
+    provider: "deepinfra",
+    providerLabel: "DeepInfra",
     reasoningEffort: "medium",
     description: "Default ZDR route for grounded answers."
   },
@@ -43,35 +51,52 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     description: "Fast, economical route for grounded answers."
   },
   {
-    id: "nemotron-3-ultra-together-nitro",
+    id: "nemotron-3-ultra-baseten-nitro",
     label: "Nemotron 3 Ultra",
     model: "nvidia/nemotron-3-ultra-550b-a55b:nitro",
-    provider: "together",
-    providerLabel: "Together",
+    provider: "baseten",
+    providerLabel: "BaseTen",
     reasoningEffort: "medium",
     description: "Larger open model for harder multi-step questions."
   },
   {
-    id: "mercury-2-inception",
-    label: "Mercury 2",
-    model: "inception/mercury-2",
+    id: "mercury-2.5-inception",
+    label: "Mercury 2.5",
+    model: "inception/mercury-2.5",
     provider: "inception",
     providerLabel: "Inception",
     reasoningEffort: "low",
     description: "Ultra-fast diffusion model for low-latency grounded answers."
   },
   {
-    id: "granite-4.1-8b-wandb",
-    label: "Granite 4.1 8B",
-    model: "ibm-granite/granite-4.1-8b",
-    provider: "wandb",
-    providerLabel: "Weights & Biases",
-    reasoningEffort: "none",
-    description: "Compact enterprise RAG model on WandB's ZDR endpoint."
+    id: "granite-4.2-8b-coreweave",
+    label: "Granite 4.2 8B",
+    model: "ibm-granite/granite-4.2-8b",
+    provider: "coreweave",
+    providerLabel: "CoreWeave",
+    reasoningEffort: "low",
+    description: "Compact IBM reasoning model on CoreWeave's ZDR endpoint."
   }
 ];
 
 export const DEFAULT_MODEL_ROUTE = APPROVED_MODEL_ROUTES[0]!;
+
+/**
+ * Route ids retired when a route was re-pinned to a ZDR provider or moved to
+ * a newer model version, mapped to their replacement. An admin order saved
+ * before the change keeps its positions instead of losing those entries and
+ * promoting the next route.
+ */
+const RETIRED_ROUTE_ID_REPLACEMENTS: ReadonlyMap<string, ApprovedModelRouteId> = new Map([
+  ["nemotron-3-super-digitalocean-nitro", "nemotron-3-super-deepinfra-nitro"],
+  ["nemotron-3-ultra-together-nitro", "nemotron-3-ultra-baseten-nitro"],
+  ["granite-4.1-8b-wandb", "granite-4.2-8b-coreweave"],
+  ["mercury-2-inception", "mercury-2.5-inception"]
+]);
+
+function currentRouteId(id: string): string {
+  return RETIRED_ROUTE_ID_REPLACEMENTS.get(id) ?? id;
+}
 
 const SETTING_KEY = "primary_generation_route";
 const CACHE_TTL_MS = 30_000;
@@ -83,9 +108,11 @@ const StoredOrderSchema = z.object({
 });
 /** Legacy shape from before ordered fallback chains: a single primary id.
  *  Still read-compatible so an existing app_settings row keeps working — the
- *  id becomes the primary and the remaining approved routes trail it. */
+ *  id becomes the primary and the remaining approved routes trail it. The id
+ *  is checked against the allowlist in resolveModelRouteOrder, after retired
+ *  ids are mapped to their replacement. */
 const StoredSelectionSchema = z.object({
-  selectedId: ApprovedModelRouteIdSchema
+  selectedId: z.string().min(1)
 });
 
 /** Default chain when nothing is persisted: the approved ZDR routes in listed
@@ -94,8 +121,9 @@ export const DEFAULT_MODEL_ROUTE_ORDER: readonly ApprovedModelRouteId[] =
   APPROVED_MODEL_ROUTES.map((route) => route.id);
 
 /**
- * Resolve stored ids into the ordered approved-route chain. Unknown ids are
- * dropped and duplicates collapsed, then any approved route missing from the
+ * Resolve stored ids into the ordered approved-route chain. Retired ids map to
+ * their replacement route, unknown ids are dropped and duplicates collapsed,
+ * then any approved route missing from the
  * stored order is appended in listed order — so a newly-approved model still
  * participates as a tail fallback until an admin reorders it, and the chain is
  * never empty. The allowlist stays authoritative: nothing outside
@@ -106,7 +134,8 @@ export function resolveModelRouteOrder(
 ): ApprovedModelRoute[] {
   const seen = new Set<string>();
   const chain: ApprovedModelRoute[] = [];
-  for (const id of ids) {
+  for (const storedId of ids) {
+    const id = currentRouteId(storedId);
     if (seen.has(id)) continue;
     const route = findApprovedModelRoute(id);
     if (route) {

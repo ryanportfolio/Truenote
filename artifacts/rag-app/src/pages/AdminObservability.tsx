@@ -515,7 +515,7 @@ function SetupRequired(): JSX.Element {
       <h2 className="text-xl font-semibold tracking-tight">Timing storage needs setup</h2>
       <p className="mt-2 max-w-2xl text-sm leading-relaxed">
         Ask delivery remains available, but detailed timing cannot be retained until this
-        idempotent DDL is applied through the Replit Agent and the API server restarts.
+        idempotent DDL is applied to the production database and the API server restarts.
       </p>
       <pre className="mt-4 overflow-x-auto rounded-md border border-warning/40 bg-card px-3 py-3 font-mono text-xs text-foreground">
         <code>{TIMING_DDL}</code>

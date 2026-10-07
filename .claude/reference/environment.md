@@ -1,93 +1,34 @@
-# Environment, Installs & Schema Changes — full detail
+# Environment and installs
 
-> Relocated from CLAUDE.md kernel 2026-07-04 (context-weight optimization). Kernel keeps the rules; this file keeps the mechanics and templates.
+> What each session type can run, and how dependencies reach production. Deploys, schema changes and DNS live in `deployment.md`.
 
-## The two sandboxes
+## Session types
 
-### 1. The dev session (where Claude runs) — local desktop OR Claude Code Cloud
+### Local desktop (the usual case)
 
-**Local desktop** (the usual case since 2026-07-04): the user runs Claude Code from a local Windows checkout. Package manager is pnpm via corepack (`corepack pnpm install`, `pnpm -r run check`, `pnpm -r run test`). Local installs are for VERIFICATION ONLY — they never substitute for the Replit install path below, because Replit's environment is what actually serves the app.
+The user runs Claude Code from a local Windows checkout. pnpm comes from corepack (`corepack pnpm install`, `pnpm -r run check`, `pnpm -r run test`). The Railway CLI is installed and logged in, so deploys, logs, variables and database work over `railway ssh` happen from here, each production change with the owner's go.
 
-**Claude Code cloud sandbox** (web sessions): ephemeral per session, NOT Replit. Persistence is not guaranteed — commit anything worth keeping. Do NOT run installs just to enable a one-shot check; Replit's deploy log is the authoritative type-check there.
+The app does not run locally: no `DATABASE_URL`, no provider API keys. Runtime checks happen on the deployed Railway service.
 
-Either way: no session can run the deployed app (no DATABASE_URL, no API keys locally).
+### Claude Code cloud sandbox (web sessions)
 
-### 2. The deployed app sandbox — Replit
+Ephemeral per session; commit anything worth keeping. No Railway CLI and no credentials. Do not install dependencies only to run a one-shot check. Read code, state that a Railway deploy check is the next step, and stop.
 
-The **production app** runs on **Replit** (Neon-backed Postgres with `vector` + `pg_trgm` extensions, Replit Secrets, Replit Agent for installs). Claude has NO direct access to Replit.
+## Production
 
-**Requires user action (flag explicitly with copy/paste-ready commands):**
-- **App-runtime package installs** (`npm`/`pip` that the deployed site uses) — Replit Agent path below.
-- **DB schema changes** — raw DDL only, see below.
-- **Globally-installed Claude Code tooling** — user runs in their Claude Code desktop / CLI, NOT Replit Agent. Per-repo skills go in `.claude/skills/<name>/` and get committed directly.
-- **Anything destructive or irreversible.**
+Railway project `truenote`, environment `production`. Services, IDs, variables and procedures: `deployment.md`.
 
-## Install Path A — app-runtime dependencies (Replit Agent, manual)
+Until the DNS cutover, `truenote.org` still points at the old Replit deployment. Replit stays deployed only as the DNS rollback; nothing in this repo deploys to it.
 
-`npm`/`pip` packages the deployed site imports at runtime. Claude Code **must not** run `npm install` / `pip install` for these.
+## Installing app-runtime dependencies
 
-When a new app-runtime package is needed:
-1. **Stop.** Do not run any install command.
-2. **Tell the user** which package(s) and why.
-3. **Provide a copy/paste prompt** for the Replit Agent:
+1. From the repo root: `corepack pnpm --filter <workspace> add <pkg>` (e.g. `@workspace/api-server`). Never a bare `npm install` in a package directory; it leaves the root `pnpm-lock.yaml` untouched.
+2. pnpm on Windows drops the `libc: [glibc]` / `libc: [musl]` lines from `packages:` entries. Restore them before committing (`pitfalls.md`, 2026-10-07); `git diff pnpm-lock.yaml` should show additions only for a pure add.
+3. `corepack pnpm install --frozen-lockfile` must pass, then `pnpm -r run check`.
+4. Commit `package.json` and `pnpm-lock.yaml` together. `Dockerfile.railway` installs with `--frozen-lockfile`, so the dependency ships with the next deploy.
 
-```
-## Replit Agent Install Prompt (copy/paste this)
+Before importing a new package, check its `package.json` `exports`; subpath-only packages need the explicit subpath (`pitfalls.md`, `read-excel-file`). A passing typecheck on a cast does not prove the runtime shape.
 
-Please install the following package(s):
+## Claude Code dev tooling
 
-- <package-name>@<version>   # <reason>
-
-This is a pnpm workspace. Install from the repo root, targeting the
-workspace that needs it, so the root pnpm-lock.yaml updates:
-
-    pnpm --filter <workspace-name> add <package-name>
-
-(e.g. the RAG frontend is `@workspace/rag-app`.)
-```
-
-4. **Wait** for confirmation before continuing.
-
-> ⚠️ Do NOT write `npm install <pkg>` in the prompt — this is a pnpm
-> workspace. A bare `npm install` in a sub-package leaves the root
-> `pnpm-lock.yaml` untouched, so the dep never installs for the build.
-> Always `pnpm --filter <workspace> add <pkg>` from the root. (2026-07-11)
-
-## Install Path B — Claude Code dev tooling (do it yourself when possible)
-
-Anything that changes how **Claude Code** behaves — skills, hooks, MCP servers, slash commands, settings — does NOT go through the Replit Agent.
-
-- **Per-repo skill, hook, or settings change?** Commit the file under `.claude/`. Loads automatically next session. (The `addskill` skill scaffolds this; re-enable it in `skillOverrides` if hidden.)
-- **MCP server config the repo should use?** Add to `.claude/settings.json` and commit.
-- **Globally-installed CLI tooling**: user runs in their Claude Code desktop / CLI. Provide the exact command.
-
-## Database schema changes — raw DDL protocol
-
-Claude Code cannot run migrations. For any schema change, give the Replit Agent **raw DDL only**.
-
-**Hard rules:**
-- ✅ Single, minimal SQL block — `ALTER TABLE`, `CREATE TABLE`, `CREATE INDEX`, etc. Prefer `IF NOT EXISTS` / `IF EXISTS` where applicable.
-- ❌ NO `shared/schema.ts` edits (no updated table definitions, no `index()` declarations on `pgTable`).
-- ❌ NO `drizzle-kit` commands (`drizzle-kit push`, `generate`, etc.).
-- ❌ Do NOT label the SQL a "production migration" or instruct the user to run it against production.
-
-Replit's publish flow diffs the dev database against production when the user republishes. Treat promotion as object-dependent and verify the production definition after publishing; see the confirmed limitation below.
-
-**Prompt template (copy/paste):**
-
-```
-Ask the Replit agent to run this against the dev database:
-
-ALTER TABLE <table>
-ADD COLUMN IF NOT EXISTS <column> <type> NOT NULL DEFAULT <default>;
-```
-
-Then stop. No schema.ts edits, no index declarations, no migration commands.
-
-### 2026-07-15: Replit publish does not promote row data
-
-Replit Agent SQL runs against the development database. Publishing can carry the dev schema difference into the deployed database, but `INSERT`/`UPDATE` row data stays in development. Any bootstrap data required by the published app must be created through an authorized deployed-runtime workflow; never assume development seed rows will appear after publish.
-
-### 2026-07-15: Replit publish can omit constraint bodies and database functions
-
-Production verification showed that Publish promoted `source_origin_uri` nullability but left two redefined `CHECK` constraints unchanged and did not install `append_security_event(...)`; the missing function surfaced as PostgreSQL `42883` from otherwise valid application calls. After every constraint, trigger, or function change, inspect the production definition instead of inferring success from development DDL or a successful publish. If Publish omits an object, an authorized operator must apply the exact reviewed DDL through the Production Database SQL runner; its console auto-wraps selected multi-statement batches and rejects explicit `BEGIN`/`COMMIT`, so prefer one atomic `ALTER TABLE ... DROP CONSTRAINT ..., ADD CONSTRAINT ...` statement per constraint and one `CREATE OR REPLACE FUNCTION` statement per function.
+Skills, hooks, MCP servers and settings are committed under `.claude/` (Codex counterparts under `.agents/`, see `CLAUDE.md`). Globally installed CLI tools: give the user the exact command for their own terminal.

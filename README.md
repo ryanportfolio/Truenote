@@ -116,7 +116,7 @@ The eval commands require a configured database and provider keys. A model or re
 | Embeddings | OpenAI `text-embedding-3-small` |
 | Retrieval | Vector search, PostgreSQL full-text search, trigram fallback, Cohere reranking |
 | Generation | Administrator-ordered, server-allowlisted OpenRouter routes with one pinned ZDR provider per request |
-| Hosting | Replit with Neon-backed PostgreSQL and object storage |
+| Hosting | Railway: web and worker services, Postgres with pgvector, S3-compatible bucket |
 
 Answer generation does not fall back to a direct provider outside the enforced OpenRouter route policy. Direct OpenAI embeddings and the optional eval judge are separate data flows and need their own organization-level retention controls. LandingAI ZDR is also an account setting, not a request flag.
 
@@ -153,7 +153,7 @@ pnpm install --frozen-lockfile
 cp .env.example .env
 ```
 
-On PowerShell, use `Copy-Item .env.example .env`. For local development, set `PORT=5173` and `API_PORT=5000`; the checked-in example uses the Replit port arrangement.
+On PowerShell, use `Copy-Item .env.example .env`. No process loads `.env` on its own: the API, web app and worker read only the process environment, so set the variables from your `.env` in each shell before starting them.
 
 Run the API and frontend in separate terminals:
 

@@ -29,7 +29,7 @@ Report these on the admin Evaluation page:
 - **p50 / p95 latency**: CSRs are mid-call. Slow = unusable.
 - **Stage-level recall (2026-07)**: for questions with `expected_doc_id` — `retrievalRecallPct` (doc entered the pre-rerank candidate pool) and `rerankRecallPct` (doc survived into the top-K). Plus `inKbFailuresByStage` attributing each in-KB failure to `retrieval` / `rerank` / `threshold` / `generation` (`unattributed` = no expected_doc_id or errored). This tells you WHICH stage to tune: retrieval misses → chunking/embedding/query work; rerank misses → candidate K or rerank model; threshold pile-up → retune `RERANK_CONFIDENCE_THRESHOLD` (especially after a `COHERE_RERANK_MODEL` change); generation misses → prompt/model work.
 - **Expected-doc rank (2026-07)**: `expectedDocRank` per question (1-based, in the post-rerank top-K) + `expectedDocRankMean`. A doc that passes at rank 7-of-8 is one rerank-model change away from a miss.
-- **Claim-level faithfulness (2026-07, `--judge`)**: gpt-4o judge decomposes each non-refused answer into atomic factual claims and labels each supported/unsupported against the excerpts the LLM saw (Cohere RAG-eval methodology). `meanFaithfulnessPct`, `unfaithfulQuestions`, `judgeFailures`, and per-question `unsupportedClaims` keep partial judge outages visible instead of presenting a partial mean as suite-wide. Catches what phrase-matching can't: a *passing*, well-cited answer with one invented fee — the CLI lists "passing answer(s) with unsupported claims" separately. One extra gpt-4o call per judged question → opt-in flag. Out-of-KB questions that wrongly got answers ARE judged (prime hallucination candidates).
+- **Claim-level faithfulness (2026-07, `--judge`)**: gpt-6.1-sol judge (direct OpenAI, medium reasoning; gpt-4o before 2026-10-07, so older judge scores are not comparable) decomposes each non-refused answer into atomic factual claims and labels each supported/unsupported against the excerpts the LLM saw (Cohere RAG-eval methodology). `meanFaithfulnessPct`, `unfaithfulQuestions`, `judgeFailures`, and per-question `unsupportedClaims` keep partial judge outages visible instead of presenting a partial mean as suite-wide. Catches what phrase-matching can't: a *passing*, well-cited answer with one invented fee — the CLI lists "passing answer(s) with unsupported claims" separately. One extra gpt-6.1-sol call per judged question → opt-in flag. Out-of-KB questions that wrongly got answers ARE judged (prime hallucination candidates).
 - **Generation path**: per-question `generationPath` plus `fallbackGenerationCount` / `failedFallbackCount` show when the configured primary degraded to a later ZDR route or every approved route failed.
 
 ## Authoring eval questions
@@ -44,7 +44,9 @@ The eval set is only as good as its questions. Bias toward:
 ## Running the harness
 
 ```bash
-# Replit (or any env with secrets loaded):
+# Production (inside the worker container; it holds the secrets):
+#   railway ssh -s worker -- "cd /app/scripts && ./node_modules/.bin/tsx src/eval.ts --limit 5"
+# Any env with secrets loaded:
 pnpm --filter @workspace/scripts run eval
 
 # Filter to one program:
@@ -59,10 +61,10 @@ pnpm --filter @workspace/scripts run eval -- --limit 5
 # Machine-readable output (suppresses the human summary):
 pnpm --filter @workspace/scripts run eval -- --json > .tmp/eval-result.json
 
-# Claim-level faithfulness judge (extra gpt-4o call per non-refused answer):
+# Claim-level faithfulness judge (extra gpt-6.1-sol call per non-refused answer):
 pnpm --filter @workspace/scripts run eval -- --judge
 
-# Parameter sweep without touching Replit Secrets (run-scoped env overrides):
+# Parameter sweep without touching the Railway variables (run-scoped env overrides):
 pnpm --filter @workspace/scripts run eval -- --threshold 0.25 --top-k 12
 pnpm --filter @workspace/scripts run eval -- --rerank-model rerank-v3.5 --threshold 0.2
 pnpm --filter @workspace/scripts run eval -- --neighbors 0   # A/B neighbor expansion
@@ -111,14 +113,14 @@ numbers move"; protected questions detect "did we cheat to move them."
   shows a "Held-out split" line once any protected question exists. Older runs
   recorded before the column omit `splits`.
 - `is_protected` is read via a **tolerant raw query** (not the drizzle table),
-  so the column ships via raw DDL with no `shared/schema.ts` edit. Missing
+  so the column needs no Drizzle binding in `lib/db/src/schema.ts`. Missing
   column ⇒ every question is unprotected (pre-DDL deployments still run).
 - **Policy (enforced by review, not code):** never edit a protected question,
   and never use it to tune. Investigate protected failures on the open set.
   Aim for ~30–40% protected, weighted toward exact-value questions (fees,
   dates, policy numbers) and out-of-KB refusal cases.
 
-Column DDL — Replit Agent, run once (idempotent):
+Column DDL, applied once (idempotent):
 
 ```sql
 ALTER TABLE eval_questions
