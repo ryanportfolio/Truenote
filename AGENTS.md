@@ -9,6 +9,11 @@ hooks, and `.claude/skills/` exactly as before.
 - Read `CLAUDE.md` after this file. Honor its project facts, architecture,
   verification requirements, environment constraints, hard lines, and
   reference-library routing.
+- Production runs on Railway, not Replit (since 2026-10-07). Never route
+  development, configuration, secrets, deployment, schema changes or storage
+  through Replit. Until the domain moves, the owner still edits `truenote.org`
+  DNS in Replit's DNS screen and the old Replit deployment is the DNS rollback;
+  see "Hosting" in `CLAUDE.md` and `.claude/reference/deployment.md`.
 - If `CLAUDE.md` still contains `FILL IN` markers, treat those facts as unknown.
   Inspect the repository or ask the user instead of guessing.
 - Read the relevant `.claude/reference/` file before non-trivial work in an
