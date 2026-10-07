@@ -13,7 +13,7 @@ const NANO_ROUTE = APPROVED_MODEL_ROUTES.find(
   (route) => route.id === "gpt-5.4-nano-azure-nitro"
 )!;
 const MERCURY_ROUTE = APPROVED_MODEL_ROUTES.find(
-  (route) => route.id === "mercury-2-inception"
+  (route) => route.id === "mercury-2.5-inception"
 )!;
 const GRANITE_ROUTE = APPROVED_MODEL_ROUTES.find(
   (route) => route.id === "granite-4.2-8b-coreweave"
@@ -217,7 +217,7 @@ describe("generateAnswer ZDR route fallback", () => {
     expect(result.generationPath).toBe("primary");
   });
 
-  it("routes Mercury 2 through Inception with ZDR and low reasoning", async () => {
+  it("routes Mercury 2.5 through Inception with ZDR and low reasoning", async () => {
     const requests: CapturedRequest[] = [];
 
     await generateAnswer(
@@ -227,7 +227,7 @@ describe("generateAnswer ZDR route fallback", () => {
 
     expect(requests[0]).toEqual(
       expect.objectContaining({
-        model: "inception/mercury-2",
+        model: "inception/mercury-2.5",
         reasoning_effort: "low",
         provider: expect.objectContaining({ only: ["inception"], zdr: true })
       })
@@ -287,7 +287,7 @@ describe("generateAnswer ZDR route fallback", () => {
       { programName: "Test", question: "What is the fee?", chunks },
       {
         client: routingClient(
-          { "openai/gpt-5.4-nano:nitro": "throw", "inception/mercury-2": answer },
+          { "openai/gpt-5.4-nano:nitro": "throw", "inception/mercury-2.5": answer },
           requests
         ),
         routeChain: [NANO_ROUTE, MERCURY_ROUTE]
@@ -296,7 +296,7 @@ describe("generateAnswer ZDR route fallback", () => {
 
     expect(requests.map((request) => request.model)).toEqual([
       "openai/gpt-5.4-nano:nitro",
-      "inception/mercury-2"
+      "inception/mercury-2.5"
     ]);
     expect(result.generationPath).toBe("fallback");
     expect(result.providerAttempts).toHaveLength(2);
@@ -309,7 +309,7 @@ describe("generateAnswer ZDR route fallback", () => {
       { programName: "Test", question: "What is the fee?", chunks },
       {
         client: routingClient(
-          { "openai/gpt-5.4-nano:nitro": null, "inception/mercury-2": answer },
+          { "openai/gpt-5.4-nano:nitro": null, "inception/mercury-2.5": answer },
           []
         ),
         routeChain: [NANO_ROUTE, MERCURY_ROUTE]
@@ -328,7 +328,7 @@ describe("generateAnswer ZDR route fallback", () => {
         client: routingClient(
           {
             "openai/gpt-5.4-nano:nitro": "The fee is $25 [unknown].",
-            "inception/mercury-2": answer
+            "inception/mercury-2.5": answer
           },
           []
         ),
@@ -347,7 +347,7 @@ describe("generateAnswer ZDR route fallback", () => {
       { programName: "Test", question: "What is the fee?", chunks },
       {
         client: routingClient(
-          { "openai/gpt-5.4-nano:nitro": REFUSAL_TEXT, "inception/mercury-2": answer },
+          { "openai/gpt-5.4-nano:nitro": REFUSAL_TEXT, "inception/mercury-2.5": answer },
           requests
         ),
         routeChain: [NANO_ROUTE, MERCURY_ROUTE]
@@ -367,7 +367,7 @@ describe("generateAnswer ZDR route fallback", () => {
       { programName: "Test", question: "What is the fee?", chunks },
       {
         client: routingClient(
-          { "openai/gpt-5.4-nano:nitro": "throw", "inception/mercury-2": "throw" },
+          { "openai/gpt-5.4-nano:nitro": "throw", "inception/mercury-2.5": "throw" },
           requests
         ),
         routeChain: [NANO_ROUTE, MERCURY_ROUTE]

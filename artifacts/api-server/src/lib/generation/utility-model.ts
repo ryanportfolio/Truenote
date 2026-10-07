@@ -14,7 +14,7 @@ import {
  * itself — no auxiliary call quietly ships that content to a provider whose
  * retention policy is not pinned here.
  *
- * Pinned to one approved route (Mercury 2 on Inception's ZDR endpoint). The
+ * Pinned to one approved route (Mercury 2.5 on Inception's ZDR endpoint). The
  * rewrite runs before retrieval under a 5 s deadline, so the utility route is
  * the fastest approved model, a diffusion LLM at low reasoning effort. These
  * calls are low-stakes and fail open in their callers (rewrite → raw question,
@@ -24,7 +24,7 @@ import {
  */
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
-const UTILITY_MODEL_ROUTE_ID: ApprovedModelRouteId = "mercury-2-inception";
+const UTILITY_MODEL_ROUTE_ID: ApprovedModelRouteId = "mercury-2.5-inception";
 
 /** The pinned ZDR route for auxiliary utility calls. */
 export const UTILITY_MODEL_ROUTE: ApprovedModelRoute =

@@ -32,11 +32,14 @@ export interface RerankResult {
 }
 
 /**
- * Default stays on rerank-english-v3.0. Upgrading (e.g. to rerank-v3.5) is a
- * deliberate, eval-gated act: set COHERE_RERANK_MODEL in the Railway variables, run
- * the eval suite, and RETUNE RERANK_CONFIDENCE_THRESHOLD — score
+ * Default stays on rerank-english-v3.0 because the RERANK_CONFIDENCE_THRESHOLD
+ * default (0.3) was tuned on it. The upgrade target is rerank-v4.0-pro
+ * (2026-10-07). Switching is a deliberate, eval-gated act: run the eval suite
+ * with COHERE_RERANK_MODEL=rerank-v4.0-pro, RETUNE the threshold, then set the
+ * model and the retuned threshold together in the Railway variables. Score
  * distributions differ between rerank model versions, so the old threshold
- * is invalid the moment the model changes.
+ * is invalid the moment the model changes. Change this default only together
+ * with DEFAULT_RERANK_THRESHOLD in query.ts.
  */
 const DEFAULT_RERANK_MODEL = "rerank-english-v3.0";
 
