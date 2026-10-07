@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Decline codes</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; color: #1f2a44; background: #fff; width: 1280px; }
+.head { background: #1f2a44; color: #fff; padding: 18px 28px; }
+.head h1 { margin: 0; font-size: 24px; } .head p { margin: 4px 0 0; opacity: .85; font-size: 14px; }
+.body { padding: 22px 28px 28px; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { border: 1px solid #d9dee7; padding: 10px 12px; text-align: left; vertical-align: top; }
+th { background: #eef2f6; }
+td.code { font-family: Consolas, monospace; font-weight: 700; width: 70px; }
+.foot { margin-top: 16px; font-size: 14px; border-left: 4px solid #1c9c8c; background: #f1f8f7; padding: 10px 14px; }
+.small { font-size: 12px; color: #5b6475; margin-top: 14px; }
+</style></head>
+<body>
+<div class="head"><h1>Payment Decline Codes: What to Tell the Customer</h1><p>Larkspur Cloud Billing Operations · Quick reference QR-BIL-07 · Updated September 2026</p></div>
+<div class="body">
+<table>
+<tr><th>Code</th><th>Meaning</th><th>What to tell the customer</th><th>Retry?</th></tr>
+<tr><td class="code">D01</td><td>Insufficient funds</td><td>"Your bank declined the payment. You can try another card or try again later."</td><td>Customer may retry</td></tr>
+<tr><td class="code">D05</td><td>Do not honor</td><td>"Your bank declined the payment without a reason. Please call the number on the back of your card."</td><td>After the customer calls the bank</td></tr>
+<tr><td class="code">D14</td><td>Invalid card number</td><td>"The card number did not go through. Please re-enter it in Billing settings."</td><td>Yes, after re-entry</td></tr>
+<tr><td class="code">D41</td><td>Card reported lost or stolen</td><td>"This card can't be used. Please add a different card." Do not mention lost or stolen.</td><td>Never retry this card</td></tr>
+<tr><td class="code">D54</td><td>Expired card</td><td>"The card on file has expired. Please update the expiry date or add a new card."</td><td>Yes, after update</td></tr>
+<tr><td class="code">D91</td><td>Card issuer unavailable</td><td>"Your bank's system was temporarily unavailable. We'll try again automatically."</td><td>Automatic retry after 1 hour</td></tr>
+</table>
+<div class="foot">Renewal grace period: after a failed renewal, the system retries 3 times over 7 days. If all retries fail, the account becomes read-only. Files are never deleted for a failed payment alone.</div>
+<div class="small">Never ask the customer to read a full card number or security code aloud. Card details are entered only by the customer in Billing settings.</div>
+</div>
+</body></html>
