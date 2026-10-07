@@ -29,7 +29,7 @@ fetch_with_retry() {
   local max_attempts=4
   local delay=2
   while [ "$attempt" -le "$max_attempts" ]; do
-    if git fetch "$@" 2>&1; then
+    if git fetch "$@" >&2; then
       return 0
     fi
     if [ "$attempt" -lt "$max_attempts" ]; then
@@ -72,18 +72,13 @@ print_skill_reminders() {
   cat >&2 <<'SKILLS'
 [SessionStart] Universal skills. Invoke proactively when the trigger fires:
   - caveman                       → FIRST, at session start: /caveman ultra (default prose mode)
-  - applying-best-practices       → BEFORE non-trivial edits (features, refactors, perf, bug fixes)
   - recall                        → BEFORE work in unfamiliar areas; /recall save <text> after gotchas
-  - verification-before-completion → BEFORE claiming work is done / committing / opening a PR
-  - systematic-debugging          → ON any bug, test failure, or unexpected behavior
-  - test-driven-development       → BEFORE writing implementation code for a feature or bugfix
-  - brainstorming                 → BEFORE designing new features or behavior changes
-  - safe-ship                     → BEFORE pushing / opening a PR
   - impartial-review              → AFTER substantive changes, before merging
 SKILLS
 }
 
-# Weekly drift check against the claude-starter template. Quiet by design:
+# Weekly drift check against the Harness-Firmware template (formerly
+# claude-starter). Quiet by design:
 # no remote configured and no network reach -> silent no-op. Counts only
 # shared-surface files the template actually ships (project-only additions
 # are not drift); applying-best-practices is excluded (tuned per project by
@@ -94,7 +89,7 @@ check_starter_drift() {
 
   # Skip inside the template repo itself: nothing to drift from.
   case "$(git remote get-url origin 2>/dev/null)" in
-    *claude-starter*) return 0 ;;
+    *claude-starter*|*Harness-Firmware*) return 0 ;;
   esac
 
   local gitdir stamp
@@ -117,7 +112,7 @@ check_starter_drift() {
   else
     # No named remote (fresh clone / cloud sandbox): try a direct fetch.
     # Fails silently when the repo is unreachable or auth is unavailable.
-    git fetch --quiet https://github.com/ryanportfolio/claude-starter.git main 2>/dev/null || return 0
+    git fetch --quiet https://github.com/ryanportfolio/Harness-Firmware.git main 2>/dev/null || return 0
     ref="FETCH_HEAD"
   fi
 
@@ -144,7 +139,7 @@ $changed
 EOF
 
   if [ "$n" -gt 0 ]; then
-    echo "[SessionStart] claude-starter template differs on $n shared file(s). Run /sync-starter to review and pull selectively."
+    echo "[SessionStart] Harness-Firmware template differs on $n shared file(s). Run /sync-starter to review and pull selectively."
   fi
 }
 
@@ -156,7 +151,7 @@ EOF
 check_plugin_overlap() {
   [ -d .claude/skills/sync-starter ] || return 0
   case "$(git remote get-url origin 2>/dev/null)" in
-    *claude-starter*) return 0 ;;
+    *claude-starter*|*Harness-Firmware*) return 0 ;;
   esac
   if grep -hs '"claude-starter@[^"]*": *true' \
       .claude/settings.json .claude/settings.local.json \

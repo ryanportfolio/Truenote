@@ -44,7 +44,7 @@ railway up --detach -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4de
 
 Deploy both services from the same commit; they share code. Poll `railway deployment list -s <service> --json` until `SUCCESS`, then check: `/health` returns `{"ok":true}`, `/` and the changed pages return 200, `railway logs -s web` shows `[api-server] listening on http://0.0.0.0:8080`, and `railway logs -s worker` shows `[worker] ready`. For retrieval or answer changes, run one cited question (`.tmp`-style script: demo CSR login, `POST /api/ask`, expect `refused=false` with at least one source).
 
-The image runs TypeScript through `tsx`: `scripts/railway-start.sh` execs `artifacts/api-server/src/index.ts` or `scripts/src/worker.ts`. The build runs `pnpm install --frozen-lockfile`, the api-server typecheck and the rag-app build; a type error fails the image.
+The image runs TypeScript through `tsx`: `scripts/railway-start.sh` execs `artifacts/api-server/src/index.ts` or `scripts/src/worker.ts`. The build runs `pnpm install --frozen-lockfile`, the typecheck of every workspace (`pnpm -r run check`) and the rag-app build; a type error fails the image. `tsx` is a dev dependency, so the image keeps dev dependencies.
 
 Rollback: Railway keeps earlier deployments. `railway redeploy` only redeploys the latest one; to go back, use the dashboard (Deployments, Redeploy on the good one) or the GraphQL mutation `deploymentRedeploy(id)`.
 

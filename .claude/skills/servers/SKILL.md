@@ -15,7 +15,7 @@ Script paths below are from the repository root; when this skill came from a plu
 node .claude/skills/servers/scripts/servers.mjs register --port 5173 --purpose "menu page preview"
 ```
 
-`launchPlacedChrome()` records its browsers itself; pass `purpose` to label them.
+A placed-window launcher, if the project has one (`launchPlacedChrome()` in `scripts/lib/launch-chrome.mjs`), records its browsers itself; pass `purpose` to label them. Without one, launch Chrome with `--window-position=-2400,-2400` and record it with `register --pid <pid> --kind browser --purpose "..."`.
 
 **List.** `node .claude/skills/servers/scripts/servers.mjs` prints port, pid, age, folder, purpose and flags; `--here` limits it to this repository, `--json` gives data. Flags:
 

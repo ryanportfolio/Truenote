@@ -38,8 +38,9 @@ capture conditions, with fixed seeds where needed and tolerances for rendering v
 Interactive and animated work also needs a natural run.
 
 Browser rule, copied into every brief that renders or drives a page:
-- Launch headed Chrome on the real GPU through the repo's placed-Chrome launcher,
-  `launchPlacedChrome()` in `scripts/lib/launch-chrome.mjs`. A headless, minimized, or
+- Launch headed Chrome on the real GPU through the repo's placed-window launcher if present,
+  `launchPlacedChrome()` in `scripts/lib/launch-chrome.mjs`, else Chrome with
+  `--window-position=-2400,-2400`. A headless, minimized, or
   software-rendered run is never evidence for GPU, WebGL, or animation claims. Static
   media may render without it. Each session owns one browser; parallel or subagent
   browser work starts its own isolated profile.

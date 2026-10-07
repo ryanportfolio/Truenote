@@ -9,7 +9,7 @@ Script paths are from the repository root; in a personal install, use the `scrip
 
 `.agents/skills/servers/scripts/servers.mjs` lists dev servers (listeners on port 1024+ owned by node, bun, python and similar) and automation browsers (Chrome, Edge or Chromium started with a debugging flag or their own profile). A personal browser launched normally is never listed.
 
-After starting a server, record it from the checkout it serves, since Windows cannot tell which folder a running `npm run dev` belongs to: `node .agents/skills/servers/scripts/servers.mjs register --port 5173 --purpose "menu page preview"`. `launchPlacedChrome()` records its own browsers; pass `purpose` to label them.
+After starting a server, record it from the checkout it serves, since Windows cannot tell which folder a running `npm run dev` belongs to: `node .agents/skills/servers/scripts/servers.mjs register --port 5173 --purpose "menu page preview"`. A placed-window launcher, if the project has one (`launchPlacedChrome()` in `scripts/lib/launch-chrome.mjs`), records its own browsers; pass `purpose` to label them. Without one, launch Chrome with `--window-position=-2400,-2400` and record it with `register --pid <pid> --kind browser --purpose "..."`.
 
 List with `node .agents/skills/servers/scripts/servers.mjs` (`--here` for this repository, `--json` for data). Flags: `gone` (worktree deleted), `old` (older than `--old-hours`, default 12), `unknown` (a server with no record or folder), `protected` (it or a process under it is in `~/.claude/servers-protect.txt`; never closed). Answer "which port is X" from the purpose and folder columns, with the URL.
 
