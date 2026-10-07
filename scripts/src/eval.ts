@@ -1,7 +1,10 @@
 /**
  * Eval harness runner.
  *
- * Usage (inside the Railway worker over `railway ssh`, or locally with secrets loaded):
+ * Usage on Railway, inside the worker (the runtime image has no pnpm):
+ *   railway ssh -s worker -- "cd /app/scripts && ./node_modules/.bin/tsx src/eval.ts --limit 5"
+ *
+ * Usage locally, with secrets loaded:
  *   pnpm --filter @workspace/scripts run eval
  *   pnpm --filter @workspace/scripts run eval -- --program <uuid>
  *   pnpm --filter @workspace/scripts run eval -- --question <uuid>

@@ -153,7 +153,7 @@ pnpm install --frozen-lockfile
 cp .env.example .env
 ```
 
-On PowerShell, use `Copy-Item .env.example .env`. For local development, set `PORT=5173` and `API_PORT=5000`; the checked-in example uses `PORT=5000` and `API_PORT=3001`.
+On PowerShell, use `Copy-Item .env.example .env`. No process loads `.env` on its own: the API, web app and worker read only the process environment, so set the variables from your `.env` in each shell before starting them.
 
 Run the API and frontend in separate terminals:
 

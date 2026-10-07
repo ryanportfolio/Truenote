@@ -113,7 +113,7 @@ numbers move"; protected questions detect "did we cheat to move them."
   shows a "Held-out split" line once any protected question exists. Older runs
   recorded before the column omit `splits`.
 - `is_protected` is read via a **tolerant raw query** (not the drizzle table),
-  so the column ships via raw DDL with no `shared/schema.ts` edit. Missing
+  so the column needs no Drizzle binding in `lib/db/src/schema.ts`. Missing
   column ⇒ every question is unprotected (pre-DDL deployments still run).
 - **Policy (enforced by review, not code):** never edit a protected question,
   and never use it to tune. Investigate protected failures on the open set.

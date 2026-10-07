@@ -18,7 +18,7 @@ Ephemeral per session; commit anything worth keeping. No Railway CLI and no cred
 
 Railway project `truenote`, environment `production`. Services, IDs, variables and procedures: `deployment.md`.
 
-Until the DNS cutover, `truenote.org` still points at the old Replit deployment. Replit is being retired: do not plan work through the Replit Agent, Replit Secrets or Replit Publish.
+Until the DNS cutover, `truenote.org` still points at the old Replit deployment. Replit stays deployed only as the DNS rollback; nothing in this repo deploys to it.
 
 ## Installing app-runtime dependencies
 

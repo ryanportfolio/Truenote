@@ -125,7 +125,8 @@ export function createApp(): Express {
 
       // res.type() treats any string containing "/" as a literal MIME type.
       // Passing the absolute path therefore emitted an invalid Content-Type
-      // like "/home/runner/.../index.js", which browsers refuse for modules.
+      // like "/app/artifacts/rag-app/dist/assets/index.js", which browsers
+      // refuse for modules.
       res.type(path.extname(relativePath));
       res.setHeader("Content-Encoding", suffix === ".br" ? "br" : "gzip");
       res.vary("Accept-Encoding");

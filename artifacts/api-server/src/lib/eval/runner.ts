@@ -341,7 +341,8 @@ export async function loadEvalQuestions(
   }
   // is_protected is read via a tolerant raw query, NOT the drizzle table, so the
   // column can be added by raw DDL (per the repo's schema protocol) without a
-  // shared/schema.ts edit. Missing column ⇒ every question is unprotected.
+  // Drizzle binding in lib/db/src/schema.ts. Missing column ⇒ every question
+  // is unprotected.
   const protectedFlags = await loadProtectedFlags(rows.map((row) => row.id));
   return rows.map((row) => ({
     ...row,

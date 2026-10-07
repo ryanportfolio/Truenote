@@ -1,7 +1,6 @@
 #!/bin/sh
-# Container entrypoint for Dockerfile.railway. Runs TypeScript through tsx,
-# as the Replit deployment did. exec hands PID 1 to Node so SIGTERM reaches
-# the graceful-shutdown handlers.
+# Container entrypoint for Dockerfile.railway. Runs TypeScript through tsx.
+# exec hands PID 1 to Node so SIGTERM reaches the graceful-shutdown handlers.
 set -eu
 
 # Railway injects PORT for the public service; the api-server reads API_PORT.

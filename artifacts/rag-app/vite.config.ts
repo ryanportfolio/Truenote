@@ -99,10 +99,9 @@ function publishSecurityPage(): Plugin {
         fileName: "security/pci/index.html",
         source: pciHtml
       });
-      // Replit's deployed SPA fallback currently intercepts nested index.html
-      // requests beneath /security. Keep the conventional directory asset for
-      // static hosts, and emit a top-level copy for the API server's explicit
-      // /security/pci route.
+      // Keep the conventional directory asset for static hosts, and emit a
+      // top-level copy that the API server's explicit /security/pci route
+      // (app.ts) sends ahead of the SPA fallback.
       this.emitFile({
         type: "asset",
         fileName: "security-pci.html",
@@ -118,9 +117,10 @@ function publishSecurityPage(): Plugin {
 }
 
 /**
- * Replit currently serves production assets without transport compression.
- * Prebuild both modern Brotli and gzip variants using Node's built-ins; the
- * API server negotiates these files before falling back to the originals.
+ * The API server has no compression middleware, so production assets would
+ * otherwise go out uncompressed. Prebuild both modern Brotli and gzip
+ * variants using Node's built-ins; the API server negotiates these files
+ * before falling back to the originals.
  */
 function precompressAssets() {
   return {
@@ -155,8 +155,9 @@ function precompressAssets() {
   };
 }
 
-// API server we proxy /api to. API_PORT is set in .replit and at the
-// workspace root so both processes agree without each having its own copy.
+// API server we proxy /api to. Both processes read API_PORT from the
+// environment (see the root .env.example) and default to 5000, so they agree
+// without each having its own copy.
 const API_PORT = Number(process.env.API_PORT) || 5000;
 const FRONTEND_PORT = Number(process.env.PORT) || 5173;
 
@@ -169,23 +170,20 @@ export default defineConfig({
     }
   },
   server: {
-    host: "0.0.0.0",
     port: FRONTEND_PORT,
-    allowedHosts: true,
     proxy: {
       "/api": {
         target: `http://localhost:${API_PORT}`,
         changeOrigin: true,
         // Preserve the browser-facing host/protocol for the API's mutation
-        // Origin check. Replit exposes Vite publicly and keeps API_PORT
-        // internal, so the rewritten Host alone is not the trusted origin.
+        // Origin check. The browser talks to Vite and changeOrigin rewrites
+        // Host to the API port, so the rewritten Host alone is not the
+        // trusted origin.
         xfwd: true
       }
     }
   },
   preview: {
-    host: "0.0.0.0",
-    port: FRONTEND_PORT,
-    allowedHosts: true
+    port: FRONTEND_PORT
   }
 });

@@ -39,8 +39,8 @@ Railway service variables are the source of truth in production (names and per-s
 | `RETRIEVAL_TOP_K` | Final chunks sent to LLM after reranking | `8` |
 | `RETRIEVAL_CANDIDATE_K` | Candidates pulled from vector + BM25 before reranking | `40` each |
 | `RETRIEVAL_NEIGHBOR_ANCHORS` | Top reranked chunks whose ordinal ±1 siblings are appended as unscored context. `0` disables neighbor expansion | `3` |
-| `RAG_STORAGE_DRIVER` | `s3` selects the S3-compatible adapter (Railway). `memory` selects the in-memory adapter (local scripts / tests). Unset selects Replit Object Storage, kept until the Replit pieces are removed | unset → Replit SDK |
-| `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Bucket settings for `RAG_STORAGE_DRIVER=s3`; on Railway they come from `railway bucket credentials -b truenote-storage`. A missing one fails the first storage call with the missing names | required with `s3` |
+| `RAG_STORAGE_DRIVER` | Unset or `s3` (any value other than `memory`) selects the S3-compatible adapter (Railway). `memory` selects the in-memory adapter (local scripts / tests) | unset → S3 |
+| `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Bucket settings for the S3 adapter; on Railway they come from `railway bucket credentials -b truenote-storage`. A missing one fails the first storage call with the missing names | required unless `memory` |
 | `S3_FORCE_PATH_STYLE` | `true` for providers that need path-style URLs (MinIO). Railway Buckets use virtual-host style | `false` |
 | `BOOTSTRAP_SUPER_USER_NAME` | Display name for the bootstrap super_user | `Super User` |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for cross-origin credentialed requests. Production sets it to the Railway service URL so that host passes the CSRF origin check while `APP_BASE_URL` names `truenote.org`. | unset → no cross-origin |

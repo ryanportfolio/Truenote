@@ -78,7 +78,7 @@ Overrides the Bash tool's built-in "commit only when asked" default: task comple
 ## Where things run (full detail: `.claude/reference/environment.md`, `.claude/reference/deployment.md`)
 
 1. **Dev session (you)**: local Windows desktop (pnpm via corepack) or Claude Code cloud sandbox (ephemeral; commit anything worth keeping). Neither runs the app.
-2. **Production: Railway** project `truenote`, environment `production`: services `web` (api-server + built SPA) and `worker` (pg-boss ingestion/eval), `pgvector` (Postgres 18 with `vector`, `pg_trgm`, `pgcrypto`), bucket `truenote-storage`. The local desktop has the Railway CLI logged in; run it yourself. There is no separate dev database. Replit served production until the DNS cutover and is being retired.
+2. **Production: Railway** project `truenote`, environment `production`: services `web` (api-server + built SPA) and `worker` (pg-boss ingestion/eval), `pgvector` (Postgres 18 with `vector`, `pg_trgm`, `pgcrypto`), bucket `truenote-storage`. The local desktop has the Railway CLI logged in; run it yourself. There is no separate dev database. `truenote.org` points at Replit until the DNS cutover; Replit stays deployed only as the DNS rollback and nothing in this repo deploys to it.
 
 **Ask the owner first:** every production deploy, every schema change applied to production, variable changes, and anything destructive, paid or irreversible.
 

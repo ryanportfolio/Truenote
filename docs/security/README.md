@@ -52,7 +52,7 @@ These migrations are forward-only operational changes. Review the embedded guard
 
 ## Evidence and operations
 
-- The base P0/P1 database controls passed owner-attested acceptance checks in the development database.
+- The base P0/P1 database controls passed owner-attested acceptance checks in the former Replit development database. Railway has no development database; its production database is a 2026-10-07 copy of Replit production with constraint definitions and the `append_security_event` body checked identical to the source (`.claude/reference/deployment.md`). Production verification of these controls on Railway is still pending.
 - The security workflow runs type checks, a production build, unit tests, dependency audit, SBOM generation, Gitleaks, and CodeQL.
 - OIDC and MFA, malware scanning, durable SIEM delivery, browser policy, and provider settings have defined configuration and verification paths. Backup/recovery procedures, RTO/RPO, and a retained restore exercise remain operational evidence requirements.
 - Hash-chained application events preserve tamper-evident receipts; the SIEM outbox provides durable external delivery with retry and dead-letter handling.

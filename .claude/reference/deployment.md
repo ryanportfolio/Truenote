@@ -40,7 +40,7 @@ railway up --detach -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4de
 
 Deploy both services from the same commit; they share code. Poll `railway deployment list -s <service> --json` until `SUCCESS`, then check: `/health` returns `{"ok":true}`, `/` and the changed pages return 200, `railway logs -s web` shows `[api-server] listening on http://0.0.0.0:8080`, and `railway logs -s worker` shows `[worker] ready`. For retrieval or answer changes, run one cited question (`.tmp`-style script: demo CSR login, `POST /api/ask`, expect `refused=false` with at least one source).
 
-The image runs TypeScript through `tsx`, as Replit did: `scripts/railway-start.sh` execs `artifacts/api-server/src/index.ts` or `scripts/src/worker.ts`. The build runs `pnpm install --frozen-lockfile`, the api-server typecheck and the rag-app build; a type error fails the image.
+The image runs TypeScript through `tsx`: `scripts/railway-start.sh` execs `artifacts/api-server/src/index.ts` or `scripts/src/worker.ts`. The build runs `pnpm install --frozen-lockfile`, the api-server typecheck and the rag-app build; a type error fails the image.
 
 Rollback: Railway keeps earlier deployments. `railway redeploy` only redeploys the latest one; to go back, use the dashboard (Deployments, Redeploy on the good one) or the GraphQL mutation `deploymentRedeploy(id)`.
 
@@ -89,6 +89,5 @@ Rollback: set the apex A record back to `34.111.179.208` and remove the `www` A 
 ## After cutover
 
 - `CORS_ALLOWED_ORIGINS` can be removed once nobody uses the Railway URL.
-- Remove the Replit pieces in one PR: `.replit`, `replit.md`, `scripts/post-merge.sh`, the `store-dir` line in `.npmrc`, `@replit/object-storage` and `ReplitObjectStorage`, the Replit fallback in `getObjectStorage`.
 - Decide on backups (logical dumps to the bucket or volume snapshots) and on closing the `pgvector` public TCP proxy.
 - Email: the `RESEND_API_KEY` in the owner's secrets is not a Resend key (`API key is invalid` on 2026-10-07), and `truenote.org` has no Resend DKIM records, so password-reset email fails on both hosts until a valid key and a verified sending domain exist.

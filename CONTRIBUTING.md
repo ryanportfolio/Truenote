@@ -31,7 +31,7 @@ pnpm install --frozen-lockfile
 cp .env.example .env
 ```
 
-On PowerShell, use `Copy-Item .env.example .env`. The root README explains the database and port setup.
+On PowerShell, use `Copy-Item .env.example .env`. No process loads `.env` on its own; set its variables in each shell before starting a process. The root README lists the database requirements; `.env.example` documents the ports.
 
 Run the API and web app separately:
 
