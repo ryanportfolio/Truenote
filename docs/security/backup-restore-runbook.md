@@ -6,13 +6,14 @@
 
 One person must be able to follow every step. Shell commands are written for bash or zsh: Git Bash on Windows, a macOS or Linux terminal running bash or zsh, or the Replit shell. Plain POSIX shells such as dash reject the `read -rs` form in the table below. The shell needs `psql`, `pg_dump`, and `pg_restore` (PostgreSQL 16 client tools) on its path. SQL blocks run inside `psql`. Steps that say to use the Replit or Neon web console need no shell.
 
-PowerShell does not read the two bash patterns these commands use. Each command that uses one has its PowerShell form beside it.
+PowerShell does not read the bash patterns these commands use. Each command that uses one has its PowerShell form beside it.
 
 | Pattern | bash | PowerShell |
 |---|---|---|
 | Set a connection string for this session only (paste it at the prompt, so it stays out of shell history) | `read -rs PROD_DATABASE_URL && export PROD_DATABASE_URL` | `$env:PROD_DATABASE_URL = Read-Host 'Connection string'` |
 | Read it in a command | `"$PROD_DATABASE_URL"` | `$env:PROD_DATABASE_URL` |
 | Set variables before starting a server | `API_PORT=3001 pnpm ...` (applies to that one command) | `$env:API_PORT = '3001'; pnpm ...` (stays set until the PowerShell window closes) |
+| Remove a variable for this session | `unset NAME` | `Remove-Item Env:NAME -ErrorAction SilentlyContinue` |
 
 `TARGET_DATABASE_URL` and `DATABASE_URL` follow the same pattern.
 
@@ -49,6 +50,19 @@ Measure RPO as the gap between the chosen restore point and the last good write 
    - set `RAG_STORAGE_DRIVER=memory` so the instance cannot read or delete production App Storage objects;
    - leave `SIEM_WEBHOOK_URL` unset, so outbox rows copied from production are not re-sent to the SIEM;
    - leave `RESEND_API_KEY`, `BOOTSTRAP_SUPER_USER_*`, and `DEMO_LOGIN_ACCOUNTS` unset, and do not set `NODE_ENV=production`;
+   - leave every `OIDC_*` variable unset and set `LOCAL_LOGIN_MODE=enabled`. `getOidcConfig()` (`artifacts/api-server/src/lib/auth/oidc.ts`) turns company SSO on when `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, and an `OIDC_STATE_SECRET` of at least 32 characters are set, and when `LOCAL_LOGIN_MODE` is unset it then defaults the password login to `break_glass`. In `break_glass` mode `POST /api/auth/login` (`artifacts/api-server/src/routes/auth.ts`) checks the password and then refuses every account except a `super_user` with HTTP 403 `Use company SSO to sign in.`; a super user's sign-in is recorded as `auth.break_glass.login`. In `disabled` mode it refuses every account and the sign-in page hides the password field. A shell that inherits production secrets, such as the Replit shell, therefore blocks the CSR password sign-in that section 5.4 needs. SSO from the test instance does not work either: `GET /api/auth/oidc/start` sends the browser to the identity provider with the production `OIDC_REDIRECT_URI`, so the provider returns it to the production deployment, whose callback rejects it because the state cookie was set on the test origin. Without the five SSO values SSO is off and every active account can use its password; `LOCAL_LOGIN_MODE=enabled` keeps the password field on the sign-in page even when the shell inherited `LOCAL_LOGIN_MODE=disabled`. Before starting the test servers, in each shell:
+
+     ```
+     unset OIDC_ISSUER_URL OIDC_CLIENT_ID OIDC_CLIENT_SECRET OIDC_REDIRECT_URI OIDC_STATE_SECRET OIDC_REQUIRED_ACR OIDC_REQUIRE_MFA OIDC_ALLOWED_DOMAINS && export LOCAL_LOGIN_MODE=enabled
+     ```
+
+     PowerShell:
+
+     ```
+     Remove-Item Env:OIDC_* -ErrorAction SilentlyContinue; $env:LOCAL_LOGIN_MODE = 'enabled'
+     ```
+
+     To test SSO itself, register a separate test client at the identity provider whose redirect URI is the test origin's callback (`http://localhost:5173/api/auth/oidc/callback`, which the Vite proxy forwards to the API), set the five `OIDC_*` values to that client, and still set `LOCAL_LOGIN_MODE=enabled` so the CSR password sign-in keeps working. Outside `NODE_ENV=production` the code accepts `http` issuer and redirect URLs. `[CONFIRM: whether the identity provider allows a separate client with a localhost redirect URI]` Never reuse the production client: its redirect URI points at production;
    - never run `sweep-orphans` or the document purge against a restored target. `sweep-orphans` deletes every App Storage object that the connected database does not reference, which after a restore includes files that production still needs.
 3. **Keep connection strings out of shell history and out of this repository.** Paste them into an environment variable from the console for the session only.
 4. **Record times in UTC** as you go. The evidence table needs them.
@@ -149,12 +163,16 @@ Run every check in section 5 against the target. Stop and record the failure if 
 Skip this section for a scheduled test.
 
 1. Tell the customer security contact the planned downtime window.
-2. Stop writes: stop the Replit deployment `[CONFIRM: exact Replit control]`. Then repeat the exports in step 4.1.4.
+2. Stop writes: stop the Replit deployment `[CONFIRM: exact Replit control]`. Then repeat the exports in step 4.1.4. The deployment stays stopped until step 6; do not publish or republish before then. The deployment command in `.replit` (`[deployment] run`) starts the API server and the background worker together, so a publish puts production in front of users and lets the worker process restored jobs before step 5 has reconciled authorization fields, removed restored sessions and reset tokens, and re-applied document revocations.
 3. Restore production to the **same restore point** that passed section 5:
    - Replit: Database tool, production database, point-in-time restore to the chosen time ([Replit: data recovery](https://docs.replit.com/features/data-and-storage/data-recovery), accessed 2026-10-07). For a daily backup instead: Scheduled backups, View all backups, Restore, type `restore`, Continue. Replit states this "does not delete the current data, but connected services can briefly reconnect."
    - Neon, if used directly: instant restore of the production root branch to the timestamp. Neon keeps the pre-restore state as a backup branch named `<branch>_old_<timestamp>` ([Neon: instant restore](https://neon.com/docs/introduction/branch-restore), accessed 2026-10-07).
-4. If the restore point is older than the deployed code's schema, republish the commit that matches the restore point, then apply forward DDL through the normal schema-change process. Replit warns that restoring the database does not restore code ([Replit: data recovery](https://docs.replit.com/features/data-and-storage/data-recovery), accessed 2026-10-07).
-5. Reconcile changes the restore removed. Do the user and token steps before the deployment starts again.
+4. Bring the restored schema forward to the deployed code, with the deployment still stopped. Replit warns that restoring the database does not restore code ([Replit: data recovery](https://docs.replit.com/features/data-and-storage/data-recovery), accessed 2026-10-07), so the restored database has the schema of the restore point while step 6 starts the currently deployed commit. That code needs the tables and columns in `lib/db/src/schema.ts` plus the tables, columns, constraints, triggers, and functions in the SQL files under `docs/security/`. As of 2026-10-07 the last change to either was made on 2026-07-15, earlier than the longest PITR window (28 days), so a restore point inside the window needs no forward DDL today. Check again at every restore:
+   - Run the section 5.1 query and [`../compliance/pci/production-control-verification.sql`](../compliance/pci/production-control-verification.sql) against production and compare the output with the last production run from before the incident. A missing table or a changed definition means forward DDL is needed. To find which change, list the commits after the restore point on the deployed branch: `git log --since='<restore point>' --format='%ad %h %s' -- lib/db/src/schema.ts docs/security/`. Commit dates only approximate when DDL reached production, so let the comparison decide.
+   - Apply the missing DDL with `psql` against the stopped production database, for example `psql "$PROD_DATABASE_URL" -f docs/security/p1-siem-delivery-outbox.sql` (PowerShell: `psql $env:PROD_DATABASE_URL -f docs/security/p1-siem-delivery-outbox.sql`). Use the repository's canonical files under `docs/security/`, apply only the files whose objects the comparison shows missing or different, and keep the order they were added: `p0-p1-security-controls.sql`, `p1-siem-delivery-outbox.sql`, `malware-scanning-control.sql`, `review-approval-control.sql`, then any later file. Later files redefine constraints that earlier ones create. Read each file before running it: besides DDL, some also write rows, for example `p0-p1-security-controls.sql` backfills content sources, document version sources, and user clearances, and `p1-siem-delivery-outbox.sql` queues every existing security event that has no outbox row for SIEM delivery. A change that exists only in `lib/db/src/schema.ts` has no canonical SQL file; under the normal schema-change process its DDL was applied to the development database by the Replit Agent and reached production through Publish `[CONFIRM: where the reviewed DDL for each schema.ts change is recorded, so it can be applied with psql]`. Do not use Publish for this step: it starts the deployment, and Replit Publish has been seen to leave constraint bodies and database functions out ([`.claude/reference/environment.md`](../../.claude/reference/environment.md), entry of 2026-07-15).
+   - Run the comparison again. Continue only when the output matches the last production run.
+   - Do not republish an older commit to match the restored schema. Once the schema is current, the deployed commit runs against it, and publishing starts the deployment before step 5. If forward DDL cannot be found or applied, keep the deployment stopped and record the blocker; republishing an older commit is a fallback only if Replit can publish it without serving traffic `[CONFIRM: with Replit support whether a commit can be published with the deployment kept stopped]`.
+5. Reconcile changes the restore removed. Do every part of this step while the deployment is still stopped.
    - Restore user sign-in and authorization fields from the user snapshot exported after writes stopped (step 4.1.4), and remove every session and reset token, in one `psql` session against production. The snapshot was taken after the damage, so it can hold the attacker's changes: a raised role, a password the attacker set, a reactivated account, or an account moved into another program. Copying it without review would put that damage back, including access to another program's documents. The operator therefore reviews every changed account before the copy and excludes the ones the incident explains or that nobody can explain.
 
      Load the snapshot and list every account whose authorization fields differ between the snapshot and the restored database:
@@ -247,20 +265,22 @@ Skip this section for a scheduled test.
      - `DELETE FROM sessions;` stops sessions revoked after the restore point from coming back. Everyone signs in again.
      - Users created after the restore point are missing from the restored database. Recreate only the accounts the review kept, through the admin Users page. Creating one user (`POST /api/admin/users`) sends no email: the admin sets a password or receives a generated temporary password once, passes it to the user outside Truenote, and the user must change it at the first sign-in. Bulk import (`POST /api/admin/users/bulk`) creates CSR accounts only, in the admin's current program, and emails each new account an invitation link to set its password; it creates nothing unless `APP_BASE_URL` is set and, in production, `RESEND_API_KEY` and `RESEND_FROM_EMAIL` are set. Recreate managers and other non-CSR accounts one at a time.
      - Programs created after the restore point are missing too. Recreate them, then reassign and reactivate the users the second `UPDATE` blocked.
-   - Using the exported `security_events`, re-apply every document revocation and retirement made after the restore point. The `document.lifecycle.*` events carry the document version, the previous and new lifecycle state, and the actor in their `details`.
-   - Documents uploaded after the restore point are gone from the database but their files are still in App Storage. Ask program owners to re-upload them. Do not run `sweep-orphans` until this is done.
-   - Documents purged after the restore point come back as rows, but their files were deleted from App Storage. Revoke or retire them again.
-6. Start the deployment, including the worker, and run the section 5.4 smoke test against production.
+   - Using the exported `security_events`, re-apply every document revocation and retirement made after the restore point. The `document.lifecycle.*` events carry the document version, the previous and new lifecycle state, and the actor in their `details`. The deployment is stopped, so use a local instance: from a repository checkout, start the API server and the Vite frontend as in section 5.4, with every section 3 isolation setting but `DATABASE_URL` set to production (`$PROD_DATABASE_URL`), sign in as a super user, and revoke or retire each version from the admin Documents page. Revocation (`POST /api/documents/<versionId>/revoke`) and retirement (`DELETE /api/documents/<id>`) change only database rows and write their audit events; neither touches App Storage. Sign out when done, which deletes the session this created, and stop both servers.
+   - Documents purged after the restore point come back as rows, but their files were deleted from App Storage. Revoke or retire them again the same way.
+   - Documents uploaded after the restore point are gone from the database but their files are still in App Storage. After step 6, ask program owners to re-upload them. Do not run `sweep-orphans` until this is done.
+6. Start the deployment, including the worker, only after steps 4 and 5 are complete `[CONFIRM: exact Replit control, and whether starting a stopped deployment requires Publish]`. Replit's Publish compares the development database with production ([`.claude/reference/environment.md`](../../.claude/reference/environment.md)); if it proposes a schema change, stop and compare it with step 4, because production should already match the deployed code. Then run the section 5.4 smoke test against production.
 7. Record the end time. RTO is end time minus decision time.
 
 ### 4.5 Roll back a cutover
 
 If production fails the smoke test after cutover:
 
-1. Neon: run instant restore again, using the backup branch `<branch>_old_<timestamp>` as the source ([Neon: instant restore](https://neon.com/docs/introduction/branch-restore), accessed 2026-10-07).
-2. Replit: `[CONFIRM: whether Replit's point-in-time restore keeps the pre-restore state and how to return to it]`. A scheduled-backup restore "does not delete the current data" per Replit; ask Replit support how to switch back.
-3. Last resort: restore the `pg_dump` taken in step 4.1.5 into an empty production database `[CONFIRM: procedure with Replit support]`.
-4. Record the rollback in the evidence table and open an incident if one is not already open.
+1. Stop the deployment again `[CONFIRM: exact Replit control]` and keep it stopped through this section.
+2. Neon: run instant restore again, using the backup branch `<branch>_old_<timestamp>` as the source ([Neon: instant restore](https://neon.com/docs/introduction/branch-restore), accessed 2026-10-07).
+3. Replit: `[CONFIRM: whether Replit's point-in-time restore keeps the pre-restore state and how to return to it]`. A scheduled-backup restore "does not delete the current data" per Replit; ask Replit support how to switch back.
+4. Last resort: restore the `pg_dump` taken in step 4.1.5 into an empty production database `[CONFIRM: procedure with Replit support]`.
+5. Before starting the deployment on the rolled-back database, get the incident lead's decision. That database holds the pre-restore state, including the damage the restore was meant to remove and the sessions and reset tokens that existed then. Remove those in one `psql` session against production (`DELETE FROM password_reset_tokens; DELETE FROM sessions;`), contain the damage under the incident response plan, and only then start the deployment.
+6. Record the rollback in the evidence table and open an incident if one is not already open.
 
 ### 4.6 Clean up
 
@@ -355,7 +375,7 @@ Also confirm that the target's last event sequence matches the restore point: no
 
 Against the target, with the isolation settings from section 3. The API server serves the built frontend only when `NODE_ENV=production`, which section 3 forbids, so the test runs the Vite dev server in front of the API, as in local development. Run both from a repository checkout on a machine whose firewall does not expose these ports: the Vite dev server listens on all interfaces and accepts any host name, and it will serve restored production data.
 
-1. In one shell, with `DATABASE_URL` set to the target and `RAG_STORAGE_DRIVER=memory`, start the API server on port 3001:
+1. In one shell, with `DATABASE_URL` set to the target, `RAG_STORAGE_DRIVER=memory`, `LOCAL_LOGIN_MODE=enabled`, and no `OIDC_*` variable set (section 3), start the API server on port 3001:
 
    ```
    API_PORT=3001 pnpm --filter @workspace/api-server run dev
