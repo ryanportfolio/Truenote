@@ -14,6 +14,7 @@ import {
 } from "./model-routing.js";
 import { scanTextForSensitiveContent } from "../security/content-scan.js";
 import { protectProviderText } from "../security/provider-input-firewall.js";
+import { findUngroundedFigure } from "./figure-grounding.js";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
@@ -34,6 +35,7 @@ export type AnswerValidationFailureReason =
   | "empty_answer"
   | "missing_inline_citation"
   | "unknown_citation_ids"
+  | "ungrounded_figure"
   | "sensitive_output";
 
 export interface AnswerValidationFailure {
@@ -288,6 +290,15 @@ export function validateGeneratedAnswer(
     return {
       payload: null,
       failure: { reason: "unknown_citation_ids", ...failureBase }
+    };
+  }
+  // Per-claim gate: every figure (fee, count, date, identifier) must appear in
+  // an excerpt cited by its own claim: the nearest citation in the same
+  // sentence or table row (see figure-grounding.ts).
+  if (findUngroundedFigure(normalizedAnswer, chunks) !== null) {
+    return {
+      payload: null,
+      failure: { reason: "ungrounded_figure", ...failureBase }
     };
   }
 
