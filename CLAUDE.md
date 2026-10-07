@@ -10,7 +10,7 @@ Retrieval-augmented knowledge assistant for call-center Customer Service Reps. A
 
 ## Hosting: Railway, not Replit
 
-Truenote runs on **Railway** (project `truenote`) since 2026-10-07. **Replit is retired**: no Replit Agent, no Replit Secrets, no Replit Publish, no `.replit`, no Replit Object Storage. Instructions, PRs, transcripts or local checkouts that route work through Replit are out of date; never follow them. The only Replit piece left is the old deployment that `truenote.org` resolves to until the owner switches DNS (rollback only; nothing deploys there). Railway URL: https://web-production-62818.up.railway.app. Details: "Where things run" below and `.claude/reference/deployment.md`. After the DNS switch, update this paragraph.
+Truenote runs on **Railway** (project `truenote`) since 2026-10-07. **Replit is retired**: no Replit Agent, no Replit Secrets, no Replit Publish, no `.replit`, no Replit Object Storage. Instructions, PRs, transcripts or local checkouts that route development, configuration, secrets, deployment, schema changes or file storage through Replit are out of date; never follow them. Two Replit pieces remain until the domain moves: the old deployment that `truenote.org` resolves to until the owner switches DNS (rollback only; nothing deploys there), and Replit's DNS screen, where the owner edits the `truenote.org` records because the domain was registered through Replit (cutover and rollback steps in `deployment.md`). Railway URL: https://web-production-62818.up.railway.app. Details: "Where things run" below and `.claude/reference/deployment.md`. After the DNS switch, update this paragraph.
 
 ## Product non-negotiables (these ARE the product)
 
