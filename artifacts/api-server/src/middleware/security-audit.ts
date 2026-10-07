@@ -12,14 +12,26 @@ import { recordSecurityEventBestEffort } from "../lib/security/audit.js";
 export const AUDITED_ROUTE_BASES = ["/api/admin", "/api/documents", "/api/auth"];
 
 /**
+ * Path of the original request target, without the query string. An
+ * absolute-form target (`http://user:pass@host/api/...`) keeps only its path:
+ * the authority can carry credentials and must not reach the audit log.
+ */
+function requestPath(req: Request): string {
+  const target = req.originalUrl.split("?")[0] ?? req.originalUrl;
+  if (target.startsWith("/")) return target;
+  const scheme = target.indexOf("://");
+  const slash = scheme === -1 ? -1 : target.indexOf("/", scheme + 3);
+  return slash === -1 ? "/" : target.slice(slash);
+}
+
+/**
  * Request path for the event's resourceId. The matched base is lowercased so
  * `/API/admin/users/x` and `/api/admin/users/x` log the same prefix; the rest
  * keeps the request's spelling. Must run before next(): Express rewrites
  * req.baseUrl and req.url as the request moves through routers.
  */
-function auditedPath(req: Request): string {
+function auditedPath(req: Request, rawPath: string): string {
   const base = req.baseUrl.toLowerCase();
-  const rawPath = req.originalUrl.split("?")[0] ?? req.originalUrl;
   // Express reports the exact base as req.path "/"; keep "/api/documents"
   // without a trailing slash when the request had none.
   const rest = req.path === "/" && !rawPath.endsWith("/") ? "" : req.path;
@@ -45,8 +57,8 @@ export function securityAuditMiddleware(
   const requestId = incoming && incoming.length <= 200 ? incoming : randomUUID();
   res.setHeader("X-Request-Id", requestId);
   const startedAt = Date.now();
-  const path = auditedPath(req);
-  const rawPath = req.originalUrl.split("?")[0] ?? req.originalUrl;
+  const rawPath = requestPath(req);
+  const path = auditedPath(req, rawPath);
   res.once("finish", () => {
     recordSecurityEventBestEffort({
       action: "http.security_mutation",
