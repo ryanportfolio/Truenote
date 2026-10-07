@@ -756,8 +756,10 @@ function displayText(value: string, view: View, strict: boolean): DisplayText {
  */
 const SENTENCE_END = /[.!?]["'”’)\]]*(?:[\s,;]*[\ue000-\uf8ff])*(?=\s|$)/g;
 const ABBREVIATION_BEFORE_PERIOD =
-  /(?:^|[^\p{L}\p{N}])(?:no|nos|num|vol|sec|art|ch|pg|pp?|para|ref|ext|approx|est|min|max|rev|ver|vs|fig|ste|apt|tel|incl|e\.g|i\.e)$/iu;
+  /(?:^|[^\p{L}\p{N}])(?:no|nos|num|vol|sec|art|ch|pg|pp?|para|ref|ext|approx|est|min|max|rev|ver|vs|fig|ste|apt|tel|incl)$/iu;
 const DIGIT_AHEAD = /^\s+\p{Sc}?\d/u;
+/** `e.g.` and `i.e.` introduce an example or a restatement: the sentence goes on whatever follows. */
+const EXPLANATORY_ABBREVIATION_BEFORE_PERIOD = /(?:^|[^\p{L}\p{N}])(?:e\.g|i\.e)$/iu;
 /** Dotted time abbreviation (`a.m.`, `P.M.`) whose final period was matched. */
 const TIME_ABBREVIATION_BEFORE_PERIOD = /(?:^|[^\p{L}\p{N}])[ap]\.m$/iu;
 /** After `a.m.`/`p.m.` the sentence ends only when an uppercase letter starts the next one. */
@@ -773,6 +775,8 @@ interface CitationGroup {
 
 interface Sentence {
   text: string;
+  /** `text` with the citation placeholders still in place (same length). */
+  marked: string;
   groups: CitationGroup[];
 }
 
@@ -784,6 +788,7 @@ function splitSentences(text: string): string[] {
     if (match[0] === ".") {
       const before = text.slice(start, match.index);
       const after = text.slice(end);
+      if (EXPLANATORY_ABBREVIATION_BEFORE_PERIOD.test(before)) continue;
       if (ABBREVIATION_BEFORE_PERIOD.test(before) && DIGIT_AHEAD.test(after)) continue;
       if (TIME_ABBREVIATION_BEFORE_PERIOD.test(before) && !UPPERCASE_AHEAD.test(after)) {
         continue;
@@ -809,7 +814,7 @@ function readSentence(raw: string, sentinelIds: string[]): Sentence {
   }
   // Same length as `raw`, so group offsets stay valid.
   const text = raw.replace(/[\ue000-\uf8ff]/g, " ");
-  return { text, groups };
+  return { text, marked: raw, groups };
 }
 
 // ---------------------------------------------------------------------------
@@ -903,16 +908,56 @@ function currencyWord(qualifier: string, word: string): string {
   return prefix ? `${prefix} ${singular}` : singular;
 }
 
-function extractFigures(text: string): Figure[] {
+/**
+ * A citation group and the spaces around it, read as one space when typing a
+ * figure, so `25 [S1] percent` and `$25 [S1] M` take the unit and scale that
+ * `25 percent` and `$25 M` do.
+ */
+const CITATION_IN_WINDOW = /\s*[\ue000-\uf8ff](?:[\s,;]*[\ue000-\uf8ff])*\s*/g;
+
+/**
+ * `marked` with each citation group collapsed to one space, and the offset in
+ * the collapsed string of every offset in `marked` (one more entry than
+ * `marked` has characters). An offset inside a group maps to its space.
+ */
+function collapseCitations(marked: string): { collapsed: string; offsets: Int32Array } {
+  const offsets = new Int32Array(marked.length + 1);
+  let collapsed = "";
+  let from = 0;
+  for (const match of marked.matchAll(CITATION_IN_WINDOW)) {
+    for (let i = from; i < match.index; i++) offsets[i] = collapsed.length + (i - from);
+    collapsed += marked.slice(from, match.index);
+    for (let i = match.index; i < match.index + match[0].length; i++) offsets[i] = collapsed.length;
+    collapsed += " ";
+    from = match.index + match[0].length;
+  }
+  for (let i = from; i <= marked.length; i++) offsets[i] = collapsed.length + (i - from);
+  collapsed += marked.slice(from);
+  return { collapsed, offsets };
+}
+
+/**
+ * `marked` is `text` with citation placeholders still in place (same length).
+ * Figures and their offsets come from `text`; units, scales and signs are read
+ * from `marked` with the citations collapsed, and the window sizes count
+ * characters after that collapse.
+ */
+function extractFigures(text: string, marked: string = text): Figure[] {
   const figures: Figure[] = [];
+  const { collapsed, offsets } = collapseCitations(marked);
   for (const match of text.matchAll(FIGURE_TOKEN)) {
     const token = match[0];
     if (!ASCII_DIGIT.test(token)) continue;
     const start = match.index;
     const end = start + token.length;
-    // Units and signs sit within a few characters of the number.
-    let before = text.slice(Math.max(0, start - 16), start);
-    let after = text.slice(end, end + 40);
+    // Units and signs sit within a few characters of the number. A citation
+    // never touches a token character, so `start` and `end` map exactly.
+    const collapsedStart = offsets[start]!;
+    const collapsedEnd = offsets[end]!;
+    const beforeWindow = collapsed.slice(Math.max(0, collapsedStart - 16), collapsedStart);
+    const afterWindow = collapsed.slice(collapsedEnd, collapsedEnd + 40);
+    let before = beforeWindow;
+    let after = afterWindow;
     let consumed = 0;
     const take = (matched: RegExpExecArray | null): RegExpExecArray | null => {
       if (matched) {
@@ -962,7 +1007,11 @@ function extractFigures(text: string): Figure[] {
     const ambiguousSign = twoSigns || (innerSign !== undefined && currencyBefore![4] !== "");
     const sign = leadingMinus || (innerSign !== undefined && MINUS.test(innerSign)) ? "-" : "";
     const prefixLength = (currencyBefore?.[0].length ?? 0) + (leadingMinus || twoSigns ? 1 : 0);
-    const figureText = text.slice(start - prefixLength, end + consumed).trim();
+    const figureText = (
+      beforeWindow.slice(beforeWindow.length - prefixLength) +
+      token +
+      afterWindow.slice(0, consumed)
+    ).trim();
 
     if (ambiguousSign) {
       figures.push({ kind: "compound", key: `ambiguous:${figureText}`, text: figureText, start, end });
@@ -1071,7 +1120,7 @@ export function findUngroundedFigure(
     };
 
     for (const sentence of sentences) {
-      for (const figure of extractFigures(sentence.text)) {
+      for (const figure of extractFigures(sentence.text, sentence.marked)) {
         const following = sentence.groups.find((group) => group.start >= figure.end);
         const preceding = [...sentence.groups].reverse().find((group) => group.end <= figure.start);
         const group = following ?? preceding;
