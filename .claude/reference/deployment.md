@@ -69,6 +69,8 @@ Applied: `0001_schema_migrations.sql` (2026-10-07, sha256 `f33bb30e…`). Baseli
 
 ## Cutover
 
+Gate before the switch: the 8 objects under `uploads/` that `document_versions.source_url` references are in `truenote-storage` under the same keys, and each object's SHA-256 equals the row's `file_sha256`. Until that holds, a rescan or re-ingest on Railway fails for those documents. Do not delete the Replit bucket, or the Replit deployment it belongs to, before the copy is verified.
+
 Owner actions in Replit's DNS screen for `truenote.org` (domain registered at Name.com through Replit; the screen offers A, TXT, CNAME and MX only, so no ALIAS and no apex CNAME):
 
 | Type | Name | Value | When |

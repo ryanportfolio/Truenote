@@ -196,14 +196,19 @@ export function s3ConfigFromEnv(env: NodeJS.ProcessEnv = process.env): S3Storage
   };
 }
 
-function isNotFound(err: unknown): boolean {
-  if (!err || typeof err !== "object") return false;
-  const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
-  return (
-    e.name === "NotFound" ||
-    e.name === "NoSuchKey" ||
-    e.$metadata?.httpStatusCode === 404
-  );
+function errorName(err: unknown): string | undefined {
+  return err && typeof err === "object" ? (err as { name?: string }).name : undefined;
+}
+
+/**
+ * HEAD responses carry no error body, so on AWS a missing object and a
+ * missing bucket can both arrive as `NotFound`. Railway Buckets answered a
+ * missing bucket with a different error (checked 2026-10-07), which
+ * propagates. A misconfigured bucket still fails loudly on put/get/delete.
+ */
+function isMissingObjectOnHead(err: unknown): boolean {
+  const name = errorName(err);
+  return name === "NotFound" || name === "NoSuchKey";
 }
 
 /** S3-compatible adapter (Railway Buckets, AWS S3, R2, MinIO). */
@@ -250,20 +255,22 @@ export class S3ObjectStorage implements ObjectStorage {
       );
       return true;
     } catch (err) {
-      if (isNotFound(err)) return false;
+      if (isMissingObjectOnHead(err)) return false;
       throw err;
     }
   }
 
   async delete(key: string): Promise<void> {
-    // S3 DeleteObject already succeeds for a missing key; a 404 from a
-    // stricter S3-compatible provider is the same idempotent outcome.
+    // S3 DeleteObject already succeeds for a missing key; a NoSuchKey from a
+    // stricter S3-compatible provider is the same idempotent outcome. Any
+    // other error, NoSuchBucket included, propagates so purge accounting
+    // records the cleanup as pending instead of done.
     try {
       await this.client.send(
         new DeleteObjectCommand({ Bucket: this.bucket, Key: key })
       );
     } catch (err) {
-      if (isNotFound(err)) return;
+      if (errorName(err) === "NoSuchKey") return;
       throw err;
     }
   }

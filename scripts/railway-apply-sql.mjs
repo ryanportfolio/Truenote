@@ -42,9 +42,15 @@ const script = apply
       "set -eu",
       ...readState,
       `if [ "$state" != "not-applied" ] && [ "$state" != "no-table" ]; then echo "already applied: $state"; exit 3; fi`,
-      `echo ${Buffer.from(sql).toString("base64")} | base64 -d > /tmp/${name}`,
-      `${psql} --single-transaction -f /tmp/${name} -c "INSERT INTO schema_migrations (filename, sha256) VALUES ('${name}', '${sha}')"`,
-      `rm -f /tmp/${name}`,
+      // A private temp file, checked against the local hash, so the bytes
+      // executed are the bytes recorded. The advisory lock serializes
+      // concurrent runs; a second run of the same file then fails on the
+      // schema_migrations primary key and rolls back.
+      'tmp=$(mktemp)',
+      'trap \'rm -f "$tmp"\' EXIT',
+      `echo ${Buffer.from(sql).toString("base64")} | base64 -d > "$tmp"`,
+      `echo "${sha}  $tmp" | sha256sum -c --quiet -`,
+      `${psql} --single-transaction -c "SELECT pg_advisory_xact_lock(hashtext('truenote.schema_migrations'))" -f "$tmp" -c "INSERT INTO schema_migrations (filename, sha256) VALUES ('${name}', '${sha}')"`,
       `echo "applied ${name} ${sha}"`
     ].join("\n")
   : ["set -eu", ...readState, `echo "status ${name}: $state"`, `echo "local sha256: ${sha}"`].join("\n");
