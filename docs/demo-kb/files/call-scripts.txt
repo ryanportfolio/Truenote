@@ -5,7 +5,7 @@ Reference CS-SCR-001, Version 7, effective September 1, 2026. Owner: Support Ope
 Read the required lines word for word. The other lines are guidance; use your own words.
 
 1. OPENING (required)
-"Thank you for calling Larkspur Cloud, this is [your first name]. This call may be recorded for quality and training. Can I start with the email address on your account?"
+"Thank you for calling Larkspur Cloud, this is (your first name). This call may be recorded for quality and training. Can I start with the email address on your account?"
 
 2. IDENTITY VERIFICATION
 Verify two factors before discussing or changing anything on the account. See the Identity Verification procedure for the accepted factors.
