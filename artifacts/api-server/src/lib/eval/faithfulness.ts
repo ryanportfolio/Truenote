@@ -18,10 +18,15 @@ import { getDeadlineConfig } from "../deadlines.js";
  * One structured-output call does extract + judge together — at eval-set
  * scale (~50-200 questions) the two-call variant buys nothing but latency.
  *
- * Kept on direct OpenAI gpt-4o so the judge is operationally independent of
- * the OpenRouter answer path and still runs if the primary provider is down.
+ * Kept on direct OpenAI so the judge is operationally independent of the
+ * OpenRouter answer path and still runs if the primary provider is down.
+ * gpt-6.1-sol is a reasoning model: it takes reasoning_effort (low and up; no
+ * "none") in place of temperature, so judge runs are not bit-for-bit
+ * deterministic. Changing the judge model shifts faithfulness scores; re-run
+ * the eval baseline before comparing against older runs.
  */
-const JUDGE_MODEL = "gpt-4o";
+const JUDGE_MODEL = "gpt-6.1-sol";
+const JUDGE_REASONING_EFFORT = "medium";
 
 export const ClaimJudgmentSchema = z.object({
   /** The atomic factual claim, quoted or minimally paraphrased from the answer. */
@@ -95,7 +100,7 @@ export async function judgeFaithfulness(
   const completion = await client.beta.chat.completions.parse(
     {
       model: JUDGE_MODEL,
-      temperature: 0,
+      reasoning_effort: JUDGE_REASONING_EFFORT,
       messages: [
         { role: "system", content: JUDGE_SYSTEM_PROMPT },
         { role: "user", content: userPrompt }
