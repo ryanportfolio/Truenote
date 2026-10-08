@@ -112,7 +112,7 @@ The second query misses chunks that were purged after the answer. Any row it ret
 
 ### 5.1 Declare and record
 
-1. Open an incident record (template in section 10) in the restricted evidence location `[CONFIRM: location]`. Give it an id such as `INC-2026-001`.
+1. Open an incident record (template in section 10) in the restricted evidence location, `D:\CoreWise\_artifacts\truenote\restricted-evidence\`, stored as 7-Zip AES-256 archives (backup-restore-runbook.md, section 9). Give it an id such as `INC-2026-001`.
 2. Write down in UTC: when the event happened (if known), when it was detected, how it was detected, and who reported it.
 3. Set the severity from section 3.
 4. Preserve evidence (section 8) before changing anything you can avoid changing.
