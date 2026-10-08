@@ -147,23 +147,23 @@ describe("validateGeneratedAnswer", () => {
 
   it("canonicalizes a copied chunk_id label around a recognized id", () => {
     const result = validateGeneratedAnswer(
-      "Refunds arrive in 5-7 days [chunk_id:chunk-1].",
+      "The fee is $25 [chunk_id:chunk-1].",
       chunks
     );
 
     expect(result.failure).toBeNull();
-    expect(result.payload?.answer).toBe("Refunds arrive in 5-7 days [chunk-1].");
+    expect(result.payload?.answer).toBe("The fee is $25 [chunk-1].");
     expect(result.payload?.sources[0]?.chunk_id).toBe("chunk-1");
   });
 
   it("canonicalizes fullwidth citation brackets around a recognized id", () => {
     const result = validateGeneratedAnswer(
-      "Refunds arrive in 5-7 days【chunk-1】.",
+      "The fee is $25【chunk-1】.",
       chunks
     );
 
     expect(result.failure).toBeNull();
-    expect(result.payload?.answer).toBe("Refunds arrive in 5-7 days[chunk-1].");
+    expect(result.payload?.answer).toBe("The fee is $25[chunk-1].");
     expect(result.payload?.sources[0]?.chunk_id).toBe("chunk-1");
   });
 
