@@ -241,18 +241,20 @@ export function KbSearch({
             <X className="h-4 w-4" aria-hidden />
           </button>
         ) : (
-          // The key that jumps here; hovering it says so. The input itself names the shortcut for screen readers.
+          // The key that jumps here; hovering it shows an instant tooltip. The input itself names the shortcut for screen readers.
           <span
             aria-hidden
             data-kb-search-key
-            title="Press / for your recent sources"
             onMouseDown={(e) => {
               e.preventDefault();
               searchRef.current?.focus();
             }}
-            className="absolute right-4 top-1/2 hidden -translate-y-1/2 cursor-text sm:block"
+            className="group/key absolute right-4 top-1/2 hidden -translate-y-1/2 cursor-text sm:block"
           >
             <kbd className="kbd">/</kbd>
+            <span className="pointer-events-none absolute right-0 top-full z-30 mt-2 hidden whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background shadow-panel group-hover/key:block">
+              Type / to see your recently opened files
+            </span>
           </span>
         )}
       </div>
