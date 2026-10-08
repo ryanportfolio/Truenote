@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { Link } from "wouter";
 import { ChevronRight, FileText, Lock, MessageSquare, Search, X } from "lucide-react";
-import { categoryPathLabel, docCategoryPaths, type KbSearchResults } from "@/lib/kbLibrary";
+import { KB_RECENT_QUERY, categoryPathLabel, docCategoryPaths, type KbSearchResults } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
 import type { KbDocumentListItem } from "@/types/api";
 import { useKbLibraryContext } from "./KbContext";
@@ -38,12 +38,14 @@ type Option =
  * Typing opens "Best match", "Other sources" and "Folders" under the box;
  * Enter opens the highlighted result (the best match when none is), the
  * arrow keys move through results, Escape closes the panel and keeps the
- * text, and "See all" shows every match in the list below.
+ * text, and "See all" shows every match in the list below. "/" alone lists
+ * the sources opened most recently instead; typing on from there searches.
  */
 export function KbSearch({
   query,
   onQuery,
   results,
+  recent,
   searchRef,
   onOpenDoc,
   onOpenFolder,
@@ -53,6 +55,8 @@ export function KbSearch({
   query: string;
   onQuery: (query: string) => void;
   results: KbSearchResults;
+  /** Recently opened sources while the box holds only "/", else null. */
+  recent: KbDocumentListItem[] | null;
   searchRef: RefObject<HTMLInputElement>;
   onOpenDoc: (documentId: string) => void;
   onOpenFolder: (folderId: string) => void;
@@ -72,10 +76,14 @@ export function KbSearch({
   const showing = open && hasQuery;
 
   const options: Option[] = [];
-  if (results.best) options.push({ kind: "doc", doc: results.best, best: true });
-  results.others.forEach((doc) => options.push({ kind: "doc", doc, best: false }));
-  results.folders.forEach((f) => options.push({ kind: "folder", folderId: f.node.category.id }));
-  if (results.total > 0) options.push({ kind: "all" });
+  if (recent) {
+    recent.forEach((doc) => options.push({ kind: "doc", doc, best: false }));
+  } else {
+    if (results.best) options.push({ kind: "doc", doc: results.best, best: true });
+    results.others.forEach((doc) => options.push({ kind: "doc", doc, best: false }));
+    results.folders.forEach((f) => options.push({ kind: "folder", folderId: f.node.category.id }));
+    if (results.total > 0) options.push({ kind: "all" });
+  }
   const optionId = (i: number): string => `${baseId}-opt-${i}`;
 
   // A new query starts from the top again.
@@ -203,7 +211,9 @@ export function KbSearch({
           data-kb-search
           value={query}
           onChange={(e) => {
-            onQuery(e.target.value);
+            const value = e.target.value;
+            // Typing after the "/" that opened recent sources starts a search.
+            onQuery(query === KB_RECENT_QUERY && value.startsWith(KB_RECENT_QUERY) && value.length > 1 ? value.slice(1) : value);
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
@@ -211,7 +221,7 @@ export function KbSearch({
           onClick={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder={roomy ? "Search for a policy or procedure" : "Search sources"}
-          title="Searches titles, folder names, tags and your notes. Press / to search from anywhere on this page."
+          title="Searches titles, folder names, tags and your notes. Press / for your recent sources, from anywhere on this page."
           aria-keyshortcuts="/"
           autoComplete="off"
           spellCheck={false}
@@ -235,7 +245,7 @@ export function KbSearch({
           <span
             aria-hidden
             data-kb-search-key
-            title="Press / to search"
+            title="Press / for your recent sources"
             onMouseDown={(e) => {
               e.preventDefault();
               searchRef.current?.focus();
@@ -249,7 +259,11 @@ export function KbSearch({
       {trailing}
 
       <p className="sr-only" role="status" aria-live="polite">
-        {showing ? `${results.total} ${results.total === 1 ? "source matches" : "sources match"}.` : ""}
+        {!showing
+          ? ""
+          : recent
+            ? `${recent.length} recently opened ${recent.length === 1 ? "source" : "sources"}.`
+            : `${results.total} ${results.total === 1 ? "source matches" : "sources match"}.`}
       </p>
 
       {showing ? (
@@ -257,8 +271,23 @@ export function KbSearch({
           data-kb-search-panel
           className="absolute inset-x-0 top-full z-40 mt-2 max-h-[min(36rem,70dvh)] overflow-y-auto rounded-lg border border-border bg-card p-3 shadow-panel motion-safe:animate-in motion-safe:fade-in motion-safe:[animation-duration:100ms]"
         >
-          <ul id={listId} role="listbox" aria-label="Search results" className="flex flex-col">
-            {results.best ? (
+          <ul id={listId} role="listbox" aria-label={recent ? "Recently opened" : "Search results"} className="flex flex-col">
+            {recent ? (
+              recent.length > 0 ? (
+                <li role="presentation">
+                  <p id={`${baseId}-recent`} className="px-1 pb-1 text-sm font-medium text-muted-foreground">
+                    Recently opened
+                  </p>
+                  <ul role="group" aria-labelledby={`${baseId}-recent`} className="divide-y divide-border">
+                    {recent.map((doc) => docOption(doc, false))}
+                  </ul>
+                </li>
+              ) : (
+                <li role="presentation" className="px-1 py-2 text-sm text-muted-foreground">
+                  Sources you open show up here.
+                </li>
+              )
+            ) : results.best ? (
               <li role="presentation">
                 <p id={`${baseId}-best`} className="px-1 pb-1.5 text-sm font-medium text-muted-foreground">
                   Best match
@@ -273,7 +302,7 @@ export function KbSearch({
                 <AskTruenoteLink />
               </li>
             )}
-            {results.others.length > 0 ? (
+            {!recent && results.others.length > 0 ? (
               <li role="presentation" className="mt-3">
                 <p id={`${baseId}-others`} className="px-1 pb-1 text-sm font-medium text-muted-foreground">
                   Other sources
@@ -283,7 +312,7 @@ export function KbSearch({
                 </ul>
               </li>
             ) : null}
-            {results.folders.length > 0 ? (
+            {!recent && results.folders.length > 0 ? (
               <li role="presentation" className="mt-3">
                 <p id={`${baseId}-folders`} className="px-1 pb-1 text-sm font-medium text-muted-foreground">
                   Folders
@@ -320,7 +349,7 @@ export function KbSearch({
                 </ul>
               </li>
             ) : null}
-            {results.total > 0
+            {!recent && results.total > 0
               ? (() => {
                   const i = next();
                   return (
