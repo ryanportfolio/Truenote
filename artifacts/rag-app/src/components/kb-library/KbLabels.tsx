@@ -43,7 +43,16 @@ function sourcesLabel(count: number): string {
  * label off its sources and removes the name, right away, in one request.
  * Saving and deleting never overlap: each disables the other until it ends.
  */
-function LabelListForm({ colors, onDone }: { colors: KbLibraryColor[]; onDone: () => void }): JSX.Element {
+function LabelListForm({
+  colors,
+  onDone,
+  onDeleted
+}: {
+  colors: KbLibraryColor[];
+  onDone: () => void;
+  /** After a successful delete, so a filter on that label can be turned off. */
+  onDeleted: (color: KbLibraryColor) => void;
+}): JSX.Element {
   const { data, actions, openDialog } = useKbLibraryContext();
   const confirm = useConfirm();
   // Edited names only; a label made while editing shows its saved name.
@@ -95,6 +104,7 @@ function LabelListForm({ colors, onDone }: { colors: KbLibraryColor[]; onDone: (
     }
     setDeleted((prev) => new Set(prev).add(color));
     setNames(({ [color]: _gone, ...rest }) => rest);
+    onDeleted(color);
   }
 
   return (
@@ -218,7 +228,14 @@ export function KbLabels({
 
       {editing ? (
         <div className="mt-3">
-          <LabelListForm colors={colors} onDone={() => setEditing(false)} />
+          <LabelListForm
+            colors={colors}
+            onDone={() => setEditing(false)}
+            // A filter on a deleted label would hide every source.
+            onDeleted={(color) => {
+              if (selected.includes(color)) onToggle(color);
+            }}
+          />
         </div>
       ) : (
         <>
