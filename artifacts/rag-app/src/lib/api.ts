@@ -502,9 +502,18 @@ export async function fetchAskExamples(): Promise<AskExamples> {
   return asJson<AskExamples>(response);
 }
 
-/** Replace the program's example questions (manager+). An empty list restores the defaults. Max 6. */
-export async function saveAskExamples(questions: string[]): Promise<AskExamples> {
-  const response = await fetch("/api/ask-examples", jsonRequest("PUT", { questions }));
+/**
+ * Replace the program's example questions (manager+). An empty list restores
+ * the defaults. Max 6. `programId` pins the write to the program whose list
+ * was edited, whatever is selected by the time the request goes out.
+ */
+export async function saveAskExamples(
+  questions: string[],
+  programId: string | null
+): Promise<AskExamples> {
+  const init = jsonRequest("PUT", { questions });
+  if (programId !== null) (init.headers as Headers).set("X-Program-Id", programId);
+  const response = await fetch("/api/ask-examples", init);
   return asJson<AskExamples>(response);
 }
 

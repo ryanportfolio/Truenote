@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Pencil, Plus, RotateCcw, X } from "lucide-react";
 import { fetchAskExamples, saveAskExamples, type AskExamples as Examples } from "@/lib/api";
-import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
+import { getSelectedProgramIdRaw, SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 
 const MAX_EXAMPLES = 6;
 const MAX_LENGTH = 200;
@@ -23,37 +23,56 @@ export function AskExamples({ canEdit, onPick }: AskExamplesProps): JSX.Element 
   const [draft, setDraft] = useState<string[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Each program change starts a new generation: the old list and draft are
+  // dropped at once, and answers from an older generation are ignored, so
+  // one program's examples never show, or save, under another.
+  const generation = useRef(0);
+  // The program whose list is loaded; saves go to it explicitly.
+  const programId = useRef<string | null>(null);
 
   useEffect(() => {
-    let current = true;
     function load(): void {
+      const gen = ++generation.current;
+      programId.current = getSelectedProgramIdRaw();
+      setExamples(null);
       setDraft(null);
+      setError(null);
+      setSaving(false);
       fetchAskExamples()
         .then((next) => {
-          if (current) setExamples(next);
+          if (gen === generation.current) setExamples(next);
         })
         .catch(() => {
-          if (current) setExamples(null);
+          // No examples is fine: the question box still works.
         });
+    }
+    function onStorage(): void {
+      if (getSelectedProgramIdRaw() !== programId.current) load();
     }
     load();
     window.addEventListener(SELECTED_PROGRAM_CHANGED_EVENT, load);
+    window.addEventListener("storage", onStorage);
     return () => {
-      current = false;
+      generation.current++;
       window.removeEventListener(SELECTED_PROGRAM_CHANGED_EVENT, load);
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 
   async function save(questions: string[]): Promise<void> {
+    const gen = generation.current;
     setSaving(true);
     setError(null);
     try {
-      setExamples(await saveAskExamples(questions));
+      const saved = await saveAskExamples(questions, programId.current);
+      if (gen !== generation.current) return;
+      setExamples(saved);
       setDraft(null);
     } catch (err) {
+      if (gen !== generation.current) return;
       setError(err instanceof Error ? err.message : "Couldn't save. Try again.");
     } finally {
-      setSaving(false);
+      if (gen === generation.current) setSaving(false);
     }
   }
 
