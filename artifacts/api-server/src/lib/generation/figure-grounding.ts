@@ -896,8 +896,8 @@ const ANY_SIGN_BEFORE = new RegExp(`(?<![\\p{L}\\p{N}])[${SIGNS}]$`, "u");
 
 function canonicalNumber(token: string): string {
   let digits = token.replace(/,/g, "");
-  if (digits.includes(".")) digits = digits.replace(/0+$/, "").replace(/\.$/, "");
   if (digits.startsWith(".")) digits = `0${digits}`;
+  if (digits.includes(".")) digits = digits.replace(/0+$/, "").replace(/\.$/, "");
   return digits;
 }
 
