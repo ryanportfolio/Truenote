@@ -1,22 +1,17 @@
 import { forwardRef, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { FileText, Star } from "lucide-react";
-import { RelativeTime } from "@/components/RelativeTime";
 import { KB_NUMBERED_PINS, type KbShortcut } from "@/lib/kbLibrary";
 import { kbColorDot } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
 import { useKbLibraryContext } from "./KbContext";
 import { ColorDot, SourceColorLabel } from "./KbShared";
 
-/** "From your team", "Pinned by you" or "Opened 1 hour ago". */
+/** "From your team", "Pinned by you" or "Recently opened". */
 function ShortcutSource({ shortcut }: { shortcut: KbShortcut }): JSX.Element {
   if (shortcut.source === "team") return <>From your team</>;
   if (shortcut.source === "mine") return <>Pinned by you</>;
-  return (
-    <>
-      Opened <RelativeTime iso={shortcut.doc.lastViewedByMeAt as string} />
-    </>
-  );
+  return <>Recently opened</>;
 }
 
 function ShortcutTile({ shortcut, index }: { shortcut: KbShortcut; index: number }): JSX.Element {
