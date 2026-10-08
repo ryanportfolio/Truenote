@@ -13,6 +13,7 @@ import type {
   CreateKbTagRequest,
   DocumentListResponse,
   KbCategory,
+  KbColorLabel,
   KbLibraryColor,
   KbSourceUserState,
   KbTag,
@@ -516,6 +517,19 @@ export async function setKbNote(
 }
 
 /** Private color label on a source (null clears it). Allowed for every role, demo included. */
+/** Name one of the current user's colors; a null or blank name removes it. */
+export async function setKbColorLabel(
+  color: KbLibraryColor,
+  name: string | null
+): Promise<KbColorLabel | null> {
+  const response = await fetch(
+    `/api/kb/labels/${encodeURIComponent(color)}`,
+    jsonRequest("PUT", { name })
+  );
+  const json = await asJson<{ item: KbColorLabel | null }>(response);
+  return json.item;
+}
+
 export async function setKbSourceColor(
   documentId: string,
   color: KbLibraryColor | null

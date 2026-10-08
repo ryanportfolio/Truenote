@@ -306,10 +306,18 @@ export interface KbTag {
   color: KbLibraryColor;
 }
 
+/** The current user's own name for one of their colors ("Read before quoting fees"). */
+export interface KbColorLabel {
+  color: KbLibraryColor;
+  name: string;
+}
+
 export interface KbDocumentListResponse {
   items: KbDocumentListItem[];
   categories: KbCategory[];
   tags: KbTag[];
+  /** The current user's color names; colors without a name are absent. */
+  labels: KbColorLabel[];
   /** True for manager+ non-demo accounts: may edit categories, tags and team pins. */
   canOrganize: boolean;
   /** Same sentinel contract as DocumentListResponse. */
@@ -403,8 +411,26 @@ export interface SourceUsageMatrix {
   rows: { userId: string; counts: number[] }[];
 }
 
+/**
+ * A source to suggest to the selected person: teammates cited it in the
+ * window in the same top-level categories as the sources behind this
+ * person's refused or thumbs-down questions, and this person never cited it.
+ * Fallback when that yields nothing: the team's most-cited sources this
+ * person never cited. Title-gated like `sources`; restricted ones are omitted.
+ */
+export interface SourceUsageSuggestion {
+  documentId: string;
+  title: string;
+  /** "related" = same top-level category as a refused/thumbs-down topic; "team_top" = fallback. */
+  reason: "related" | "team_top";
+  /** Answers by other people that cited it in the window. */
+  teamCitations: number;
+}
+
 export interface SourceUsageResponse {
   windowDays: number;
+  /** Up to 3 suggestions for the selected person; empty when userId is null. */
+  suggestions: SourceUsageSuggestion[];
   /** Echo of the userId filter, or null for everyone. */
   userId: string | null;
   /** The filtered person's identity (any window, even with 0 questions); null when userId is null. */

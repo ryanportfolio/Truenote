@@ -97,6 +97,19 @@ CREATE TABLE IF NOT EXISTS kb_category_user_prefs (
     CHECK (color = ANY (ARRAY['slate', 'blue', 'green', 'amber', 'red', 'violet', 'teal', 'pink']))
 );
 
+-- Personal names for colors ("Red: Read before quoting fees"), per user across programs.
+CREATE TABLE IF NOT EXISTS kb_user_color_labels (
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  color text NOT NULL,
+  name text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, color),
+  CONSTRAINT kb_user_color_labels_color_check
+    CHECK (color = ANY (ARRAY['slate', 'blue', 'green', 'amber', 'red', 'violet', 'teal', 'pink'])),
+  CONSTRAINT kb_user_color_labels_name_check
+    CHECK (char_length(btrim(name)) BETWEEN 1 AND 40)
+);
+
 CREATE TABLE IF NOT EXISTS kb_tags (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   program_id uuid NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
