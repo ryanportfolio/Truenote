@@ -1,21 +1,56 @@
 # Truenote backup and restore runbook
 
 **Status:** Proposed. No restore test has been run yet; the evidence table in section 9 is empty. RPO and RTO values are proposed targets, not measured results. Items marked `[CONFIRM: ...]` need an owner check before this runbook is relied on.
+**Current state (owner decision, 2026-10-07):** volume backups on the `pgvector` database service are off. The owner will turn them on (daily and weekly schedules proposed) before Truenote goes to full production; backups being on is a precondition for full production. Until then Railway holds no backup of the database, and a logical dump taken by the operator (section 4.1, step 5) is the only recovery copy. The volume-backup restore (path A) is written for that later state and is **not yet usable**.
 **Owner:** Truenote maintainer
-**Related:** [`incident-response-plan.md`](./incident-response-plan.md), threat model entry TN-TM-024 in [`../compliance/pci/threat-model.md`](../compliance/pci/threat-model.md), evidence gaps in [`../compliance/pci/evidence-index.md`](../compliance/pci/evidence-index.md).
+**Related:** [`incident-response-plan.md`](./incident-response-plan.md), [`.claude/reference/deployment.md`](../../.claude/reference/deployment.md) (Railway services, variables, deploys, schema changes; cited below as deployment.md), threat model entry TN-TM-024 in [`../compliance/pci/threat-model.md`](../compliance/pci/threat-model.md), evidence gaps in [`../compliance/pci/evidence-index.md`](../compliance/pci/evidence-index.md).
 
-One person must be able to follow every step. Shell commands are written for bash or zsh: Git Bash on Windows, a macOS or Linux terminal running bash or zsh, or the Replit shell. Plain POSIX shells such as dash reject the `read -rs` form in the table below. The shell needs `psql`, `pg_dump`, and `pg_restore` (PostgreSQL 16 client tools) on its path. SQL blocks run inside `psql`. Steps that say to use the Replit or Neon web console need no shell.
+Production runs on Railway: project `truenote`, one environment `production` with no other environment and no development database, application services `web` and `worker`, database service `pgvector`, and bucket `truenote-storage` (deployment.md).
 
-PowerShell does not read the bash patterns these commands use. Each command that uses one has its PowerShell form beside it.
+One person must be able to follow every step. You need the Railway CLI, logged in (the commands below were checked against CLI 5.26), Docker for the scratch database in section 4.2, and a repository checkout with pnpm for the test instance in section 5.4. Postgres client tools are not needed on your machine: `psql`, `pg_dump`, and `pg_restore` run inside the `pgvector` container or the scratch container.
+
+Railway commands below leave out the project and environment flags. Run them from a directory linked to production:
+
+```
+railway link -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4deb-9434-e9b63a309bd9
+```
+
+Linking is the route to use: the commands do not all accept the same flags (Railway CLI 5.26 `--help` for each command). `railway ssh`, `logs`, `variable`, `down`, `deployment list`, and `up` accept `-p <project> -e <environment>`. `railway bucket` commands accept only `-e` and `-b`, so they need a linked directory for the project. For `railway volume`, the project and environment flags go before `files`, as in `railway volume -p <project> -e <environment> files --volume pgvector-volume download ...`; after `files` they are rejected.
+
+## Shells
+
+Commands that run on your machine are written for bash or zsh: Git Bash on Windows, or a macOS or Linux terminal running bash or zsh. Plain POSIX shells such as dash reject the `read -rs` form in the table below. PowerShell does not read the bash patterns these commands use; each command that uses one has its PowerShell form beside it. `railway`, `docker`, `node`, and `pnpm` commands that use no shell variable are the same in both shells. Commands run inside a container (after `railway ssh` or with `docker exec`) run in that container's Linux shell and are the same whichever shell you started from. SQL blocks run inside `psql`.
 
 | Pattern | bash | PowerShell |
 |---|---|---|
-| Set a connection string for this session only (paste it at the prompt, so it stays out of shell history) | `read -rs PROD_DATABASE_URL && export PROD_DATABASE_URL` | `$env:PROD_DATABASE_URL = Read-Host 'Connection string'` |
-| Read it in a command | `"$PROD_DATABASE_URL"` | `$env:PROD_DATABASE_URL` |
+| Set a connection string for this session only (paste it at the prompt, so it stays out of shell history) | `read -rs TARGET_DATABASE_URL && export TARGET_DATABASE_URL` | `$env:TARGET_DATABASE_URL = Read-Host 'Connection string'` |
+| Read it in a command | `"$TARGET_DATABASE_URL"` | `$env:TARGET_DATABASE_URL` |
 | Set variables before starting a server | `API_PORT=3001 pnpm ...` (applies to that one command) | `$env:API_PORT = '3001'; pnpm ...` (stays set until the PowerShell window closes) |
 | Remove a variable for this session | `unset NAME` | `Remove-Item Env:NAME -ErrorAction SilentlyContinue` |
 
-`TARGET_DATABASE_URL` and `DATABASE_URL` follow the same pattern.
+`PROD_DATABASE_URL`, `DATABASE_URL`, and `POSTGRES_PASSWORD` follow the same pattern.
+
+**Production psql session.** Steps that run SQL against production use this session. Open a shell in the database container:
+
+```
+railway ssh -s pgvector
+```
+
+Then, inside the container:
+
+```
+mkdir -p /var/lib/postgresql/truenote-dumps && cd /var/lib/postgresql/truenote-dumps
+psql -h localhost -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -X
+```
+
+This is the connection `scripts/railway-apply-sql.mjs` uses. Always pass `-h localhost -p 5432`: in this container `PGPORT` points at the public TCP proxy ([`.claude/reference/pitfalls.md`](../../.claude/reference/pitfalls.md), entry of 2026-10-07). `/var/lib/postgresql` is where the `pgvector-volume` volume is mounted (deployment.md), so files that `\copy` and `pg_dump` write to `truenote-dumps` stay on the volume. Copy each one to your machine, then delete it from the volume:
+
+```
+railway volume files --volume pgvector-volume download /truenote-dumps/<file> ./<file>
+railway volume files --volume pgvector-volume delete /truenote-dumps/<file>
+```
+
+The `--volume` option goes before the subcommand ([Railway CLI: volume](https://docs.railway.com/cli/volume), accessed 2026-10-07). That page does not say whether a remote path is relative to the volume or to its mount point `[CONFIRM: with railway volume files list / that /truenote-dumps/ is the folder created above]`. It also says `files delete` refuses to run when an AI agent invokes it, so a person runs it. Files left on the volume hold production data, including password hashes, and once volume backups are on they are copied into every later backup.
 
 ## 1. What holds data and what backs it up
 
@@ -23,34 +58,39 @@ Provider statements below were read on 2026-10-07. Re-read the cited page before
 
 | Data | Where it lives | What backs it up | Gaps |
 |---|---|---|---|
-| All application rows: programs, users, sessions, documents, document versions, parsed text, chunks and embeddings, query log, security events, SIEM outbox, settings, job queue | Replit production Postgres database. Replit bills production databases "through Neon" ([Replit: development and production databases](https://docs.replit.com/features/data-and-storage/development-and-production), accessed 2026-10-07). | **Point-in-time restore (PITR).** Replit: "For production databases, you can restore to a specific moment using point-in-time restore." Core plans keep up to 7 days of history; Pro and Enterprise up to 28 days; "Every plan starts at 7 days, and you can change the window in your production database's settings." **Scheduled backups:** "one full restore point each day", retained up to 7 days (Core) or 28 days (Pro and Enterprise), off until a retention period is chosen. ([Replit: data recovery](https://docs.replit.com/features/data-and-storage/data-recovery), accessed 2026-10-07.) | `[CONFIRM: Truenote's Replit plan, the current PITR window, and whether scheduled backups are on]`. Replit documents restore only for the production database itself, not into a separate database `[CONFIRM: with Replit support whether a production restore can target a separate database]`. |
-| Same database, if the maintainer can reach the underlying Neon project | Neon | Neon can create a branch "from a current or past state" ([Neon: branching](https://neon.com/docs/introduction/branching), accessed 2026-10-07). The history window controls how far back restore and branching from the past can reach; Neon defaults are 6 hours (Free) and 1 day (Launch, Scale), up to 7 days (Launch) or 30 days (Scale) ([Neon: history window](https://neon.com/docs/postgres/backup-restore/history-window), accessed 2026-10-07). Instant restore overwrites all databases on a root branch and saves the prior state as a backup branch ([Neon: instant restore](https://neon.com/docs/introduction/branch-restore), accessed 2026-10-07). | `[CONFIRM: whether the maintainer has Neon console or API access to the Replit-managed production database]`. If not, the Neon steps in this runbook are unavailable. |
-| Uploaded source files (PDF, DOCX, images, text) | Replit App Storage bucket. Each document version's storage key is in `document_versions.source_url`. | **None from the provider.** Replit: "App Storage doesn't support lifecycle rules, object versioning, or retention policies", and object deletion "is irreversible." App Storage runs on Google Cloud Storage. ([Replit: App Storage](https://docs.replit.com/features/data-and-storage/object-storage), accessed 2026-10-07.) Because App Storage has no versioning and deletes are irreversible, a database restore cannot bring back deleted files; this is an inference from the App Storage page, not a Replit statement `[CONFIRM: with Replit support that no database restore or checkpoint restores App Storage objects]`. | Truenote reads the original file only during ingestion and rescan. Answers, citations, and previews use the parsed text and chunks in the database. Losing a file blocks rescans of that version; it does not break existing answers. `[CONFIRM: a periodic export of the bucket to owner-controlled storage; no export tool exists in the repository]` |
-| Secrets (provider keys, OIDC settings, signing keys, scanner settings, bootstrap login) | Replit Secrets, production app secrets ([Replit: secrets](https://docs.replit.com/core-concepts/project-editor/app-setup/secrets), accessed 2026-10-07) | Not backed up by Truenote. Each value can be re-issued from its provider, or regenerated in the case of the database credentials. | `[CONFIRM: whether secret values are also kept in a password manager]`. Keep a list of secret names and where each is issued, not the values. Secret names used by the code are listed in the incident response plan, section 5.2. |
-| Application code and database DDL | GitHub repository; DDL files under `docs/security/` | Git history on GitHub | Replit checkpoints also exist. A database restore does not roll back code, and a code rollback does not restore the database ([Replit: data recovery](https://docs.replit.com/features/data-and-storage/data-recovery), accessed 2026-10-07). |
+| All application rows: programs, users, sessions, documents, document versions, parsed text, chunks and embeddings, query log, security events, SIEM outbox, settings, the schema ledger `schema_migrations`, and the job queue (`pgboss` schema) | Service `pgvector`, image `pgvector/pgvector:pg18`, volume `pgvector-volume` mounted at `/var/lib/postgresql` (deployment.md) | **Nothing on Railway today.** deployment.md: "Backups: none yet"; the owner decided on 2026-10-07 to leave volume backups off until before full production. Operator dumps (section 4.1, step 5) are the only copy. **Once turned on**, Railway volume backups run on schedules: "Daily - Backed up every 24 hours, kept for 6 days", "Weekly - Backed up every 7 days, kept for 27 days", "Monthly - Backed up every 30 days, kept for 89 days"; one volume can have several schedules, and "Manual backups are limited to 50% of the volume's total size". A restore stages "a new volume mounted to the same location as the original volume"; "The previous volume will be retained but has been unmounted from the service"; the restore completes when you click Deploy. "Backups can only be restored into the same project + environment." "Wiping a volume deletes all backups." Backups are billed like volumes, only for "the data exclusive to them". ([Railway: backups](https://docs.railway.com/reference/backups), accessed 2026-10-07.) The page describes no point-in-time restore. | No backup until the owner turns schedules on. A volume backup restores only onto the `pgvector` service itself, so it cannot be checked on a separate target before it replaces production data (section 3, rule 1). Railway documents point-in-time recovery for Postgres through WAL archiving that its own Postgres image performs ([Railway: point-in-time recovery](https://docs.railway.com/volumes/point-in-time-recovery), accessed 2026-10-07); `pgvector` runs `pgvector/pgvector:pg18`, which that page does not mention `[CONFIRM: with Railway whether point-in-time recovery can work for the pgvector service]`. It is not on. A Railway guide words the retention as "kept for 1 month" and "kept for 3 months" and says restoring "removes any newer backups" ([Railway: back up and restore Postgres](https://docs.railway.com/guides/postgres-backups-restores), accessed 2026-10-07), while the reference page says newer backups stay on the previous volume; this runbook follows the reference page `[CONFIRM: which page is current]`. `[CONFIRM: with Railway that a volume backup taken while Postgres is running restores to a database Postgres can recover]` |
+| Uploaded source files (PDF, DOCX, images, text) | Bucket `truenote-storage`, S3-compatible, endpoint `https://t3.storageapi.dev`, keys `uploads/<sha256>-<name>` (deployment.md). Each document version's key is in `document_versions.source_url`. | **None.** Railway: "Railway doesn't currently offer automatic backups or snapshots for buckets"; "Object versioning", "Object locks", and "Bucket lifecycle configuration" are listed as not yet supported. A deleted bucket "stays restorable for 52 hours, after which every object in it is destroyed." Buckets "run on Tigris's metal servers". ([Railway: storage buckets](https://docs.railway.com/guides/storage-buckets), accessed 2026-10-07.) No document or script in this repository backs up the bucket. | Gap: a deleted or overwritten object cannot be recovered, and a database restore does not bring files back. `[CONFIRM: with Railway that truenote-storage has no backup or versioning; and a periodic export of the bucket to owner-controlled storage, for which no tool exists in the repository]`. Truenote reads the original file only during ingestion and rescan. Answers, citations, and previews use the parsed text and chunks in the database. Losing a file blocks rescans of that version; it does not break existing answers. Eight objects the database references were not copied to Railway on 2026-10-07, so rescans of those versions already fail (deployment.md, "Data copy"). |
+| Secrets (provider keys, bucket credentials, sign-in and email settings) | Railway service variables on `web` and `worker` (deployment.md, "Variables"); the owner keeps the source values outside git (deployment.md) | Not backed up by Truenote. Each value can be re-issued at its provider; bucket credentials can be reset (section 7). | `[CONFIRM: whether the owner's source file is encrypted and has its own backup]`. Keep a list of variable names and where each is issued, not the values. Names used by the code are listed in the incident response plan, section 5.2. |
+| Application code and database DDL | GitHub repository. Baseline DDL: the files under `docs/security/`, already in the database copied on 2026-10-07. Later changes: numbered files in `lib/db/sql/`, recorded in `schema_migrations` when applied (deployment.md, "Schema changes"). | Git history on GitHub. Railway keeps earlier deployments (deployment.md, "Deploying"). | A database restore does not roll back code, and a code rollback does not restore the database. |
 
 ## 2. Recovery targets (proposed)
 
-These are proposed targets for one maintainer. They are not measured. Replace "proposed" with "approved" only after the owner agrees and a restore test meets them.
+These are proposed targets for one maintainer. They are not measured. Replace "proposed" with "approved" only after the owner agrees and a restore test meets them. RPO follows from how often a recovery copy is made.
 
-| Data | RPO (most data that may be lost) | RTO (time from the decision to restore until CSRs get cited answers again) |
+| Situation | RPO (most data that may be lost) | RTO (time from the decision to restore until CSRs get cited answers again) |
 |---|---|---|
-| Production database, restore point inside the PITR window | 1 hour (proposed) | 8 hours (proposed) |
-| Production database, restore point older than the PITR window, from a daily scheduled backup | 24 hours (proposed) | 8 hours (proposed) |
-| Uploaded source files | Time since the last bucket export `[CONFIRM: export schedule; proposed weekly]` | 2 business days to collect missing files from program owners and re-upload (proposed) |
-| Secrets | Not applicable (re-issue) | 4 hours to re-issue and republish all secrets (proposed) |
+| Today: no volume backups; restore from the latest operator dump (path B) | Time since that dump: up to 7 days with the weekly dump below (proposed) | 8 hours (proposed) |
+| After the owner turns on daily volume backups (path A) | Up to 24 hours, because a daily backup runs every 24 hours. Restore points reach back 6 days with the daily schedule and 27 days with the weekly one (proposed) | 8 hours (proposed) |
+| Uploaded source files | Every file since the last bucket export. No export exists today, so every file is at risk `[CONFIRM: export schedule; proposed weekly]` | 2 business days to collect missing files from program owners and re-upload (proposed) |
+| Secrets | Not applicable (re-issue) | 4 hours to re-issue and set all variables (proposed) |
+
+Dump cadence until volume backups are on (proposed): one dump a week, and one immediately before each risky change: applying a `lib/db/sql/` file, a bulk user import, a re-ingest, a document purge, or a deploy that changes ingestion or data handling. Record each dump (UTC time, size, SHA-256, storage location) in the restricted evidence location.
 
 Measure RPO as the gap between the chosen restore point and the last good write that the restore discarded. Measure RTO from the recorded decision time to the first passing smoke test against production after cutover.
 
 ## 3. Safety rules for any restore
 
-1. **Restore to a non-production target first.** Never restore over production until the same restore point has passed section 5 on a separate database. If no separate target is available (section 4.2, path C), say so in the evidence record.
+1. **Restore to a non-production target first.** Railway has one environment for Truenote, `production`, and no development database (deployment.md), so a non-production target is one of these:
+   - a scratch Postgres 18 container on the operator's machine (section 4.2), used for every scheduled test;
+   - for an incident restore from a dump (path B), a separate scratch database inside the `pgvector` server (section 4.4). It is not production until it is renamed into place, but it shares the production server's disk, memory, and credentials `[CONFIRM: that the owner accepts this Railway-hosted target, and that pgvector-volume has room for a second copy of the database]`.
+
+   A volume-backup restore (path A) has no non-production target: Railway restores only into the same project and environment and mounts the restored volume on the `pgvector` service ([Railway: backups](https://docs.railway.com/reference/backups), accessed 2026-10-07). For path A the rule becomes: take a dump first (section 4.1, step 5), keep `web` and `worker` stopped, run section 5 against the restored production database before either starts, and keep the previous volume for rollback (section 4.5). Record in the evidence table which form of this rule applied.
 2. **Isolate the test app instance.** When running Truenote against a restored target:
-   - start only the API server (`pnpm --filter @workspace/api-server run dev`) and, for the smoke test, the Vite frontend dev server (section 5.4); do **not** start the background worker, which would process queued ingestion jobs, send files to LandingAI and OpenAI, and write to App Storage;
-   - set `RAG_STORAGE_DRIVER=memory` so the instance cannot read or delete production App Storage objects;
-   - leave `SIEM_WEBHOOK_URL` unset, so outbox rows copied from production are not re-sent to the SIEM;
-   - leave `RESEND_API_KEY`, `BOOTSTRAP_SUPER_USER_*`, and `DEMO_LOGIN_ACCOUNTS` unset, and do not set `NODE_ENV=production`;
-   - leave every `OIDC_*` variable unset and set `LOCAL_LOGIN_MODE=enabled`. `getOidcConfig()` (`artifacts/api-server/src/lib/auth/oidc.ts`) turns company SSO on when `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, and an `OIDC_STATE_SECRET` of at least 32 characters are set, and when `LOCAL_LOGIN_MODE` is unset it then defaults the password login to `break_glass`. In `break_glass` mode `POST /api/auth/login` (`artifacts/api-server/src/routes/auth.ts`) checks the password and then refuses every account except a `super_user` with HTTP 403 `Use company SSO to sign in.`; a super user's sign-in is recorded as `auth.break_glass.login`. In `disabled` mode it refuses every account and the sign-in page hides the password field. A shell that inherits production secrets, such as the Replit shell, therefore blocks the CSR password sign-in that section 5.4 needs. SSO from the test instance does not work either: `GET /api/auth/oidc/start` sends the browser to the identity provider with the production `OIDC_REDIRECT_URI`, so the provider returns it to the production deployment, whose callback rejects it because the state cookie was set on the test origin. Without the five SSO values SSO is off and every active account can use its password; `LOCAL_LOGIN_MODE=enabled` keeps the password field on the sign-in page even when the shell inherited `LOCAL_LOGIN_MODE=disabled`. Before starting the test servers, in each shell:
+   - from a repository checkout, start only the API server (`pnpm --filter @workspace/api-server run dev`) and, for the smoke test, the Vite frontend dev server (section 5.4). Do **not** start the worker (`pnpm --filter @workspace/scripts run worker`, the process the Railway `worker` service runs, `scripts/src/worker.ts`): it processes queued ingestion and evaluation jobs, sends files to LandingAI and OpenAI, and writes to object storage;
+   - set `RAG_STORAGE_DRIVER=memory` and leave every `S3_*` variable unset. `getObjectStorage()` (`artifacts/api-server/src/lib/storage/object-storage.ts`) selects the in-memory store only for `memory`; any other value, unset included, selects the S3 adapter, which with production's `S3_*` values can read and delete objects in `truenote-storage`;
+   - leave `SIEM_WEBHOOK_URL` unset, so outbox rows copied from production are not re-sent to the SIEM. The outbox delivery loop runs inside the API server (`artifacts/api-server/src/index.ts`). The SIEM variables are not set on Railway today (deployment.md); the rule holds for any shell that has them;
+   - leave `RESEND_API_KEY`, `BOOTSTRAP_SUPER_USER_*`, and `DEMO_LOGIN_ACCOUNTS` unset, and do not set `NODE_ENV=production`. Do not run the test instance from the Railway image, which sets `NODE_ENV=production` (`Dockerfile.railway`), and do not start it with `railway run`, which runs a local command with the variables of the linked Railway environment and so brings in production's `DATABASE_URL`, `S3_*`, `RESEND_*`, and `DEMO_LOGIN_ACCOUNTS` (deployment.md, "Variables");
+   - leave every `OIDC_*` variable unset and set `LOCAL_LOGIN_MODE=enabled`. `getOidcConfig()` (`artifacts/api-server/src/lib/auth/oidc.ts`) turns company SSO on when `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, and an `OIDC_STATE_SECRET` of at least 32 characters are set, and when `LOCAL_LOGIN_MODE` is unset it then defaults the password login to `break_glass`. In `break_glass` mode `POST /api/auth/login` (`artifacts/api-server/src/routes/auth.ts`) checks the password and then refuses every account except a `super_user` with HTTP 403 `Use company SSO to sign in.`; a super user's sign-in is recorded as `auth.break_glass.login`. In `disabled` mode it refuses every account and the sign-in page hides the password field. OIDC is not set on Railway today (deployment.md), but a shell that inherits OIDC values, for example through `railway run` after OIDC is configured, would block the CSR password sign-in that section 5.4 needs. SSO from the test instance does not work either: `GET /api/auth/oidc/start` sends the browser to the identity provider with the production `OIDC_REDIRECT_URI`, so the provider returns it to the production deployment, whose callback rejects it because the state cookie was set on the test origin. Without the five SSO values SSO is off and every active account can use its password; `LOCAL_LOGIN_MODE=enabled` keeps the password field on the sign-in page even when the shell inherited `LOCAL_LOGIN_MODE=disabled`. Before starting the test servers, in each shell:
 
      ```
      unset OIDC_ISSUER_URL OIDC_CLIENT_ID OIDC_CLIENT_SECRET OIDC_REDIRECT_URI OIDC_STATE_SECRET OIDC_REQUIRED_ACR OIDC_REQUIRE_MFA OIDC_ALLOWED_DOMAINS && export LOCAL_LOGIN_MODE=enabled
@@ -63,19 +103,24 @@ Measure RPO as the gap between the chosen restore point and the last good write 
      ```
 
      To test SSO itself, register a separate test client at the identity provider whose redirect URI is the test origin's callback (`http://localhost:5173/api/auth/oidc/callback`, which the Vite proxy forwards to the API), set the five `OIDC_*` values to that client, and still set `LOCAL_LOGIN_MODE=enabled` so the CSR password sign-in keeps working. Outside `NODE_ENV=production` the code accepts `http` issuer and redirect URLs. `[CONFIRM: whether the identity provider allows a separate client with a localhost redirect URI]` Never reuse the production client: its redirect URI points at production;
-   - never run `sweep-orphans` or the document purge against a restored target. `sweep-orphans` deletes every App Storage object that the connected database does not reference, which after a restore includes files that production still needs.
-3. **Keep connection strings out of shell history and out of this repository.** Paste them into an environment variable from the console for the session only.
+   - never run `sweep-orphans` or the document purge against a restored target. `scripts/src/sweep-orphans.ts` deletes nothing today: it lists the keys the connected database references. It stays on this list because a version that deletes unreferenced keys, which its comments plan, would delete files production still needs when pointed at a restore. The purge deletes the document's files from the bucket.
+3. **Keep connection strings and variable values out of shell history, chat, tickets, and this repository.** Paste them into an environment variable for the session only.
 4. **Record times in UTC** as you go. The evidence table needs them.
 
 ## 4. Restore procedure
+
+Paths:
+
+- **Path A, volume backup** (not yet usable: backups are off). Restores the `pgvector` volume from a Railway backup.
+- **Path B, operator dump** (available today). Restores a `pg_dump` taken by the operator: into a scratch container for a scheduled test (section 4.2), or into a scratch database on the `pgvector` server for an incident (section 4.4).
 
 ### 4.1 Prepare
 
 1. Write down the start time (UTC) and why you are restoring: scheduled test, or incident id.
 2. Choose the restore point.
-   - Incident: the last time before the damage. Use `security_events.occurred_at`, `query_log.created_at`, and the document lifecycle events (`document.lifecycle.*`) to find it. If Neon access exists, Neon's Time Travel Assist runs read-only queries against a past moment to confirm the point ([Neon: instant restore](https://neon.com/docs/introduction/branch-restore), accessed 2026-10-07).
-   - Scheduled test: any point at least one hour old inside the PITR window.
-3. Capture a production baseline (read-only), so the restored target can be compared with it:
+   - Incident: the last time before the damage. Use `security_events.occurred_at`, `query_log.created_at`, and the document lifecycle events (`document.lifecycle.*`) to find it. Path A: the newest backup taken before that time; Railway lists backups by date stamp. Path B: the newest dump taken before that time. A dump taken during the incident contains the damage.
+   - Scheduled test: path B with a dump taken for the test (step 5). The restore point is the dump's start time.
+3. Capture a production baseline (read-only, in the production psql session), so the restored target can be compared with it:
 
    ```sql
    SELECT now() AS captured_at,
@@ -90,69 +135,56 @@ Measure RPO as the gap between the chosen restore point and the last good write 
    ```
 
    Also record the same counts as of the restore point where the table has a timestamp, for example `SELECT count(*) FROM query_log WHERE created_at <= '<restore point>';`.
-4. For an incident restore, export what the restore will remove or revert (store in the restricted evidence location, not in this repository):
+4. For an incident restore, export what the restore will remove or revert. In the production psql session (files land in `/var/lib/postgresql/truenote-dumps/`):
 
-   ```sql
-   SELECT * FROM security_events WHERE occurred_at > '<restore point>' ORDER BY sequence;
-   SELECT user_id, created_at FROM sessions WHERE created_at > '<restore point>';
+   ```
+   \copy (SELECT * FROM security_events WHERE occurred_at > '<restore point>' ORDER BY sequence) TO 'security-events-after-restore-point-<UTC date>.csv' WITH (FORMAT csv, HEADER)
+   \copy (SELECT user_id, created_at FROM sessions WHERE created_at > '<restore point>') TO 'sessions-after-restore-point-<UTC date>.csv' WITH (FORMAT csv, HEADER)
    ```
 
-   Also export a snapshot of every user's sign-in and authorization fields. The application does not record resulting user state in its audit events. The generic audit middleware (`artifacts/api-server/src/middleware/security-audit.ts`) writes one `http.security_mutation` event only for requests whose method is not GET, HEAD, or OPTIONS (in practice POST, PATCH, PUT, and DELETE) and whose path is `/api/admin`, `/api/documents`, or `/api/auth`, or starts with one of them followed by `/`. For each such request it stores the method and route path, the response status and outcome, the actor (user id, email, and role), the actor's program, the request id, the source IP, and the request duration. It does not store the request body or the resulting user state: the account's role, active flag, program, clearance, or password changes. The admin user routes write no event with the account's new role, active flag, or program. The exported `security_events` therefore cannot rebuild these fields, and this snapshot is the only record of them. Run in `psql` against production:
+   Also export a snapshot of every user's sign-in and authorization fields. The application does not record resulting user state in its audit events. The generic audit middleware (`artifacts/api-server/src/middleware/security-audit.ts`) writes one `http.security_mutation` event only for requests whose method is not GET, HEAD, or OPTIONS (in practice POST, PATCH, PUT, and DELETE) and that Express routes under `/api/admin`, `/api/documents`, or `/api/auth`. Express matches these bases without regard to letter case and also for absolute-form request targets. For each such request the middleware stores the method and path (the base in lower case, the rest of the path as the client sent it, and the raw path when it differs), the response status and outcome, the actor (user id, email, and role), the actor's program, the request id, the source IP, and the request duration. It does not store the request body or the resulting user state: the account's role, active flag, program, clearance, or password changes. The admin user routes write no event with the account's new role, active flag, or program. The exported `security_events` therefore cannot rebuild these fields, and this snapshot is the only record of them. In the production psql session:
 
    ```
    \copy (SELECT id, email, role, program_id, is_active, must_reset_password, max_classification, password_hash FROM users ORDER BY id) TO 'truenote-users-before-restore-<UTC date>.csv' WITH (FORMAT csv, HEADER)
    ```
 
-   `program_id` is the user's program assignment (the only one; NULL only for `super_user`), and `max_classification` is the user's clearance for document classification. The file holds password hashes: store it encrypted in the restricted evidence location, never in this repository, and delete local copies with the `pg_dump` file (section 4.6).
+   `program_id` is the user's program assignment (the only one; NULL only for `super_user`), and `max_classification` is the user's clearance for document classification. The file holds password hashes. Copy all three files to your machine and delete them from the volume (section "Shells"), store them encrypted in the restricted evidence location `[CONFIRM: location]`, never in this repository, and delete local copies with the dump file (section 4.6).
 
-   When the cutover in section 4.4 stops writes, run both exports in this step again and use the later files for reconciliation, so changes made while the target was being verified are not lost.
-5. Take a full logical export of production whenever path C (section 4.2) will be used, including scheduled tests, and for every incident restore as a last-resort rollback copy:
+   When the cutover in section 4.4 stops writes, run all three exports in this step again and use the later files for reconciliation, so changes made while the target was being verified are not lost.
+5. Take a logical dump of production for every path B restore, including scheduled tests; before every path A restore, as a last-resort rollback copy; and on the cadence in section 2. The command matches the 2026-10-07 data copy (deployment.md, "Data copy"): `pg_dump` 18 inside `pgvector`, custom format, `--no-owner --no-acl`, without the `_system` and `pgboss` schemas and without the rows of `sessions` and `password_reset_tokens`. Excluding `_system` changes nothing when that schema does not exist.
 
-   When path C will be used, first run the baseline query from step 3 against production again, immediately before starting `pg_dump`, and record the result as the export-time counts. Writes made between step 3 and the export change production counts, so path C is checked against these export-time counts, not the step 3 baseline (section 5.2). `pg_dump` exports one consistent snapshot taken when it starts, so only writes made between this query and that start can still cause a difference.
-
-   ```
-   pg_dump --format=custom --no-owner --file=truenote-prod-before-restore-<UTC date>.dump "$PROD_DATABASE_URL"
-   ```
-
-   PowerShell:
+   First, in the production psql session, run the baseline query from step 3 again, immediately before the dump, and record the result as the export-time counts. Writes made between step 3 and the dump change production counts, so path B is checked against these export-time counts, not the step 3 baseline (section 5.2). `pg_dump` exports one consistent snapshot taken when it starts, so only writes made between this query and that start can still cause a difference. Then leave `psql` (`\q`) and, still inside the container:
 
    ```
-   pg_dump --format=custom --no-owner --file=truenote-prod-before-restore-<UTC date>.dump $env:PROD_DATABASE_URL
+   pg_dump -h localhost -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --no-owner --no-acl --exclude-schema=_system --exclude-schema=pgboss --exclude-table-data=public.sessions --exclude-table-data=public.password_reset_tokens --file=/var/lib/postgresql/truenote-dumps/truenote-prod-<UTC date>.dump
+   sha256sum /var/lib/postgresql/truenote-dumps/truenote-prod-<UTC date>.dump
    ```
 
-   `[CONFIRM: how to obtain a production connection string for pg_dump from the Replit database tool, and that the export file is stored encrypted outside the repository]`
+   Copy the dump to your machine (section "Shells") and record its SHA-256. Store it encrypted outside the repository `[CONFIRM: storage location for dumps]`, then delete it from the volume. An incident restore uses an earlier dump taken before the damage; section 4.4 uploads that one back to the volume.
 
-### 4.2 Create the non-production target
+   What the dump leaves out: sessions and reset tokens, so everyone signs in again after a restore from it; and the `pgboss` job queue, which the first boot of `web` or `worker` recreates empty (deployment.md, "Data copy"). Ingestion or evaluation jobs queued at dump time are lost; a version that was waiting on one needs a new upload `[CONFIRM: which document version states such a version is left in]`.
 
-Use the first path that is available.
+### 4.2 Create the scratch target (path B, scheduled tests)
 
-**Path A: Neon branch from the restore point** (needs Neon access).
-In the Neon console, create a branch from the production branch at the restore timestamp, or with the Neon CLI:
-
-```
-neon branches create --name restore-test-<UTC date> --parent <restore point, RFC 3339>
-```
-
-The Neon CLI accepts a timestamp for `--parent` to create a branch from a past state ([Neon CLI: branches](https://neon.com/docs/cli/branches), accessed 2026-10-07). Copy the new branch's connection string from the console. This is the target for section 5.
-
-**Path B: Replit restore into a separate database.** Use only if Replit support confirms it exists `[CONFIRM]`.
-
-**Path C: logical export restored into a scratch database** (always available, weaker).
-Create an empty PostgreSQL 16 database that you control and that holds no other data, enable the extensions the schema uses, and restore the export taken in step 4.1.5:
+On the operator's machine, start an empty Postgres 18 server from the image production uses (deployment.md), reachable only from this machine. Set its password for the session first (bash: `read -rs POSTGRES_PASSWORD && export POSTGRES_PASSWORD`; PowerShell: `$env:POSTGRES_PASSWORD = Read-Host 'Scratch database password'`), then:
 
 ```
-psql "$TARGET_DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
-pg_restore --no-owner --no-acl --dbname="$TARGET_DATABASE_URL" truenote-prod-before-restore-<UTC date>.dump
+docker run -d --name truenote-restore -e POSTGRES_PASSWORD -p 127.0.0.1:5433:5432 pgvector/pgvector:pg18
 ```
 
-PowerShell:
+`-e POSTGRES_PASSWORD` with no value passes the variable from your shell, so the password stays off the command line. Then enable the extensions the schema uses (deployment.md: `vector`, `pg_trgm`, `pgcrypto`) and restore the dump from step 4.1.5:
 
 ```
-psql $env:TARGET_DATABASE_URL -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
-pg_restore --no-owner --no-acl "--dbname=$env:TARGET_DATABASE_URL" truenote-prod-before-restore-<UTC date>.dump
+docker cp truenote-prod-<UTC date>.dump truenote-restore:/tmp/truenote.dump
+docker exec truenote-restore psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+docker exec truenote-restore pg_restore -U postgres -d postgres --no-owner --no-acl --single-transaction --exit-on-error /tmp/truenote.dump
 ```
 
-Path C tests Truenote's own export, not the provider's point-in-time restore. It restores the current production state as of the export time, not a past point, which is why it is the weaker path: it cannot show that a chosen restore point is recoverable or free of the damage, and during an incident the export contains the damage. Record which path you used. Until path A or B is available, the provider PITR path is untested.
+The target's connection string uses user `postgres`, the password above, host `127.0.0.1`, port `5433`, and database `postgres`. Set it as `TARGET_DATABASE_URL` with the pattern in the shell table. Run the SQL checks in section 5 with `docker exec -it truenote-restore psql -U postgres -d postgres`.
+
+A Railway-hosted scratch target is also possible: Railway's restore drill restores into a scratch database created with `CREATE DATABASE` ([Railway: back up and restore Postgres](https://docs.railway.com/guides/postgres-backups-restores), accessed 2026-10-07), which on Truenote means a database inside the production `pgvector` server `[CONFIRM: owner decision whether scheduled tests may use it]`.
+
+Path B tests Truenote's own dump, not a Railway backup. It restores the state at dump time, not a chosen point in the past, so it cannot show that a backup is recoverable. Record which path you used. Until the owner turns on volume backups and path A is rehearsed (section 8), path A is untested.
 
 ### 4.3 Verify the target
 
@@ -163,17 +195,63 @@ Run every check in section 5 against the target. Stop and record the failure if 
 Skip this section for a scheduled test.
 
 1. Tell the customer security contact the planned downtime window.
-2. Stop writes: stop the Replit deployment `[CONFIRM: exact Replit control]`. Then repeat the exports in step 4.1.4. The deployment stays stopped until step 6; do not publish or republish before then. The deployment command in `.replit` (`[deployment] run`) starts the API server and the background worker together, so a publish puts production in front of users and lets the worker process restored jobs before step 5 has reconciled authorization fields, removed restored sessions and reset tokens, and re-applied document revocations.
-3. Restore production to the **same restore point** that passed section 5:
-   - Replit: Database tool, production database, point-in-time restore to the chosen time ([Replit: data recovery](https://docs.replit.com/features/data-and-storage/data-recovery), accessed 2026-10-07). For a daily backup instead: Scheduled backups, View all backups, Restore, type `restore`, Continue. Replit states this "does not delete the current data, but connected services can briefly reconnect."
-   - Neon, if used directly: instant restore of the production root branch to the timestamp. Neon keeps the pre-restore state as a backup branch named `<branch>_old_<timestamp>` ([Neon: instant restore](https://neon.com/docs/introduction/branch-restore), accessed 2026-10-07).
-4. Bring the restored schema forward to the deployed code, with the deployment still stopped. Replit warns that restoring the database does not restore code ([Replit: data recovery](https://docs.replit.com/features/data-and-storage/data-recovery), accessed 2026-10-07), so the restored database has the schema of the restore point while step 6 starts the currently deployed commit. That code needs the tables and columns in `lib/db/src/schema.ts` plus the tables, columns, constraints, triggers, and functions in the SQL files under `docs/security/`. As of 2026-10-07 the last change to either was made on 2026-07-15, earlier than the longest PITR window (28 days), so a restore point inside the window needs no forward DDL today. Check again at every restore:
-   - Run the section 5.1 query and [`../compliance/pci/production-control-verification.sql`](../compliance/pci/production-control-verification.sql) against production and compare the output with the last production run from before the incident. A missing table or a changed definition means forward DDL is needed. To find which change, list the commits after the restore point on the deployed branch: `git log --since='<restore point>' --format='%ad %h %s' -- lib/db/src/schema.ts docs/security/`. Commit dates only approximate when DDL reached production, so let the comparison decide.
-   - Apply the missing DDL with `psql` against the stopped production database, for example `psql "$PROD_DATABASE_URL" -f docs/security/p1-siem-delivery-outbox.sql` (PowerShell: `psql $env:PROD_DATABASE_URL -f docs/security/p1-siem-delivery-outbox.sql`). Use the repository's canonical files under `docs/security/`, apply only the files whose objects the comparison shows missing or different, and keep the order they were added: `p0-p1-security-controls.sql`, `p1-siem-delivery-outbox.sql`, `malware-scanning-control.sql`, `review-approval-control.sql`, then any later file. Later files redefine constraints that earlier ones create. Read each file before running it: besides DDL, some also write rows, for example `p0-p1-security-controls.sql` backfills content sources, document version sources, and user clearances, and `p1-siem-delivery-outbox.sql` queues every existing security event that has no outbox row for SIEM delivery. A change that exists only in `lib/db/src/schema.ts` has no canonical SQL file; under the normal schema-change process its DDL was applied to the development database by the Replit Agent and reached production through Publish `[CONFIRM: where the reviewed DDL for each schema.ts change is recorded, so it can be applied with psql]`. Do not use Publish for this step: it starts the deployment, and Replit Publish has been seen to leave constraint bodies and database functions out ([`.claude/reference/environment.md`](../../.claude/reference/environment.md), entry of 2026-07-15).
+2. Stop writes by removing the running deployment of both application services:
+
+   ```
+   railway down -s web -y
+   railway down -s worker -y
+   ```
+
+   `railway down` removes the latest successful deployment; the service is not deleted and can be deployed again with `railway up` ([Railway CLI: down](https://docs.railway.com/cli/down), accessed 2026-10-07). The page does not say whether an older deployment takes over `[CONFIRM: on the first use, that nothing keeps serving]`, so check: `railway deployment list -s web --json` and `railway deployment list -s worker --json` show no active deployment, `https://web-production-62818.up.railway.app/health` (deployment.md, "Hosts") no longer answers, and in the production psql session no application connection remains:
+
+   ```sql
+   SELECT pid, application_name, client_addr, backend_start
+   FROM pg_stat_activity
+   WHERE datname = current_database() AND pid <> pg_backend_pid();
+   ```
+
+   Then repeat the exports in step 4.1.4. Both services stay stopped until step 6. Until then nothing may start them: no `railway up` or `railway redeploy` on `web` or `worker`, no `railway variable set` on them without `--skip-deploys` (it triggers a deploy, [Railway CLI: variable](https://docs.railway.com/cli/variable), accessed 2026-10-07), and no `railway variable delete` on them (it always redeploys, deployment.md). A start would put production in front of users, and let the worker process restored jobs, before step 5 has reconciled authorization fields, removed restored sessions and reset tokens, and re-applied document revocations.
+3. Restore production to the **same restore point** that passed section 5.
+
+   **Path A, volume backup (not yet usable: backups are off).** In the Railway dashboard, open the `pgvector` service, Backups tab, find the backup by its date stamp, and click Restore. Railway stages a new volume, named for the backup's date stamp and mounted at the same location; click Deploy to complete it. The previous volume stays in the project, unmounted, and keeps any backups newer than the one restored ([Railway: backups](https://docs.railway.com/reference/backups), accessed 2026-10-07). `[CONFIRM: that deploying the staged restore redeploys only pgvector and leaves web and worker stopped]` The exports from step 4.1.4 were on the previous volume; that is why they were copied off first. Then run every check in section 5 against production, with `web` and `worker` still stopped; if any fails, go to section 4.5.
+
+   **Path B, operator dump (available today).** Use a dump taken before the damage. If it is no longer on the volume, upload it:
+
+   ```
+   railway volume files --volume pgvector-volume upload ./truenote-prod-<UTC date>.dump /truenote-dumps/truenote-prod-<UTC date>.dump
+   ```
+
+   In a shell in the `pgvector` container (section "Shells"), restore it into a new database next to production:
+
+   ```
+   psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "CREATE DATABASE truenote_restore"
+   psql -h localhost -p 5432 -U "$POSTGRES_USER" -d truenote_restore -X -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+   pg_restore -h localhost -p 5432 -U "$POSTGRES_USER" -d truenote_restore --no-owner --no-acl --single-transaction --exit-on-error /var/lib/postgresql/truenote-dumps/truenote-prod-<UTC date>.dump
+   ```
+
+   Run every check in section 5 against `truenote_restore` (`psql -h localhost -p 5432 -U "$POSTGRES_USER" -d truenote_restore -X`). Then close every `psql` session and swap the databases:
+
+   ```
+   psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "ALTER DATABASE \"$POSTGRES_DB\" RENAME TO truenote_before_restore"
+   psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "ALTER DATABASE truenote_restore RENAME TO \"$POSTGRES_DB\""
+   ```
+
+   Postgres refuses to rename a database that has open connections, so a refusal means something is still connected; find it with the `pg_stat_activity` query in step 2. The application reaches `$POSTGRES_DB` through `DATABASE_URL_PRIVATE` `[CONFIRM: that DATABASE_URL_PRIVATE names $POSTGRES_DB, as scripts/railway-apply-sql.mjs assumes for production]`. `truenote_before_restore` is the rollback copy (section 4.5).
+4. Bring the restored schema forward to the deployed code, with `web` and `worker` still stopped. A database restore does not restore code, so the restored database has the schema of the restore point while step 6 starts the currently deployed commit. That code needs the tables and columns in `lib/db/src/schema.ts` plus the objects the DDL files created. A Railway restore point is never older than the 2026-10-07 baseline, which already holds every file under `docs/security/` (deployment.md, "Schema changes"), so only `lib/db/sql/` files can be missing. Check at every restore:
+   - In the production psql session, list the recorded files: `SELECT filename, sha256 FROM schema_migrations ORDER BY filename;`. Compare with the files in `lib/db/sql/` at the deployed commit. A file in the folder and not in the result needs applying. If the table itself is missing, `0001_schema_migrations.sql` comes first.
+   - Run the section 5.1 query and [`../compliance/pci/production-control-verification.sql`](../compliance/pci/production-control-verification.sql) against production and compare the output with the last production run from before the incident.
+   - Apply each missing file in number order, from the repository root of a checkout at the deployed commit:
+
+     ```
+     node scripts/railway-apply-sql.mjs lib/db/sql/NNNN_<name>.sql
+     node scripts/railway-apply-sql.mjs lib/db/sql/NNNN_<name>.sql --apply
+     ```
+
+     The first command prints the file's status (`no-table`, `not-applied`, or the recorded SHA-256) and its local SHA-256. The second runs the file with `psql --single-transaction` inside `pgvector` over `railway ssh` and records it in `schema_migrations` in the same transaction; it refuses a file already recorded (`scripts/railway-apply-sql.mjs`, deployment.md). It talks only to `pgvector`, so `web` and `worker` stay stopped. Read each file before running it.
    - Run the comparison again. Continue only when the output matches the last production run.
-   - Do not republish an older commit to match the restored schema. Once the schema is current, the deployed commit runs against it, and publishing starts the deployment before step 5. If forward DDL cannot be found or applied, keep the deployment stopped and record the blocker; republishing an older commit is a fallback only if Replit can publish it without serving traffic `[CONFIRM: with Replit support whether a commit can be published with the deployment kept stopped]`.
-5. Reconcile changes the restore removed. Do every part of this step while the deployment is still stopped.
-   - Restore user sign-in and authorization fields from the user snapshot exported after writes stopped (step 4.1.4), and remove every session and reset token, in one `psql` session against production. The snapshot was taken after the damage, so it can hold the attacker's changes: a raised role, a password the attacker set, a reactivated account, or an account moved into another program. Copying it without review would put that damage back, including access to another program's documents. The operator therefore reviews every changed account before the copy and excludes the ones the incident explains or that nobody can explain.
+   - Do not deploy an older commit to match the restored schema: `railway up` starts the service before step 5 is done. If forward DDL cannot be found or applied, keep both services stopped and record the blocker.
+5. Reconcile changes the restore removed. Do every part of this step while `web` and `worker` are still stopped.
+   - Restore user sign-in and authorization fields from the user snapshot exported after writes stopped (step 4.1.4), and remove every session and reset token, in one production psql session. Upload the snapshot to `/truenote-dumps/` first if it is not on the volume; after path A it is not, because the volume was replaced (use the restored volume's name in `--volume`, from `railway volume list`). The snapshot was taken after the damage, so it can hold the attacker's changes: a raised role, a password the attacker set, a reactivated account, or an account moved into another program. Copying it without review would put that damage back, including access to another program's documents. The operator therefore reviews every changed account before the copy and excludes the ones the incident explains or that nobody can explain.
 
      Load the snapshot and list every account whose authorization fields differ between the snapshot and the restored database:
 
@@ -205,7 +283,7 @@ Skip this section for a scheduled test.
      ORDER BY s.email;
      ```
 
-     Review each row of both lists against the incident's scope and timeline, and record the decision for each account in the evidence record. To explain a change, match it to the `security_events` exported in step 4.1.4: admin changes to an account appear as `http.security_mutation` events whose `resource_id` is `PATCH /api/admin/users/<id>`, `POST /api/admin/users/<id>/reset-password`, or `DELETE /api/admin/users/<id>`, with the actor and `occurred_at`. These events show who acted and when, not the new values. A signed-in password change appears as `POST /api/auth/change-password` with the account as actor. A reset-link password change appears as `POST /api/auth/reset-password` with no actor and no account id, so it cannot be tied to an account; treat a password change with no matching event as unexplained unless the account's owner confirms it. A change is legitimate only if a known, uncompromised actor made it outside the incident's window or scope, or its owner confirms it. Exclude from the copy every account whose change is attributable to the incident or cannot be explained, still inside the same transaction:
+     Review each row of both lists against the incident's scope and timeline, and record the decision for each account in the evidence record. To explain a change, match it to the `security_events` exported in step 4.1.4: admin changes to an account appear as `http.security_mutation` events whose `resource_id` is `PATCH /api/admin/users/<id>`, `POST /api/admin/users/<id>/reset-password`, or `DELETE /api/admin/users/<id>`, with the actor and `occurred_at`. Only the `/api/admin` part is stored in lower case; the rest keeps the client's spelling, so match without regard to case. These events show who acted and when, not the new values. A signed-in password change appears as `POST /api/auth/change-password` with the account as actor. A reset-link password change appears as `POST /api/auth/reset-password` with no actor and no account id, so it cannot be tied to an account; treat a password change with no matching event as unexplained unless the account's owner confirms it. A change is legitimate only if a known, uncompromised actor made it outside the incident's window or scope, or its owner confirms it. Exclude from the copy every account whose change is attributable to the incident or cannot be explained, still inside the same transaction:
 
      ```
      CREATE TEMP TABLE reconcile_exclusions (
@@ -261,31 +339,37 @@ Skip this section for a scheduled test.
 
      Why each part is needed:
      - The restore brings back each user's role, active flag, program assignment, clearance, and password hash as of the restore point. Without the snapshot, a user deactivated, demoted, or moved out of a program after that point regains the withdrawn access, including another program's documents (program scoping is a security boundary), and a password changed after a compromise reverts to the known one. The exported `security_events` cannot replace the snapshot, because they do not record the resulting user state.
-     - `DELETE FROM password_reset_tokens;` invalidates every reset and invitation link. The restore makes tokens that were consumed after the restore point unused again, and `POST /api/auth/reset-password` accepts any unused, unexpired token, sets a new password, and signs the holder in. An old link could then take over the account. No route re-sends an invitation link to an existing account. A user who still needs to set a password has two options: request a new reset link from the sign-in page's forgot-password form (`POST /api/auth/forgot-password`, which emails a link only to an active account and only when `APP_BASE_URL`, `RESEND_API_KEY`, and `RESEND_FROM_EMAIL` are set), or ask an admin to reset the password from the admin Users page (`POST /api/admin/users/<id>/reset-password`). The admin reset returns a temporary password once, which the admin passes to the user outside Truenote, and forces a password change at the next sign-in.
+     - `DELETE FROM password_reset_tokens;` invalidates every reset and invitation link. A path A restore makes tokens that were consumed after the restore point unused again, and `POST /api/auth/reset-password` accepts any unused, unexpired token, sets a new password, and signs the holder in. An old link could then take over the account. A path B dump holds no tokens, so there the statement removes nothing. No route re-sends an invitation link to an existing account. A user who still needs to set a password has two options: request a new reset link from the sign-in page's forgot-password form (`POST /api/auth/forgot-password`, which emails a link only to an active account and only when `APP_BASE_URL`, `RESEND_API_KEY`, and `RESEND_FROM_EMAIL` are set; deployment.md records that email does not work on Railway yet), or ask an admin to reset the password from the admin Users page (`POST /api/admin/users/<id>/reset-password`). The admin reset returns a temporary password once, which the admin passes to the user outside Truenote, and forces a password change at the next sign-in.
      - `DELETE FROM sessions;` stops sessions revoked after the restore point from coming back. Everyone signs in again.
      - Users created after the restore point are missing from the restored database. Recreate only the accounts the review kept, through the admin Users page. Creating one user (`POST /api/admin/users`) sends no email: the admin sets a password or receives a generated temporary password once, passes it to the user outside Truenote, and the user must change it at the first sign-in. Bulk import (`POST /api/admin/users/bulk`) creates CSR accounts only, in the admin's current program, and emails each new account an invitation link to set its password; it creates nothing unless `APP_BASE_URL` is set and, in production, `RESEND_API_KEY` and `RESEND_FROM_EMAIL` are set. Recreate managers and other non-CSR accounts one at a time.
      - Programs created after the restore point are missing too. Recreate them, then reassign and reactivate the users the second `UPDATE` blocked.
-   - Using the exported `security_events`, re-apply every document revocation and retirement made after the restore point. The `document.lifecycle.*` events carry the document version, the previous and new lifecycle state, and the actor in their `details`. The deployment is stopped, so use a local instance: from a repository checkout, start the API server and the Vite frontend as in section 5.4, with every section 3 isolation setting but `DATABASE_URL` set to production (`$PROD_DATABASE_URL`), sign in as a super user, and revoke or retire each version from the admin Documents page. Revocation (`POST /api/documents/<versionId>/revoke`) and retirement (`DELETE /api/documents/<id>`) change only database rows and write their audit events; neither touches App Storage. Sign out when done, which deletes the session this created, and stop both servers.
-   - Documents purged after the restore point come back as rows, but their files were deleted from App Storage. Revoke or retire them again the same way.
-   - Documents uploaded after the restore point are gone from the database but their files are still in App Storage. After step 6, ask program owners to re-upload them. Do not run `sweep-orphans` until this is done.
-6. Start the deployment, including the worker, only after steps 4 and 5 are complete `[CONFIRM: exact Replit control, and whether starting a stopped deployment requires Publish]`. Replit's Publish compares the development database with production ([`.claude/reference/environment.md`](../../.claude/reference/environment.md)); if it proposes a schema change, stop and compare it with step 4, because production should already match the deployed code. Then run the section 5.4 smoke test against production.
+   - Using the exported `security_events`, re-apply every document revocation and retirement made after the restore point. The `document.lifecycle.*` events carry the document version, the previous and new lifecycle state, and the actor in their `details`. `web` is stopped, so use a local instance: from a repository checkout, start the API server and the Vite frontend as in section 5.4, with every section 3 isolation setting but `DATABASE_URL` set to production (`$PROD_DATABASE_URL`, PowerShell `$env:PROD_DATABASE_URL`). From your machine, production is reachable through the `pgvector` public TCP proxy that the template opens (deployment.md) `[CONFIRM: the pgvector variable that holds the public connection string, and the tunnel to use instead if containment closed the proxy]`. Sign in as a super user and revoke or retire each version from the admin Documents page. Revocation (`POST /api/documents/<versionId>/revoke`) and retirement (`DELETE /api/documents/<id>`) change only database rows and write their audit events; neither touches the bucket. Sign out when done, which deletes the session this created, and stop both servers.
+   - Documents purged after the restore point come back as rows, but their files were deleted from the bucket. Revoke or retire them again the same way.
+   - Documents uploaded after the restore point are gone from the database but their files are still in the bucket. After step 6, ask program owners to re-upload them. Do not run `sweep-orphans` until this is done.
+6. Start `web` and `worker` only after steps 4 and 5 are complete, with the owner's go: deploy the currently deployed commit with the two `railway up` commands in deployment.md ("Deploying"), from a checkout at that commit. Dashboard Redeploy on the removed deployment may also work `[CONFIRM: whether Railway can redeploy a removed deployment]`. Wait for `SUCCESS` in `railway deployment list -s <service> --json`, then check that `/health` returns `{"ok":true}`, `railway logs -s web` shows `[api-server] listening on http://0.0.0.0:8080`, and `railway logs -s worker` shows `[worker] ready` (deployment.md). Then run the section 5.4 smoke test against production.
 7. Record the end time. RTO is end time minus decision time.
 
 ### 4.5 Roll back a cutover
 
-If production fails the smoke test after cutover:
+If production fails the checks or the smoke test after cutover:
 
-1. Stop the deployment again `[CONFIRM: exact Replit control]` and keep it stopped through this section.
-2. Neon: run instant restore again, using the backup branch `<branch>_old_<timestamp>` as the source ([Neon: instant restore](https://neon.com/docs/introduction/branch-restore), accessed 2026-10-07).
-3. Replit: `[CONFIRM: whether Replit's point-in-time restore keeps the pre-restore state and how to return to it]`. A scheduled-backup restore "does not delete the current data" per Replit; ask Replit support how to switch back.
-4. Last resort: restore the `pg_dump` taken in step 4.1.5 into an empty production database `[CONFIRM: procedure with Replit support]`.
-5. Before starting the deployment on the rolled-back database, get the incident lead's decision. That database holds the pre-restore state, including the damage the restore was meant to remove and the sessions and reset tokens that existed then. Remove those in one `psql` session against production (`DELETE FROM password_reset_tokens; DELETE FROM sessions;`), contain the damage under the incident response plan, and only then start the deployment.
+1. Stop `web` and `worker` again (`railway down -s web -y`, `railway down -s worker -y`) and keep them stopped through this section, under the rules in section 4.4, step 2.
+2. Path A: mount the previous volume again; Railway keeps it in the project, unmounted ([Railway: backups](https://docs.railway.com/reference/backups), accessed 2026-10-07). `[CONFIRM: the exact steps, for example railway volume detach and railway volume attach (Railway CLI: volume), and whether the swap is staged until Deploy like the restore]`
+3. Path B: swap the databases back, in a shell in the `pgvector` container:
+
+   ```
+   psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "ALTER DATABASE \"$POSTGRES_DB\" RENAME TO truenote_failed_restore"
+   psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "ALTER DATABASE truenote_before_restore RENAME TO \"$POSTGRES_DB\""
+   ```
+
+4. Last resort: restore the dump taken in step 4.1.5 into a new database and swap it in, the same way as path B.
+5. Before starting `web` and `worker` on the rolled-back database, get the incident lead's decision. That database holds the pre-restore state, including the damage the restore was meant to remove and the sessions and reset tokens that existed then. Remove those in one production psql session (`DELETE FROM password_reset_tokens; DELETE FROM sessions;`), contain the damage under the incident response plan, and only then start the services as in section 4.4, step 6.
 6. Record the rollback in the evidence table and open an incident if one is not already open.
 
 ### 4.6 Clean up
 
-1. Delete the test branch or scratch database once the evidence is recorded. Neon backup branches count toward storage until deleted, and some cannot be deleted ([Neon: instant restore](https://neon.com/docs/introduction/branch-restore), accessed 2026-10-07).
-2. Delete local copies of the `pg_dump` file and the user snapshot once they are stored in the restricted location.
+1. Remove the scratch container once the evidence is recorded: `docker rm -f truenote-restore`. After a path B incident restore, drop `truenote_before_restore` (and `truenote_failed_restore`, if it exists) once the incident is closed and the evidence is stored: `psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "DROP DATABASE truenote_before_restore"`. Both hold pre-restore production data, including password hashes and the damage. After a path A restore, the previous volume holds the same, plus every backup newer than the one restored; delete it only after the incident is closed and no newer backup is needed `[CONFIRM: owner decision on how long to keep it]`.
+2. Delete the dump and export files from the volume, and local copies once they are stored in the restricted location.
 3. Stop the test API server and the Vite frontend dev server.
 
 ## 5. Verification checks
@@ -297,7 +381,7 @@ SELECT t AS missing_table
 FROM unnest(ARRAY[
   'programs', 'users', 'sessions', 'documents', 'document_versions', 'chunks',
   'query_log', 'content_sources', 'security_events', 'security_rate_limits',
-  'siem_delivery_outbox'
+  'siem_delivery_outbox', 'schema_migrations'
 ]) AS t
 WHERE to_regclass('public.' || t) IS NULL;
 ```
@@ -310,8 +394,8 @@ Run the baseline query from step 4.1.3 against the target.
 
 Pass, for a restore point in the past:
 
-- each count is no higher than the production baseline, unless the record explains the excess by rows deleted after the restore point. A correct restore brings those rows back, so it can hold more rows than production holds now. Deletions that raise restored counts: users removed through `DELETE /api/admin/users/<id>`, and documents removed by a purge, which also removes their versions and chunks. Find them in the `security_events` exported in step 4.1.4, or for a scheduled test run against production: `SELECT occurred_at, action, resource_id FROM security_events WHERE occurred_at > '<restore point>' AND outcome = 'success' AND (action = 'document.purge' OR resource_id LIKE 'DELETE /api/admin/users/%') ORDER BY sequence;`. Count only rows with `outcome = 'success'`. The audit middleware also records refused and failed requests, with `outcome` set to `denied` (HTTP status 400 to 499) or `failure` (500 and above), and those deleted nothing. A purge writes its `document.purge` event in the same transaction as the delete, so that event exists only for a completed purge. A higher count that no recorded deletion explains fails;
-- `chunks` can also differ because a version's chunks were replaced after the restore point. A rescan (`POST /api/documents/<versionId>/rescan`, allowed only for a quarantined or failed version) queues the version for ingestion again, and ingestion deletes the version's chunks and inserts a new set in one transaction (`artifacts/api-server/src/lib/ingestion/run.ts`). The re-ingest script (`scripts/src/reingest.ts`) does the same for every active, ready version, or one program's with `--program`, and the new set can have a different number of chunks. The target then holds the chunk set from before the replacement, which can be larger or smaller than production's, with no purge or user delete behind it. A rescan appears in `security_events` as an `http.security_mutation` event with `resource_id` `POST /api/documents/<versionId>/rescan` and `outcome = 'success'`. The re-ingest script writes no security event. Find both from the chunk timestamps instead: replaced chunks get a new `created_at`. Run against production:
+- each count is no higher than the production baseline, unless the record explains the excess by rows deleted after the restore point. A correct restore brings those rows back, so it can hold more rows than production holds now. Deletions that raise restored counts: users removed through `DELETE /api/admin/users/<id>`, and documents removed by a purge, which also removes their versions and chunks. Find them in the `security_events` exported in step 4.1.4, or for a scheduled test run against production: `SELECT occurred_at, action, resource_id FROM security_events WHERE occurred_at > '<restore point>' AND outcome = 'success' AND (action = 'document.purge' OR resource_id ILIKE 'DELETE /api/admin/users/%') ORDER BY sequence;`. `ILIKE` matches the path whatever letter case the client used after `/api/admin`. Count only rows with `outcome = 'success'`. The audit middleware also records refused and failed requests, with `outcome` set to `denied` (HTTP status 400 to 499) or `failure` (500 and above), and those deleted nothing. A purge writes its `document.purge` event in the same transaction as the delete, so that event exists only for a completed purge. A higher count that no recorded deletion explains fails;
+- `chunks` can also differ because a version's chunks were replaced after the restore point. A rescan (`POST /api/documents/<versionId>/rescan`, allowed only for a quarantined or failed version) queues the version for ingestion again, and ingestion deletes the version's chunks and inserts a new set in one transaction (`artifacts/api-server/src/lib/ingestion/run.ts`). The re-ingest script (`scripts/src/reingest.ts`, run on Railway inside the `worker` container) does the same for every active, ready version, or one program's with `--program`, and the new set can have a different number of chunks. The target then holds the chunk set from before the replacement, which can be larger or smaller than production's, with no purge or user delete behind it. A rescan appears in `security_events` as an `http.security_mutation` event with `resource_id` `POST /api/documents/<versionId>/rescan` (match without regard to case) and `outcome = 'success'`. The re-ingest script writes no security event. Find both from the chunk timestamps instead: replaced chunks get a new `created_at`. Run against production:
 
   ```sql
   SELECT c.document_version_id, count(*) AS production_chunks,
@@ -329,7 +413,7 @@ Pass, for a restore point in the past:
 - tables that only grow (`security_events`, `query_log`) are within 10% of their restore-point counts (proposed tolerance);
 - `users`, `programs`, and `documents` are not zero unless production is also zero.
 
-Pass, for path C: counts equal the export-time counts captured immediately before the `pg_dump` in step 4.1.5, not the step 4.1.3 baseline, which was taken earlier and can differ because of writes made in between. Any difference is explained in the record by writes made between that count query and the start of `pg_dump`.
+Pass, for path B: counts equal the export-time counts captured immediately before the `pg_dump` in step 4.1.5, not the step 4.1.3 baseline, which was taken earlier and can differ because of writes made in between. Any difference is explained in the record by writes made between that count query and the start of `pg_dump`. `sessions` is empty on the target by design; the baseline query does not count it.
 
 ### 5.3 Security-event hash chain
 
@@ -367,15 +451,15 @@ WHERE se.event_hash <> encode(digest(concat_ws('|',
   se.details::text), 'sha256'), 'hex');
 ```
 
-Pass: `hash_mismatches = 0`. The hash covers `occurred_at` as text, so the result depends on the session time zone matching the one used when events were written. `[CONFIRM: run once on known-good production data and confirm it returns 0 with TimeZone set to UTC; if not, find the time zone the application's connections use]`
+Pass: `hash_mismatches = 0`. The hash covers `occurred_at` as text, so the result depends on the session time zone matching the one used when events were written. Events written before 2026-10-07 were written on the previous host and copied with their hashes (deployment.md, "Data copy"). `[CONFIRM: run once on production and confirm it returns 0 with TimeZone set to UTC; if not, find the time zone the application's connections used]`
 
 Also confirm that the target's last event sequence matches the restore point: no event later than the restore point should exist on the target.
 
 ### 5.4 Application smoke test
 
-Against the target, with the isolation settings from section 3. The API server serves the built frontend only when `NODE_ENV=production`, which section 3 forbids, so the test runs the Vite dev server in front of the API, as in local development. Run both from a repository checkout on a machine whose firewall does not expose these ports: the Vite dev server listens on all interfaces and accepts any host name, and it will serve restored production data.
+Against the target, with the isolation settings from section 3. The API server serves the built frontend only when `NODE_ENV=production`, which section 3 forbids, so the test runs the Vite dev server in front of the API, as in local development. Run both from a repository checkout on a machine whose firewall does not expose port 3001: the API server listens on all interfaces (`artifacts/api-server/src/index.ts`) and will serve restored production data. The Vite dev server listens on localhost, because `artifacts/rag-app/vite.config.ts` sets no `server.host`.
 
-1. In one shell, with `DATABASE_URL` set to the target, `RAG_STORAGE_DRIVER=memory`, `LOCAL_LOGIN_MODE=enabled`, and no `OIDC_*` variable set (section 3), start the API server on port 3001:
+1. In one shell, with `DATABASE_URL` set to the target, `RAG_STORAGE_DRIVER=memory`, `LOCAL_LOGIN_MODE=enabled`, and no `OIDC_*` or `S3_*` variable set (section 3), start the API server on port 3001:
 
    ```
    API_PORT=3001 pnpm --filter @workspace/api-server run dev
@@ -387,7 +471,7 @@ Against the target, with the isolation settings from section 3. The API server s
    $env:API_PORT = '3001'; pnpm --filter @workspace/api-server run dev
    ```
 
-   Startup must log `[api-server] listening on http://0.0.0.0:3001`.
+   Startup must log `[api-server] listening on http://0.0.0.0:3001`. Asking questions needs `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, and `COHERE_API_KEY` in this shell; set them one by one with the shell-table pattern, not with `railway run`.
 2. In a second shell, start the frontend on port 5173, pointed at that API:
 
    ```
@@ -405,37 +489,48 @@ Against the target, with the isolation settings from section 3. The API server s
    - API origin, `http://localhost:3001`: `GET http://localhost:3001/health` returns `{"ok":true}`. The Vite proxy forwards only `/api`, so `/health` on the frontend origin does not reach the API.
    - Browser origin, `http://localhost:5173`: every browser step below. Outside production the session cookie is not marked Secure, so plain HTTP works, and the API accepts sign-in and other mutations from the origin the Vite proxy forwards.
 4. In the browser, sign in as a super user. The admin Documents, Users, and Security pages load.
-5. Sign in as a CSR test account in a test program `[CONFIRM: a synthetic test program, its documents, and a CSR test account exist in production]` and ask a question whose answer is in that program's documents. The answer has at least one citation, and opening it shows the cited excerpt.
+5. Sign in as a CSR test account in a test program and ask a question whose answer is in that program's documents. The answer has at least one citation, and opening it shows the cited excerpt. `[CONFIRM: a synthetic test program, its documents, and a CSR test account exist in production; while production holds demo data only, the demo CSR account from DEMO_LOGIN_ACCOUNTS (deployment.md) can serve]`
 6. Ask a question that only another program's documents can answer. The answer is a refusal.
 7. Optional, costs provider tokens: `pnpm --filter @workspace/scripts run eval -- --limit 5` with `DATABASE_URL` set to the target. No new failures compared with the last production eval run.
 
 `GET /api/admin/observability/security-audit` on the test instance reports `deliveryConfigured: false`; that is expected with the SIEM webhook unset.
 
-After cutover, repeat the health check and steps 4 to 6 against production, at its deployment URL and with the worker running, and check that `GET /api/admin/observability/security-audit` shows the SIEM backlog draining.
+After cutover, repeat the health check and steps 4 to 6 against production at `https://web-production-62818.up.railway.app` (or `https://truenote.org` once DNS points at Railway, deployment.md), with the worker running. If a SIEM receiver is configured by then, check that `GET /api/admin/observability/security-audit` shows the backlog draining; today the SIEM variables are not set on Railway (deployment.md), so it reports `deliveryConfigured: false` there too.
 
 ## 6. Object storage recovery
 
-App Storage has no provider backup (section 1). If files are lost:
+The bucket has no backup or versioning (section 1). If files are lost:
 
-1. List affected versions: `SELECT dv.id, d.title, d.program_id, dv.source_url FROM document_versions dv JOIN documents d ON d.id = dv.document_id;` then check each key in the Replit App Storage tool or from the last export.
+1. List affected versions: `SELECT dv.id, d.title, d.program_id, dv.source_url FROM document_versions dv JOIN documents d ON d.id = dv.document_id;` then check each key in the Railway bucket view, which `scripts/src/sweep-orphans.ts` names for this comparison, or with any S3 client given the bucket credentials and the endpoint `https://t3.storageapi.dev`.
 2. Existing answers keep working, because they read parsed text and chunks from the database.
-3. Restore missing files from the last bucket export `[CONFIRM: export location]`, or ask program owners for the originals and upload them as new versions.
+3. Restore missing files from the last bucket export `[CONFIRM: export location; none exists today]`, or ask program owners for the originals and upload them as new versions.
+4. If the bucket itself was deleted, restore it within 52 hours from the project's Activity feed: select the change that removed it and click Restore ([Railway: storage buckets](https://docs.railway.com/guides/storage-buckets), accessed 2026-10-07).
 
 ## 7. Secrets recovery
 
-1. For each secret name, re-issue the value at its provider, set it in Replit production app secrets, and republish.
-2. For the production database credentials, use Regenerate credentials in the Replit database tool ([Replit: connection details](https://docs.replit.com/features/data-and-storage/connection-details), accessed 2026-10-07).
-3. Run the smoke test in section 5.4 against production.
+1. For each variable, re-issue the value at its provider, then set it on each service that has it (deployment.md, "Variables"), passing the value on standard input, not on the command line:
+
+   ```
+   railway variable set <KEY> --stdin --skip-deploys -s worker
+   railway variable set <KEY> --stdin -s web
+   ```
+
+   `--skip-deploys` batches changes without a redeploy; a `set` without it redeploys that service (deployment.md, [Railway CLI: variable](https://docs.railway.com/cli/variable), accessed 2026-10-07). Make the last change on each service without `--skip-deploys`, or deploy that service afterwards as in deployment.md, so both services run the new value `[CONFIRM: that the deploy a later set triggers includes earlier --skip-deploys changes]`. While `web` and `worker` are stopped for a restore, use `--skip-deploys` on every change (section 4.4, step 2).
+2. Bucket credentials: `railway bucket credentials --reset -b truenote-storage` invalidates the existing credentials and creates new ones; `railway bucket credentials -b truenote-storage` prints them ([Railway CLI: bucket](https://docs.railway.com/cli/bucket), accessed 2026-10-07). Set `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` on both services as in step 1. Uploads, rescans, and purges fail between the reset and the redeploy. Do not paste the printed values into chat or tickets.
+3. Database credentials: `[CONFIRM: the procedure to change the pgvector password so that DATABASE_URL_PRIVATE and the public connection string change; deployment.md documents none]`. Closing the `pgvector` public TCP proxy, an open decision in deployment.md ("After cutover"), stops a leaked public connection string from reaching the database `[CONFIRM: the Railway control that removes the proxy]`.
+4. Run the smoke test in section 5.4 against production.
 
 ## 8. Test schedule (proposed)
 
-- Run a restore test (sections 4.1 to 4.3, 4.6, and 5) every 3 months and after any change to the database plan, PITR window, or schema-migration process.
+- Take the weekly dump from section 2 until volume backups are on.
+- Run a path B restore test (sections 4.1 to 4.3, 4.6, and 5) every 3 months, and after any change to backup settings, the `pgvector` image, or the schema-change process.
+- Once the owner turns on volume backups, decide whether to rehearse path A. A rehearsal replaces production's volume, so it needs a maintenance window, the owner's go, `web` and `worker` stopped throughout, and the previous volume kept for rollback `[CONFIRM: owner decision to rehearse path A or to accept it untested]`. Until then path A is untested.
 - Run the object-storage and secrets checks (sections 6 and 7, without changing production values) every 6 months, together with an incident-response tabletop exercise.
 
 ## 9. Restore test evidence record
 
 Add one row per restore test or real restore. Keep raw query output in the restricted evidence location `[CONFIRM: location]`; put only the summary here.
 
-| Date (UTC) | Operator | Reason (test / incident id) | Path (A / B / C) | Restore point (UTC) | Measured RPO | Measured RTO | Checks passed (5.1 / 5.2 / 5.3 link / 5.3 recompute / 5.4) | Issues and follow-up |
+| Date (UTC) | Operator | Reason (test / incident id) | Path (A / B) and target (scratch container / scratch database / production after path A) | Restore point (UTC) | Measured RPO | Measured RTO | Checks passed (5.1 / 5.2 / 5.3 link / 5.3 recompute / 5.4) | Issues and follow-up |
 |---|---|---|---|---|---|---|---|---|
 | | | | | | | | | |
