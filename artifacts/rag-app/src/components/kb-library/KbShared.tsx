@@ -430,11 +430,7 @@ export function NoteForm({
         placeholder="What do you want to remember about this source?"
         className="w-full resize-y rounded-md border border-input bg-card px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
       />
-      <div id={helpId} className="mt-1.5 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <Lock className="h-3.5 w-3.5" aria-hidden />
-          Only you can see this note.
-        </span>
+      <div id={helpId} className="mt-1.5 flex items-center justify-end gap-3 text-xs text-muted-foreground">
         <span className="tabular-nums">
           {value.length} / {KB_NOTE_MAX}
         </span>
@@ -529,7 +525,7 @@ export function NoteSticky({ note, className }: { note: string | null; className
       style={NOTE_STICKY_STYLE}
     >
       <Lock className="h-3.5 w-3.5 shrink-0 text-foreground/70" aria-hidden />
-      <span className="sr-only">My private note: </span>
+      <span className="sr-only">My notes: </span>
       <span className="min-w-0 truncate">{note}</span>
     </p>
   );

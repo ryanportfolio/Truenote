@@ -20,7 +20,6 @@ const ACCEPT_EXTENSIONS = new Set([
 ]);
 
 const MAX_BYTES = 20 * 1024 * 1024;
-const MAX_BATCH_FILES = 20;
 const UPLOAD_CONCURRENCY = 3;
 
 type FileUploadStatus = "ready" | "uploading" | "uploaded" | "failed";
@@ -121,12 +120,6 @@ export function UploadForm({
   function selectFiles(files: File[]): void {
     setSuccess(null);
     setFileResults([]);
-    if (files.length > MAX_BATCH_FILES) {
-      setSelectedFiles([]);
-      setInputFiles([]);
-      setError(`Choose up to ${MAX_BATCH_FILES} documents at a time.`);
-      return;
-    }
 
     const valid: File[] = [];
     const problems: string[] = [];
@@ -406,8 +399,7 @@ export function UploadForm({
           className="text-sm file:mr-3 file:cursor-pointer file:rounded-full file:border file:border-solid file:border-border file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-secondary-foreground hover:file:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         />
         <span className="text-xs text-muted-foreground">
-          Select or drop up to {MAX_BATCH_FILES} documents. PDF / DOCX / PNG / JPG / WebP /
-          Markdown / TXT. Max 20MB each.
+          PDF / DOCX / PNG / JPG / WebP / Markdown / TXT. Max 20MB each.
         </span>
       </label>
 

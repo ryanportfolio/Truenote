@@ -33,10 +33,12 @@ const WORKLOAD_LIMITS: Record<
   { envKey: string; fallback: number }
 > = {
   // Document upload and rescan share one bucket because both can trigger
-  // malware scanning, parsing, embedding, and provider cost.
+  // malware scanning, parsing, embedding, and provider cost. High enough for
+  // a manager loading a whole library in one go; it only stops a runaway
+  // script.
   document_ingestion: {
     envKey: "DOCUMENT_INGEST_RATE_LIMIT_PER_USER",
-    fallback: 60
+    fallback: 1000
   },
   // One run can evaluate up to 250 questions through the full RAG pipeline.
   evaluation_run: {

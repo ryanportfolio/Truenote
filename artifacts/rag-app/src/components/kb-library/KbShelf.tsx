@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useId, useRef, useState } from "react";
 import { Link } from "wouter";
-import { Star } from "lucide-react";
+import { Pencil, Star } from "lucide-react";
 import { KB_NUMBERED_PINS, docCategoryPaths, type KbShortcut } from "@/lib/kbLibrary";
 import { kbColorDot } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
@@ -77,7 +77,7 @@ function ShortcutTile({ shortcut, index, count }: { shortcut: KbShortcut; index:
       {doc.myColor ? (
         <span aria-hidden className="absolute inset-y-2 left-0 w-1 rounded-r-full" style={kbColorDot(doc.myColor)} />
       ) : null}
-      <span className="flex items-center justify-between gap-2 text-muted-foreground">
+      <span className="flex items-center text-muted-foreground">
         {/* Above the tile link's click overlay so hovering the icon shows the card. */}
         <span
           aria-hidden
@@ -85,9 +85,6 @@ function ShortcutTile({ shortcut, index, count }: { shortcut: KbShortcut; index:
           data-kb-shortcut-why={source.label}
         >
           <source.Glyph />
-        </span>
-        <span aria-hidden className="text-xs font-medium tabular-nums">
-          {number}
         </span>
       </span>
       {/* The hover card: why the source is here and its folder. Shown on icon hover and on keyboard focus, below the tile so its title stays readable. */}
@@ -124,8 +121,8 @@ function ShortcutTile({ shortcut, index, count }: { shortcut: KbShortcut; index:
 
 /**
  * "Your shortcuts": one shelf of up to nine tiles, team shortcuts first, then
- * the user's own, then sources they opened lately. Each tile has the number
- * key that opens it. Every numbered tile stays in view: one row of equal
+ * the user's own, then sources they opened lately. The number keys 1 to 9
+ * still open the tiles in order (no visible numbers). Every tile stays in view: one row of equal
  * tiles from 1280px (titles clamp to three lines), a five-column grid from
  * 1024px (five, then four), a wrapping grid from 640px, and a sideways row on
  * phones.
@@ -137,29 +134,19 @@ export const KbShortcutShelf = forwardRef<
   return (
     <section ref={ref} aria-labelledby="kb-shortcuts" data-kb-shelf className="flex min-w-0 flex-col gap-2">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <div className="flex flex-wrap items-baseline gap-x-3">
-          <h2 id="kb-shortcuts" className="text-xl font-semibold tracking-tight">
-            Your shortcuts
-          </h2>
-          {shelf.length > 0 ? (
-            <p data-kb-pin-hint className="hidden text-xs text-muted-foreground sm:block [@media(pointer:coarse)]:hidden">
-              Press <kbd className="kbd">1</kbd>
-              {shelf.length > 1 ? (
-                <>
-                  {" "}to <kbd className="kbd">{shelf.length}</kbd>
-                </>
-              ) : null}{" "}
-              to open one. Star a source to add it.
-            </p>
-          ) : null}
-        </div>
+        <h2 id="kb-shortcuts" className="text-xl font-semibold tracking-tight">
+          Your shortcuts
+        </h2>
         <button
           type="button"
           onClick={onEdit}
           data-kb-edit-shortcuts
-          className="cursor-pointer rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          aria-label="Edit shortcuts"
+          title="See and change your shortcuts"
+          className="btn-whisper gap-1.5 px-3 py-1.5 text-sm"
         >
-          Edit shortcuts
+          <Pencil className="h-4 w-4" aria-hidden />
+          Edit
         </button>
       </div>
       {shelf.length > 0 ? (

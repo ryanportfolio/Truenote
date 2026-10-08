@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useLocation, useSearch } from "wouter";
-import { BookOpen, ChevronDown, FolderCog, Link2, Search, X } from "lucide-react";
+import { BookOpen, FolderClosed, FolderCog, Link2, List, ListTree, Search, X } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import {
   EMPTY_FILTERS,
@@ -23,7 +23,8 @@ import {
   usedOftenIds,
   type KbFilters,
   type KbPrefs,
-  type KbTab
+  type KbTab,
+  type KbView
 } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
 import type { CurrentUser, KbDocumentListResponse, KbLibraryColor } from "@/types/api";
@@ -32,7 +33,6 @@ import { KbLibraryContext, type KbDialogState, type KbLibraryContextValue } from
 import { KbDialogs } from "./KbDialogs";
 import { KbFilterSentence, KbFiltersButton } from "./KbFilters";
 import { KbLabels } from "./KbLabels";
-import { KbMenu } from "./KbMenu";
 import { KbOrganize } from "./KbOrganize";
 import { AskTruenoteLink, KbSearch } from "./KbSearch";
 import { KbShortcutDock, KbShortcutShelf } from "./KbShelf";
@@ -53,6 +53,13 @@ const TABS: Array<{ id: KbTab; label: string }> = [
   { id: "all", label: "All sources" },
   { id: "shortcuts", label: "My shortcuts" }
 ];
+
+const VIEW_ICONS: Record<KbView, typeof List> = { folders: FolderClosed, outline: ListTree, list: List };
+const VIEW_DETAILS: Record<KbView, string> = {
+  folders: "Folder cards",
+  outline: "Nested folders",
+  list: "One list"
+};
 
 /**
  * The Sources library: the shortcuts shelf, the search box with its results
@@ -488,36 +495,40 @@ export function KbLibrary({
                 </div>
                 <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
                   {prefs.tab === "all" ? (
-                    <KbMenu
-                      label={`View: ${KB_VIEW_LABELS[prefs.view]}. Change view`}
-                      title="Change how sources are shown"
-                      buttonClassName="btn-whisper gap-1.5 px-3 py-1.5 text-sm"
-                      items={KB_VIEWS.map((view) => ({
-                        label: KB_VIEW_LABELS[view],
-                        detail:
-                          view === "folders" ? "Folder cards" : view === "outline" ? "Nested folders" : "One list",
-                        radio: true,
-                        checked: prefs.view === view,
-                        onSelect: () => {
-                          if (view === prefs.view) return;
-                          setPrefs((p) => ({ ...p, view }));
-                          if (new URLSearchParams(search).has("folder")) navigate(folderHref(search, null), { replace: true });
-                        }
-                      }))}
+                    <div
+                      role="group"
+                      aria-label="View"
+                      data-kb-view={prefs.view}
+                      className="flex overflow-hidden rounded-lg border border-border bg-card"
                     >
-                      <span data-kb-view={prefs.view}>{KB_VIEW_LABELS[prefs.view]}</span>
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden />
-                    </KbMenu>
-                  ) : null}
-                  {/* An open folder shows its own count in its header. */}
-                  {scope === null ? (
-                    <p data-kb-count className="text-sm tabular-nums text-muted-foreground" aria-live="polite">
-                      {prefs.tab === "shortcuts"
-                        ? `${shownCount} ${shownCount === 1 ? "shortcut" : "shortcuts"}`
-                        : narrowed
-                          ? `${shownCount} of ${data.items.length} sources`
-                          : `${shownCount} ${shownCount === 1 ? "source" : "sources"}`}
-                    </p>
+                      {KB_VIEWS.map((view) => {
+                        const Icon = VIEW_ICONS[view];
+                        const selected = prefs.view === view;
+                        return (
+                          <button
+                            key={view}
+                            type="button"
+                            aria-pressed={selected}
+                            data-kb-view-option={view}
+                            title={VIEW_DETAILS[view]}
+                            onClick={() => {
+                              if (selected) return;
+                              setPrefs((p) => ({ ...p, view }));
+                              if (new URLSearchParams(search).has("folder")) navigate(folderHref(search, null), { replace: true });
+                            }}
+                            className={cn(
+                              "flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                              selected
+                                ? "bg-primary/10 font-medium text-primary"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            )}
+                          >
+                            <Icon className="h-4 w-4" aria-hidden />
+                            {KB_VIEW_LABELS[view]}
+                          </button>
+                        );
+                      })}
+                    </div>
                   ) : null}
                   {canOrganize ? (
                     <button

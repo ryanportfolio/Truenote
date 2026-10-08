@@ -13,7 +13,8 @@ export const AUDITED_ROUTE_BASES = [
   "/api/admin",
   "/api/documents",
   "/api/auth",
-  "/api/kb/library"
+  "/api/kb/library",
+  "/api/ask-examples"
 ];
 
 /**

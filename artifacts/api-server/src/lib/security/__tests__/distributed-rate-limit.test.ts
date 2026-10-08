@@ -20,7 +20,7 @@ function executorWith(
 describe("distributed rate limits", () => {
   it("uses bounded workload defaults and ignores invalid overrides", () => {
     expect(workloadRateLimitSettings("document_ingestion", {})).toEqual({
-      limit: 60,
+      limit: 1000,
       windowSeconds: 3600
     });
     expect(

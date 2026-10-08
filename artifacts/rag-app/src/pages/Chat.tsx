@@ -10,6 +10,7 @@ import {
 import { History, MessageSquare } from "lucide-react";
 import { askQuestionStream, getSession, listSessions } from "@/lib/api";
 import { EmptyState } from "@/components/EmptyState";
+import { AskExamples } from "@/components/chat/AskExamples";
 import { RelativeTime } from "@/components/RelativeTime";
 import {
   hasAtLeastRole,
@@ -83,15 +84,6 @@ function historyFrom(exchanges: Exchange[]): AskHistoryTurn[] {
     .slice(-MAX_HISTORY_SENT)
     .map((e) => ({ question: e.question, answer: e.result?.answer ?? "" }));
 }
-
-// First-run teaching examples. Every question must stay answerable by the
-// demo corpus in scripts/src/seed.ts. Clicking prefills the textarea (never
-// auto-submits) so the CSR sees the register questions are asked in.
-const EXAMPLE_QUESTIONS = [
-  "What's the cancellation fee on the Basic plan?",
-  "How long does a refund take to post to the original card?",
-  "Who must approve a courtesy refund?"
-] as const;
 
 export function ChatPage({ user }: ChatPageProps): JSX.Element {
   // Super_users need a program selection to ask anything. Non-super_user
@@ -406,19 +398,13 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
 
         {exchanges.length === 0 && hasProgram ? (
           <EmptyState icon={MessageSquare}>
-            {EXAMPLE_QUESTIONS.map((q) => (
-              <button
-                key={q}
-                type="button"
-                onClick={() => {
-                  setQuestion(q);
-                  textareaRef.current?.focus();
-                }}
-                className="example-question"
-              >
-                {q}
-              </button>
-            ))}
+            <AskExamples
+              canEdit={hasAtLeastRole(user, "manager")}
+              onPick={(q) => {
+                setQuestion(q);
+                textareaRef.current?.focus();
+              }}
+            />
           </EmptyState>
         ) : null}
 

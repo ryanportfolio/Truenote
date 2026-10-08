@@ -15,6 +15,6 @@ describe("UploadForm original source location", () => {
 
     expect(html).toContain('name="file"');
     expect(html).toContain('multiple=""');
-    expect(html).toContain("Select or drop up to 20 documents");
+    expect(html).not.toContain("up to 20 documents");
   });
 });

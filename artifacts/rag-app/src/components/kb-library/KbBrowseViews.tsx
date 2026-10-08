@@ -2,7 +2,6 @@ import { useId, type ReactNode } from "react";
 import { Link } from "wouter";
 import { ChevronRight, Palette, Undo2 } from "lucide-react";
 import {
-  KB_NUMBERED_PINS,
   KB_UNCATEGORIZED,
   docsInFolder,
   docsWithoutFolder,
@@ -552,11 +551,6 @@ export function KbMyShortcuts({ visible, filtering }: { visible: KbDocumentListI
   const { team, mine } = myShortcutGroups(visible);
   return (
     <div className="flex flex-col gap-4" data-kb-my-shortcuts>
-      <p className="text-sm text-muted-foreground">
-        Your team&apos;s shortcuts and the sources you starred, in shelf order; the first {KB_NUMBERED_PINS} show on the
-        shelf with their number keys. Star a source to add it; press its star again to remove it. Your manager chooses
-        the ones from your team.
-      </p>
       {team.length > 0 ? <ShortcutGroup title="From your team" docs={team} /> : null}
       {mine.length > 0 ? <ShortcutGroup title="Added by you" docs={mine} /> : null}
       {team.length + mine.length === 0 ? (

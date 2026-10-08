@@ -28,5 +28,8 @@ export const personalLibraryWriteLimit = perUserLimit(120, 60_000);
 /** Manager library edits (folders, tags, team shortcuts): 120 a minute per user. */
 export const libraryOrganizeLimit = perUserLimit(120, 60_000);
 
+/** Ask page example question edits: 30 a minute per user. */
+export const askExamplesWriteLimit = perUserLimit(30, 60_000);
+
 /** Source usage analytics reads (heavier queries): 60 a minute per user. */
 export const sourceUsageReadLimit = perUserLimit(60, 60_000);
