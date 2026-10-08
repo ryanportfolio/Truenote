@@ -490,6 +490,24 @@ function jsonRequest(method: string, body: unknown): RequestInit {
   });
 }
 
+export interface AskExamples {
+  questions: string[];
+  /** False when the program uses the built-in defaults. */
+  custom: boolean;
+}
+
+/** Example questions shown on the empty Ask page for the current program. */
+export async function fetchAskExamples(): Promise<AskExamples> {
+  const response = await fetch("/api/ask-examples", withDefaults());
+  return asJson<AskExamples>(response);
+}
+
+/** Replace the program's example questions (manager+). An empty list restores the defaults. Max 6. */
+export async function saveAskExamples(questions: string[]): Promise<AskExamples> {
+  const response = await fetch("/api/ask-examples", jsonRequest("PUT", { questions }));
+  return asJson<AskExamples>(response);
+}
+
 /** Personal pin. Allowed for every role, demo accounts included. */
 export async function setKbPin(
   documentId: string,
