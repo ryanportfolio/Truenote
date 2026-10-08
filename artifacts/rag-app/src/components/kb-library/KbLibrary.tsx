@@ -15,7 +15,6 @@ import {
   folderFromSearch,
   idsFromSearch,
   loadPrefs,
-  myPins,
   savePrefs,
   searchLibrary,
   shortcutShelf,
@@ -28,7 +27,7 @@ import {
 } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
 import type { CurrentUser, KbDocumentListResponse, KbLibraryColor } from "@/types/api";
-import { KbFoldersView, KbListView, KbMyShortcuts, KbOutlineView, folderHref } from "./KbBrowseViews";
+import { KbFoldersView, KbListView, KbMyShortcuts, KbOutlineView, folderHref, myShortcutGroups } from "./KbBrowseViews";
 import { KbLibraryContext, type KbDialogState, type KbLibraryContextValue } from "./KbContext";
 import { KbDialogs } from "./KbDialogs";
 import { KbFilterSentence, KbFiltersButton } from "./KbFilters";
@@ -172,7 +171,8 @@ export function KbLibrary({
   const results = useMemo(() => searchLibrary(visible, query, lookup), [visible, query, lookup]);
   const tags = useMemo(() => sortTags(data.tags), [data.tags]);
   const scope = prefs.tab === "all" && prefs.view === "folders" ? folderFromSearch(search, lookup.tree) : null;
-  const shownCount = prefs.tab === "shortcuts" ? myPins(visible).length : visible.length;
+  const shortcutGroups = myShortcutGroups(visible);
+  const shownCount = prefs.tab === "shortcuts" ? shortcutGroups.team.length + shortcutGroups.mine.length : visible.length;
   const sentence = filterSentence({ shown: shownCount, query, filters, tagsById: lookup.tagsById, labels: data.labels });
   // A sort other than the view's own is named beside the filters, with Reset.
   const sortChanged = prefs.tab === "all" && sort !== defaultSort(prefs.view);
