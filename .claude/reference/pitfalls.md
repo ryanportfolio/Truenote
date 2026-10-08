@@ -10,7 +10,7 @@ In local dev, `artifacts/rag-app/vite.config.ts` reads `API_PORT` at startup and
 
 If you `boss.send('some-queue', payload)` without first calling `boss.createQueue('some-queue', opts)`, pg-boss v10 returns `null` (no error, no warning, no row in `pgboss.job`). The worker side `boss.work('some-queue', …)` waits forever. The send appears to succeed (no exception), the upload flow flips to `parsing`, and nothing ever runs. Classic silent-partial-success — the bug class our meta-pattern flags.
 
-Fix in code: `artifacts/api-server/src/lib/ingestion/queue.ts` exports `ensureQueue(boss, name)` that calls `boss.createQueue(name, opts)` before send/work. Both the api-server (sender) and the ingestion-worker (receiver) call it on startup. The wrapper catches "already exists" errors since `createQueue` is idempotent at the SQL level but throws on duplicate.
+Fix in code: `artifacts/api-server/src/lib/jobs/boss.ts` exports `ensureQueue(boss, name, policy)`, which calls `boss.createQueue(name, { name, ...policy })`. Every send and work path calls it first: `lib/ingestion/queue.ts` (`enqueueIngestion` in the api-server, `startIngestionWorker` in the worker process `scripts/src/worker.ts`) and `lib/eval/queue.ts`. The wrapper swallows "already exists", duplicate and unique-constraint errors, because the api-server and the worker can race on first boot and some pg-boss versions surface the unique error even though the SQL is idempotent.
 
 Detection rule for the next change: if you add a new pg-boss queue, you MUST call `ensureQueue` on it from every process that sends OR works it. If you forget, the symptom is "uploads stuck in `parsing` forever, no worker log lines, no error anywhere" — and you'll spend an hour staring at the worker before realizing the job never landed.
 
@@ -20,7 +20,7 @@ Confirmation method when in doubt: `SELECT name, state FROM pgboss.job ORDER BY 
 
 Firefox (and some Chrome configs) don't have a built-in MIME mapping for `.md`. The browser sends `application/octet-stream` in the multipart upload, the server-side `ACCEPTED_MIMES` check fails, and the user sees a generic "file type not accepted" rejection on a perfectly valid markdown file.
 
-Fix in code: `artifacts/api-server/src/routes/documents.ts` defines `normalizeMimeType(mimetype, originalName)` (line 34) that sniffs the filename extension when the browser-provided MIME is empty or `application/octet-stream`. The route at line 117 calls it before the `ACCEPTED_MIMES.has(…)` check, and the canonical normalized value is what gets persisted on `documents.mime_type` (line 144).
+Fix in code: `artifacts/api-server/src/routes/documents.ts` defines `normalizeMimeType(mimetype, originalName)`, which sniffs the filename extension when the browser-provided MIME is empty or `application/octet-stream`. The upload route calls it before the `ACCEPTED_MIMES.has(…)` check, and the canonical normalized value is what gets persisted on `document_versions.mime_type`.
 
 Detection rule for the next change: when adding a new accepted file type, extend `normalizeMimeType`'s extension table FIRST, then add the canonical MIME to `ACCEPTED_MIMES`. Never trust `file.mimetype` raw — it's whatever the browser felt like sending. Test from both Firefox and Chrome before declaring done.
 
@@ -30,7 +30,7 @@ Meta-pattern (also see pg-boss above): browser-provided values are user input. T
 
 Phase 2A's `users` table originally used `citext` for case-insensitive email comparison. The extension existed where the DDL was first tried, but the production deploy-time migration did not run `CREATE EXTENSION`, so `CREATE TABLE users (... email citext NOT NULL ...)` failed with `type "citext" does not exist`. An extension present in one database and absent in production works until deploy, then fails.
 
-Fix applied (commit `c908ddf` on main): swap `citext` for plain `text` and normalize emails at the application layer; every write and lookup calls `.toLowerCase()` first. See `lib/db/src/schema.ts` (email column), `artifacts/api-server/src/lib/auth/bootstrap.ts:29` (insert path), `artifacts/api-server/src/routes/auth.ts:94` (login path). Net behavior is identical to citext for our access patterns.
+Fix applied (commit `c908ddf` on main): swap `citext` for plain `text` and normalize emails at the application layer; every write and lookup calls `.toLowerCase()` first. See `lib/db/src/schema.ts` (email column), `bootstrapSuperUser` in `artifacts/api-server/src/lib/auth/bootstrap.ts` (insert path), and the login route in `artifacts/api-server/src/routes/auth.ts`. Net behavior is identical to citext for our access patterns.
 
 **Detection rule for the next change:** the only extensions confirmed on Railway `pgvector` are `vector`, `pg_trgm` and `pgcrypto` (`deployment.md`). A new extension needs `CREATE EXTENSION IF NOT EXISTS` in its `lib/db/sql/` file and a check on `pgvector` that it installed before any code depends on it; otherwise plan an app-layer fallback.
 
@@ -50,7 +50,7 @@ Fix (commit `cfc2ea8` on main), in `artifacts/rag-app/src/pages/AdminUsers.tsx`:
 
 ### 2026-07-15: pnpm 10 dependency audit endpoint retired
 
-`pnpm audit` can fail with HTTP 410 even when dependency state is unchanged because pnpm 10 calls npm's retired legacy audit endpoint. Keep the project's install and test toolchain pinned, but run the CI audit with a pinned pnpm 11 binary and `--pm-on-fail=ignore` so the audit-only major can read the pnpm 10 project (`.github/workflows/security.yml:40`). A successful typecheck and test run does not make this failure safe to ignore; the replacement audit must pass before merge.
+`pnpm audit` can fail with HTTP 410 even when dependency state is unchanged because pnpm 10 calls npm's retired legacy audit endpoint. Keep the project's install and test toolchain pinned, but run the CI audit with a pinned pnpm 11 binary and `--pm-on-fail=ignore` so the audit-only major can read the pnpm 10 project (`.github/workflows/security.yml`, step "High-severity production dependency audit"). A successful typecheck and test run does not make this failure safe to ignore; the replacement audit must pass before merge.
 
 ### 2026-07-17: PR checks reflect only pushed commits, and CodeQL cannot see custom controls
 
@@ -63,6 +63,10 @@ GitHub PR checks and review suggestions remain attached to the last pushed commi
 ### 2026-10-07: Inside the Railway `pgvector` container, `PGPORT` points at the TCP proxy
 
 The pgvector template sets `PGPORT` (and `PGHOST`) to its public TCP proxy. `psql`/`pg_dump` apply `PGPORT` to any URL without an explicit port, so connecting from that container to another database (the Replit Neon source) went to port 40423 and timed out. Put `:5432` in external URLs, and pass `-h localhost -p 5432` for the local database. Cost: one retry.
+
+### 2026-10-07: Browsers keep certificate errors from before issuance after a DNS switch
+
+After `truenote.org` moved to Railway, Railway needed a few minutes to issue the Let's Encrypt certificates. Browsers that loaded the site in that window kept failing after issuance from cached state: Chrome with `NET::ERR_CERT_COMMON_NAME_INVALID`, Firefox with `MOZILLA_PKIX_ERROR_INSUFFICIENT_CERTIFICATE_TRANSPARENCY`, while a fresh headless Chrome profile loaded both hosts. Chrome clears with `chrome://net-internals/#sockets`, "Flush socket pools"; Firefox with a restart or a private window. The CoreWise domain move hit the same. Check a new certificate from a fresh profile or `curl` before treating a browser error as a server fault.
 
 ### 2026-10-07: `railway environment edit --service-config` changes nothing (CLI 5.26)
 

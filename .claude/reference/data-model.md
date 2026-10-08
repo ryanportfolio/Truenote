@@ -7,6 +7,16 @@
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Ledger of applied lib/db/sql files (lib/db/sql/0001_schema_migrations.sql,
+-- applied 2026-10-07). scripts/railway-apply-sql.mjs writes one row per file
+-- and refuses a file already recorded.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  filename text PRIMARY KEY,
+  sha256 text NOT NULL,
+  applied_at timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE programs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -117,8 +127,12 @@ CREATE TABLE eval_questions (
   expected_answer_contains TEXT[],
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
+  -- Designed but NOT on Railway (checked 2026-10-07): the held-out flag
+  -- is_protected BOOLEAN NOT NULL DEFAULT false was never applied. The runner
+  -- tolerates its absence. A future change ships it as a lib/db/sql/NNNN file
+  -- applied with scripts/railway-apply-sql.mjs after the owner's go.
+  -- See eval.md, "Protected (held-out) questions".
 );
-
 ```
 
 ## Auth tables (Phase 2A)
@@ -210,12 +224,12 @@ CREATE UNIQUE INDEX eval_runs_program_baseline_uidx ON eval_runs (program_id)
 - **`chunks.program_id` is denormalized** from `document_versions → documents → programs`. This is intentional. Retrieval queries filter on it directly to avoid joining at query time.
 - **A document has many versions.** Re-uploading does NOT update the existing row. It creates a `submitted` version. Senior-manager and super-user uploads activate after ingestion controls pass; other uploads require authorized review. Activation retires the predecessor.
 - **Search requires three controls.** Retrieval and KB reads require `is_active=true`, `lifecycle_state='active'`, and classification at or below the server-resolved user's `max_classification`. Inactive/retired versions stay for audit and citation receipts; revoked/rejected versions cannot be served through history.
-- **P0/P1 controlled-ingestion columns live in reviewed raw DDL.** `docs/security/p0-p1-security-controls.sql` adds `content_sources`, document/version lifecycle, classification, provenance, scan evidence, approval/revocation/retention, user clearance, session auth evidence, distributed rate limits, and hash-chained `security_events`. Do not add them to `lib/db/src/schema.ts` in the same task; routes intentionally use parameterized raw SQL until the reviewed DDL is applied to production (procedure: `deployment.md`).
-- **SIEM delivery uses a database-triggered outbox.** `docs/security/p1-siem-delivery-outbox.sql` creates one `siem_delivery_outbox` row for every `security_events` insert in the same transaction and backfills existing events. Claims use `FOR UPDATE SKIP LOCKED`, bounded leases, and per-claim tokens; only the matching token may complete or retry a row. Apply this raw DDL before deploying code that removes direct fire-and-forget export.
+- **P0/P1 controlled-ingestion columns live in reviewed raw DDL.** `docs/security/p0-p1-security-controls.sql` adds `content_sources`, document/version lifecycle, classification, provenance, scan evidence, approval/revocation/retention, user clearance, session auth evidence, distributed rate limits, and hash-chained `security_events`. This DDL (with `append_security_event` and its constraints) is present on Railway through the 2026-10-07 copy of the Replit database; production verification of these controls on Railway is still pending (`docs/security/README.md`). The columns are not bound in `lib/db/src/schema.ts`, and routes intentionally use parameterized raw SQL for them. Do not add them to `schema.ts` as a side task.
+- **SIEM delivery is designed as a database-triggered outbox, and only half of it is on Railway.** `docs/security/p1-siem-delivery-outbox.sql` creates one `siem_delivery_outbox` row for every `security_events` insert in the same transaction and backfills existing events. Claims use `FOR UPDATE SKIP LOCKED`, bounded leases, and per-claim tokens; only the matching token may complete or retry a row. On Railway (checked 2026-10-07) the `siem_delivery_outbox` table exists with 0 rows against 179 `security_events`, but the functions (`enqueue_security_event_for_siem`, `claim_siem_deliveries`, `complete_siem_delivery`, `fail_siem_delivery`, `get_siem_delivery_health`) and the `security_events_siem_enqueue` trigger are absent. Railway inherited this state from Replit, whose Publish step omitted them. `SIEM_WEBHOOK_URL` is unset, so nothing fails today, but the control is not in place and enabling SIEM delivery would fail until the rest of the file is applied. The file is about 10 KB, more than `scripts/railway-apply-sql.mjs` sends in one call (6,500 base64 characters, about 2.7 KB of SQL), so a future apply splits it into several `lib/db/sql/NNNN_<name>.sql` files, each applied after the owner's go.
 - **`embedding VECTOR(1536)` is locked to `text-embedding-3-small`.** Changing embedding model = re-ingest everything.
 - **`users.role` + `users.program_id` are jointly constrained.** The DB CHECK enforces: `super_user` MUST have `program_id IS NULL`; every other role MUST have a non-null `program_id`. The app's program-scoping helpers (`canAccessProgram`, `requireRole`) rely on this. Bypassing the constraint at the SQL level (e.g., manual inserts) breaks the assumption that a manager always has a program scope.
 - **`sessions.token_hash` stores SHA-256 of the cookie value, not the cookie itself.** A leak of the sessions table does not yield active sessions on its own. Plaintext tokens are only ever in transit (cookie header) and in the cookie store on the user's browser.
-- **`chat_sessions` groups a CSR's `query_log` rows into a named conversation.** `query_log.session_id` is nullable with `ON DELETE SET NULL` — deleting a session must never drop ops/gap analytics rows. Sessions are scoped by `(user_id, program_id)`; the ask pipeline honors a client-supplied session id only when both match, so a leaked id can't stitch one user's ask into another's conversation or cross program scope. `title` is auto-generated (gpt-4o-mini) from the opening exchange, detached from the response path, guarded by `title IS NULL` so it fires once.
+- **`chat_sessions` groups a CSR's `query_log` rows into a named conversation.** `query_log.session_id` is nullable with `ON DELETE SET NULL`: deleting a session must never drop ops/gap analytics rows. Sessions are scoped by `(user_id, program_id)`; the ask pipeline honors a client-supplied session id only when both match, so a leaked id can't stitch one user's ask into another's conversation or cross program scope. `title` is auto-generated (Mercury 2.5 via the OpenRouter ZDR utility, `lib/generation/name-session.ts`) from the opening exchange, detached from the response path, guarded by `title IS NULL` so it fires once.
 - **`query_log.citation_snapshots` freezes source receipts.** New answers best-effort persist the ordered document id, document-version id/number, clean excerpt, and raw parsed-Markdown offsets after logging. History prefers this snapshot over live chunks, so a re-ingest cannot silently rewrite an old answer's evidence. Missing DDL degrades to legacy live-chunk reconstruction; it never fails an ask.
 - **`query_log.timing_breakdown` is versioned best-effort telemetry.** New asks persist end-to-end, retrieval sub-stage, finalization, and provider-attempt timings as JSONB for the super-user `/admin/observability` surface. Missing DDL never fails an ask; the dashboard shows setup-required and `latency_ms` continues to update.
 - **`error_log` stores redacted operator diagnostics, not raw secrets.** Provider/API/worker failures retain exact status, code, request id, message, stack, provider response, and structured context after recursive credential redaction. Writes are best-effort so a missing table or database outage never replaces the original failure; the super-user `/admin/errors` API is the only read surface.
