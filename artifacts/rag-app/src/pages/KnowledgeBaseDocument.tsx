@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
 import { PassageHighlighter } from "@/components/kb/PassageHighlighter";
+import { KbDocPersonalBar } from "@/components/kb-library/KbDocPersonalBar";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 import type { KbDocumentResponse } from "@/types/api";
 
@@ -121,6 +122,7 @@ export function KbDocumentPage({ documentId }: { documentId: string }): JSX.Elem
                 <RelativeTime iso={state.doc.updatedAt} />
               </p>
             ) : null}
+            <KbDocPersonalBar key={state.doc.documentId} documentId={state.doc.documentId} />
           </header>
           {state.doc.citationAuthorized ? (
             <div className="mt-4 flex flex-wrap items-start justify-between gap-3 rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-sm">

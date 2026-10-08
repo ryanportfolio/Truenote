@@ -5,6 +5,7 @@ import { authRouter } from "./auth.js";
 import { configRouter } from "./config.js";
 import { documentsRouter } from "./documents.js";
 import { kbRouter } from "./kb.js";
+import { kbLibraryRouter } from "./kb-library.js";
 import { sessionsRouter } from "./sessions.js";
 import { meRouter } from "./me.js";
 import { programsRouter } from "./admin/programs.js";
@@ -40,6 +41,9 @@ export function registerRoutes(app: Express): void {
   app.use("/api/admin/errors", errorsRouter);
   app.use("/api/admin/security", securityRouter);
   app.use("/api/documents", documentsRouter);
+  // Mounted before /api/kb so the manager-only organize routes are matched
+  // by their own guarded router rather than passing through kbRouter first.
+  app.use("/api/kb/library", kbLibraryRouter);
   app.use("/api/kb", kbRouter);
   app.use("/api/sessions", sessionsRouter);
   app.use("/api", askRouter);

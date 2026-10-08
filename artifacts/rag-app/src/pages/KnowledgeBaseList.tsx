@@ -1,31 +1,25 @@
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
-import { BookOpen, Search } from "lucide-react";
 import { listKbDocuments } from "@/lib/api";
-import { EmptyState } from "@/components/EmptyState";
-import { RelativeTime } from "@/components/RelativeTime";
+import { KbLibrary } from "@/components/kb-library/KbLibrary";
 import {
   getSelectedProgramOwnerIdRaw,
   SELECTED_PROGRAM_CHANGED_EVENT
 } from "@/lib/selectedProgram";
-import type {
-  CurrentUser,
-  KbDocumentListItem,
-  KbDocumentListResponse
-} from "@/types/api";
+import type { CurrentUser, KbDocumentListResponse } from "@/types/api";
 
 /**
  * CSR-facing knowledge base. The list is every live (active + parsed)
  * document in the CSR's program; each opens as a full rendered read.
  * This is the same corpus answers are grounded in — a citation's
- * "read the full document" link lands here.
+ * "read the full document" link lands here. The library UI (pins, notes,
+ * views, manager organization) lives in components/kb-library.
  */
 
 type ListState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "no-program" }
-  | { status: "ready"; items: KbDocumentListItem[] };
+  | { status: "ready"; response: KbDocumentListResponse; loadId: number };
 
 interface PrefetchedList {
   ownerUserId: string | null;
@@ -61,26 +55,28 @@ function takeInitialRequest(user: CurrentUser): Promise<KbDocumentListResponse> 
 
 export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element {
   const [state, setState] = useState<ListState>({ status: "loading" });
-  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     let firstLoad = true;
+    let loadId = 0;
     async function load(): Promise<void> {
+      loadId += 1;
+      const thisLoad = loadId;
       setState({ status: "loading" });
       try {
         const response = firstLoad
           ? await takeInitialRequest(user)
           : await listKbDocuments();
         firstLoad = false;
-        if (cancelled) return;
+        if (cancelled || thisLoad !== loadId) return;
         if (response.noProgramSelected) {
           setState({ status: "no-program" });
         } else {
-          setState({ status: "ready", items: response.items });
+          setState({ status: "ready", response, loadId: thisLoad });
         }
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && thisLoad === loadId) {
           setState({
             status: "error",
             message: err instanceof Error ? err.message : "Failed to load documents"
@@ -97,19 +93,12 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
     };
   }, [user]);
 
-  const filtered =
-    state.status === "ready"
-      ? state.items.filter((d) =>
-          d.title.toLowerCase().includes(query.trim().toLowerCase())
-        )
-      : [];
-
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6">
+    <div className="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-6">
       <header>
         <h1 className="font-display text-3xl font-semibold tracking-tight">Sources</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Documents used to answer questions. Open one to read it in full.
+          Documents used to answer questions. Pin the ones you use most, or open one to read it in full.
         </p>
       </header>
 
@@ -117,12 +106,19 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
         <div role="status">
           <div className="flex flex-col gap-5" aria-hidden>
             <div className="skeleton h-[38px] w-full rounded-md" />
-            <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
+            <div className="flex gap-2">
+              <div className="skeleton h-7 w-56 rounded-full" />
+              <div className="skeleton h-7 w-36 rounded-full" />
+            </div>
+            <div className="rounded-lg border border-border bg-card shadow-card">
               <div className="border-b border-border px-4 py-3">
                 <div className="skeleton h-4 w-2/3" />
               </div>
-              <div className="px-4 py-3">
+              <div className="border-b border-border px-4 py-3">
                 <div className="skeleton h-4 w-1/2" />
+              </div>
+              <div className="px-4 py-3">
+                <div className="skeleton h-4 w-3/5" />
               </div>
             </div>
           </div>
@@ -148,48 +144,8 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
         </div>
       ) : null}
 
-      {state.status === "ready" && state.items.length === 0 ? (
-        <EmptyState icon={BookOpen} title="No source documents yet" />
-      ) : null}
-
-      {state.status === "ready" && state.items.length > 0 ? (
-        <>
-          <label className="relative block">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden
-            />
-            <span className="sr-only">Filter documents by title</span>
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter by title…"
-              className="w-full rounded-md border border-input bg-card py-2 pl-9 pr-3 text-sm shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            />
-          </label>
-          {filtered.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No titles match “{query.trim()}”.
-            </p>
-          ) : (
-            <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-card shadow-card">
-              {filtered.map((doc) => (
-                <li key={doc.documentId}>
-                  <Link
-                    href={`/kb/${doc.documentId}`}
-                    className="flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-100 ease-out hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  >
-                    <span className="text-sm font-medium">{doc.title}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {doc.updatedAt ? <RelativeTime iso={doc.updatedAt} /> : null}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
+      {state.status === "ready" ? (
+        <KbLibrary key={state.loadId} user={user} initial={state.response} />
       ) : null}
     </div>
   );
