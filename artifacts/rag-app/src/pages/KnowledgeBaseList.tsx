@@ -129,7 +129,6 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
     <div className="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-6 xl:max-w-7xl">
       <header>
         <h1 className="font-display text-3xl font-semibold tracking-tight">Sources</h1>
-        <p className="mt-1 text-base text-muted-foreground">Find the policy you need.</p>
       </header>
 
       {state.status === "loading" ? (
