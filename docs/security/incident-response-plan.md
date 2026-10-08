@@ -27,8 +27,8 @@ Truenote has one maintainer. That person holds every Truenote role below and mus
 | Role | Who | Responsibilities |
 |---|---|---|
 | Incident lead | Truenote maintainer | Declares the incident and its severity, contains it, keeps the timeline, sends customer notices, runs the retrospective. |
-| Customer security contact | `[CONFIRM: name, email, phone, and backup contact from the customer contract]` | Receives notices, confirms customer-side actions such as SSO account disablement, agrees on public statements. |
-| Customer program owners | `[CONFIRM: per-program contact list]` | Confirm which documents are wrong or exposed and which CSRs to notify. |
+| Customer security contact | None yet: Truenote has no customer contract (owner statement, 2026-10-07). Fill in the name, email, phone, and backup contact from the first contract. | Receives notices, confirms customer-side actions such as SSO account disablement, agrees on public statements. |
+| Customer program owners | None yet: Truenote has no customer contract (owner statement, 2026-10-07). Fill in one contact per program from the first contract. | Confirm which documents are wrong or exposed and which CSRs to notify. |
 | Backup decision maker | `[CONFIRM: who can act if the maintainer is unreachable for more than 24 hours, and whether that person has access to the Railway project]` | Can stop the Railway services and can receive provider notices. |
 
 Provider contacts. Keep the current support or security contact for each service in the restricted contact sheet, not in this repository.
@@ -169,7 +169,7 @@ For uncited or wrong answers at scale (SEV-2): demote the model route that chang
 
 ## 7. Customer notification
 
-These timelines are **proposed commitments**. They do not bind until the owner checks them against the customer contract and any law that applies. `[CONFIRM: notification windows in the customer contract or data processing terms]`
+These timelines are **proposed commitments**. They do not bind until the owner checks them against the customer contract and any law that applies. No customer contract exists yet (owner statement, 2026-10-07); before signing the first one, check these windows against its terms and any data processing terms.
 
 When the incident lead confirms an incident that affects customer data:
 
@@ -179,7 +179,7 @@ When the incident lead confirms an incident that affects customer data:
 
 For a provider breach notice, the 24-hour clock starts when the maintainer confirms that the notice covers Truenote data.
 
-Who notifies regulators or individuals, if anyone must, is decided with the customer. `[CONFIRM: regulator and individual notification responsibilities between Truenote and the customer]`
+Who notifies regulators or individuals, if anyone must, is decided with the customer. No customer contract exists yet (owner statement, 2026-10-07); agree on this split in the first one.
 
 ## 8. Evidence preservation
 
