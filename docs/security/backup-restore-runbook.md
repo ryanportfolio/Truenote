@@ -75,7 +75,7 @@ These are proposed targets for one maintainer. They are not measured. Replace "p
 | Uploaded source files | Every file since the last copy to the second bucket (section 1). No copy exists today, so every file is at risk (weekly copy, owner decision 2026-10-07; the copy service is not built yet, section 1) | 2 business days to collect missing files from program owners and re-upload (proposed) |
 | Secrets | Not applicable (re-issue) | 4 hours to re-issue and set all variables (proposed) |
 
-Dump cadence until volume backups are on (proposed): one dump a week, and one immediately before each risky change: applying a `lib/db/sql/` file, a bulk user import, a re-ingest, a document purge, or a deploy that changes ingestion or data handling. Take every dump, including these, with section 4.1, step 5, so each gets its count record. Record each dump (UTC time, size, SHA-256, storage location) in the restricted evidence location (section 9), and store its count record next to it.
+Dump cadence until volume backups are on (proposed): one dump a week, and one immediately before each risky change: applying a `lib/db/sql/` file, a bulk user import, a re-ingest, a document purge, or a deploy that changes ingestion or data handling. Take every dump, including these, with section 4.1, step 5, so each gets its count record. Keep each dump's count record and SHA-256 next to the dump.
 
 Measure RPO as the gap between the chosen restore point and the last good write that the restore discarded. Measure RTO from the recorded decision time to the first passing smoke test against production after cutover.
 
@@ -107,6 +107,13 @@ Measure RPO as the gap between the chosen restore point and the last good write 
    - never run `sweep-orphans` or the document purge against a restored target. `scripts/src/sweep-orphans.ts` deletes nothing today: it lists the keys the connected database references. It stays on this list because a version that deletes unreferenced keys, which its comments plan, would delete files production still needs when pointed at a restore. The purge deletes the document's files from the bucket.
 3. **Keep connection strings and variable values out of shell history, chat, tickets, and this repository.** Paste them into an environment variable for the session only.
 4. **Record times in UTC** as you go. The evidence table needs them.
+5. **Keep sensitive files encrypted, and only as long as the work needs them.** Exports and dumps copied to your machine hold production data, including password hashes. Never put them in this repository, chat, tickets, or email. Encrypt each one with 7-Zip (installed at `C:\Program Files\7-Zip\7z.exe`), in PowerShell, from the folder that holds the file:
+
+   ```
+   & "C:\Program Files\7-Zip\7z.exe" a -t7z -mhe=on -p "<name>.7z" <file>
+   ```
+
+   `-p` with no value asks for the password at the prompt, so it stays out of shell history; `-mhe=on` also encrypts the file names. Delete the plain file. Delete the archive when the restore test ends or the incident closes (section 4.6). The one exception is a dump kept as a backup (section 4.1, step 5). There is no standing archive of test or incident files (owner decision, 2026-10-07): the record of a restore test is its row in section 9, and the record of an incident is its incident record (incident response plan, section 10).
 
 ## 4. Restore procedure
 
@@ -149,7 +156,7 @@ Paths:
    \copy (SELECT id, email, role, program_id, is_active, must_reset_password, max_classification, password_hash FROM users ORDER BY id) TO 'truenote-users-before-restore-<UTC date>.csv' WITH (FORMAT csv, HEADER)
    ```
 
-   `program_id` is the user's program assignment (the only one; NULL only for `super_user`), and `max_classification` is the user's clearance for document classification. The file holds password hashes. Copy all three files to your machine and delete them from the volume (section "Shells"), store them encrypted in the restricted evidence location (section 9), never in this repository, and delete local copies with the dump file (section 4.6).
+   `program_id` is the user's program assignment (the only one; NULL only for `super_user`), and `max_classification` is the user's clearance for document classification. The file holds password hashes. Copy all three files to your machine and delete them from the volume (section "Shells"), keep them encrypted (section 3, rule 5), and delete them when the incident closes (section 4.6).
 
    When the cutover in section 4.4 stops writes, run all three exports in this step again and use the later files for reconciliation, so changes made while the target was being verified are not lost.
 5. Take a logical dump of production for every path B restore, including scheduled tests; before every path A restore, as a last-resort rollback copy; and on the cadence in section 2. The command matches the 2026-10-07 data copy (deployment.md, "Data copy"): `pg_dump` 18 inside `pgvector`, custom format, `--no-owner --no-acl`, without the `_system` and `pgboss` schemas and without the rows of `sessions` and `password_reset_tokens`. Excluding `_system` changes nothing when that schema does not exist.
@@ -163,7 +170,7 @@ Paths:
    sha256sum /var/lib/postgresql/truenote-dumps/truenote-prod-<UTC date>.dump
    ```
 
-   Copy the dump and its count record to your machine (section "Shells") and record the dump's SHA-256. A dump is a backup, and backups are kept on Railway (owner decision, 2026-10-07): store the dump and its count record together in the second bucket in the `truenote` project (section 1), then delete both from the volume `[CONFIRM: the second bucket and a way to upload to it are not built yet; until they exist, store both as an encrypted archive in the restricted evidence location, section 9]`. A dump taken only for a scheduled test is not kept: delete it from the volume and from your machine when the test ends (section 4.6). For a scheduled test, delete them only after section 4.2 has restored the dump: that restore reads the file on the volume. An incident restore uses an earlier dump taken before the damage; section 4.4 uploads that one back to the volume, and section 5.2 compares the restore with that dump's count record.
+   Copy the dump and its count record to your machine (section "Shells") and record the dump's SHA-256. A dump is a backup, and backups are kept on Railway (owner decision, 2026-10-07): store the dump and its count record together in the second bucket in the `truenote` project (section 1), then delete both from the volume `[CONFIRM: the second bucket and a way to upload to it are not built yet; until they exist, keep both encrypted on your machine, section 3, rule 5]`. A dump taken only for a scheduled test is not kept: delete it from the volume and from your machine when the test ends (section 4.6). For a scheduled test, delete them only after section 4.2 has restored the dump: that restore reads the file on the volume. An incident restore uses an earlier dump taken before the damage; section 4.4 uploads that one back to the volume, and section 5.2 compares the restore with that dump's count record.
 
    What the dump leaves out: sessions and reset tokens, so everyone signs in again after a restore from it; and the `pgboss` job queue, which the first boot of `web` or `worker` recreates empty (deployment.md, "Data copy"). Ingestion or evaluation jobs queued at dump time are lost; a version that was waiting on one needs a new upload `[CONFIRM: which document version states such a version is left in]`.
 
@@ -461,7 +468,7 @@ If production fails the checks or the smoke test after cutover:
    ```
 
    `railway service delete` asks for `--2fa-code <code>` when the account has two-factor authentication and the run is non-interactive (Railway CLI 5.26 `railway service delete --help`). `[CONFIRM: whether deleting a service also deletes its proxy, domains, and volumes; the checks above do not rely on it]` Check that it is gone: `railway service list --json` no longer lists `truenote-restore-test`, and `railway volume list --json` lists only `pgvector-volume`. Then remove the password from the session (bash: `unset POSTGRES_PASSWORD`; PowerShell: `Remove-Item Env:POSTGRES_PASSWORD -ErrorAction SilentlyContinue`) and run the `railway link` command at the top of this runbook again, so the directory is no longer linked to the deleted service. Relinking without `-s` clears the linked service: in a script or any run whose output is not a terminal it links none, and in a terminal it asks `Select a service (optional) <esc to skip>`, where Esc links none (CLI 5.26 source, `src/commands/link.rs`). On 2026-10-07, in a scratch directory linked with `-s pgvector`, a non-interactive `railway link -p ... -e ...` left `railway status` showing `Service: None`. After a path B incident restore, drop `truenote_before_restore` (and `truenote_failed_restore`, if it exists) once the incident is closed and the evidence is stored: `psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "DROP DATABASE truenote_before_restore"`. Both hold pre-restore production data, including password hashes and the damage. After a path A restore, the previous volume holds the same, plus every backup newer than the one restored; delete it only after the incident is closed and no newer backup is needed Keep it for 30 days after the incident is closed, then delete it (owner decision, 2026-10-07).
-3. Delete the dump, its count record, and the export files from the volume, and local copies once they are stored in the restricted location.
+3. Delete the dump, its count record, and the export files from the volume, and every local copy, encrypted or not, once the test has ended or the incident has closed. The only dumps kept are backups (section 4.1, step 5).
 
 ## 5. Verification checks
 
@@ -642,15 +649,7 @@ The bucket has no backup or versioning (section 1). If files are lost:
 
 ## 9. Restore test evidence record
 
-Add one row per restore test or real restore. Keep raw query output in the restricted evidence location; put only the summary here.
-
-**Restricted evidence location (owner decision, 2026-10-07):** `D:\CoreWise\_artifacts\truenote\restricted-evidence\` on the owner's Windows machine. It holds the records of restore tests and incidents: exports, raw query output, and incident records. Database dumps are backups and belong on Railway (section 4.1, step 5); they are stored here only until the second bucket exists. Drive D is a USB drive formatted exFAT with no disk encryption (`Get-Volume -DriveLetter D`, checked 2026-10-07), so each item is stored as a 7-Zip archive with AES-256 and encrypted file names, never as a plain file. 7-Zip is installed at `C:\Program Files\7-Zip\7z.exe`. In PowerShell, from the folder that holds the file:
-
-```
-& "C:\Program Files\7-Zip\7z.exe" a -t7z -mhe=on -p "D:\CoreWise\_artifacts\truenote\restricted-evidence\<name>.7z" <file>
-```
-
-`-p` with no value asks for the password at the prompt, so it stays out of shell history; `-mhe=on` also encrypts the file names. Keep the password in the owner's password manager, record the archive's SHA-256 (`Get-FileHash <archive>`), and delete the plain file. The location is a single drive with no second copy; losing or wiping drive D loses every item stored here. The owner keeps no second copy: backups belong on Railway (owner decision, 2026-10-07).
+Add one row per restore test or real restore. The row is the record; raw query output is not kept (section 3, rule 5).
 
 | Date (UTC) | Operator | Reason (test / incident id) | Path (A / B) and target (temporary Railway service / scratch database / production after path A) | Restore point (UTC) | Measured RPO | Measured RTO | Checks passed (5.1 / 5.2 / 5.3 link / 5.3 recompute / 5.4) | Issues and follow-up |
 |---|---|---|---|---|---|---|---|---|

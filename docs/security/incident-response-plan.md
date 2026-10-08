@@ -112,7 +112,7 @@ The second query misses chunks that were purged after the answer. Any row it ret
 
 ### 5.1 Declare and record
 
-1. Open an incident record (template in section 10) in the restricted evidence location, `D:\CoreWise\_artifacts\truenote\restricted-evidence\`, stored as 7-Zip AES-256 archives (backup-restore-runbook.md, section 9). Give it an id such as `INC-2026-001`.
+1. Open an incident record (template in section 10) on your machine, outside this repository, encrypted as the backup restore runbook describes (section 3, rule 5). The incident record is kept after the incident closes; it is the lasting record of the incident. Give it an id such as `INC-2026-001`.
 2. Write down in UTC: when the event happened (if known), when it was detected, how it was detected, and who reported it.
 3. Set the severity from section 3.
 4. Preserve evidence (section 8) before changing anything you can avoid changing.
@@ -183,7 +183,7 @@ Who notifies regulators or individuals, if anyone must, is decided with the cust
 
 ## 8. Evidence preservation
 
-Collect evidence before cleanup. Store it in the restricted evidence location, not in this repository. Record for each item who collected it, when (UTC), from where, and its SHA-256 hash.
+Collect evidence before cleanup. Keep it encrypted on your machine (backup-restore-runbook.md, section 3, rule 5), never in this repository, chat, tickets, or email, and delete it once the incident is closed, the written report in section 7 is sent, and the retrospective is done; summarize what it showed in the incident record. Record for each item who collected it, when (UTC), from where, and its SHA-256 hash.
 
 1. **Security events.** Export the rows for the incident window, including `sequence`, `previous_hash`, and `event_hash`:
 
