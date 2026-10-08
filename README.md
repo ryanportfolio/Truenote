@@ -144,7 +144,7 @@ DESIGN.md         Interface tokens, components, motion, and accessibility rules
 
 - Node.js 22 or newer
 - pnpm 10 through Corepack
-- PostgreSQL with the `vector`, `pg_trgm`, and `pgcrypto` extensions
+- PostgreSQL 18 with the `vector`, `pg_trgm`, and `pgcrypto` extensions (production runs 18; the baseline dump uses settings that PostgreSQL 16 and older reject)
 - Provider credentials listed in [`.env.example`](./.env.example)
 
 The current database model and invariants are documented in [`.claude/reference/data-model.md`](./.claude/reference/data-model.md). The project manages schema changes with explicit SQL rather than `drizzle-kit`. [`lib/db/sql/0000_baseline.sql`](./lib/db/sql/0000_baseline.sql) is a schema-only dump of the production database as of 2026-10-07; it already contains the security DDL from [`docs/security/`](./docs/security/) that production has. Every later change is a numbered file in [`lib/db/sql/`](./lib/db/sql/). Build an empty local database by applying the baseline, then each numbered file in order:
