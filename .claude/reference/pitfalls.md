@@ -62,7 +62,7 @@ GitHub PR checks and review suggestions remain attached to the last pushed commi
 
 ### 2026-10-07: Inside the Railway `pgvector` container, `PGPORT` points at the TCP proxy
 
-The pgvector template sets `PGPORT` (and `PGHOST`) to its public TCP proxy. `psql`/`pg_dump` apply `PGPORT` to any URL without an explicit port, so connecting from that container to another database (the Replit Neon source) went to port 40423 and timed out. Put `:5432` in external URLs, and pass `-h localhost -p 5432` for the local database. Cost: one retry.
+The pgvector template sets `PGPORT` (and `PGHOST`) to its public TCP proxy. `psql`/`pg_dump` apply `PGPORT` to any URL without an explicit port, so connecting from that container to another database (the Replit Neon source) went to port 40423 and timed out. Put `:5432` in external URLs, and pass `-h localhost -p 5432` for the local database. Cost: one retry. The proxy was closed on 2026-10-08, so `PGHOST` and `PGPORT` now lead nowhere; the same rule applies.
 
 ### 2026-10-07: Browsers keep certificate errors from before issuance after a DNS switch
 

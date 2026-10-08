@@ -2,6 +2,8 @@
 
 Production moved from Replit to Railway on 2026-10-07. The Railway stack runs with a copy of the Replit production data taken that day, and the owner switched `truenote.org` and `www.truenote.org` DNS to Railway at about 19:50 EDT the same day (see "Cutover").
 
+Stage (owner statement, 2026-10-07): pre-pilot. The owner built Truenote and is pitching it to their employer as the RAG system for the owner's program; it has not yet passed the employer's security review. There is no customer contract, production holds demo data only, and no CSRs use it. Treat "customer" in the security docs as that employer once it adopts Truenote.
+
 The Railway CLI stores `railway link` per directory, so a fresh worktree is not linked; every `railway` command here passes `-p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4deb-9434-e9b63a309bd9` (written `-p <project> -e <env>` below where it would repeat).
 
 ## Production
@@ -12,7 +14,7 @@ The Railway CLI stores `railway link` per directory, so a fresh worktree is not 
 | Environment | `production`, `b35c4090-cbcd-4deb-9434-e9b63a309bd9` (the only environment; there is no dev database) |
 | `web` | `72fa55df-61f3-421c-a411-4f9e6bbbd49f`. api-server serving `/api` and the built SPA, `TRUENOTE_PROCESS=web`, `PORT=8080`, one replica. Healthcheck `/health` (120 s), restart `ON_FAILURE` ×3, draining 15 s |
 | `worker` | `5dc3e0f3-86f9-4f4e-95b2-4729ad13fdae`. pg-boss ingestion and evaluation worker, `TRUENOTE_PROCESS=worker`, restart `ALWAYS`, no public port |
-| Database | service `pgvector` (`0d1e7840-7d5e-4a20-a97e-d04f06a88649`), image `pgvector/pgvector:pg18`, volume `pgvector-volume` at `/var/lib/postgresql`. Extensions `vector`, `pg_trgm`, `pgcrypto`. The template also opens a public TCP proxy on 5432; the app uses `DATABASE_URL_PRIVATE` |
+| Database | service `pgvector` (`0d1e7840-7d5e-4a20-a97e-d04f06a88649`), image `pgvector/pgvector:pg18`, volume `pgvector-volume` at `/var/lib/postgresql`. Extensions `vector`, `pg_trgm`, `pgcrypto`. The template opened a public TCP proxy on 5432; the owner closed it on 2026-10-08 at 01:08 UTC (`railway tcp-proxy delete`), because the server runs with `ssl` off. `pgvector`'s `DATABASE_URL`, `PGHOST`, and `PGPORT` referenced the proxy and now lead nowhere. The app uses `DATABASE_URL_PRIVATE`; from outside Railway, use `railway ssh -s pgvector` or an SSH tunnel (backup-restore-runbook.md, section 4.4, step 5) |
 | Object storage | bucket `truenote-storage` (`cefc54e5-6980-46d3-b3e6-bb31942c4eda`, physical `truenote-storage-w0ha8kzq`, region `iad`), endpoint `https://t3.storageapi.dev`, virtual-host style. Keys keep the Replit layout `uploads/<sha256>-<name>` |
 | Hosts | `web-production-62818.up.railway.app`; custom domains `truenote.org` and `www.truenote.org`, DNS pointed at Railway since 2026-10-07. The app answers `www` with a 308 to `APP_BASE_URL` |
 | Build | `Dockerfile.railway` (service setting `dockerfilePath`, plus `RAILWAY_DOCKERFILE_PATH`), uploaded with `railway up`; `.railwayignore` and `.dockerignore` whitelist the build inputs |
@@ -97,5 +99,5 @@ Rollback: set the apex A record back to `34.111.179.208` and remove the `www` A 
 ## After cutover
 
 - `CORS_ALLOWED_ORIGINS` (the Railway URL) stays set for now; remove it once nobody uses the Railway URL.
-- Decide on backups (logical dumps to the bucket or volume snapshots) and on closing the `pgvector` public TCP proxy.
+- Decide on backups (logical dumps to the bucket or volume snapshots). The `pgvector` public TCP proxy was closed on 2026-10-08 (owner decision); after the deletion `/health` answered 200 on both hosts, `pgvector` was not redeployed, and the worker's `pgboss` connections over the private network stayed up.
 - Email: `RESEND_API_KEY` on `web` and `worker` was replaced on 2026-10-07 and went live with the 988bf12 deploy; Resend accepts it (`GET /domains` returns 200). `RESEND_FROM_EMAIL` is `no-reply@corewise.video`, a verified Resend domain. `truenote.org` is added in Resend but not verified (status `not_started`, no DKIM records), so mail cannot be sent from a `truenote.org` address yet. No password-reset email has been sent end to end since the change.
