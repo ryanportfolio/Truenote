@@ -114,10 +114,12 @@ export function DocumentList({ items, onChanged }: DocumentListProps): JSX.Eleme
         </p>
       ) : null}
       {/* Header carried by type + rule, not fill. Secondary metadata folds
-        * into the title cell on narrow screens instead of forcing a scrollbar. */}
-      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
+        * into the title cell on narrow screens instead of forcing a scrollbar.
+        * The header sticks while the list scrolls; overflow-clip (not hidden)
+        * keeps the page as the sticky scroller. */}
+      <div data-documents-table className="overflow-clip rounded-lg border border-border bg-card shadow-card">
       <table className="w-full text-sm tabular-nums">
-        <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+        <thead className="sticky top-0 z-10 bg-card text-left text-xs uppercase tracking-wide text-muted-foreground shadow-[0_1px_0_oklch(var(--border))]">
           <tr>
             <th className="px-3 py-2 font-medium">Title</th>
             <th className="hidden px-3 py-2 font-medium sm:table-cell">Source</th>
