@@ -137,22 +137,24 @@ function CitationChip({ label, ariaLabel, title, excerpt, onClick }: CitationChi
       setPosition(null);
       return;
     }
+    // The chip's own window: the mini window when the answer renders there.
+    const view = chipRef.current?.ownerDocument.defaultView ?? window;
     function place(): void {
       const chip = chipRef.current?.getBoundingClientRect();
       const peek = peekRef.current?.getBoundingClientRect();
       if (!chip || !peek) return;
       const above = chip.top - PEEK_GAP - peek.height;
       const top = above >= VIEWPORT_MARGIN ? above : chip.bottom + PEEK_GAP;
-      const maxLeft = window.innerWidth - VIEWPORT_MARGIN - peek.width;
+      const maxLeft = view.innerWidth - VIEWPORT_MARGIN - peek.width;
       const left = Math.max(VIEWPORT_MARGIN, Math.min(chip.left, maxLeft));
       setPosition({ top, left });
     }
     place();
-    window.addEventListener("scroll", place, true);
-    window.addEventListener("resize", place);
+    view.addEventListener("scroll", place, true);
+    view.addEventListener("resize", place);
     return () => {
-      window.removeEventListener("scroll", place, true);
-      window.removeEventListener("resize", place);
+      view.removeEventListener("scroll", place, true);
+      view.removeEventListener("resize", place);
     };
   }, [open]);
 
@@ -189,7 +191,7 @@ function CitationChip({ label, ariaLabel, title, excerpt, onClick }: CitationChi
                 {excerpt}
               </span>
             </span>,
-            document.body
+            chipRef.current?.ownerDocument.body ?? document.body
           )
         : null}
     </>

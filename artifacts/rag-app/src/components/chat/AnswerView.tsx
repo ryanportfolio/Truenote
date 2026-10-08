@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "wouter";
 import { Check, Copy, Flag, ThumbsDown, ThumbsUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { answerForClipboard } from "@/lib/citation-rendering";
@@ -8,6 +7,7 @@ import { submitFeedback, flagMissingContent } from "@/lib/api";
 import type { AskResponse } from "@/types/api";
 import { AnswerMarkdown } from "./AnswerMarkdown";
 import { CitationPanel } from "./CitationPanel";
+import { AppLink } from "./MiniWindow";
 
 interface AnswerViewProps {
   result: AskResponse;
@@ -103,12 +103,12 @@ function ReceiptTitles({
         <span key={doc.href ?? doc.title}>
           {i > 0 ? " · " : ""}
           {doc.href ? (
-            <Link
+            <AppLink
               href={doc.href}
               className="underline underline-offset-2 transition-colors duration-100 ease-out hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {doc.title}
-            </Link>
+            </AppLink>
           ) : (
             doc.title
           )}
@@ -122,9 +122,12 @@ function ReceiptTitles({
 function CopyAnswerButton({ result, question }: { result: AskResponse; question: string }): JSX.Element {
   const [copied, setCopied] = useState(false);
 
-  async function copy(): Promise<void> {
+  async function copy(button: HTMLButtonElement): Promise<void> {
+    // The clipboard only accepts writes from the focused document, which is
+    // the mini window's own document when the answer renders there.
+    const clipboard = (button.ownerDocument.defaultView ?? window).navigator.clipboard;
     try {
-      await navigator.clipboard.writeText(
+      await clipboard.writeText(
         answerForClipboard(result.answer, result.sources, {
           question,
           queryLogId: result.queryLogId,
@@ -146,7 +149,7 @@ function CopyAnswerButton({ result, question }: { result: AskResponse; question:
       <button
       type="button"
       aria-label="Copy answer"
-      onClick={() => void copy()}
+      onClick={(event) => void copy(event.currentTarget)}
       className="btn-icon"
       >
         {copied ? (
