@@ -722,8 +722,7 @@
     outline-offset: 2px;
   }
 
-  .auth-demo-role-name,
-  .auth-demo-role-promise {
+  .auth-demo-role-name {
     position: relative;
     z-index: 1;
   }
@@ -738,13 +737,6 @@
 
   .auth-demo-role-active .auth-demo-role-name {
     color: oklch(var(--primary));
-  }
-
-  .auth-demo-role-promise {
-    margin-top: 0.2rem;
-    color: oklch(var(--muted-foreground));
-    font-size: 0.64rem;
-    line-height: 1.35;
   }
 
   .auth-demo-role-orbit {

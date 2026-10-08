@@ -37,11 +37,6 @@ interface LoginPageProps {
  *   - No "remember me" toggle — sessions are 7 days fixed
  */
 
-const DEMO_ROLE_PROMISES: Record<DemoAccount["role"], string> = {
-  manager: "Manage the program",
-  csr: "Ask and check sources"
-};
-
 export function LoginPage({
   onAuthenticated,
   redirectTo = null
@@ -197,9 +192,6 @@ export function LoginPage({
                         }
                       >
                         <span className="auth-demo-role-name">{account.label}</span>
-                        <span className="auth-demo-role-promise">
-                          {DEMO_ROLE_PROMISES[account.role]}
-                        </span>
                         <span className="auth-demo-role-orbit" aria-hidden>
                           <span />
                         </span>
