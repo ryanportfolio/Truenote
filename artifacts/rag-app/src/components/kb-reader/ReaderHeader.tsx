@@ -1,7 +1,8 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { Link } from "wouter";
 import { Star } from "lucide-react";
 import type { KbDocPersonal } from "@/components/kb-library/KbDocPersonalBar";
+import { useStuck } from "@/lib/useStuck";
 import { cn } from "@/lib/utils";
 import type { KbColorLabel } from "@/types/api";
 import { ReaderLabelMenu, type SaveLabelName } from "./ReaderLabelMenu";
@@ -61,7 +62,8 @@ function useScrollPaddingBelow(headerRef: RefObject<HTMLElement>): void {
  * the actions shrink to short pills ("Shortcut", "Label") whose accessible
  * names keep the full wording. While the note editor is open, "Save note" is
  * the one filled button, so the shortcut button turns quiet until the editor
- * closes.
+ * closes. Once pinned it gets the same frosted, fading band as the Sources
+ * search bar.
  */
 export function ReaderHeader({
   crumbs,
@@ -77,16 +79,25 @@ export function ReaderHeader({
   labels: KbColorLabel[];
   onRenameLabel: SaveLabelName;
 }): JSX.Element {
-  const headerRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement | null>(null);
   useScrollPaddingBelow(headerRef);
+  const { ref: stuckRef, stuck } = useStuck();
+  const setHeader = useCallback(
+    (el: HTMLDivElement | null) => {
+      headerRef.current = el;
+      stuckRef(el);
+    },
+    [stuckRef]
+  );
   const { item, editing } = personal;
   const inShortcuts = item.pinnedAt !== null;
   const shortcutName = inShortcuts ? "In my shortcuts" : "Add to my shortcuts";
   return (
     <div
-      ref={headerRef}
+      ref={setHeader}
       data-kb-reader-header
-      className="z-20 -mx-3 bg-background px-3 pb-3 pt-1 sm:-mx-6 sm:px-6 md:sticky md:top-0 md:border-b md:border-border/70 md:pt-4"
+      data-stuck={stuck || undefined}
+      className="sticky-band relative z-20 -mx-3 px-3 pb-3 pt-1 sm:-mx-6 sm:px-6 md:sticky md:top-0 md:pt-4"
     >
       <nav aria-label="Breadcrumb" data-kb-breadcrumb className="text-sm text-muted-foreground">
         <ol className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
