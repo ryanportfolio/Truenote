@@ -28,7 +28,9 @@ function scrollParent(el: HTMLElement): HTMLElement | null {
  * While the reader is open, the scroll pane keeps a top padding equal to the
  * sticky header plus 16px. Browsers honor it for keyboard focus, "On this
  * page" jumps and cited passages, so nothing lands under the header. Below
- * 768px the header is not sticky and the padding is just the gap.
+ * 768px the header is not sticky and the padding is just the gap. The
+ * header's height is also kept in `--kb-reader-header` for the sticky side
+ * column.
  */
 function useScrollPaddingBelow(headerRef: RefObject<HTMLElement>): void {
   useEffect(() => {
@@ -36,11 +38,13 @@ function useScrollPaddingBelow(headerRef: RefObject<HTMLElement>): void {
     const pane = header ? scrollParent(header) : null;
     if (!header || !pane) return;
     const before = pane.style.scrollPaddingTop;
+    const beforeHeight = pane.style.getPropertyValue("--kb-reader-header");
     function update(): void {
       if (!header || !pane) return;
       const sticky = getComputedStyle(header).position === "sticky";
       const height = sticky ? Math.ceil(header.getBoundingClientRect().height) : 0;
       pane.style.scrollPaddingTop = `${height + SCROLL_GAP_PX}px`;
+      pane.style.setProperty("--kb-reader-header", `${height}px`);
     }
     update();
     const observer = new ResizeObserver(update);
@@ -50,6 +54,7 @@ function useScrollPaddingBelow(headerRef: RefObject<HTMLElement>): void {
       observer.disconnect();
       window.removeEventListener("resize", update);
       pane.style.scrollPaddingTop = before;
+      pane.style.setProperty("--kb-reader-header", beforeHeight);
     };
   }, [headerRef]);
 }
