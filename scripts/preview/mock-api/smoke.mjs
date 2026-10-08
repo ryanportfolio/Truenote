@@ -42,7 +42,7 @@ const me = await call(csr, "GET", "/api/me");
 keysEqual("me.user", me.json.user, ["id", "email", "role", "programId", "name", "mustResetPassword"]);
 
 const list = await call(csr, "GET", "/api/kb/documents");
-keysEqual("kb list", list.json, ["items", "categories", "tags", "labels", "canOrganize"]);
+keysEqual("kb list", list.json, ["items", "categories", "tags", "labels", "canOrganize", "canPinForTeam"]);
 keysEqual("kb label", list.json.labels[0], ["color", "name"]);
 check(
   "jordan seeded labels",
@@ -59,7 +59,8 @@ check("label filters have sources", colorCount("red") >= 4 && colorCount("green"
   `red ${colorCount("red")} green ${colorCount("green")} amber ${colorCount("amber")}`);
 keysEqual("kb item", list.json.items[0], [
   "documentId", "title", "updatedAt", "createdAt", "isNew", "viewCount", "citationCount",
-  "lastViewedByMeAt", "pinnedAt", "note", "noteUpdatedAt", "myColor", "featuredPosition", "categoryIds", "tagIds"
+  "lastViewedByMeAt", "pinnedAt", "note", "noteUpdatedAt", "myColor", "featuredPosition", "teamPinPosition",
+  "categoryIds", "tagIds"
 ]);
 keysEqual("kb category", list.json.categories[0], ["id", "parentId", "name", "color", "myColor", "position", "documentIds"]);
 keysEqual("kb tag", list.json.tags[0], ["id", "name", "color"]);
@@ -204,7 +205,8 @@ check("source with 12+ questions in 30 days", top.citationCount >= 12, `${top.ti
 keysEqual("usage people item", usage.json.people[0], ["userId", "name", "role", "questionCount"]);
 const peopleNames = usage.json.people.map((p) => p.name);
 check("people sorted by name", peopleNames.every((n, i) => i === 0 || peopleNames[i - 1].localeCompare(n) <= 0));
-check("people roles", usage.json.people.every((p) => ["csr", "manager", "senior_manager"].includes(p.role)));
+check("people roles", usage.json.people.every((p) => ["csr", "supervisor", "manager", "senior_manager"].includes(p.role)));
+check("people has supervisors", usage.json.people.filter((p) => p.role === "supervisor").length === 2);
 check("people has devon at 0", usage.json.people.some((p) => p.name === "Devon Clarke" && p.questionCount === 0));
 check("people excludes other program", !peopleNames.includes("Lena Park") && !peopleNames.includes("Sam Okafor"));
 keysEqual("usage matrix", usage.json.matrix, ["documentIds", "rows"]);
@@ -312,6 +314,203 @@ check("ask stream result", result.type === "result" && result.result.sources.len
 const su = await as("super_user");
 const suList = (await call(su, "GET", "/api/kb/documents")).json;
 check("super user no program", suList.noProgramSelected === true);
+keysEqual("kb list without program", suList, ["items", "categories", "tags", "labels", "canOrganize", "canPinForTeam", "noProgramSelected"]);
+
+// Supervisors, teams and recommended sources (#191). Fresh state: the checks
+// above moved team pins and categories around.
+{
+  await fetch(`${BASE}/__mock/reset`);
+  const csr = await as("csr");
+  const manager = await as("manager");
+  const demo = await as("demo_manager");
+  const sup = await as("supervisor");
+  const demoSup = await as("demo_supervisor");
+  const kim = await as("kim");
+  const devon = await as("devon");
+  const su = await as("super_user");
+
+  const config = (await call(csr, "GET", "/api/config")).json;
+  check("demo login has supervisor", config.demoAccounts.map((a) => a.role).join() === "csr,supervisor,manager",
+    config.demoAccounts.map((a) => a.role).join());
+  const supMe = (await call(sup, "GET", "/api/me")).json.user;
+  check("supervisor alias", supMe.role === "supervisor" && supMe.name === "Renee Alvarez");
+  const demoSupMe = (await call(demoSup, "GET", "/api/me")).json.user;
+  check("demo supervisor alias", demoSupMe.role === "supervisor" && demoSupMe.name === "Elliot Brooks");
+  const managerMe = (await call(manager, "GET", "/api/me")).json.user;
+  const programId = managerMe.programId;
+
+  // Recommended lists on GET /api/kb/documents.
+  const kbAs = async (cookie) => (await call(cookie, "GET", "/api/kb/documents")).json;
+  const teamPins = (kb) =>
+    kb.items.filter((i) => i.teamPinPosition !== null).sort((a, b) => a.teamPinPosition - b.teamPinPosition);
+  const titles = (kb) => teamPins(kb).map((i) => i.title).join(" | ");
+  const jordanKb = await kbAs(csr);
+  const reneeKb = await kbAs(sup);
+  const kimKb = await kbAs(kim);
+  const elliotKb = await kbAs(demoSup);
+  const managerKb = await kbAs(manager);
+  check("csr canPinForTeam false", jordanKb.canPinForTeam === false);
+  check("jordan sees renee's 2 recommendations", teamPins(jordanKb).length === 2 &&
+    teamPins(jordanKb).map((i) => i.teamPinPosition).join() === "0,1", titles(jordanKb));
+  check("supervisor canPinForTeam", reneeKb.canPinForTeam === true);
+  check("supervisor sees own list", titles(reneeKb) === titles(jordanKb));
+  check("kim sees elliot's list", teamPins(kimKb).length === 2 && titles(kimKb) === titles(elliotKb) && titles(kimKb) !== titles(jordanKb),
+    titles(kimKb));
+  check("demo supervisor canPinForTeam false", elliotKb.canPinForTeam === false);
+  check("unassigned csr sees no team list", teamPins(await kbAs(devon)).length === 0);
+  check("manager has no team list", teamPins(managerKb).length === 0 && managerKb.canPinForTeam === false);
+
+  // PUT /api/kb/library/team-shortcuts: supervisors only, never demo.
+  const ids = reneeKb.items.map((i) => i.documentId);
+  const shortcuts = (cookie, body) => call(cookie, "PUT", "/api/kb/library/team-shortcuts", body);
+  const pinnerMsg = "Only supervisors can recommend sources to a team.";
+  const csrShort = await shortcuts(csr, { documentIds: [ids[0]] });
+  check("csr team-shortcuts 403", csrShort.status === 403 && csrShort.json.error === pinnerMsg, csrShort.json.error);
+  const mgrShort = await shortcuts(manager, { documentIds: [ids[0]] });
+  check("manager team-shortcuts 403", mgrShort.status === 403 && mgrShort.json.error === pinnerMsg, mgrShort.json.error);
+  const demoShort = await shortcuts(demoSup, { documentIds: [ids[0]] });
+  check("demo supervisor team-shortcuts 403", demoShort.status === 403 && demoShort.json.error === "Demo accounts can't do this",
+    demoShort.json.error);
+  const overShort = await shortcuts(sup, { documentIds: ids.slice(0, 13) });
+  check("team-shortcuts cap 400", overShort.status === 400, overShort.json.error);
+  const extraShort = await shortcuts(sup, { documentIds: [ids[0]], x: 1 });
+  check("team-shortcuts strict body", extraShort.status === 400, extraShort.json.error);
+  const fraudForManager = managerKb.items.find((i) => i.title.startsWith("Fraud team")).documentId;
+  const hiddenShort = await shortcuts(sup, { documentIds: [fraudForManager] });
+  check("team-shortcuts hidden source 404", hiddenShort.status === 404);
+  const want = [ids[4], ids[2], ids[7]];
+  const okShort = await shortcuts(sup, { documentIds: want });
+  check("team-shortcuts set", okShort.status === 200 && okShort.json.ok === true);
+  const jordanAfter = teamPins(await kbAs(csr)).map((i) => i.documentId);
+  check("csr sees new order", jordanAfter.join() === want.join(), jordanAfter.join());
+  check("other team unchanged", titles(await kbAs(kim)) === titles(kimKb));
+  const upper = await shortcuts(sup, { documentIds: want.map((id) => id.toUpperCase()) });
+  check("team-shortcuts accepts upper-case ids", upper.status === 200, upper.json?.error);
+  check("team-shortcuts stores lower case", teamPins(await kbAs(csr)).map((i) => i.documentId).join() === want.join());
+  const badUuid = await shortcuts(sup, { documentIds: ["not-a-uuid"] });
+  check("team-shortcuts bad uuid 400", badUuid.status === 400, badUuid.json.error);
+  const dupCase = await shortcuts(sup, { documentIds: [want[0], want[0].toUpperCase()] });
+  check("team-shortcuts duplicate in any case 400", dupCase.status === 400 &&
+    dupCase.json.error === "The list has the same item more than once.", dupCase.json.error);
+  const audit = (await (await fetch(`${BASE}/__mock/audit`)).json()).items;
+  check("team-shortcuts audited", audit.some((a) => a.action === "kb.library.team_shortcuts.set"));
+
+  // GET /api/admin/teams.
+  const teams = await call(manager, "GET", "/api/admin/teams");
+  keysEqual("teams", teams.json, ["supervisors", "csrs", "canEdit"]);
+  keysEqual("teams supervisor", teams.json.supervisors[0], ["id", "name", "email"]);
+  keysEqual("teams csr", teams.json.csrs[0], ["id", "name", "email", "lastLoginAt", "supervisorId"]);
+  check("manager sees every team", teams.json.canEdit === true && teams.json.supervisors.length === 2 && teams.json.csrs.length === 7,
+    `${teams.json.supervisors.length} supervisors, ${teams.json.csrs.length} csrs`);
+  const devonRow = teams.json.csrs.find((c) => c.name === "Devon Clarke");
+  check("devon unassigned", devonRow.supervisorId === null);
+  check("csrs sorted by name", teams.json.csrs.every((c, i, all) => i === 0 || all[i - 1].name.localeCompare(c.name) <= 0));
+  const supTeams = (await call(sup, "GET", "/api/admin/teams")).json;
+  check("supervisor sees own team only", supTeams.canEdit === false && supTeams.supervisors.length === 1 &&
+    supTeams.supervisors[0].id === supMe.id && supTeams.csrs.length === 3 && supTeams.csrs.every((c) => c.supervisorId === supMe.id));
+  const csrTeams = await call(csr, "GET", "/api/admin/teams");
+  check("csr teams 403", csrTeams.status === 403);
+  const suTeams = await call(su, "GET", "/api/admin/teams");
+  check("super user teams without program 400", suTeams.status === 400);
+  const suTeamsP = await fetch(`${BASE}/api/admin/teams`, { headers: { cookie: su, "X-Program-Id": programId } });
+  check("super user teams with program", suTeamsP.status === 200 && (await suTeamsP.json()).csrs.length === 7);
+
+  // Supervisor scope on Users, Usage and Gaps.
+  const team = new Set([supMe.id, ...supTeams.csrs.map((c) => c.id)]);
+  const supUsers = (await call(sup, "GET", "/api/admin/users")).json.items;
+  check("supervisor users = own csrs", supUsers.length === 3 && supUsers.every((u) => u.role === "csr" && team.has(u.id)));
+  check("csr users 403", (await call(csr, "GET", "/api/admin/users")).status === 403);
+
+  // POST /api/admin/users/:id/reset-password: a supervisor resets only their own CSRs.
+  const reset = (cookie, id) => call(cookie, "POST", `/api/admin/users/${id}/reset-password`);
+  const jordanUser = supUsers.find((u) => u.name === "Jordan Reyes");
+  const supReset = await reset(sup, jordanUser.id);
+  keysEqual("reset response", supReset.json, ["tempPassword"]);
+  check("supervisor resets own csr", supReset.status === 200 && supReset.json.tempPassword.length >= 12);
+  const afterReset = (await call(sup, "GET", "/api/admin/users")).json.items.find((u) => u.id === jordanUser.id);
+  check("reset sets mustResetPassword", afterReset.mustResetPassword === true);
+  const changed = await call(csr, "POST", "/api/auth/change-password", { currentPassword: "x", newPassword: "y" });
+  check("change-password clears the reset", changed.json.user.mustResetPassword === false);
+  const tomasId = teams.json.csrs.find((c) => c.name === "Tomas Rivera").id;
+  check("supervisor reset out of team 404", (await reset(sup, tomasId)).status === 404);
+  check("supervisor reset of a manager 404", (await reset(sup, managerMe.id)).status === 404);
+  check("supervisor reset self 404", (await reset(sup, supMe.id)).status === 404);
+  const demoReset = await reset(demoSup, tomasId);
+  check("demo supervisor reset 403", demoReset.status === 403 && demoReset.json.error === "Demo accounts can't do this");
+  check("csr reset 403", (await reset(csr, tomasId)).status === 403);
+  check("manager resets a supervisor", (await reset(manager, supMe.id)).status === 200);
+  check("manager reset self 404", (await reset(manager, managerMe.id)).status === 404);
+  check("reset bad id 400", (await reset(manager, "nope")).status === 400);
+  await call(sup, "POST", "/api/auth/change-password", { currentPassword: "x", newPassword: "y" });
+  const supUsage = (await call(sup, "GET", "/api/admin/insights/source-usage?days=30")).json;
+  check("supervisor people = team", supUsage.people.length === team.size && supUsage.people.every((p) => team.has(p.userId)));
+  check("supervisor matrix rows in team", supUsage.matrix.rows.every((r) => team.has(r.userId)));
+  const mgrUsage = (await call(manager, "GET", "/api/admin/insights/source-usage?days=30")).json;
+  const teamQuestions = mgrUsage.users.filter((u) => team.has(u.userId)).reduce((n, u) => n + u.questionCount, 0);
+  check("supervisor totals = team questions", supUsage.totals.questions === teamQuestions && teamQuestions > 0,
+    `${supUsage.totals.questions} vs ${teamQuestions}`);
+  const tomas = teams.json.csrs.find((c) => c.name === "Tomas Rivera");
+  const outOfTeam = await call(sup, "GET", `/api/admin/insights/source-usage?days=30&userId=${tomas.id}`);
+  check("out-of-team person 404", outOfTeam.status === 404);
+  const outOfTeamQs = await call(sup, "GET", `/api/admin/insights/source-usage/questions?days=30&userId=${tomas.id}`);
+  check("out-of-team questions 404", outOfTeamQs.status === 404);
+  const supQs = (await call(sup, "GET", "/api/admin/insights/source-usage/questions?days=90&limit=200")).json.items;
+  check("supervisor questions in team", supQs.length > 0 && supQs.every((q) => team.has(q.userId)));
+  const supGaps = (await call(sup, "GET", "/api/admin/insights/kb-gaps?days=90")).json;
+  const mgrGaps = (await call(manager, "GET", "/api/admin/insights/kb-gaps?days=90")).json;
+  check("supervisor gaps narrower", supGaps.totals.queries > 0 && supGaps.totals.queries < mgrGaps.totals.queries,
+    `${supGaps.totals.queries} vs ${mgrGaps.totals.queries}`);
+  check("review queue manager-only", (await call(sup, "GET", "/api/admin/queries")).status === 403);
+  const mgrPrograms = (await call(manager, "GET", "/api/admin/programs")).json;
+  check("manager programs = own", mgrPrograms.items.length === 1 && mgrPrograms.items[0].id === programId);
+  check("super user programs = all", (await call(su, "GET", "/api/admin/programs")).json.items.length === 2);
+  check("supervisor programs 403", (await call(sup, "GET", "/api/admin/programs")).status === 403);
+
+  // PUT /api/admin/teams/assignments.
+  const assign = (cookie, body) => call(cookie, "PUT", "/api/admin/teams/assignments", body);
+  check("supervisor assign 403", (await assign(sup, { csrIds: [devonRow.id], supervisorId: supMe.id })).status === 403);
+  const demoAssign = await assign(demo, { csrIds: [devonRow.id], supervisorId: supMe.id });
+  check("demo manager assign 403", demoAssign.status === 403 && demoAssign.json.error === "Demo accounts can't do this");
+  const moved = await assign(manager, { csrIds: [devonRow.id.toUpperCase()], supervisorId: supMe.id });
+  keysEqual("assign response", moved.json, ["csrs"]);
+  check("devon moved to renee", moved.json.csrs.find((c) => c.id === devonRow.id).supervisorId === supMe.id);
+  check("supervisor team grew", (await call(sup, "GET", "/api/admin/teams")).json.csrs.length === 4);
+  check("devon sees renee's list", teamPins(await kbAs(devon)).map((i) => i.documentId).join() === want.join());
+  const moveAudit = (await (await fetch(`${BASE}/__mock/audit`)).json()).items.find((a) => a.action === "team.assign");
+  check("assign audited with previous supervisor", moveAudit?.detail.previousSupervisorIds[devonRow.id] === null &&
+    moveAudit.detail.csrIds[0] === devonRow.id);
+  const unassigned = await assign(manager, { csrIds: [devonRow.id], supervisorId: null });
+  check("unassign", unassigned.json.csrs.find((c) => c.id === devonRow.id).supervisorId === null);
+  const toCsr = await assign(manager, { csrIds: [devonRow.id], supervisorId: tomas.id });
+  check("supervisorId must be a supervisor", toCsr.status === 400 && toCsr.json.error === "Choose an active supervisor in this program.",
+    toCsr.json.error);
+  const lena = (await (await fetch(`${BASE}/__mock`)).json()).users.find((u) => u.name === "Lena Park");
+  const cross = await assign(manager, { csrIds: [lena.id], supervisorId: supMe.id });
+  check("other-program csr 400", cross.status === 400 && cross.json.error === "One or more people are not active CSRs in this program.",
+    cross.json.error);
+  const empty = await assign(manager, { csrIds: [], supervisorId: supMe.id });
+  check("empty csrIds 400", empty.status === 400 && empty.json.error === "Pick at least one CSR.", empty.json.error);
+  const extraAssign = await assign(manager, { csrIds: [devonRow.id], supervisorId: null, x: 1 });
+  check("assign strict body", extraAssign.status === 400);
+
+  // /api/ask-examples.
+  const examples = await call(csr, "GET", "/api/ask-examples");
+  keysEqual("ask examples", examples.json, ["questions", "custom"]);
+  check("ask examples defaults", examples.json.custom === false && examples.json.questions.length === 3);
+  const setEx = await call(manager, "PUT", "/api/ask-examples", { questions: ["  How do I waive a late fee?  ", "how do i waive a late fee?", "Who approves credits?"] });
+  check("ask examples set trims and dedupes", setEx.json.custom === true &&
+    setEx.json.questions.join("|") === "How do I waive a late fee?|Who approves credits?", setEx.json.questions?.join("|"));
+  check("csr reads custom examples", (await call(csr, "GET", "/api/ask-examples")).json.custom === true);
+  check("csr ask examples write 403", (await call(csr, "PUT", "/api/ask-examples", { questions: ["x"] })).status === 403);
+  check("supervisor ask examples write 403", (await call(sup, "PUT", "/api/ask-examples", { questions: ["x"] })).status === 403);
+  const demoEx = await call(demo, "PUT", "/api/ask-examples", { questions: ["x"] });
+  check("demo ask examples write 403", demoEx.status === 403 && demoEx.json.error === "Demo accounts can't do this");
+  const sevenEx = await call(manager, "PUT", "/api/ask-examples", { questions: ["a", "b", "c", "d", "e", "f", "g"] });
+  check("ask examples over 6 is 400", sevenEx.status === 400, sevenEx.json.error);
+  const resetEx = await call(manager, "PUT", "/api/ask-examples", { questions: [] });
+  check("empty list restores defaults", resetEx.json.custom === false && resetEx.json.questions.length === 3);
+  check("super user ask examples without program 400", (await call(su, "GET", "/api/ask-examples")).status === 400);
+}
 
 // Suggestions = the backend rule, recomputed here from the seed rows for every
 // person x window (insights.ts suggestionsQuery + source-usage.ts

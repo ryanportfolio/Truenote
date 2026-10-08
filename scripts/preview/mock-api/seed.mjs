@@ -1212,6 +1212,35 @@ export function buildSeed() {
     views.push({ userId: jordan.id, documentId: doc[key].id, viewedAt: iso(now - ageDays * DAY), via: "browse" });
   }
 
+  // Supervisor teams (team_members) and their recommended sources
+  // (kb_team_shortcuts). Added last so every id and random draw above stays
+  // the same as before supervisors existed. Renee leads Jordan, Aisha and
+  // Marcus; Elliot (a demo account, so his list is read-only) leads Tomas,
+  // Kim and Priya; Devon is on no team.
+  const renee = mkUser("Renee Alvarez", "renee.alvarez@acme-wireless.example", "supervisor", "internal");
+  const elliot = mkUser("Elliot Brooks", "demo.supervisor@truenote.example", "supervisor", "internal", {
+    isDemo: true
+  });
+  users.push(renee, elliot);
+  const teamMembers = [
+    ...["jordan", "aisha", "marcus"].map((name) => ({ csrId: byName[name].id, supervisorId: renee.id, programId })),
+    ...["tomas", "kim", "priya"].map((name) => ({ csrId: byName[name].id, supervisorId: elliot.id, programId }))
+  ];
+  const teamShortcuts = [
+    ...["late-fee", "retention-offers"].map((key, position) => ({
+      supervisorId: renee.id,
+      programId,
+      documentId: doc[key].id,
+      position
+    })),
+    ...["plan-change", "roaming"].map((key, position) => ({
+      supervisorId: elliot.id,
+      programId,
+      documentId: doc[key].id,
+      position
+    }))
+  ];
+
   return {
     programs,
     users,
@@ -1221,6 +1250,9 @@ export function buildSeed() {
     categories,
     categoryDocs,
     featured,
+    teamMembers,
+    teamShortcuts,
+    askExamples: new Map(),
     userState,
     categoryPrefs,
     colorLabels,

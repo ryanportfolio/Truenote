@@ -3,6 +3,7 @@
 // Shapes mirror artifacts/rag-app/src/types/api.ts.
 
 import http from "node:http";
+import { randomBytes } from "node:crypto";
 import { buildSeed, CLEARANCE_RANK, nextId } from "./seed.mjs";
 
 const PORT = Number(process.env.MOCK_PORT) || 5099;
@@ -10,8 +11,19 @@ const FRONTEND_PORT = Number(process.env.PORT) || 5173;
 const DAY = 24 * 60 * 60 * 1000;
 const NEW_WINDOW_MS = 14 * DAY;
 const COLORS = ["slate", "blue", "green", "amber", "red", "violet", "teal", "pink"];
-const ROLE_RANK = { super_user: 100, senior_manager: 80, manager: 60, csr: 20 };
+const ROLE_RANK = { super_user: 100, senior_manager: 80, manager: 60, supervisor: 40, csr: 20 };
 const DEMO_MESSAGE = "Demo accounts can't do this";
+const TEAM_PINNER_MESSAGE = "Only supervisors can recommend sources to a team.";
+/** Team pins and a supervisor's recommended list share this cap. */
+const MAX_FEATURED = 12;
+const MAX_TEAM_ASSIGNMENT = 200;
+const ASK_EXAMPLES_MAX = 6;
+const ASK_EXAMPLE_MAX_LENGTH = 200;
+const DEFAULT_ASK_EXAMPLES = [
+  "What's the cancellation fee on the Basic plan?",
+  "How long does a refund take to post to the original card?",
+  "Who must approve a courtesy refund?"
+];
 
 let state = buildSeed();
 let delayMs = Number(process.env.MOCK_DELAY_MS) || 0;
@@ -72,6 +84,8 @@ function readCookie(req, name) {
 /** Strips line breaks so a request path cannot forge extra log lines. */
 const logSafe = (text) => String(text).replace(/\n|\r/g, "");
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** zod .strict() stand-in: object body with only the allowed keys. */
 function strictBody(body, allowed) {
   if (body === null || typeof body !== "object" || Array.isArray(body)) {
@@ -124,6 +138,8 @@ const normalizeQuestion = (q) =>
 
 const ROLE_ALIASES = {
   csr: "jordan.reyes@acme-wireless.example",
+  supervisor: "renee.alvarez@acme-wireless.example",
+  demo_supervisor: "demo.supervisor@truenote.example",
   manager: "maria.chen@acme-wireless.example",
   demo_manager: "demo.manager@truenote.example",
   super_user: "sam.okafor@truenote.example"
@@ -181,6 +197,39 @@ function requireProgram(user, req) {
 
 const canSee = (user, doc) => CLEARANCE_RANK[user.clearance] >= CLEARANCE_RANK[doc.classification];
 const canOrganize = (user) => ROLE_RANK[user.role] >= ROLE_RANK.manager && !user.isDemo;
+/** lib/kb-library.ts canPinForTeam plus the demo block on the list flag. */
+const canPinForTeam = (user) => user.role === "supervisor" && !user.isDemo;
+
+/**
+ * lib/teams.ts teamScope: a supervisor sees their own id plus their CSRs'
+ * ids; every other role gets null (no team filter, program-wide).
+ */
+function teamScope(user) {
+  if (user.role !== "supervisor") return null;
+  const ids = state.teamMembers
+    .filter((m) => m.supervisorId === user.id && m.programId === user.programId)
+    .map((m) => m.csrId)
+    .sort();
+  return [user.id, ...ids];
+}
+
+/** routes/admin/insights.ts isUserInScope: a null scope admits everyone. */
+function isUserInScope(scope, userId) {
+  if (scope === null) return true;
+  const wanted = String(userId).toLowerCase();
+  return scope.some((id) => id.toLowerCase() === wanted);
+}
+
+/**
+ * Whose recommended list (kb_team_shortcuts) the viewer reads, as in
+ * routes/kb.ts teamPinSql: a supervisor their own, a CSR their supervisor's
+ * in this program, anyone else none.
+ */
+function teamListOwner(user, programId) {
+  if (user.role === "supervisor") return user.id;
+  if (user.role !== "csr") return null;
+  return state.teamMembers.find((m) => m.csrId === user.id && m.programId === programId)?.supervisorId ?? null;
+}
 
 function visibleDocs(user, programId) {
   return state.documents.filter((d) => d.programId === programId && !d.retired && canSee(user, d));
@@ -241,6 +290,7 @@ function kbList(user, req) {
       tags: [],
       labels: colorLabelsOf(user),
       canOrganize: false,
+      canPinForTeam: canPinForTeam(user),
       noProgramSelected: true
     };
   }
@@ -268,6 +318,12 @@ function kbList(user, req) {
   const featured = new Map(
     state.featured.filter((f) => f.programId === programId).map((f) => [f.documentId, f.position])
   );
+  const teamOwner = teamListOwner(user, programId);
+  const teamPins = new Map(
+    state.teamShortcuts
+      .filter((t) => teamOwner !== null && t.supervisorId === teamOwner && t.programId === programId)
+      .map((t) => [t.documentId, t.position])
+  );
   const items = docs
     .map((doc) => {
       const version = activeVersion(doc);
@@ -287,6 +343,7 @@ function kbList(user, req) {
         noteUpdatedAt: mine?.noteUpdatedAt ?? null,
         myColor: mine?.color ?? null,
         featuredPosition: featured.has(doc.id) ? featured.get(doc.id) : null,
+        teamPinPosition: teamPins.has(doc.id) ? teamPins.get(doc.id) : null,
         categoryIds: state.categoryDocs.filter((m) => m.documentId === doc.id).map((m) => m.categoryId),
         tagIds: state.docTags.filter((t) => t.documentId === doc.id).map((t) => t.tagId)
       };
@@ -300,7 +357,8 @@ function kbList(user, req) {
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(({ id, name, color }) => ({ id, name, color })),
     labels: colorLabelsOf(user),
-    canOrganize: canOrganize(user)
+    canOrganize: canOrganize(user),
+    canPinForTeam: canPinForTeam(user)
   };
 }
 
@@ -807,22 +865,205 @@ function setFeatured(user, req, body) {
   return { ok: true };
 }
 
+/**
+ * PUT /api/kb/library/team-shortcuts: replaces the acting supervisor's own
+ * list, like /featured replaces the program's. Supervisors only (403 for
+ * every other role, before the demo block), never demo accounts. Other
+ * supervisors' rows are never touched; the actor's rows for sources they
+ * can't see right now are kept and count toward the cap.
+ */
+function setTeamShortcuts(user, req, body) {
+  if (user.role !== "supervisor") throw new HttpError(403, TEAM_PINNER_MESSAGE);
+  if (user.isDemo) throw new HttpError(403, DEMO_MESSAGE);
+  const programId = requireProgram(user, req);
+  strictBody(body, ["documentIds"]);
+  // featuredSchema (uniqueIdList): uuids, at most 12, no repeats in any case,
+  // lowercased, before the stored-row cap below.
+  const raw = body.documentIds;
+  if (!Array.isArray(raw)) throw badRequest("Send a list of ids.");
+  if (raw.some((id) => typeof id !== "string" || !UUID_RE.test(id))) throw badRequest("Invalid uuid");
+  if (raw.length > MAX_FEATURED) {
+    throw badRequest(`You can pin at most ${MAX_FEATURED} sources for the team.`);
+  }
+  const documentIds = raw.map((id) => id.toLowerCase());
+  if (new Set(documentIds).size !== documentIds.length) {
+    throw badRequest("The list has the same item more than once.");
+  }
+  const visible = visibleIdSet(user, programId);
+  if (documentIds.some((docId) => !visible.has(docId))) throw notFound();
+  const mine = (t) => t.supervisorId === user.id && t.programId === programId;
+  const hidden = state.teamShortcuts
+    .filter((t) => mine(t) && !visible.has(t.documentId))
+    .sort((a, b) => a.position - b.position);
+  if (documentIds.length + hidden.length > MAX_FEATURED) {
+    throw badRequest(`Team pins are limited to ${MAX_FEATURED}.`);
+  }
+  state.teamShortcuts = state.teamShortcuts.filter((t) => !mine(t));
+  documentIds.forEach((documentId, position) =>
+    state.teamShortcuts.push({ supervisorId: user.id, programId, documentId, position })
+  );
+  hidden.forEach((t, index) => state.teamShortcuts.push({ ...t, position: documentIds.length + index }));
+  record("kb.library.team_shortcuts.set", user, programId, { documentIds });
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Teams (routes/admin/teams.ts): supervisor and above read, manager+ writes
+
+/** Active supervisors in the program, or just `onlyId` when given. */
+function listSupervisors(programId, onlyId) {
+  return state.users
+    .filter(
+      (u) =>
+        u.programId === programId &&
+        u.role === "supervisor" &&
+        u.isActive &&
+        (onlyId === null || u.id === onlyId)
+    )
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+    .map(({ id, name, email }) => ({ id, name, email }));
+}
+
+/**
+ * Active CSRs in the program with their supervisor. `supervisorId` is null
+ * unless the row points at an active supervisor in the same program, so the
+ * list never names someone the supervisor list leaves out.
+ */
+function listCsrs(programId, onlySupervisorId) {
+  return state.users
+    .filter((u) => u.programId === programId && u.role === "csr" && u.isActive)
+    .map((u) => {
+      const row = state.teamMembers.find((m) => m.csrId === u.id && m.programId === programId);
+      const lead = row && state.users.find((s) => s.id === row.supervisorId);
+      const supervisorId =
+        lead && lead.role === "supervisor" && lead.isActive && lead.programId === programId ? lead.id : null;
+      return { id: u.id, name: u.name, email: u.email, lastLoginAt: u.lastLoginAt, supervisorId };
+    })
+    .filter((c) => onlySupervisorId === null || c.supervisorId === onlySupervisorId)
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
+
+function teamsList(user, req) {
+  requireRole(user, "supervisor");
+  const programId = requireProgram(user, req);
+  // Only the supervisor tier is narrowed to its own team.
+  const ownTeam = user.role === "supervisor" ? user.id : null;
+  return {
+    supervisors: listSupervisors(programId, ownTeam),
+    csrs: listCsrs(programId, ownTeam),
+    canEdit: ownTeam === null
+  };
+}
+
+/** lib/teams.ts assignmentBodySchema: csrIds 1..200 uuids (deduped, lower case), supervisorId uuid or null. */
+function assignmentBody(body) {
+  strictBody(body, ["csrIds", "supervisorId"]);
+  const { csrIds, supervisorId } = body;
+  if (csrIds === undefined) throw badRequest("Pick at least one CSR.");
+  if (!Array.isArray(csrIds)) throw badRequest("Send a list of ids.");
+  if (csrIds.length < 1) throw badRequest("Pick at least one CSR.");
+  if (csrIds.length > MAX_TEAM_ASSIGNMENT) {
+    throw badRequest(`Move at most ${MAX_TEAM_ASSIGNMENT} CSRs at a time.`);
+  }
+  if (csrIds.some((id) => typeof id !== "string" || !UUID_RE.test(id))) throw badRequest("Invalid uuid");
+  if (supervisorId !== null && (typeof supervisorId !== "string" || !UUID_RE.test(supervisorId))) {
+    throw badRequest("Invalid uuid");
+  }
+  return {
+    csrIds: [...new Set(csrIds.map((id) => id.toLowerCase()))],
+    supervisorId: supervisorId === null ? null : supervisorId.toLowerCase()
+  };
+}
+
+function assignTeam(user, req, body) {
+  requireRole(user, "manager");
+  if (user.isDemo) throw new HttpError(403, DEMO_MESSAGE);
+  const programId = requireProgram(user, req);
+  const { csrIds, supervisorId } = assignmentBody(body);
+  const activeIn = (id, role) =>
+    state.users.some((u) => u.id === id && u.role === role && u.isActive && u.programId === programId);
+  if (!csrIds.every((id) => activeIn(id, "csr"))) {
+    throw badRequest("One or more people are not active CSRs in this program.");
+  }
+  if (supervisorId !== null && !activeIn(supervisorId, "supervisor")) {
+    throw badRequest("Choose an active supervisor in this program.");
+  }
+  const previousSupervisorIds = Object.fromEntries(
+    csrIds.map((id) => [id, state.teamMembers.find((m) => m.csrId === id)?.supervisorId ?? null])
+  );
+  state.teamMembers = state.teamMembers.filter((m) => !csrIds.includes(m.csrId));
+  if (supervisorId !== null) {
+    for (const csrId of csrIds) state.teamMembers.push({ csrId, supervisorId, programId });
+  }
+  record("team.assign", user, programId, { count: csrIds.length, supervisorId, csrIds, previousSupervisorIds });
+  return { csrs: listCsrs(programId, null) };
+}
+
+// ---------------------------------------------------------------------------
+// Ask examples (routes/ask-examples.ts): everyone reads, manager+ replaces
+
+function askExamples(user, req) {
+  const programId = requireProgram(user, req);
+  const stored = state.askExamples.get(programId);
+  return stored ? { questions: [...stored], custom: true } : { questions: [...DEFAULT_ASK_EXAMPLES], custom: false };
+}
+
+/** Replace the list. An empty list goes back to the defaults. */
+function setAskExamples(user, req, body) {
+  requireRole(user, "manager");
+  if (user.isDemo) throw new HttpError(403, DEMO_MESSAGE);
+  const programId = requireProgram(user, req);
+  const questions = body?.questions;
+  const valid =
+    Array.isArray(questions) &&
+    questions.length <= ASK_EXAMPLES_MAX &&
+    questions.every(
+      (q) => typeof q === "string" && q.trim().length >= 1 && q.trim().length <= ASK_EXAMPLE_MAX_LENGTH
+    );
+  if (!valid) {
+    throw badRequest(
+      `Send up to ${ASK_EXAMPLES_MAX} questions, each 1 to ${ASK_EXAMPLE_MAX_LENGTH} characters.`
+    );
+  }
+  // Drop repeats (case-insensitive), keeping the first spelling and order.
+  const seen = new Set();
+  const kept = questions
+    .map((q) => q.trim())
+    .filter((q) => {
+      const key = q.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  if (kept.length === 0) state.askExamples.delete(programId);
+  else state.askExamples.set(programId, kept);
+  record("ask.examples.set", user, programId, { count: kept.length, reset: kept.length === 0 });
+  return askExamples(user, req);
+}
+
 // ---------------------------------------------------------------------------
 // Analytics (manager+)
 
-function windowRows(programId, days, userId) {
+/**
+ * Question rows in the window, optionally one asker. `scope` is teamScope():
+ * for a supervisor only their team's rows (rows with no asker drop out, as
+ * NULL = ANY(...) does in SQL); null keeps the whole program.
+ */
+function windowRows(programId, days, userId, scope = null) {
   const since = Date.now() - days * DAY;
   return state.queryLog.filter(
     (r) =>
       r.programId === programId &&
       Date.parse(r.createdAt) >= since &&
-      (userId === null || r.userId === userId)
+      (userId === null || r.userId === userId) &&
+      (scope === null || (r.userId !== null && isUserInScope(scope, r.userId)))
   );
 }
 
-function programUser(programId, id) {
+/** A person in the program and, for a supervisor, on their team; anyone else is a 404. */
+function programUser(programId, id, scope = null) {
   const user = state.users.find((u) => u.id === id && u.programId === programId);
-  if (!user) throw notFound();
+  if (!user || !isUserInScope(scope, id)) throw notFound();
   return user;
 }
 
@@ -915,7 +1156,8 @@ function suggestionsFor(viewer, person, allRows) {
 const rowDocIds = (row) => [...new Set(row.citations.map((c) => c.doc_id))];
 
 function sourceUsage(user, req, url) {
-  requireRole(user, "manager");
+  requireRole(user, "supervisor");
+  const scope = teamScope(user);
   const days = windowDays(url);
   const programId = effectiveProgramId(user, req);
   const userId = url.searchParams.get("userId") || null;
@@ -931,15 +1173,16 @@ function sourceUsage(user, req, url) {
     users: []
   };
   if (!programId) return { ...empty, noProgramSelected: true };
-  const selected = userId ? programUser(programId, userId) : null;
+  const selected = userId ? programUser(programId, userId, scope) : null;
   const person = selected
     ? { userId: selected.id, name: selected.name, email: selected.email, role: selected.role }
     : null;
-  const rows = windowRows(programId, days, userId);
-  const allRows = userId ? windowRows(programId, days, null) : rows;
+  const rows = windowRows(programId, days, userId, scope);
+  const allRows = userId ? windowRows(programId, days, null, scope) : rows;
   const since = Date.now() - days * DAY;
 
-  // Person picker: every active csr and above in the program, 0 questions allowed.
+  // Person picker: every active csr and above in the program (a supervisor's
+  // team only), 0 questions allowed.
   const questionsBy = new Map();
   for (const row of allRows) {
     if (row.userId) questionsBy.set(row.userId, (questionsBy.get(row.userId) ?? 0) + 1);
@@ -947,7 +1190,10 @@ function sourceUsage(user, req, url) {
   const people = state.users
     .filter(
       (u) =>
-        u.isActive && u.programId === programId && ["csr", "manager", "senior_manager"].includes(u.role)
+        u.isActive &&
+        u.programId === programId &&
+        ["csr", "supervisor", "manager", "senior_manager"].includes(u.role) &&
+        isUserInScope(scope, u.id)
     )
     .map((u) => ({ userId: u.id, name: u.name, role: u.role, questionCount: questionsBy.get(u.id) ?? 0 }))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -999,6 +1245,7 @@ function sourceUsage(user, req, url) {
   for (const view of state.views) {
     if (Date.parse(view.viewedAt) < since) continue;
     if (userId && view.userId !== userId) continue;
+    if (!isUserInScope(scope, view.userId)) continue;
     viewCounts.set(view.documentId, (viewCounts.get(view.documentId) ?? 0) + 1);
   }
   const sources = [...bySource.entries()]
@@ -1084,7 +1331,8 @@ function sourceUsage(user, req, url) {
 }
 
 function sourceUsageQuestions(user, req, url) {
-  requireRole(user, "manager");
+  requireRole(user, "supervisor");
+  const scope = teamScope(user);
   const days = windowDays(url);
   const programId = effectiveProgramId(user, req);
   if (!programId) return { items: [], truncated: false };
@@ -1095,7 +1343,7 @@ function sourceUsageQuestions(user, req, url) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
     throw badRequest("limit must be a whole number from 1 to 200.");
   }
-  if (userId) programUser(programId, userId);
+  if (userId) programUser(programId, userId, scope);
   // Same gating that nulls titles: a source the viewer cannot see is a 404
   // here, so its questions never leak through the drill-down.
   if (
@@ -1105,7 +1353,7 @@ function sourceUsageQuestions(user, req, url) {
     throw notFound();
   }
   const wanted = documentId?.toLowerCase() ?? null;
-  const rows = windowRows(programId, days, userId)
+  const rows = windowRows(programId, days, userId, scope)
     .filter((r) => !wanted || r.citations.some((c) => String(c.doc_id).toLowerCase() === wanted))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return {
@@ -1124,12 +1372,13 @@ function sourceUsageQuestions(user, req, url) {
 }
 
 function kbGaps(user, req, url) {
-  requireRole(user, "manager");
+  requireRole(user, "supervisor");
   const days = windowDays(url);
   const programId = effectiveProgramId(user, req);
   const totals = { queries: 0, refused: 0, flaggedMissing: 0, negativeFeedback: 0 };
   if (!programId) return { items: [], windowDays: days, totals, noProgramSelected: true };
-  const rows = windowRows(programId, days, null);
+  // Supervisor: gaps and totals come from their team's questions only.
+  const rows = windowRows(programId, days, null, teamScope(user));
   const groups = new Map();
   for (const row of rows) {
     totals.queries += 1;
@@ -1189,12 +1438,17 @@ function queryLogList(user, req, url) {
   };
 }
 
+/** GET /api/admin/users: supervisor and above; a supervisor lists only the CSRs on their own team. */
 function userList(user, req) {
-  requireRole(user, "manager");
+  requireRole(user, "supervisor");
   const programId = user.role === "super_user" ? effectiveProgramId(user, req) : user.programId;
+  const onTeam = (u) =>
+    u.role === "csr" &&
+    state.teamMembers.some((m) => m.csrId === u.id && m.supervisorId === user.id && m.programId === u.programId);
   const items = state.users
     .filter((u) => (programId ? u.programId === programId : true))
     .filter((u) => user.role === "super_user" || u.role !== "super_user")
+    .filter((u) => user.role !== "supervisor" || onTeam(u))
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((u) => ({
       id: u.id,
@@ -1208,6 +1462,43 @@ function userList(user, req) {
       createdAt: u.createdAt
     }));
   return { items };
+}
+
+/** routes/admin/users.ts canManageUser: who a manager+ actor may administer. */
+function canManageUser(actor, target) {
+  if (actor.id === target.id) return false;
+  if (actor.role === "super_user") return true;
+  if (target.role === "super_user" || target.role === "senior_manager") return false;
+  if (!actor.programId || actor.programId !== target.programId) return false;
+  if (actor.role === "senior_manager") return ["csr", "supervisor", "manager"].includes(target.role);
+  if (actor.role === "manager") return ["csr", "supervisor"].includes(target.role);
+  return false;
+}
+
+/**
+ * POST /api/admin/users/:id/reset-password: supervisor and above, never demo
+ * accounts. A supervisor may reset only a CSR on their own team; manager and
+ * above go through canManageUser. Anyone out of scope is a 404, not a 403.
+ * Returns the temporary password once and sets mustResetPassword.
+ */
+function resetUserPassword(user, id) {
+  requireRole(user, "supervisor");
+  if (user.isDemo) throw new HttpError(403, DEMO_MESSAGE);
+  if (!UUID_RE.test(id)) throw badRequest("Invalid user id");
+  const target = state.users.find((u) => u.id === id.toLowerCase());
+  if (!target) throw notFound();
+  const allowed =
+    user.role === "supervisor"
+      ? target.id !== user.id &&
+        target.role === "csr" &&
+        target.programId === user.programId &&
+        state.teamMembers.some(
+          (m) => m.csrId === target.id && m.supervisorId === user.id && m.programId === user.programId
+        )
+      : canManageUser(user, target);
+  if (!allowed) throw notFound();
+  target.mustResetPassword = true;
+  return { tempPassword: randomBytes(12).toString("base64url") };
 }
 
 function adminDocuments(user, req) {
@@ -1411,6 +1702,12 @@ route("GET", /^\/api\/config$/, () => ({
   localLoginMode: "enabled",
   demoAccounts: [
     { label: "CSR (Jordan Reyes)", email: ROLE_ALIASES.csr, password: "mock-password", role: "csr" },
+    {
+      label: "Supervisor (Renee Alvarez)",
+      email: ROLE_ALIASES.supervisor,
+      password: "mock-password",
+      role: "supervisor"
+    },
     { label: "Manager (Maria Chen)", email: ROLE_ALIASES.manager, password: "mock-password", role: "manager" }
   ]
 }));
@@ -1431,7 +1728,12 @@ route("POST", /^\/api\/auth\/forgot-password$/, () => undefined);
 route("POST", /^\/api\/auth\/reset-password$/, () => {
   throw badRequest("The fixture API does not support password resets.");
 });
-route("POST", /^\/api\/auth\/change-password$/, ({ req }) => ({ user: publicUser(requireUser(req)) }));
+route("POST", /^\/api\/auth\/change-password$/, ({ req }) => {
+  // Any password is accepted; changing it clears a reset from the Users page.
+  const user = requireUser(req);
+  user.mustResetPassword = false;
+  return { user: publicUser(user) };
+});
 
 route("GET", /^\/api\/sessions$/, ({ user, req }) => listSessions(user, req));
 route("GET", /^\/api\/sessions\/([^/]+)$/, ({ user, req, params }) => sessionDetail(user, req, params[0]));
@@ -1522,6 +1824,12 @@ route("PATCH", new RegExp(`^${L}\\/tags\\/([^/]+)$`), ({ user, req, params, body
 }));
 route("DELETE", new RegExp(`^${L}\\/tags\\/([^/]+)$`), ({ user, req, params }) => deleteTag(user, req, params[0]));
 route("PUT", new RegExp(`^${L}\\/featured$`), ({ user, req, body }) => setFeatured(user, req, body));
+route("PUT", new RegExp(`^${L}\\/team-shortcuts$`), ({ user, req, body }) => setTeamShortcuts(user, req, body));
+
+route("GET", /^\/api\/ask-examples$/, ({ user, req }) => askExamples(user, req));
+route("PUT", /^\/api\/ask-examples$/, ({ user, req, body }) => setAskExamples(user, req, body));
+route("GET", /^\/api\/admin\/teams$/, ({ user, req }) => teamsList(user, req));
+route("PUT", /^\/api\/admin\/teams\/assignments$/, ({ user, req, body }) => assignTeam(user, req, body));
 
 route("GET", /^\/api\/admin\/insights\/kb-gaps$/, ({ user, req, url }) => kbGaps(user, req, url));
 route("GET", /^\/api\/admin\/insights\/source-usage$/, ({ user, req, url }) => sourceUsage(user, req, url));
@@ -1530,9 +1838,17 @@ route("GET", /^\/api\/admin\/insights\/source-usage\/questions$/, ({ user, req, 
 );
 route("GET", /^\/api\/admin\/queries$/, ({ user, req, url }) => queryLogList(user, req, url));
 route("GET", /^\/api\/admin\/users$/, ({ user, req }) => userList(user, req));
+route("POST", /^\/api\/admin\/users\/([^/]+)\/reset-password$/, ({ user, params }) =>
+  resetUserPassword(user, params[0])
+);
+// Manager and above; a super user gets every program, anyone else their own.
 route("GET", /^\/api\/admin\/programs$/, ({ user }) => {
-  requireRole(user, "super_user");
-  return { items: state.programs };
+  requireRole(user, "manager");
+  return {
+    items: state.programs
+      .filter((p) => user.role === "super_user" || p.id === user.programId)
+      .sort((a, b) => a.name.localeCompare(b.name))
+  };
 });
 route("GET", /^\/api\/documents$/, ({ user, req }) => adminDocuments(user, req));
 
@@ -1557,7 +1873,7 @@ function mockControl(req, res, url, path) {
     const user = userByKey(key);
     if (!user && key !== "out") {
       return send(res, 404, {
-        error: `Unknown role "${key}". Use csr, manager, demo_manager, super_user, out, or a first name.`
+        error: `Unknown role "${key}". Use ${Object.keys(ROLE_ALIASES).join(", ")}, out, or a first name.`
       });
     }
     // Through the Vite proxy (xfwd: true) the browser is already on the SPA
@@ -1648,5 +1964,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`[mock-api] listening on http://localhost:${PORT}`);
   console.log(`[mock-api] ${state.documents.length} documents, ${state.queryLog.length} questions, ${state.views.length} views`);
-  console.log(`[mock-api] switch role: http://localhost:${FRONTEND_PORT}/api/__mock/as/csr | manager | demo_manager | super_user`);
+  console.log(`[mock-api] switch role: http://localhost:${FRONTEND_PORT}/api/__mock/as/<${Object.keys(ROLE_ALIASES).join(" | ")}>`);
 });
