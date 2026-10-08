@@ -5,6 +5,7 @@ import {
   applyMove,
   assignmentChunks,
   createSerialQueue,
+  gatedQueue,
   idsToMove,
   moveAnnouncement,
   storageChangeReloads,
@@ -59,7 +60,11 @@ export function useTeams(): TeamsState {
   const loadRef = useRef(0);
   // Bumps on a program switch; a move queued before it must not send to the new program.
   const programRef = useRef(0);
-  const queueRef = useRef(createSerialQueue());
+  // True while mounted; set in an effect so StrictMode's second mount reopens it.
+  // Sign-out and session expiry unmount the page without a reload: a request sent
+  // after that would carry the next user's session, so unsent moves are skipped.
+  const openRef = useRef(true);
+  const queueRef = useRef(gatedQueue(createSerialQueue(), () => openRef.current));
 
   const commit = useCallback((next: TeamsResponse | null) => {
     dataRef.current = next;
@@ -87,6 +92,13 @@ export function useTeams(): TeamsState {
     },
     [commit]
   );
+
+  useEffect(() => {
+    openRef.current = true;
+    return () => {
+      openRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     void load(false);
@@ -135,12 +147,15 @@ export function useTeams(): TeamsState {
       const version = ++versionRef.current;
       const program = programRef.current;
       const enqueue = queueRef.current;
+      // Unmounted, or the program changed: the rest of this move must not be sent.
+      const stale = (): boolean => !openRef.current || programRef.current !== program;
       // A quiet reload after the moves queued so far; skipped once the program changed,
-      // so it cannot take over from the program-switch load.
+      // so it cannot take over from the program-switch load. After unmount the queue
+      // skips it and rejects; there is no page left to reload.
       const resync = (): void => {
-        void enqueue(async () => {
+        enqueue(async () => {
           if (programRef.current === program) await load(true);
-        });
+        }).catch(() => undefined);
       };
       commit({ ...before, csrs: applyMove(before.csrs, ids, supervisorId) });
       setActionError(null);
@@ -150,18 +165,18 @@ export function useTeams(): TeamsState {
       const progress: { saved: TeamsCsr[] | null; moved: number } = { saved: null, moved: 0 };
       try {
         // The page already shows the move; the requests wait for every earlier move to settle.
-        // Resolves false when a program switch came first: requests carry the program selected
-        // at send time, so the rest of this move would land in the wrong program.
+        // Resolves false when a program switch or unmount came first: requests carry the program
+        // and session at send time, so the rest of this move would land in the wrong place.
         const sent = await enqueue(async () => {
           for (const chunk of chunks) {
-            if (programRef.current !== program) return false;
+            if (stale()) return false;
             progress.saved = (await assignTeam(chunk, supervisorId)).csrs;
             progress.moved += chunk.length;
           }
           return true;
         });
-        // The program-switch reload owns the page now.
-        if (programRef.current !== program) return sent;
+        // The program-switch reload owns the page now, or the page is gone.
+        if (stale()) return sent;
         // A newer move already set the state it wants; an older answer must not undo it.
         // A multi-request move re-syncs once the moves queued behind it have settled.
         const current = dataRef.current;
@@ -173,7 +188,8 @@ export function useTeams(): TeamsState {
         say(moveAnnouncement(names, supervisor));
         return true;
       } catch (err) {
-        if (programRef.current !== program) return false;
+        // Includes a move the queue skipped after unmount (QueueClosedError).
+        if (stale()) return false;
         // Some requests may have landed: show the server's last answer, never the stale snapshot.
         // Behind a newer move, reload once that move settles; reloading now could finish before
         // its rollback, which would put this failed move back on the page.

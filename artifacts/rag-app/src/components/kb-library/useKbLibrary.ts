@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createKbCategory,
   createKbTag,
@@ -293,10 +293,20 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
   // order made: sent together, an older list could reach the server last and win.
   // The page still updates at once; only the requests wait. The reload after a
   // failure waits in the same queue, so it cannot read the list from before a
-  // save still waiting its turn.
+  // save still waiting its turn. Sign-out and session expiry unmount the page
+  // without a reload; saves still waiting then are skipped, since they would
+  // go out with the next user's session and replace that user's list.
   const myTeamQueueRef = useRef(createSerialQueue());
+  // True while mounted; set in an effect so StrictMode's second mount reopens it.
+  const openRef = useRef(true);
+  useEffect(() => {
+    openRef.current = true;
+    return () => {
+      openRef.current = false;
+    };
+  }, []);
   const myTeamSaves = useMemo(
-    () => queuedListSaves(myTeamQueueRef.current, setKbTeamShortcuts, refresh),
+    () => queuedListSaves(myTeamQueueRef.current, setKbTeamShortcuts, refresh, () => openRef.current),
     [refresh]
   );
 

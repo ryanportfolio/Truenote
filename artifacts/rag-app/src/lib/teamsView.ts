@@ -139,7 +139,7 @@ export function assignmentChunks(ids: readonly string[], size: number = MAX_TEAM
 
 // The page's moves run through this queue; it lives in its own module so the
 // Sources page can use it too.
-export { createSerialQueue, type SerialQueue } from "@/lib/serialQueue";
+export { createSerialQueue, gatedQueue, type SerialQueue } from "@/lib/serialQueue";
 
 /**
  * The drag keys to focus after a keyboard drop, in order: the dragged one,
