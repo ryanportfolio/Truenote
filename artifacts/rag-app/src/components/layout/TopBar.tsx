@@ -20,6 +20,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   super_user: "Super User",
   senior_manager: "Senior Mgr",
   manager: "Manager",
+  supervisor: "Supervisor",
   csr: "CSR"
 };
 

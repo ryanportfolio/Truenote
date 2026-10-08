@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { randomBytes } from "node:crypto";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../lib/db-client.js";
 import { sessions, users, type UserRole } from "@workspace/db/schema";
@@ -10,11 +10,14 @@ import {
   blockDemoWrites,
   requireAuth,
   requireFreshPassword,
-  requireManagerOrAbove
+  requireManagerOrAbove,
+  requireRole
 } from "../../middleware/current-user.js";
 import {
   canAssignRole,
-  canManageUser
+  canManageUser,
+  type CurrentUser,
+  type TargetUserSummary
 } from "../../lib/auth/current-user.js";
 import { resolveEffectiveProgramId } from "../../lib/auth/effective-program.js";
 import { getMinPasswordLength } from "../../lib/config.js";
@@ -35,6 +38,7 @@ import {
 import { resolveAppBaseUrl } from "../../lib/email/links.js";
 import { renderInviteEmail } from "../../lib/email/templates.js";
 import { recordAppError } from "../../lib/observability/error-log.js";
+import { userAdminWriteLimit } from "../../lib/security/route-rate-limit.js";
 import { workloadRateLimitMiddleware } from "../../middleware/workload-rate-limit.js";
 
 // Read once at module load — same convention as routes/auth.ts so the
@@ -43,14 +47,24 @@ const MIN_PASSWORD_LENGTH = getMinPasswordLength();
 
 export const usersRouter = Router();
 
-// blockDemoWrites: a demo manager may LIST users (the page renders, the
-// capability is visible) but can't create/edit/deactivate anyone or
-// reset passwords — any of those would let one anonymous visitor break
-// login for the next.
+// Access matrix:
+//   manager and above → every handler below, scoped by canManageUser /
+//                       canAssignRole.
+//   supervisor        → GET / (their own team's CSRs only) and
+//                       POST /:id/reset-password (their own team's CSRs
+//                       only, canSupervisorResetPassword). Every other
+//                       handler carries requireManagerOrAbove, so a new
+//                       handler must add it too unless supervisors need it.
+//   csr               → blocked here.
+//
+// blockDemoWrites: a demo manager or supervisor may LIST users (the page
+// renders, the capability is visible) but can't create/edit/deactivate
+// anyone or reset passwords — any of those would let one anonymous visitor
+// break login for the next.
 usersRouter.use(
   requireAuth,
   requireFreshPassword,
-  requireManagerOrAbove,
+  requireRole("supervisor"),
   blockDemoWrites
 );
 
@@ -61,6 +75,7 @@ const ROLE_VALUES = [
   "super_user",
   "senior_manager",
   "manager",
+  "supervisor",
   "csr"
 ] as const satisfies readonly UserRole[];
 
@@ -118,6 +133,26 @@ function generateTempPassword(): string {
 }
 
 /**
+ * Can a supervisor reset `target`'s password? Only a CSR in the
+ * supervisor's own program whose team_members row points at this
+ * supervisor (`isTeamMember`, read by the caller under the target's row
+ * lock). False for every non-supervisor actor; they go through
+ * canManageUser instead.
+ */
+export function canSupervisorResetPassword(
+  actor: CurrentUser,
+  target: TargetUserSummary,
+  isTeamMember: boolean
+): boolean {
+  if (actor.role !== "supervisor") return false;
+  if (actor.id === target.id) return false;
+  if (target.role !== "csr") return false;
+  if (actor.programId === null || target.programId === null) return false;
+  if (actor.programId !== target.programId) return false;
+  return isTeamMember;
+}
+
+/**
  * GET /api/admin/users — list users the actor can see.
  *
  * Scope:
@@ -126,6 +161,8 @@ function generateTempPassword(): string {
  *                     (so the picker doubles as a user-list filter).
  *   senior_manager  → users in their own program.
  *   manager         → users in their own program.
+ *   supervisor      → only the CSRs on their own team (team_members rows
+ *                     pointing at them) in their own program.
  *   csr             → blocked at the router level.
  *
  * Order: super_user first, then by role rank, then by name. Stable so the
@@ -158,11 +195,23 @@ usersRouter.get("/", async (req, res, next) => {
           ? scopeProgramId === null
             ? undefined
             : eq(users.programId, scopeProgramId)
-          : // Non-super_user: programId is non-null by DB CHECK; filter to
-            // own program. Excludes any super_user rows (they have null
-            // programId), which is correct — a manager has no business
-            // seeing super_user accounts.
-            eq(users.programId, actor.programId as string)
+          : actor.role === "supervisor"
+            ? // Supervisor: CSRs in their own program assigned to them.
+              and(
+                eq(users.programId, actor.programId as string),
+                eq(users.role, "csr"),
+                sql`EXISTS (
+                  SELECT 1 FROM team_members tm
+                  WHERE tm.csr_user_id = ${users.id}
+                    AND tm.supervisor_user_id = ${actor.id}::uuid
+                    AND tm.program_id = ${users.programId}
+                )`
+              )
+            : // Non-super_user: programId is non-null by DB CHECK; filter to
+              // own program. Excludes any super_user rows (they have null
+              // programId), which is correct — a manager has no business
+              // seeing super_user accounts.
+              eq(users.programId, actor.programId as string)
       )
       .orderBy(asc(users.role), asc(users.name));
 
@@ -172,7 +221,7 @@ usersRouter.get("/", async (req, res, next) => {
   }
 });
 
-const CreateBody = z.object({
+export const CreateBody = z.object({
   email: z.string().trim().email().max(254),
   name: z
     .string()
@@ -204,7 +253,8 @@ const CreateBody = z.object({
 });
 
 /**
- * POST /api/admin/users — create a user.
+ * POST /api/admin/users — create a user. Manager and above
+ * (requireManagerOrAbove, after the throttle).
  *
  * Authorization gate is canAssignRole. Email is lowercased before any
  * DB touch. A 23505 unique-violation on the email maps to 409.
@@ -217,7 +267,7 @@ const CreateBody = z.object({
  * that exposes a plaintext password — admins are expected to communicate
  * it out-of-band to the new user.
  */
-usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), async (req, res, next) => {
+usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), userAdminWriteLimit, requireManagerOrAbove, async (req, res, next) => {
   try {
     const actor = authedUser(req);
     const parsed = CreateBody.safeParse(req.body);
@@ -337,6 +387,7 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
 /**
  * POST /api/admin/users/bulk — create CSR accounts from CSV-derived emails
  * and email each new user a one-time link to set their own password.
+ * Manager and above (requireManagerOrAbove, after the throttle).
  *
  * The frontend parses the file, but the server revalidates every address,
  * fixes the role to CSR, and resolves the target program from the actor's
@@ -356,7 +407,7 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
  * up-front (creating nothing) if email delivery isn't wired in
  * production — otherwise we'd mint accounts no one can ever log into.
  */
-usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), async (req, res, next) => {
+usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userAdminWriteLimit, requireManagerOrAbove, async (req, res, next) => {
   try {
     const actor = authedUser(req);
     const parsed = BulkUserEmailsSchema.safeParse(req.body);
@@ -532,7 +583,7 @@ usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), async
   }
 });
 
-const PatchBody = z
+export const PatchBody = z
   .object({
     name: z
       .string()
@@ -554,17 +605,17 @@ const PatchBody = z
   });
 
 /**
- * PATCH /api/admin/users/:id — edit a user.
+ * PATCH /api/admin/users/:id — edit a user. Manager and above
+ * (requireManagerOrAbove).
  *
  * Field-level rules on top of the canManageUser scope gate:
  *   name      → any actor who can manage the target may set this
  *   isActive  → same
  *   role      → only changeable to a (role, programId) the actor can
- *               canAssignRole; manager cannot change roles at all
- *               (canAssignRole rejects every transition for them
- *               because they can only assign csr — and a self-no-op
- *               PATCH would have been rejected at the scope gate
- *               since canManageUser refuses self)
+ *               canAssignRole; a manager can only move a target
+ *               between csr and supervisor (a self-no-op PATCH is
+ *               rejected at the scope gate since canManageUser
+ *               refuses self)
  *   programId → only super_user can reassign; senior_manager / manager
  *               cannot move users out of their own program (canAssignRole
  *               rejects)
@@ -587,7 +638,7 @@ const PatchBody = z
  * If anything in the tx fails, the whole PATCH rolls back rather
  * than partially deactivating.
  */
-usersRouter.patch("/:id", async (req, res, next) => {
+usersRouter.patch("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req, res, next) => {
   try {
     const actor = authedUser(req);
     const id = req.params.id;
@@ -757,7 +808,13 @@ usersRouter.patch("/:id", async (req, res, next) => {
 /**
  * POST /api/admin/users/:id/reset-password — generate a temp password
  * for the target, revoke their active sessions, return the temp password
- * once in the response. Same scope gate as PATCH.
+ * once in the response.
+ *
+ * Scope gate:
+ *   manager and above → canManageUser, the same gate as PATCH.
+ *   supervisor        → canSupervisorResetPassword: a CSR in their own
+ *                       program whose team_members row points at them.
+ *   Anything else is a 404, not a 403.
  *
  * Sets must_reset_password=true unconditionally so the user is bounced
  * to the change-password page on first login with the temp credential.
@@ -806,17 +863,35 @@ usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_
         .limit(1);
       const target = rows[0];
       if (!target) return { kind: "not-found" };
+      const summary = {
+        id: target.id,
+        role: target.role,
+        programId: target.programId
+      };
+      let allowed: boolean;
+      if (actor.role === "supervisor") {
+        // Team membership is read inside the tx, after the target's row
+        // lock: every team_members writer (PUT /api/admin/teams/assignments,
+        // the users cleanup trigger) locks the CSR's users row first, so the
+        // row can't move to another team before this reset commits.
+        const membership = await tx.execute(sql`
+          SELECT 1 FROM team_members
+          WHERE csr_user_id = ${target.id}::uuid
+            AND supervisor_user_id = ${actor.id}::uuid
+            AND program_id = ${actor.programId}::uuid
+          FOR SHARE
+        `);
+        allowed = canSupervisorResetPassword(
+          actor,
+          summary,
+          membership.rows.length > 0
+        );
+      } else {
+        allowed = canManageUser(actor, summary);
+      }
       // 404 (not 403) on out-of-scope ids — same existence-hiding
       // convention as the documents routes.
-      if (
-        !canManageUser(actor, {
-          id: target.id,
-          role: target.role,
-          programId: target.programId
-        })
-      ) {
-        return { kind: "not-found" };
-      }
+      if (!allowed) return { kind: "not-found" };
 
       // Atomic: update password + force-reset flag + revoke every existing
       // session. If we ran them as separate writes, a transient DB failure
@@ -844,7 +919,8 @@ usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_
 });
 
 /**
- * DELETE /api/admin/users/:id — permanently remove a user.
+ * DELETE /api/admin/users/:id — permanently remove a user. Manager and
+ * above (requireManagerOrAbove).
  *
  * Deliberate two-step removal (matches the UI): the target must already
  * be deactivated. Deleting an active user is refused with 409, so removal
@@ -862,11 +938,11 @@ usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_
  * Atomicity: SELECT ... FOR UPDATE locks the row so a concurrent
  * reactivate/PATCH can't slip between the isActive check and the DELETE.
  */
-usersRouter.delete("/:id", async (req, res, next) => {
+usersRouter.delete("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req, res, next) => {
   try {
     const actor = authedUser(req);
     const id = req.params.id;
-    if (!UUID_RE.test(id)) {
+    if (typeof id !== "string" || !UUID_RE.test(id)) {
       res.status(400).json({ error: "Invalid user id" });
       return;
     }

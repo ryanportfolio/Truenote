@@ -191,9 +191,9 @@ export function KbCsrPreview({
             Find a source
           </div>
 
-          <p className="mt-4 text-sm font-medium">Team shortcuts</p>
+          <p className="mt-4 text-sm font-medium">Recommended</p>
           {team.length > 0 ? (
-            <ol aria-label="Team shortcuts as your team sees them" className="mt-1 flex flex-col">
+            <ol aria-label="Recommended sources as your team sees them" className="mt-1 flex flex-col">
               {team.map((doc) => (
                 <PreviewDoc key={doc.documentId} doc={doc} flash={flash} />
               ))}

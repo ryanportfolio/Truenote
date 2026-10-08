@@ -67,6 +67,8 @@ The script runs `psql --single-transaction` inside `pgvector` over `railway ssh`
 
 Applied: `0001_schema_migrations.sql` (2026-10-07, sha256 `f33bb30e…`), `0002_eval_questions_is_protected.sql` (2026-10-08, `ff92f1c1…`), `0003_source_library.sql` (2026-10-08 12:17 UTC, `3b88f685…`, after a pre-change dump kept at `D:\CoreWise\_artifacts\truenote\truenote-prod-20261008T1212-pre0003.dump`, sha256 `9fdbeb66…`). Baseline before them: the Replit production schema as restored on 2026-10-07.
 
+Written, not applied: `0004_supervisor_role.sql` (adds `supervisor` to `user_role`), then `0005_team_members.sql` (the `team_members` table and its guard and cleanup triggers). Apply them in that order, in separate runs: Postgres cannot use the new enum value in the transaction that adds it. After 0005: `0006_kb_team_shortcuts.sql` (the `kb_team_shortcuts` table for supervisor-recommended sources, its document and supervisor guards, and the users cleanup trigger).
+
 ## Data copy from Replit (2026-10-07)
 
 - Source: the Replit production database (Neon, Postgres 16.15, 11 MB). Confirmed as production by logging in to `truenote.org` as the demo CSR and seeing the new `sessions` row appear in it.

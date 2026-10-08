@@ -15,7 +15,7 @@
  * a no-op, not a security boundary.
  */
 
-const STORAGE_KEY = "kbase:selectedProgram";
+export const STORAGE_KEY = "kbase:selectedProgram";
 
 interface Stored {
   userId: string;

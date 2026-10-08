@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, BarChart3, BookOpen, Bug, Building2, Cpu, FileText, Flag, FlaskConical, MessageSquare, ShieldCheck, Users } from "lucide-react";
+import { Activity, BarChart3, BookOpen, Bug, Building2, Cpu, FileText, Flag, FlaskConical, MessageSquare, ShieldCheck, Users, UsersRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { hasAtLeastRole } from "@/types/api";
 import type { CurrentUser, UserRole } from "@/types/api";
@@ -23,9 +23,10 @@ const NAV: ReadonlyArray<{
   { href: "/chat", label: "Ask", icon: MessageSquare, minRole: "csr" },
   { href: "/kb", label: "Sources", icon: BookOpen, minRole: "csr" },
   { href: "/admin/documents", label: "Documents", icon: FileText, minRole: "manager" },
-  { href: "/admin/gaps", label: "Gaps", icon: Flag, minRole: "manager" },
-  { href: "/admin/sources", label: "Usage", icon: BarChart3, minRole: "manager" },
-  { href: "/admin/users", label: "Users", icon: Users, minRole: "manager" },
+  { href: "/admin/gaps", label: "Gaps", icon: Flag, minRole: "supervisor" },
+  { href: "/admin/sources", label: "Usage", icon: BarChart3, minRole: "supervisor" },
+  { href: "/admin/users", label: "Users", icon: Users, minRole: "supervisor" },
+  { href: "/admin/teams", label: "Teams", icon: UsersRound, minRole: "supervisor" },
   { href: "/admin/programs", label: "Programs", icon: Building2, minRole: "super_user" },
   { href: "/admin/observability", label: "Timing", icon: Activity, minRole: "super_user" },
   { href: "/admin/errors", label: "Errors", icon: Bug, minRole: "super_user" },

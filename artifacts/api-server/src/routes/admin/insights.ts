@@ -5,10 +5,11 @@ import {
   authedUser,
   requireAuth,
   requireFreshPassword,
-  requireManagerOrAbove
+  requireRole
 } from "../../middleware/current-user.js";
 import { canAccessProgram, type UserRole } from "../../lib/auth/current-user.js";
 import { resolveEffectiveProgramId } from "../../lib/auth/effective-program.js";
+import { teamScope, teamUserFilterSql } from "../../lib/teams.js";
 import {
   classificationRank,
   getUserMaxClassification,
@@ -52,8 +53,24 @@ export const insightsRouter = Router();
  * anecdote. Its row-level sibling is /api/admin/queries (routes/admin/
  * queries.ts), which feeds the same page's "Review queue" section — two
  * shapes, one surface.
+ *
+ * Supervisors get these endpoints for their own team only: every handler
+ * computes teamScope(user) once and narrows each per-user read (query_log
+ * rows, document views, the people list) to it. Manager and above get a
+ * null scope, which leaves the queries program-wide. CSRs stay refused.
  */
-insightsRouter.use(requireAuth, requireFreshPassword, requireManagerOrAbove);
+insightsRouter.use(requireAuth, requireFreshPassword, requireRole("supervisor"));
+
+/**
+ * Whether `userId` is inside a team scope. A null scope (manager and above)
+ * admits everyone; ids compare case-insensitively because a ?userId= query
+ * value may arrive in upper case.
+ */
+export function isUserInScope(scope: string[] | null, userId: string): boolean {
+  if (scope === null) return true;
+  const wanted = userId.toLowerCase();
+  return scope.some((id) => id.toLowerCase() === wanted);
+}
 
 export interface KbGapItem {
   question: string;
@@ -117,6 +134,8 @@ insightsRouter.get("/kb-gaps", async (req, res, next) => {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
+    // Supervisor: gaps and totals come from their team's questions only.
+    const scope = await teamScope(user);
 
     const rawDays = Number.parseInt(String(req.query["days"] ?? ""), 10);
     const windowDays = Number.isFinite(rawDays)
@@ -136,6 +155,7 @@ insightsRouter.get("/kb-gaps", async (req, res, next) => {
       FROM query_log
       WHERE program_id = ${programId}::uuid
         AND created_at > now() - make_interval(days => ${windowDays})
+        ${teamUserFilterSql(scope, sql`query_log.user_id`)}
         AND (refused = true OR flagged_missing = true OR feedback = -1)
       GROUP BY lower(btrim(question))
       ORDER BY
@@ -155,6 +175,7 @@ insightsRouter.get("/kb-gaps", async (req, res, next) => {
       FROM query_log
       WHERE program_id = ${programId}::uuid
         AND created_at > now() - make_interval(days => ${windowDays})
+        ${teamUserFilterSql(scope, sql`query_log.user_id`)}
     `);
     const totals = (totalsResult.rows[0] ?? {
       queries: 0,
@@ -193,8 +214,11 @@ insightsRouter.get("/kb-gaps", async (req, res, next) => {
  * answer, so one answer quoting three excerpts of a document counts once.
  *
  * Program-scoped like kb-gaps. Question text and asker names are visible to
- * manager+ by design; document titles follow the viewer's clearance and come
- * back as null ("Restricted source") when it is too low.
+ * manager+ by design, and to a supervisor for their own team only (every
+ * query_log and view read goes through the team scope; the document list
+ * stays program-wide, but its counts come from the team's questions).
+ * Document titles follow the viewer's clearance and come back as null
+ * ("Restricted source") when it is too low.
  */
 
 export interface SourceUsageSource {
@@ -275,11 +299,14 @@ interface UsageFilter {
   programId: string;
   windowDays: number;
   userId: string | null;
+  /** teamScope(viewer): null for manager and above, else the team's ids. */
+  scope: string[] | null;
 }
 
 /**
  * Window CTEs shared by the source-usage summary queries:
- *   q      query_log rows in the window (optionally one asker)
+ *   q      query_log rows in the window, inside the team scope (optionally
+ *          one asker)
  *   cited  one row per (answer, cited document in this program)
  * Snapshots name documents by doc_id; ids that no longer resolve to a
  * document in this program (deleted documents) drop out here.
@@ -306,6 +333,7 @@ function usageCtes(filter: UsageFilter): SQL {
       WHERE ql.program_id = ${filter.programId}::uuid
         AND ql.created_at > now() - make_interval(days => ${filter.windowDays})
         ${filter.userId ? sql`AND ql.user_id = ${filter.userId}` : sql``}
+        ${teamUserFilterSql(filter.scope, sql`ql.user_id`)}
     ),
     cited AS (
       SELECT DISTINCT q.id AS query_id, d.id AS document_id
@@ -324,25 +352,30 @@ const ANSWERED = sql.raw("NOT refused AND jsonb_array_length(snaps) > 0");
  * Resolve the optional ?userId= filter to the person's identity. The user
  * must belong to the effective program or have asked questions in it
  * (super users); anything else is a 404 so ids from other programs reveal
- * nothing. Membership does not depend on the window.
+ * nothing. Membership does not depend on the window. For a supervisor the
+ * person must also be in their team scope; anyone else is the same 404.
  */
 async function resolveUsageUser(
   raw: unknown,
-  programId: string
+  programId: string,
+  scope: string[] | null
 ): Promise<SourceUsageResponse["person"] | "not_found"> {
   const parsed = parseOptionalUuid(raw);
   if (parsed === "invalid") return "not_found";
   if (parsed === null) return null;
+  if (!isUserInScope(scope, parsed)) return "not_found";
   const result = await db.execute(sql`
     SELECT u.id::text AS user_id, u.name, u.email, u.role::text AS role
     FROM users AS u
     WHERE u.id = ${parsed}::uuid
+      ${teamUserFilterSql(scope, sql`u.id`)}
       AND (
         u.program_id = ${programId}::uuid
         OR EXISTS (
           SELECT 1 FROM query_log AS ql
           WHERE ql.program_id = ${programId}::uuid
             AND ql.user_id = ${parsed}
+            ${teamUserFilterSql(scope, sql`ql.user_id`)}
         )
       )
     LIMIT 1
@@ -444,16 +477,26 @@ interface UsageSuggestionRow {
  * question as one of the person's refused answers. Related rows sort first, so
  * the LIMIT keeps them whenever any exist; selectSourceSuggestions then
  * applies the related-or-fallback rule.
+ *
+ * Team scope: `q` is built with the viewer's `scope`, and every per-user
+ * CTE here (mine, trouble_root and its own/other self-join, team) reads
+ * from `q`. For a supervisor, "other people" therefore means the person's
+ * teammates only: the candidate pool, `teamCitations`, `lastCitedAt` (both
+ * sort keys) and `related` all come from questions asked inside the team.
+ * The caller only gets here after resolveUsageUser admitted `userId` into
+ * the scope. Manager and above pass a null scope and keep the program-wide
+ * pool.
  */
-function suggestionsQuery(input: {
+export function suggestionsQuery(input: {
   programId: string;
   windowDays: number;
   userId: string;
+  scope: string[] | null;
   clearance: Classification;
 }): SQL {
-  const { programId, windowDays, userId, clearance } = input;
+  const { programId, windowDays, userId, scope, clearance } = input;
   return sql`
-    WITH RECURSIVE ${usageCtes({ programId, windowDays, userId: null })},
+    WITH RECURSIVE ${usageCtes({ programId, windowDays, userId: null, scope })},
     cat_root AS (
       SELECT c.id, c.id AS root_id
       FROM kb_categories AS c
@@ -569,16 +612,17 @@ insightsRouter.get("/source-usage", sourceUsageReadLimit, async (req, res, next)
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    const person = await resolveUsageUser(req.query["userId"], programId);
+    const scope = await teamScope(user);
+    const person = await resolveUsageUser(req.query["userId"], programId, scope);
     if (person === "not_found") {
       res.status(404).json({ error: "Not found" });
       return;
     }
     const userId = person?.userId ?? null;
     const clearance = await getUserMaxClassification(user.id);
-    const ctes = usageCtes({ programId, windowDays, userId });
-    // The matrix always covers everyone, whatever the person filter.
-    const everyoneCtes = usageCtes({ programId, windowDays, userId: null });
+    const ctes = usageCtes({ programId, windowDays, userId, scope });
+    // The matrix covers everyone in the scope, whatever the person filter.
+    const everyoneCtes = usageCtes({ programId, windowDays, userId: null, scope });
 
     const totalsQuery = db.execute(sql`
       WITH ${ctes}
@@ -588,6 +632,7 @@ insightsRouter.get("/source-usage", sourceUsageReadLimit, async (req, res, next)
         (SELECT count(*)::int FROM q WHERE refused) AS refused,
         (SELECT count(DISTINCT user_id)::int FROM q WHERE user_id IS NOT NULL) AS active_users,
         (SELECT count(DISTINCT document_id)::int FROM cited) AS sources_cited,
+        -- Program-wide document list; "never cited" means by the scoped q.
         (
           SELECT count(*)::int
           FROM documents AS nd
@@ -616,6 +661,7 @@ insightsRouter.get("/source-usage", sourceUsageReadLimit, async (req, res, next)
         WHERE program_id = ${programId}::uuid
           AND viewed_at > now() - make_interval(days => ${windowDays})
           ${userId ? sql`AND user_id = ${userId}::uuid` : sql``}
+          ${teamUserFilterSql(scope, sql`kb_document_views.user_id`)}
         GROUP BY document_id
       )
       SELECT
@@ -691,7 +737,8 @@ insightsRouter.get("/source-usage", sourceUsageReadLimit, async (req, res, next)
       ORDER BY r.user_id, r.rn
     `);
     // Person picker: every active program member at csr level or above,
-    // including people who asked nothing in the window. Super users have no
+    // including people who asked nothing in the window; for a supervisor,
+    // only their team (themselves and their CSRs). Super users have no
     // program_id, so they never appear here.
     const peopleQuery = db.execute(sql`
       SELECT
@@ -706,11 +753,13 @@ insightsRouter.get("/source-usage", sourceUsageReadLimit, async (req, res, next)
         WHERE ql.program_id = ${programId}::uuid
           AND ql.created_at > now() - make_interval(days => ${windowDays})
           AND ql.user_id IS NOT NULL
+          ${teamUserFilterSql(scope, sql`ql.user_id`)}
         GROUP BY ql.user_id
       ) AS qc ON qc.user_id = u.id::text
       WHERE u.program_id = ${programId}::uuid
         AND u.is_active
-        AND u.role IN ('csr', 'manager', 'senior_manager')
+        AND u.role IN ('csr', 'supervisor', 'manager', 'senior_manager')
+        ${teamUserFilterSql(scope, sql`u.id`)}
       ORDER BY lower(u.name), u.id
     `);
     // People x sources. Columns rank like `sources` with no person filter
@@ -779,6 +828,7 @@ insightsRouter.get("/source-usage", sourceUsageReadLimit, async (req, res, next)
               programId,
               windowDays,
               userId,
+              scope,
               clearance:
                 classificationRank(personMax) < classificationRank(clearance)
                   ? personMax
@@ -907,7 +957,8 @@ insightsRouter.get("/source-usage/questions", sourceUsageReadLimit, async (req, 
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    const person = await resolveUsageUser(req.query["userId"], programId);
+    const scope = await teamScope(user);
+    const person = await resolveUsageUser(req.query["userId"], programId, scope);
     const documentId = parseOptionalUuid(req.query["documentId"]);
     if (person === "not_found" || documentId === "invalid") {
       res.status(404).json({ error: "Not found" });
@@ -946,6 +997,7 @@ insightsRouter.get("/source-usage/questions", sourceUsageReadLimit, async (req, 
         WHERE ql.program_id = ${programId}::uuid
           AND ql.created_at > now() - make_interval(days => ${windowDays})
           ${person ? sql`AND ql.user_id = ${person.userId}` : sql``}
+          ${teamUserFilterSql(scope, sql`ql.user_id`)}
           ${
             documentId
               ? sql`AND EXISTS (

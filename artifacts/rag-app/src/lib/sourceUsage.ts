@@ -4,7 +4,8 @@ import type {
   SourceUsageQuestion,
   SourceUsageSource,
   SourceUsageSuggestion,
-  SourceUsageUser
+  SourceUsageUser,
+  UserRole
 } from "@/types/api";
 
 /**
@@ -163,6 +164,7 @@ export function personLabel(person: { name: string | null; email?: string | null
 
 const ROLE_LABELS: Record<SourceUsageUser["role"], string> = {
   csr: "CSR",
+  supervisor: "Supervisor",
   manager: "Manager",
   senior_manager: "Senior manager",
   super_user: "Super user"
@@ -170,6 +172,75 @@ const ROLE_LABELS: Record<SourceUsageUser["role"], string> = {
 
 export function roleLabel(role: SourceUsageUser["role"]): string {
   return ROLE_LABELS[role];
+}
+
+/**
+ * Whose questions the Usage and Gaps pages cover. The server limits a
+ * supervisor to their team (themselves plus the CSRs they supervise);
+ * managers and above see the whole program.
+ */
+export type UsageScope = "program" | "team";
+
+export function usageScope(role: UserRole): UsageScope {
+  return role === "supervisor" ? "team" : "program";
+}
+
+/** The line under a supervisor's Usage and Gaps pages. */
+export const TEAM_SCOPE_NOTE = "Shows questions from your team: you and the CSRs you supervise.";
+
+/** Wording that names the whole group of people on the Usage page, per scope. */
+export interface ScopeCopy {
+  /** Person picker option and trigger when no one is selected. */
+  everyone: string;
+  everyoneDetail: string;
+  noPeople: string;
+  /** Button that clears the person filter. */
+  showEveryone: string;
+  backToEveryone: string;
+  /** Source drawer, widened past one person. */
+  everyonesQuestions: string;
+  showEveryones: string;
+  noQuestionsHint: string;
+  notFound: string;
+  noUsageHint: string;
+  /** "the team" in comparisons, e.g. "the team answered 82%". */
+  team: string;
+  teamAverage: string;
+}
+
+const SCOPE_COPY: Record<UsageScope, ScopeCopy> = {
+  program: {
+    everyone: "Everyone",
+    everyoneDetail: "All people in this program",
+    noPeople: "No people in this program yet.",
+    showEveryone: "Show everyone",
+    backToEveryone: "Back to everyone",
+    everyonesQuestions: "Everyone's questions.",
+    showEveryones: "Show everyone's",
+    noQuestionsHint: "Try a longer time period, or show everyone.",
+    notFound: "This person isn't in this program or no longer has an account.",
+    noUsageHint: "Usage appears after people ask questions in Ask.",
+    team: "the team",
+    teamAverage: "Team average"
+  },
+  team: {
+    everyone: "Your team",
+    everyoneDetail: "Everyone on your team",
+    noPeople: "No one on your team yet.",
+    showEveryone: "Show your team",
+    backToEveryone: "Back to your team",
+    everyonesQuestions: "Your team's questions.",
+    showEveryones: "Show your team's",
+    noQuestionsHint: "Try a longer time period, or show your team's.",
+    notFound: "This person isn't on your team or no longer has an account.",
+    noUsageHint: "Usage appears after your team asks questions in Ask.",
+    team: "your team",
+    teamAverage: "Your team's average"
+  }
+};
+
+export function scopeCopy(scope: UsageScope): ScopeCopy {
+  return SCOPE_COPY[scope];
 }
 
 export function plural(count: number, one: string, many: string): string {

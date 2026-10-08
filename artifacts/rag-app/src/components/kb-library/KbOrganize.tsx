@@ -35,7 +35,7 @@ import { KbOrganizeTree } from "./KbOrganizeTree";
 import { useReducedMotion } from "./useReducedMotion";
 
 const STEPS: Array<{ id: KbOrganizeStep; label: string }> = [
-  { id: "shortcuts", label: "Team shortcuts" },
+  { id: "shortcuts", label: "Recommended" },
   { id: "folders", label: "Folders" }
 ];
 
@@ -73,7 +73,7 @@ function TeamSlot({ doc, index, count }: { doc: KbDocumentListItem; index: numbe
           type="button"
           {...attributes}
           {...listeners}
-          aria-label={`Drag ${doc.title} to reorder team shortcuts`}
+          aria-label={`Drag ${doc.title} to reorder recommended sources`}
           className="btn-icon h-9 w-9 cursor-grab touch-none active:cursor-grabbing"
         >
           <GripVertical className="h-4 w-4" aria-hidden />
@@ -86,14 +86,14 @@ function TeamSlot({ doc, index, count }: { doc: KbDocumentListItem; index: numbe
           {path ? <span className="block truncate text-xs text-muted-foreground">{path}</span> : null}
         </span>
         <KbMenu
-          label={`Team shortcut ${index + 1}: ${doc.title}`}
+          label={`Recommended ${index + 1}: ${doc.title}`}
           title="Move or remove"
           items={[
             { label: "Move earlier", icon: ArrowUp, disabled: index === 0, onSelect: () => move(-1) },
             { label: "Move later", icon: ArrowDown, disabled: index === count - 1, onSelect: () => move(1) },
             "separator",
             {
-              label: "Remove from team shortcuts",
+              label: "Stop recommending to everyone",
               icon: X,
               onSelect: () => {
                 markMoved(`doc:${doc.documentId}`);
@@ -133,7 +133,7 @@ function TeamLane({ team }: { team: KbDocumentListItem[] }): JSX.Element {
     <section aria-labelledby="kb-team-lane" className="rounded-lg border border-border bg-card p-3 shadow-card sm:p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
         <h3 id="kb-team-lane" className="font-display text-2xl font-semibold tracking-tight">
-          Team shortcuts
+          Recommended
         </h3>
         <p data-kb-team-capacity className="text-sm tabular-nums text-muted-foreground">
           {team.length} of {KB_MAX_TEAM_PINS}
@@ -165,7 +165,7 @@ function TeamLane({ team }: { team: KbDocumentListItem[] }): JSX.Element {
           }}
         >
           <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-            <ol aria-label="Team shortcuts in order" className="mt-4 flex flex-col gap-2">
+            <ol aria-label="Recommended sources in order" className="mt-4 flex flex-col gap-2">
               {team.map((doc, index) => (
                 <TeamSlot key={doc.documentId} doc={doc} index={index} count={team.length} />
               ))}
@@ -222,7 +222,7 @@ function AddSource({ team }: { team: KbDocumentListItem[] }): JSX.Element {
       </div>
       {full ? (
         <p className="mt-2 text-sm text-muted-foreground">
-          Team shortcuts are full. Remove one to add another.
+          You can recommend at most {KB_MAX_TEAM_PINS} sources to everyone. Stop recommending one to add another.
         </p>
       ) : null}
       {candidates.length > 0 ? (
@@ -243,7 +243,7 @@ function AddSource({ team }: { team: KbDocumentListItem[] }): JSX.Element {
                     markMoved(`doc:${doc.documentId}`);
                     actions.addTeamPin(doc.documentId);
                   }}
-                  aria-label={`Add ${doc.title} to team shortcuts`}
+                  aria-label={`Recommend ${doc.title} to everyone`}
                   className="btn-whisper shrink-0 gap-1 px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Plus className="h-3.5 w-3.5" aria-hidden />
@@ -255,7 +255,7 @@ function AddSource({ team }: { team: KbDocumentListItem[] }): JSX.Element {
         </ul>
       ) : (
         <p className="mt-3 text-sm text-muted-foreground">
-          {q ? `No other sources match "${query.trim()}".` : "Every source is already a team shortcut."}
+          {q ? `No other sources match "${query.trim()}".` : "Every source is already recommended."}
         </p>
       )}
     </section>
