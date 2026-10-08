@@ -51,7 +51,7 @@ MSYS_NO_PATHCONV=1 railway volume files --volume pgvector-volume download /truen
 MSYS_NO_PATHCONV=1 railway volume files --volume pgvector-volume delete /truenote-dumps/<file>
 ```
 
-In PowerShell, drop `MSYS_NO_PATHCONV=1` (section "Shells"). The `--volume` option goes before the subcommand ([Railway CLI: volume](https://docs.railway.com/cli/volume), accessed 2026-10-07). That page does not say whether a remote path is relative to the volume or to its mount point `[CONFIRM: with MSYS_NO_PATHCONV=1 railway volume files --volume pgvector-volume list / that /truenote-dumps/ is the folder created above]`. It also says `files delete` refuses to run when an AI agent invokes it, so a person runs it. Files left on the volume hold production data, including password hashes, and once volume backups are on they are copied into every later backup.
+In PowerShell, drop `MSYS_NO_PATHCONV=1` (section "Shells"). The `--volume` option goes before the subcommand ([Railway CLI: volume](https://docs.railway.com/cli/volume), accessed 2026-10-07). That page does not say whether a remote path is relative to the volume or to its mount point. It is relative to the volume, whose root is the mount point: on 2026-10-08 `railway volume files --volume pgvector-volume list / --json` listed `/data` and `/lost+found`, the folders the container sees under `/var/lib/postgresql`, so `/truenote-dumps/` is the folder created above. It also says `files delete` refuses to run when an AI agent invokes it, so a person runs it. Files left on the volume hold production data, including password hashes, and once volume backups are on they are copied into every later backup.
 
 ## 1. What holds data and what backs it up
 
