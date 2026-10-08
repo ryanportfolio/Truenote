@@ -1,12 +1,12 @@
 ---
-description: Honest second look at the recommendation the model just made — why it matters, the real reasoning behind it, and (the point) what it could be missing, quick and well-rounded. ONLY use when the user explicitly types the `/why` slash command. Do NOT trigger on the bare word "why" in ordinary conversation, nor on natural-language paraphrases like "why did you recommend that" — manual slash invocation only. Reviews the recommendation in the assistant's immediately-preceding turn (the message right before the user's). Dispatches one fresh Opus subagent, fed only that recommendation, to hunt blind spots with genuine distance, then synthesizes a concise review that surfaces real weaknesses instead of just defending the pick. Lightweight — a single scoped reviewer, not the multi-agent /impartial-review.
+description: Pressure-test a recommendation with one fresh reviewer. Use when the user types /why, or before you present your own weighty recommendation (hard to undo, two or more real options, or real time or money at stake). Never trigger from ordinary why questions or paraphrases.
 ---
 
 # Why
 
 The user typed `/why`. They just got a recommendation from you — a library, an approach, a file layout, a fix, a tradeoff call — and want a quick, honest, well-rounded look at it: why it matters, the real reasoning, and, critically, what it might be missing. They can already see the recommendation. Don't re-explain the conversation. Explain and pressure-test the *pick*.
 
-**Trigger:** this skill runs ONLY on the explicit `/why` command. The word "why" used normally in conversation is not a trigger — never fire on it.
+**Triggers:** the explicit `/why` command, or self-run before you present a weighty recommendation (see "Self-run mode" below and the caveman skill's questions rule). The word "why" used normally in conversation is not a trigger — never fire on it.
 
 **Lightweight by design.** This is not `/impartial-review` (no five-bucket panel, no broad audit). But a model reviewing its *own* previous turn tends to rubber-stamp — same blind spots, same biases. So `/why` borrows exactly one trick from real review: a single fresh subagent with no memory of this session, to get genuine distance on the weak spots. Everything else you do yourself, fast.
 
@@ -35,12 +35,21 @@ Verify the one or two facts the pick actually leans on. If nothing needed verify
 
 Dispatch **one** subagent via the Agent tool for the "what it could be missing" angle — independent distance the self-review can't give itself:
 
-- **Model:** the Agent tool's `opus` model (currently Opus 4.8). **Type:** `general-purpose`, fresh context.
+- **Model:** honor an explicit user model choice; otherwise inherit the configured session model. Inspect the exposed tool and model options before dispatch. **Type:** `general-purpose`, fresh context. An unavailable requested model is a capability gap, not permission to substitute silently.
 - **Feed it only the recommendation under review** — the text of your immediately-preceding turn, plus at most the single user message that prompted it so the pick makes sense. Do **not** paste the whole conversation or unrelated history. Minimal context is the point: genuine distance, no wasted tokens chewing the thread.
 - **Ask it for:** unstated assumptions, edge cases the pick ignores, costs or risks not surfaced, and the conditions under which this is the *wrong* call. Tell it to be specific and skeptical, to **not** restate the recommendation, and to say plainly if the pick looks weak. Reasoning-level blind spots are the job — it may do one targeted grep/read if a claim is cheaply checkable, but it should not go spelunking the repo.
-- **One agent only.** If dispatch fails or it returns nothing useful, fall back to your own critique — don't block the review on it.
+- **One agent only.** If fresh dispatch is unavailable or fails, disclose that the independent check did not complete. Useful personal critique may continue, clearly labeled as self-review; it cannot complete the independent gate. A completed reviewer finding no valid criticism is a valid result, not a dispatch failure.
 
 Then **you** own the synthesis: take the subagent's findings, drop anything off-base (it lacks full repo context), and fold the rest into the review below. Don't relay its raw output — integrate it.
+
+## Self-run mode
+
+When you run this yourself before presenting a pick:
+
+- The pick under review is the recommendation you are about to give, not your previous turn. Feed the subagent that draft plus the user message that prompted it.
+- Do Steps 2 and 3 as written.
+- Skip the Step 4 review format. Present the refined recommendation in the session's normal style with one added line: `Pressure-tested (/why): <what the reviewer changed or confirmed>`. If the check overturns the pick, lead with the new pick and say why on that line.
+- No file edits for the pick until the user answers.
 
 ## Step 4: Write the review
 

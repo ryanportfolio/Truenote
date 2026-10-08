@@ -3,7 +3,7 @@ name: "sync-starter"
 description: "Use when the user asks to pull template improvements into a spawned repo, compare starter drift, or push a generic improvement back to the starter."
 ---
 
-# Two-way sync with the starter template
+# Two-way sync with the Harness-Firmware template
 
 Spawned projects freeze the template at spawn date; the template keeps improving. This skill closes the gap in both directions. Template repo: `ryanportfolio/Harness-Firmware` (formerly `claude-starter`; the old URL redirects, but use the new one).
 
@@ -62,7 +62,7 @@ node .claude/scripts/test-codex-contract.mjs
 
 ### Step 5: ship
 
-Only when shipping is authorized: branch, stage exactly the selected pulled paths plus `.agents/skill-sources.json` and deleted adapter paths, commit (`Sync from claude-starter: <what>`), push, and open a PR, following the project's git rules in `AGENTS.md`.
+Only when shipping is authorized: branch, stage exactly the selected pulled paths plus `.agents/skill-sources.json` and deleted adapter paths, commit (`Sync from Harness-Firmware: <what>`), push, and open a PR, following the project's git rules in `AGENTS.md`.
 
 ## Direction B: push a generic improvement back to the template
 

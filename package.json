@@ -1,5 +1,5 @@
 {
-  "name": "kbase",
+  "name": "truenote",
   "private": true,
   "version": "0.0.0",
   "engines": {
@@ -9,9 +9,8 @@
   "packageManager": "pnpm@10.26.1",
   "scripts": {
     "build": "pnpm -r run build",
-    "typecheck": "pnpm -r run typecheck",
-    "lint": "pnpm -r run lint",
-    "clean": "pnpm -r run clean && rm -rf node_modules",
+    "typecheck": "pnpm -r run check",
+    "clean": "pnpm -r --if-present run clean && node -e \"require('node:fs').rmSync('node_modules', { recursive: true, force: true })\"",
     "dev:web": "pnpm --filter @workspace/rag-app run dev",
     "dev:api": "pnpm --filter @workspace/api-server run dev",
     "worker": "pnpm --filter @workspace/scripts run worker",

@@ -1,24 +1,8 @@
 {
   "skillOverrides": {
-    "addskill": "off",
-    "applying-best-practices": "off",
     "brainstorming": "off",
-    "conflict": "off",
-    "dispatching-parallel-agents": "off",
-    "executing-plans": "off",
-    "finishing-a-development-branch": "off",
-    "humanizer": "off",
     "lab": "off",
-    "safe-ship": "off",
-    "subagent-driven-development": "off",
-    "systematic-debugging": "off",
-    "test-driven-development": "off",
-    "using-git-worktrees": "off",
-    "using-superpowers": "off",
-    "verification-before-completion": "off",
-    "why": "off",
-    "writing-plans": "off",
-    "writing-skills": "off"
+    "writing-plans": "off"
   },
   "hooks": {
     "SessionStart": [
@@ -26,7 +10,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.sh"
           }
         ]
       }
@@ -37,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/subagent-start.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/subagent-start.sh"
           }
         ]
       }
