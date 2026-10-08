@@ -8,6 +8,8 @@
 -- CSR or supervisor has the wrong role or sits in another program, and the
 -- users trigger deletes rows that a later role or program change made invalid,
 -- so an API bug cannot put a Program B CSR on a Program A supervisor's team.
+-- Deactivating a supervisor clears their team too, so reactivating them does
+-- not silently restore access to CSRs the teams page showed as unassigned.
 
 -- The primary key keeps a CSR on one team at a time.
 CREATE TABLE IF NOT EXISTS team_members (
@@ -64,8 +66,9 @@ CREATE TRIGGER team_members_guard_trg
   BEFORE INSERT OR UPDATE ON team_members
   FOR EACH ROW EXECUTE FUNCTION team_members_guard();
 
--- A CSR who changes role or program leaves their team; a supervisor who does
--- loses every CSR assigned to them.
+-- A CSR who changes role or program leaves their team; a supervisor who does,
+-- or who is deactivated, loses every CSR assigned to them. A deactivated CSR
+-- keeps their row; the teams page already hides inactive CSRs.
 CREATE OR REPLACE FUNCTION team_members_user_cleanup()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -75,14 +78,16 @@ BEGIN
   WHERE (csr_user_id = NEW.id
          AND (NEW.role <> 'csr' OR program_id IS DISTINCT FROM NEW.program_id))
      OR (supervisor_user_id = NEW.id
-         AND (NEW.role <> 'supervisor' OR program_id IS DISTINCT FROM NEW.program_id));
+         AND (NEW.role <> 'supervisor' OR program_id IS DISTINCT FROM NEW.program_id
+              OR NOT NEW.is_active));
   RETURN NULL;
 END
 $$;
 
 DROP TRIGGER IF EXISTS team_members_user_cleanup_trg ON users;
 CREATE TRIGGER team_members_user_cleanup_trg
-  AFTER UPDATE OF role, program_id ON users
+  AFTER UPDATE OF role, program_id, is_active ON users
   FOR EACH ROW
-  WHEN (OLD.role IS DISTINCT FROM NEW.role OR OLD.program_id IS DISTINCT FROM NEW.program_id)
+  WHEN (OLD.role IS DISTINCT FROM NEW.role OR OLD.program_id IS DISTINCT FROM NEW.program_id
+        OR OLD.is_active IS DISTINCT FROM NEW.is_active)
   EXECUTE FUNCTION team_members_user_cleanup();
