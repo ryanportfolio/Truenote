@@ -126,6 +126,20 @@ function focusIsLost(): boolean {
   return !active || active === document.body || !active.isConnected;
 }
 
+/**
+ * Move focus to the top of the overview: its first control (the date range),
+ * which shows a focus ring. The page title is screen-reader-only, so it is
+ * only the fallback (no program selected, so no controls).
+ */
+function focusOverviewStart(): boolean {
+  const target =
+    document.querySelector<HTMLElement>(
+      "[data-usage-controls] button, [data-usage-controls] select, [data-usage-controls] a[href]"
+    ) ?? document.getElementById("source-usage-title");
+  target?.focus({ preventScroll: true });
+  return target !== null;
+}
+
 function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element {
   const search = useSearch();
   const [, navigate] = useLocation();
@@ -317,16 +331,15 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
         row.focus({ preventScroll: point !== null });
         if (!point) row.scrollIntoView({ block: "center" });
       } else {
-        document.getElementById("source-usage-title")?.focus({ preventScroll: true });
+        focusOverviewStart();
       }
     });
   }, [data, userId]);
 
   const retry = useCallback(() => {
-    (
-      document.getElementById("source-usage-title") ??
-      document.getElementById("person-focus-title")
-    )?.focus({ preventScroll: true });
+    if (!focusOverviewStart()) {
+      document.getElementById("person-focus-title")?.focus({ preventScroll: true });
+    }
     setReloadKey((current) => current + 1);
   }, []);
 
@@ -533,12 +546,12 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
       ) : (
         <header className="flex flex-col gap-4">
           {/* The sidebar already says where you are; the heading stays for
-              screen readers and as the focus target when leaving a person. */}
+              screen readers. Focus handoffs go to the first control instead. */}
           <h1 id="source-usage-title" tabIndex={-1} className="sr-only">
             Source usage
           </h1>
           {noProgramSelected ? null : (
-            <div className="flex flex-wrap items-center gap-3">{controls}</div>
+            <div data-usage-controls className="flex flex-wrap items-center gap-3">{controls}</div>
           )}
         </header>
       )}
