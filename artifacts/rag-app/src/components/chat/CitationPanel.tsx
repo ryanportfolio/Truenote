@@ -29,8 +29,25 @@ export function CitationPanel({ source, queryLogId, onClose, showDebug }: Citati
     return () => restoreRef.current?.focus();
   }, []);
 
-  function onKeyDown(event: React.KeyboardEvent): void {
+  function onKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
     if (event.key === "Escape") onClose();
+    // In the mini window the panel covers everything else, so Tab cycles
+    // inside it instead of reaching the hidden composer.
+    if (event.key === "Tab" && inMiniWindow) {
+      const focusable = Array.from(
+        event.currentTarget.querySelectorAll<HTMLElement>("a[href], button:not([disabled])")
+      );
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = event.currentTarget.ownerDocument.activeElement;
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
   }
 
   const documentHref = citationDocumentHref(source, queryLogId);
@@ -39,6 +56,7 @@ export function CitationPanel({ source, queryLogId, onClose, showDebug }: Citati
   return (
     <aside
       role="dialog"
+      aria-modal={inMiniWindow || undefined}
       aria-label={`Citation: ${source.doc_title}`}
       onKeyDown={onKeyDown}
       className={cn(

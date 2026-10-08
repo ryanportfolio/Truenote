@@ -141,7 +141,8 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
   // Keep the newest exchange in view as the transcript grows.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "nearest" });
-  }, [exchanges, stage]);
+    // inMiniWindow: the transcript remounts in the other window, top-scrolled.
+  }, [exchanges, stage, inMiniWindow]);
 
   // Abort any in-flight request when the page unmounts.
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -158,7 +159,10 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
       const target = event.target as Partial<HTMLElement> | null;
       if (
         target &&
-        (target.tagName === "INPUT" ||
+        // An open citation panel keeps focus; in the mini window it covers
+        // the composer.
+        (target.closest?.("[role='dialog']") ||
+          target.tagName === "INPUT" ||
           target.tagName === "TEXTAREA" ||
           target.tagName === "SELECT" ||
           target.isContentEditable)
@@ -421,7 +425,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             ) : null}
           </div>
           {hasProgram ? (
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
                 disabled={busy}
