@@ -259,7 +259,7 @@ describe("CURRENT_VERIFICATION_RECORD", () => {
       const firstMention = record.split(/\r?\n/).find((line) => line.includes(source));
       assert.match(
         firstMention ?? "",
-        new RegExp(`\`${source.replace(/\./g, "\\.")}\` SHA-256 \`[0-9A-F]{64}\``)
+        new RegExp(`\`${source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\` SHA-256 \`[0-9A-F]{64}\``)
       );
     }
   });
