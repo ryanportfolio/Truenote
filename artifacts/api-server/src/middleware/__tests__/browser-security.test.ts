@@ -133,9 +133,9 @@ describe("trustedMutationOriginMiddleware", () => {
 
   it("derives the public request origin only outside production", () => {
     const headers = {
-      origin: "https://dev-truenote.replit.dev",
+      origin: "https://dev.truenote.example",
       host: "localhost:3001",
-      "x-forwarded-host": "dev-truenote.replit.dev",
+      "x-forwarded-host": "dev.truenote.example",
       "x-forwarded-proto": "https",
     };
     expect(run("POST", headers, { NODE_ENV: "development" }).nextCalled).toBe(

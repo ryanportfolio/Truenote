@@ -1,18 +1,18 @@
 # Secrets & Environment Variables
 
-Replit Secrets are the source of truth in production. `.env.example` documents what's needed locally.
+Railway service variables are the source of truth in production (names and per-service split: `deployment.md`). `.env.example` documents what's needed locally.
 
 ## Required
 
 | Var | Used for | Notes |
 |---|---|---|
-| `DATABASE_URL` | Neon Postgres (Replit-managed) | Must have `vector` and `pg_trgm` extensions enabled |
+| `DATABASE_URL` | Railway Postgres (`pgvector` service), set as `${{pgvector.DATABASE_URL_PRIVATE}}` | Needs the `vector`, `pg_trgm` and `pgcrypto` extensions |
 | `OPENROUTER_API_KEY` | Answer generation through the approved model-routing presets, plus the auxiliary utility calls (follow-up rewrite, session naming) pinned to the Mercury 2.5 (Inception) ZDR route | Assign key to the ZDR guardrail. Every request pins one provider, sends `provider.zdr=true`, denies data collection, and disables provider fallback. No direct answer-generation escape hatch exists. |
 | `OPENAI_API_KEY` | Embeddings (`text-embedding-3-small`) and the opt-in eval judge | These direct utilities are outside OpenRouter's ZDR boundary; configure required retention controls on the OpenAI organization. They are never used as an answer-generation fallback. Follow-up rewrite and session naming moved to the OpenRouter ZDR utility (2026-07) and no longer touch this key. |
 | `VISION_AGENT_API_KEY` | LandingAI ADE Parse v2 for document parsing (OCR + inline figure description) | Model `dpt-3-pro-latest`. ZDR is account-level (Team/Enterprise plan + Org-Settings toggle), NOT a request parameter — the key alone does not guarantee ZDR. |
 | `COHERE_API_KEY` | Rerank v3 | Cuts irrelevant chunks from final LLM context |
-| `BOOTSTRAP_SUPER_USER_EMAIL` | First-login seed | Used once on api-server startup to create the initial super_user if none exists. Idempotent. |
-| `BOOTSTRAP_SUPER_USER_PASSWORD` | First-login seed | Forced reset on first login; env var unused thereafter. |
+| `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Bucket settings for the S3 adapter; on Railway they come from `railway bucket credentials -b truenote-storage` | Required unless `RAG_STORAGE_DRIVER=memory`. A missing one fails the first storage call with the missing names. |
+| `TRUENOTE_PROCESS` | Selects the process `scripts/railway-start.sh` runs: `web` (api-server) or `worker` (`scripts/src/worker.ts`) | Set on both Railway services. Unset means `web`; any other value exits 64. |
 
 ## P0/P1 production controls
 
@@ -20,7 +20,7 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 |---|---|---|
 | `MALWARE_SCANNER_URL` | Organization-approved raw-byte malware scan | With default enforcement on, an unset/unavailable/insecure production URL quarantines. The super-user Security page can explicitly and auditably disable only the external scan; this never becomes a clean verdict. |
 | `MALWARE_SCANNER_TOKEN` / `MALWARE_SCANNER_HMAC_KEY` | Scanner request authentication | Configure the mechanism approved by the scanner owner. Never put either value in source or the review HTML. |
-| `SIEM_WEBHOOK_URL` / `SIEM_WEBHOOK_SIGNING_KEY` | Signed one-way security-event export | Database event and outbox row commit atomically. Production URL must be HTTPS and the signing key at least 32 characters. Delivery uses lease-fenced retries and dead-letter state after `docs/security/p1-siem-delivery-outbox.sql` is applied. |
+| `SIEM_WEBHOOK_URL` / `SIEM_WEBHOOK_SIGNING_KEY` | Signed one-way security-event export | Database event and outbox row commit atomically. Production URL must be HTTPS and the signing key at least 32 characters. Delivery uses lease-fenced retries and dead-letter state after `docs/security/p1-siem-delivery-outbox.sql` is applied; on Railway only its table exists, not its functions or trigger (`data-model.md`), so enabling SIEM would fail today. |
 | `SIEM_DELIVERY_POLL_MS`, `SIEM_DELIVERY_BATCH_SIZE`, `SIEM_DELIVERY_CONCURRENCY`, `SIEM_DELIVERY_LEASE_SECONDS`, `SIEM_DELIVERY_MAX_ATTEMPTS`, `SIEM_DELIVERY_SLO_SECONDS` | Durable SIEM worker policy and health | Defaults are 10000, 25, 5, 60, 8, and 300. Worker raises short requested leases to cover the bounded batch. Change only from observed receiver capacity and an approved delivery SLO. |
 | `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, `OIDC_STATE_SECRET` | Enterprise OpenID Connect Authorization Code + PKCE | Configure all together. State secret is at least 32 characters. In production, issuer, redirect, discovery, token, and JWKS URLs must use HTTPS. |
 | `OIDC_REQUIRE_MFA` / `OIDC_REQUIRED_ACR` / `OIDC_ALLOWED_DOMAINS` | IdP assurance and identity restrictions | MFA defaults on when OIDC is configured; verify the IdP emits `amr: ["mfa"]` or set an approved exact ACR. |
@@ -39,13 +39,17 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 | `RETRIEVAL_TOP_K` | Final chunks sent to LLM after reranking | `8` |
 | `RETRIEVAL_CANDIDATE_K` | Candidates pulled from vector + BM25 before reranking | `40` each |
 | `RETRIEVAL_NEIGHBOR_ANCHORS` | Top reranked chunks whose ordinal ±1 siblings are appended as unscored context. `0` disables neighbor expansion | `3` |
-| `RAG_STORAGE_DRIVER` | Set to `memory` to use the in-memory adapter (local scripts / tests). Any other value (or unset) selects Replit Object Storage | unset → Replit SDK |
+| `RAG_STORAGE_DRIVER` | Unset or `s3` (any value other than `memory`) selects the S3-compatible adapter (Railway). `memory` selects the in-memory adapter (local scripts / tests) | unset → S3 |
+| `S3_FORCE_PATH_STYLE` | `true` for providers that need path-style URLs (MinIO). Railway Buckets use virtual-host style | `false` |
+| `BOOTSTRAP_SUPER_USER_EMAIL`, `BOOTSTRAP_SUPER_USER_PASSWORD` | First-login seed: when both are set, api-server startup creates the initial super_user if no active one exists (idempotent; forced password reset on first login; unused thereafter). Not set on Railway, because the copied database has its super user | unset → bootstrap skipped with a log line |
 | `BOOTSTRAP_SUPER_USER_NAME` | Display name for the bootstrap super_user | `Super User` |
-| `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for cross-origin credentialed requests. Leave unset for same-origin Replit deploys. | unset → no cross-origin |
+| `ASK_DEADLINE_MS` | Overall `/api/ask` wall-clock budget; exceeded → the canned refusal. Range 1000-300000 | `45000` |
+| `<PREFIX>_TIMEOUT_MS`, `<PREFIX>_MAX_RETRIES` | Per-call timeout and retries after the first attempt for each external provider call (`artifacts/api-server/src/lib/deadlines.ts`). Prefixes and defaults (ms / retries): `EMBED_QUERY` 5000/1, `EMBED_INGEST` 30000/2, `RERANK` 5000/1, `GENERATION` 20000/1 (per route attempt), `REWRITE` 5000/1, `NAME_SESSION` 5000/1, `FAITHFULNESS` 60000/2, `DOCUMENT_PARSE` 120000/2. Timeouts range 100-600000, retries 0-5; out-of-range values log a warning and use the default | see prefixes |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for cross-origin credentialed requests. Production sets it to the Railway service URL so that host passes the CSRF origin check while `APP_BASE_URL` names `truenote.org`. | unset → no cross-origin |
 | `MIN_PASSWORD_LENGTH` | Floor enforced by bootstrap and the change-password form (server-side zod + client UI mirror via `/api/config`). Read once at api-server startup; restart to apply. Enforced within `[15, 1024]`; out-of-range falls back to 15. | `15` |
 | `RESEND_API_KEY` | Transactional email API key (resend.com). Used to send self-service password-reset links. **Both** this and `RESEND_FROM_EMAIL` must be set. Local development may use the console sender; production fails closed instead of logging reset/invite links. | unset → dev console; production send error |
 | `RESEND_FROM_EMAIL` | Sender address for outgoing emails. Must be a verified Resend domain or `onboarding@resend.dev` for testing. Must accompany `RESEND_API_KEY`; production fails closed when either is absent. | unset → dev console; production send error |
-| `APP_BASE_URL` | Public base URL used when constructing links in outgoing emails (e.g. `https://kbase.replit.app`). When unset we infer from `X-Forwarded-Proto` / `X-Forwarded-Host`, which works on Replit but is spoofable in unusual proxy setups. Set this explicitly for production. | unset → inferred from request headers |
+| `APP_BASE_URL` | Public base URL used when constructing links in outgoing emails (production: `https://truenote.org`). Also the only origin the CSRF check trusts in production besides `CORS_ALLOWED_ORIGINS`, and `www.<its host>` redirects to it. When unset outside production we infer from `X-Forwarded-Proto` / `X-Forwarded-Host`; the api-server refuses to start in production without it. | unset → inferred from request headers |
 
 ## Pitfalls
 
@@ -54,4 +58,4 @@ Replit Secrets are the source of truth in production. `.env.example` documents w
 - The scanner receives raw source bytes and the SIEM receives security-event metadata. Both endpoints and contracts require Security/vendor review before configuration.
 - Embedding model is `text-embedding-3-small` (1536 dim). The `chunks.embedding VECTOR(1536)` column hardcodes that — changing models requires re-ingestion.
 - LandingAI ADE Parse v2 takes a `multipart/form-data` upload (`document` field) via direct HTTP — no SDK, Node's global `fetch`/`FormData`/`Blob`. See `lib/parsing/landing-parse.ts` and `.claude/reference/landingai-ade.md`.
-- Replit reserves port 5000 for the public webview, so on Replit `PORT=5000` (frontend) and `API_PORT=3001` (or any non-5000). The defaults in `.env.example` reflect this. Local-only dev can flip them back to the donor's `API_PORT=5000`/`PORT=5173` Express+Vite convention. See `.claude/reference/pitfalls.md`.
+- Ports: in local dev, `PORT` is the Vite frontend and `API_PORT` the api-server (Vite proxies `/api` to it). On Railway, `scripts/railway-start.sh` copies Railway's `PORT` (8080 on `web`) into `API_PORT`; the api-server serves the SPA itself, so there is no Vite process.

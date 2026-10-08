@@ -32,8 +32,17 @@ describe("annotateCitations", () => {
   });
 
   it("rewrites an unknown chunk_id to a #cite-unknown link with the raw text", () => {
-    const { markdown } = annotateCitations("Per [ghost].", [src("c1")]);
-    expect(markdown).toBe("Per [\\[ghost\\]](#cite-unknown).");
+    const { markdown } = annotateCitations("Per [S9].", [src("c1")]);
+    expect(markdown).toBe("Per [\\[S9\\]](#cite-unknown).");
+  });
+
+  it("renders non-citation bracketed text as literal brackets", () => {
+    const { markdown, ordinals } = annotateCitations(
+      "Thank you for calling [PERSON_NAME] [c1].",
+      [src("c1")]
+    );
+    expect(markdown).toBe("Thank you for calling \\[PERSON_NAME\\] [1](#cite:c1).");
+    expect(ordinals.size).toBe(1);
   });
 
   it("leaves answers without citations untouched", () => {

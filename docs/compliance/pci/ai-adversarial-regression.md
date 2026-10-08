@@ -53,6 +53,10 @@ binary checks, HTTP status, latency, a response SHA-256, environment/release
 labels, and totals. It never contains prompts, answers, canary values, or the
 session token.
 
+**Blocked (2026-10-07):** Railway hosts a single `production` environment and
+has no non-production environment yet, so the live runner has no authorized
+target until one exists.
+
 Example for an authorized non-production target:
 
 ```powershell

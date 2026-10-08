@@ -9,14 +9,19 @@
  * citations by contract).
  *
  * Known ids become `[N](#cite:<chunk_id>)` — rendered as a "[N]" chip.
- * Unknown ids become `[<raw>](#cite-unknown)` — rendered as destructive
- * text, surfacing model drift rather than hiding it.
+ * Unknown citation-shaped ids become `[<raw>](#cite-unknown)` — rendered as
+ * destructive text, surfacing model drift rather than hiding it.
+ * Other bracketed text is quoted content (for example a [PERSON_NAME]
+ * redaction placeholder from an excerpt) and renders as literal brackets.
  */
 
 import type { Source } from "@/types/api";
 import { citationDocumentHref } from "@/lib/citationLinks";
 
 const CITATION_RE = /\[([^\]]+)\]/g;
+
+// Mirrors CITATION_SHAPED_PATTERN in api-server lib/generation/answer.ts.
+const CITATION_SHAPED_RE = /^chunk_id\s*:|\b(?:s|source)\s*\d+\b|[0-9a-f]{8}-[0-9a-f]{4}/i;
 
 export const CITE_HREF_PREFIX = "#cite:";
 export const CITE_UNKNOWN_HREF = "#cite-unknown";
@@ -44,6 +49,7 @@ export function annotateCitations(answer: string, sources: Source[]): AnnotatedA
     // as visible text — combined with the renderer refusing to output
     // anchors, a banned link can never render as something clickable.
     if (!known.has(id)) {
+      if (!CITATION_SHAPED_RE.test(id.trim())) return escapeLabel(raw);
       return `[${escapeLabel(raw)}](${CITE_UNKNOWN_HREF})`;
     }
     let ordinal = ordinals.get(id);

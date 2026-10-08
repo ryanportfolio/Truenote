@@ -2,7 +2,7 @@
 
 **Status:** Engineering threat model; Product Security, PCI owner/QSA, and
 independent reviewer approval missing  
-**Model date:** 2026-07-16  
+**Model date:** 2026-07-16; TB-08, TB-09 and TN-TM-022 updated 2026-10-07 for Railway hosting  
 **Review cadence:** At least annually and after a material trust-boundary,
 provider, identity, data-policy, deployment, or CDE change  
 **Responsible role:** Product Security — unassigned
@@ -71,8 +71,8 @@ and CDE connectivity or segmentation controls.
 | TB-05 Upload/storage → scanner/LandingAI | Raw untrusted bytes before parsed-text DLP | Files, embedded content, metadata, regulated data | Signatures, size/type validation, EICAR/scanner enforcement | Raw bytes reach storage/scanner/parser before parsed DLP; provider suitability/configuration unverified |
 | TB-06 Retrieved content/provider output → answer | Untrusted excerpts and model text | CSR decisions, citations, sensitive output | Citation validation, cite-or-refuse, output sensitive scan | Broader PII/output policy and adversarial runtime testing incomplete |
 | TB-07 API/database → SIEM | Security metadata and signed webhook | Audit integrity, incident evidence, signing key | Hash chain, transactional outbox, signed bounded delivery tests | Production delivery, alert, retention and dead-letter response unverified |
-| TB-08 GitHub/CI → deployment | Source, dependencies, workflows, approvals, artifacts | Production code/configuration and evidence | Locked dependencies, scans, SBOM, PR template, evidence gate | Branch protection, CODEOWNER, named reviewer and current hosted receipts missing |
-| TB-09 Replit/Neon/providers ↔ CDE | Hosting, network paths, administrator access | CDE reachability and segmentation | Scope/data-flow and independent-test plan | Boundary/applicability unsigned; no independent segmentation evidence |
+| TB-08 GitHub/CI and operator workstation → Railway deployment | Source, dependencies, workflows, approvals, artifacts; `railway up` uploads of an operator's local checkout | Production code/configuration and evidence | Locked dependencies, scans, SBOM, PR template, evidence gate | Branch protection, CODEOWNER, named reviewer and current hosted receipts missing. Deploys are `railway up` uploads from an operator workstation; merging to `main` deploys nothing. Nothing ties the deployed bytes to a CI-verified `main` commit |
+| TB-09 Railway/Replit/providers ↔ CDE | Hosting, network paths, administrator access: Railway `web` and `worker` services, Railway Postgres 18 with pgvector, Railway Bucket object storage; Replit only as the `truenote.org` DNS rollback target until the owner retires it; AI providers | CDE reachability and segmentation | Scope/data-flow and independent-test plan | Boundary/applicability unsigned; no independent segmentation evidence |
 
 ## Risk method
 
@@ -107,7 +107,7 @@ risk acceptance. Grades use the exact evidence vocabulary in
 | TN-TM-019 | Tampering / Disclosure | Encoded or crafted asset path escapes fixed static root or serves unintended content | TB-01; High | Flat basename allowlist/fixed root and traversal tests; `artifacts/api-server/src/lib/security/static-assets.ts`, `artifacts/api-server/src/lib/security/__tests__/static-assets.test.ts` | Verified | Hosted HTTP test for encoded separators, alternate normalization and proxy behavior — Platform/Security |
 | TN-TM-020 | Information disclosure | Secrets, private keys, PAN/SSN, or multiline attacker text enters logs/evidence/email fallback | TB-02/TB-07/TB-08; Critical | Recursive redaction, complete PEM handling, single-line safe errors, production email fail-closed tests; `artifacts/api-server/src/lib/observability/error-log.ts`, `artifacts/api-server/src/lib/email/sender.ts` | Implemented, unverified | Production log/SIEM/email synthetic canaries, retention/access review and historical secret scan — SecOps/Product Security |
 | TN-TM-021 | Supply chain | Compromised dependency, install script, action, or artifact reaches build/release | TB-08; Critical | Frozen lockfile, central overrides, one-package build allowlist, audit/SBOM/Gitleaks/CodeQL workflow, evidence gate; `pnpm-workspace.yaml`, `.github/workflows/security.yml` | Implemented, unverified | Hosted reviewed-commit receipts, action pinning policy, finding disposition and artifact provenance — Engineering/Product Security |
-| TN-TM-022 | Tampering / Repudiation | Author bypasses review/checks or changes workflow/evidence before deployment | TB-08; Critical | PR/change templates and structural evidence gate; `.github/pull_request_template.md`, `scripts/src/verify-pci-evidence.ts` | Gap | Assign reviewer/CODEOWNER/change authority; enforce protected branch/ruleset and capture settings/API evidence — Engineering/Security |
+| TN-TM-022 | Tampering / Repudiation | Author bypasses review/checks or changes workflow/evidence before deployment, or an operator's `railway up` upload deploys bytes that differ from the CI-verified `main` commit | TB-08; Critical | PR/change templates and structural evidence gate; `.github/pull_request_template.md`, `scripts/src/verify-pci-evidence.ts` | Gap | Assign reviewer/CODEOWNER/change authority; enforce protected branch/ruleset and capture settings/API evidence; bind each Railway deployment to a CI-verified `main` commit and record the deployed commit. Accountable: Engineering/Security |
 | TN-TM-023 | Elevation / CDE impact | Truenote or provider path bypasses/weakens CDE segmentation or becomes an unassessed path | TB-09; Critical | Scope/data-flow record and independent segmentation test plan; `docs/compliance/pci/scope-and-data-flow.md`, `docs/compliance/pci/independent-testing-plan.md` | Gap | QSA signs boundary; implement approved network controls; independent Requirement 11.4 segmentation test — PCI/Platform |
 | TN-TM-024 | Availability / Integrity | Backup is absent, corrupt, over-retained, or cannot restore securely | TB-02/TB-09; High | Responsibility/evidence requirement documented; `docs/compliance/pci/evidence-index.md`, `docs/compliance/pci/third-party-responsibility-matrix.md` | Operational evidence required | Approve RTO/RPO/retention/encryption; perform isolated restore and access/integrity test — Platform/database owner |
 | TN-TM-025 | Insider / Tampering | Authorized uploader/admin activates malicious content, changes security settings, or abuses purge/reset capability | TB-01/TB-02/TB-05; Critical | Role gates, lifecycle constraints, demo-write blocks, audit events and negative tests; `artifacts/api-server/src/routes/documents.ts`, `artifacts/api-server/src/lib/security/__tests__/negative-controls.test.ts` | Implemented, unverified | Approve separation/risk rules, monitor privileged actions, recertify access, independently test abuse cases — Security/Data/IAM owners |
@@ -123,7 +123,7 @@ risk acceptance. Grades use the exact evidence vocabulary in
    screenshots do not close this.
 2. **TN-TM-023:** Obtain a signed CDE boundary and independent segmentation test.
 3. **TN-TM-022:** Enforce non-author review and required checks on protected
-   `main`.
+   `main`, and tie each Railway deployment to a CI-verified `main` commit.
 4. **TN-TM-016/TN-TM-017:** Verify production database/audit/SIEM definitions and
    end-to-end operation.
 5. **TN-TM-008/TN-TM-009/TN-TM-010/TN-TM-013:** Commission adversarial prompt,

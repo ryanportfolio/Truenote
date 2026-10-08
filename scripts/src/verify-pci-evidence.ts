@@ -40,6 +40,11 @@ const ALLOWED_EVIDENCE_GRADES = new Set([
   "Not applicable"
 ]);
 
+// The newest dated verification record pins the current source hashes. Older
+// records stay as dated history; adding a newer record means updating this path.
+export const CURRENT_VERIFICATION_RECORD =
+  "docs/compliance/pci/verification-record-2026-10-07.md";
+
 function filesBelow(directory: string, extension: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -436,46 +441,6 @@ export function verifyPublicEvidencePaths(
   return issues;
 }
 
-export function verifySessionVerificationCounts(html: string): string[] {
-  const issues: string[] = [];
-  const section = html.match(/<section id="verification">([\s\S]*?)<\/section>/)?.[1];
-  if (!section) return ["session ledger verification section is missing"];
-
-  const tableCounts: number[] = [];
-  for (const suite of ["Frontend", "API", "Scripts"] as const) {
-    const card = section.match(new RegExp(
-      `<p class="number">(\\d+)<\\/p><p class="label">${suite} tests current to integrated worktree<\\/p>`
-    ));
-    const table = section.match(new RegExp(
-      `<tr><td>${suite} tests<\\/td><td><span class="status done">(\\d+)\\/(\\d+) pass<\\/span>`
-    ));
-    if (!card) issues.push(`${suite} current-test card is missing`);
-    if (!table) {
-      issues.push(`${suite} current-test detail row is missing`);
-      continue;
-    }
-    const passed = Number(table[1]);
-    const total = Number(table[2]);
-    if (passed !== total) issues.push(`${suite} current-test detail row is not all-pass`);
-    tableCounts.push(passed);
-    if (card && Number(card[1]) !== passed) {
-      issues.push(`${suite} current-test card ${card[1]} does not match detail row ${passed}`);
-    }
-  }
-
-  const totalCard = section.match(
-    /<p class="number">(\d+)<\/p><p class="label">Current tests passed across all three suites<\/p>/
-  );
-  if (!totalCard) issues.push("combined current-test card is missing");
-  else if (tableCounts.length === 3) {
-    const expected = tableCounts.reduce((sum, count) => sum + count, 0);
-    if (Number(totalCard[1]) !== expected) {
-      issues.push(`combined current-test card ${totalCard[1]} does not equal suite sum ${expected}`);
-    }
-  }
-  return issues;
-}
-
 export function verifyPciEvidence(repoRoot: string): EvidenceVerificationResult {
   const pciDirectory = resolve(repoRoot, "docs/compliance/pci");
   const publicBriefPath = resolve(
@@ -491,14 +456,7 @@ export function verifyPciEvidence(repoRoot: string): EvidenceVerificationResult 
     "docs/compliance/pci/production-control-verification.sql"
   );
   const threatModelPath = resolve(repoRoot, "docs/compliance/pci/threat-model.md");
-  const verificationRecordPath = resolve(
-    repoRoot,
-    "docs/compliance/pci/verification-record-2026-07-16.md"
-  );
-  const sessionLedgerPath = resolve(
-    repoRoot,
-    "docs/compliance/pci/security-readiness-session-report-2026-07-16.html"
-  );
+  const verificationRecordPath = resolve(repoRoot, CURRENT_VERIFICATION_RECORD);
   const vulnerabilityBaselinePath = resolve(
     repoRoot,
     "docs/compliance/pci/codeql-baseline-2026-07-16.json"
@@ -537,7 +495,6 @@ export function verifyPciEvidence(repoRoot: string): EvidenceVerificationResult 
     [productionEvidenceSqlPath, "production control verification SQL"],
     [threatModelPath, "application and PCI-impact threat model"],
     [verificationRecordPath, "repository verification record"],
-    [sessionLedgerPath, "security-readiness session ledger"],
     [vulnerabilityBaselinePath, "safe CodeQL finding baseline"],
     [vulnerabilityRegisterPath, "vulnerability register"],
     [vulnerabilitySourceRegisterPath, "vulnerability source-coverage register"],
@@ -573,14 +530,6 @@ export function verifyPciEvidence(repoRoot: string): EvidenceVerificationResult 
 
   const markdown = verifyMarkdownLinks(repoRoot, pciDirectory);
   issues.push(...markdown.issues);
-
-  const sessionLedger = readFileSync(sessionLedgerPath, "utf8");
-  issues.push(
-    ...verifySessionVerificationCounts(sessionLedger).map((message) => ({
-      source: relative(repoRoot, sessionLedgerPath),
-      message
-    }))
-  );
 
   const workflow = readFileSync(workflowPath, "utf8");
   issues.push(

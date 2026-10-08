@@ -116,7 +116,7 @@ The eval commands require a configured database and provider keys. A model or re
 | Embeddings | OpenAI `text-embedding-3-small` |
 | Retrieval | Vector search, PostgreSQL full-text search, trigram fallback, Cohere reranking |
 | Generation | Administrator-ordered, server-allowlisted OpenRouter routes with one pinned ZDR provider per request |
-| Hosting | Replit with Neon-backed PostgreSQL and object storage |
+| Hosting | Railway: web and worker services, Postgres with pgvector, S3-compatible bucket |
 
 Answer generation does not fall back to a direct provider outside the enforced OpenRouter route policy. Direct OpenAI embeddings and the optional eval judge are separate data flows and need their own organization-level retention controls. LandingAI ZDR is also an account setting, not a request flag.
 
@@ -128,8 +128,12 @@ artifacts/
   api-server/     Express API, auth, retrieval, ingestion, and security controls
 lib/
   db/             Shared Drizzle schema bindings and database client
-scripts/          Evaluation, seeding, re-ingestion, and maintenance workers
+  db/sql/         Schema baseline (0000) and numbered schema changes, applied
+                  to production by scripts/railway-apply-sql.mjs
+scripts/          Evaluation, seeding, re-ingestion, and maintenance workers,
+                  plus the Railway start and schema-apply scripts
 docs/security/    Control DDL and the technical security capabilities brief
+Dockerfile.railway  Production image for the Railway web and worker services
 PRODUCT.md        Product users, principles, and boundaries
 DESIGN.md         Interface tokens, components, motion, and accessibility rules
 ```
@@ -140,10 +144,17 @@ DESIGN.md         Interface tokens, components, motion, and accessibility rules
 
 - Node.js 22 or newer
 - pnpm 10 through Corepack
-- PostgreSQL with the `vector`, `pg_trgm`, and `pgcrypto` extensions
+- PostgreSQL 18 with the `vector`, `pg_trgm`, and `pgcrypto` extensions (production runs 18; the baseline dump uses settings that PostgreSQL 16 and older reject)
 - Provider credentials listed in [`.env.example`](./.env.example)
 
-The current database model and invariants are documented in [`.claude/reference/data-model.md`](./.claude/reference/data-model.md). Reviewed security DDL lives under [`docs/security/`](./docs/security/). The project manages schema changes with explicit SQL rather than `drizzle-kit`.
+The current database model and invariants are documented in [`.claude/reference/data-model.md`](./.claude/reference/data-model.md). The project manages schema changes with explicit SQL rather than `drizzle-kit`. [`lib/db/sql/0000_baseline.sql`](./lib/db/sql/0000_baseline.sql) is a schema-only dump of the production database as of 2026-10-07; it already contains the security DDL from [`docs/security/`](./docs/security/) that production has. Every later change is a numbered file in [`lib/db/sql/`](./lib/db/sql/). Build an empty local database by applying the baseline, then each numbered file in order:
+
+```bash
+psql -v ON_ERROR_STOP=1 -d truenote -f lib/db/sql/0000_baseline.sql
+psql -v ON_ERROR_STOP=1 -d truenote -f lib/db/sql/0001_schema_migrations.sql
+```
+
+Continue with `0002` and later files when they exist. The baseline creates the `vector`, `pg_trgm`, and `pgcrypto` extensions, so the database role needs permission to create them. Like production, the result has the `siem_delivery_outbox` table but not the SIEM outbox functions or trigger from [`docs/security/p1-siem-delivery-outbox.sql`](./docs/security/p1-siem-delivery-outbox.sql). pg-boss creates its own queue schema the first time the API or worker starts it.
 
 Install locked dependencies and create a local environment file:
 
@@ -153,7 +164,7 @@ pnpm install --frozen-lockfile
 cp .env.example .env
 ```
 
-On PowerShell, use `Copy-Item .env.example .env`. For local development, set `PORT=5173` and `API_PORT=5000`; the checked-in example uses the Replit port arrangement.
+On PowerShell, use `Copy-Item .env.example .env`. No process loads `.env` on its own: the API, web app and worker read only the process environment, so set the variables from your `.env` in each shell before starting them.
 
 Run the API and frontend in separate terminals:
 

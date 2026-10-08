@@ -41,7 +41,7 @@ are required before it becomes operational evidence.
 - Add negative tests for every new permission or data boundary.
 - Preserve cite-or-refuse, server-side scope, hybrid retrieval, and evaluation
   invariants defined by `CLAUDE.md` and `CONTRIBUTING.md`.
-- Use reviewed forward-only SQL and the repository's Replit production-definition
+- Use reviewed forward-only SQL and the repository's production-definition
   verification protocol for database objects.
 
 ### 4. Review and verify

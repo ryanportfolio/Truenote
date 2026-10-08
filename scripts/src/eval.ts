@@ -1,7 +1,10 @@
 /**
  * Eval harness runner.
  *
- * Usage (Replit or local with secrets loaded):
+ * Usage on Railway, inside the worker (the runtime image has no pnpm):
+ *   railway ssh -s worker -- "cd /app/scripts && ./node_modules/.bin/tsx src/eval.ts --limit 5"
+ *
+ * Usage locally, with secrets loaded:
  *   pnpm --filter @workspace/scripts run eval
  *   pnpm --filter @workspace/scripts run eval -- --program <uuid>
  *   pnpm --filter @workspace/scripts run eval -- --question <uuid>
@@ -76,13 +79,13 @@ Options:
   --question, -q <uuid>   Run a single question by id
   --limit, -n <int>       Cap the number of questions
   --judge                 Claim-level faithfulness judge on every non-refused
-                          answer (one extra gpt-4o call per judged question)
+                          answer (one extra gpt-6.1-sol call per judged question)
   --json                  Emit the full report as JSON on stdout
                           (suppresses the human-readable summary)
   --help, -h              Show this help
 
 Parameter-sweep overrides (set the corresponding env var for this run only —
-use to tune before changing Replit Secrets):
+use to tune before changing the Railway variables):
   --top-k <int>           RETRIEVAL_TOP_K
   --candidate-k <int>     RETRIEVAL_CANDIDATE_K
   --threshold <float>     RERANK_CONFIDENCE_THRESHOLD
@@ -192,7 +195,7 @@ async function main(): Promise<void> {
 
   // Parameter-sweep overrides: retrieve() reads these env vars per call, so
   // setting them here scopes the override to this run without touching
-  // Replit Secrets.
+  // Railway variables.
   for (const [key, value] of Object.entries(args.overrides)) {
     process.env[key] = value;
   }

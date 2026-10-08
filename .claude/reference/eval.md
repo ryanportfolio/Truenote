@@ -43,29 +43,23 @@ The eval set is only as good as its questions. Bias toward:
 
 ## Running the harness
 
+There is no local database and only one Railway environment (`production`), so the CLI runs only inside the Railway `worker` container, which holds the secrets. Use the demo program `00000000-0000-0000-0000-0000000000aa`:
+
 ```bash
-# Replit (or any env with secrets loaded):
-pnpm --filter @workspace/scripts run eval
+railway ssh -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4deb-9434-e9b63a309bd9 -s worker -- "cd /app/scripts && ./node_modules/.bin/tsx src/eval.ts --program 00000000-0000-0000-0000-0000000000aa --limit 5"
+```
 
-# Filter to one program:
-pnpm --filter @workspace/scripts run eval -- --program <uuid>
+Flags for `src/eval.ts` (append inside the quoted command):
 
-# Single question (debugging a regression):
-pnpm --filter @workspace/scripts run eval -- --question <uuid>
-
-# Smoke test (first 5 questions):
-pnpm --filter @workspace/scripts run eval -- --limit 5
-
-# Machine-readable output (suppresses the human summary):
-pnpm --filter @workspace/scripts run eval -- --json > .tmp/eval-result.json
-
-# Claim-level faithfulness judge (extra gpt-6.1-sol call per non-refused answer):
-pnpm --filter @workspace/scripts run eval -- --judge
-
-# Parameter sweep without touching Replit Secrets (run-scoped env overrides):
-pnpm --filter @workspace/scripts run eval -- --threshold 0.25 --top-k 12
-pnpm --filter @workspace/scripts run eval -- --rerank-model rerank-v3.5 --threshold 0.2
-pnpm --filter @workspace/scripts run eval -- --neighbors 0   # A/B neighbor expansion
+```text
+--program <uuid>        filter to one program (always pass the demo program)
+--question <uuid>       single question (debugging a regression)
+--limit 5               smoke test (first 5 questions)
+--json                  machine-readable output (suppresses the human summary)
+--judge                 claim-level faithfulness judge (extra gpt-6.1-sol call per non-refused answer)
+--threshold 0.25 --top-k 12 --candidate-k 40      run-scoped overrides; Railway variables stay untouched
+--rerank-model rerank-v4.0-pro --threshold 0.2     rerank model trial; retune the threshold with it
+--neighbors 0                                      A/B neighbor expansion
 ```
 
 Implementation: `artifacts/api-server/src/lib/eval/runner.ts` is the pure runner — loads questions, calls `retrieve()` + `generateAnswer()` directly (skips HTTP/auth so eval doesn't pollute `query_log`), scores each result. `scripts/src/eval.ts` is the CLI wrapper.
@@ -73,8 +67,9 @@ Implementation: `artifacts/api-server/src/lib/eval/runner.ts` is the pure runner
 The super-user `/admin/evaluations` surface manages program-scoped questions and
 queues durable runs through pg-boss. Runs execute in the existing worker, one
 question at a time, while `eval_runs` stores progress, the pinned ordered model
-chain, direct backup, retrieval configuration, full report, history, and one
-baseline per program.
+chain, retrieval configuration, full report, history, and one baseline per
+program. Older runs may also carry a legacy direct-backup snapshot; ZDR-only
+runs have none.
 Only one run per program may be queued/running. Missing `eval_runs` DDL returns a
 setup state and leaves question editing available; it never moves the model work
 into the HTTP request. Completed configuration snapshots include a hash of the
@@ -111,21 +106,21 @@ numbers move"; protected questions detect "did we cheat to move them."
   shows a "Held-out split" line once any protected question exists. Older runs
   recorded before the column omit `splits`.
 - `is_protected` is read via a **tolerant raw query** (not the drizzle table),
-  so the column ships via raw DDL with no `shared/schema.ts` edit. Missing
+  so the column needs no Drizzle binding in `lib/db/src/schema.ts`. Missing
   column ⇒ every question is unprotected (pre-DDL deployments still run).
 - **Policy (enforced by review, not code):** never edit a protected question,
   and never use it to tune. Investigate protected failures on the open set.
   Aim for ~30–40% protected, weighted toward exact-value questions (fees,
   dates, policy numbers) and out-of-KB refusal cases.
 
-Column DDL — Replit Agent, run once (idempotent):
+**Not applied on Railway.** `eval_questions` has no `is_protected` column in production (checked 2026-10-07): the DDL below was never applied, so every question currently counts as unprotected: `splits.protected` has 0 questions and the admin page shows no held-out split line. A future change ships it as a `lib/db/sql/NNNN_<name>.sql` file applied with `scripts/railway-apply-sql.mjs` after the owner's go (`deployment.md`); no such file exists yet.
 
 ```sql
 ALTER TABLE eval_questions
   ADD COLUMN IF NOT EXISTS is_protected boolean NOT NULL DEFAULT false;
 ```
 
-Mark questions protected — raw SQL, owner-selected ids (there is no UI toggle yet):
+Once the column exists, mark questions protected with raw SQL and owner-selected ids (there is no UI toggle yet):
 
 ```sql
 UPDATE eval_questions SET is_protected = true WHERE id IN ('<uuid>', '<uuid>', ...);
@@ -138,7 +133,7 @@ already carries the config snapshot and question-set hash.
 ## Pitfalls
 
 - Eval questions written by the developer who built the system are biased toward what the system handles well. Have an ops person or actual CSR write half the set.
-- "Required phrases" matching is brittle for paraphrased answers. Pair it with an LLM-judge fallback (cheap `gpt-4o` call: "does this answer convey {expected}?") for higher-fidelity scoring on a sample.
-- Don't run eval against production traffic — it's slow and burns tokens. Run against a fixture program with known docs.
+- "Required phrases" matching is brittle for paraphrased answers. Pair it with an LLM-judge check ("does this answer convey {expected}?") for higher-fidelity scoring on a sample. Not built yet: `--judge` (gpt-6.1-sol) scores faithfulness to the excerpts, not agreement with the expected answer.
+- Railway has only the production environment, so eval always runs against production. Scope it to the demo program (`--program 00000000-0000-0000-0000-0000000000aa`), whose documents are known, and keep runs small (`--limit`): each run is slow and burns tokens.
 - Each question burns embedding + generation tokens (~$0.001 at current pricing). Don't run in a loop without a reason.
 - The runner does NOT write to `query_log` — eval traffic is excluded from the live ops dashboard on purpose.

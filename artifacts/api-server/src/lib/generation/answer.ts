@@ -56,7 +56,7 @@ export const REFUSAL_TEXT =
   "I couldn't find this in the knowledge base. Please escalate or check the source documents directly.";
 
 /**
- * Rules 1–7 of the system prompt from .claude/reference/retrieval.md →
+ * Rules 1-9 of the system prompt from .claude/reference/retrieval.md →
  * Generation contract. Do not paraphrase the rule text — the wording is part
  * of the product contract and is tested against eval questions in Phase 2.
  *
@@ -313,6 +313,20 @@ export function validateGeneratedAnswer(
   };
 }
 
+const CHUNK_ID_LABEL_PATTERN = /^chunk_id\s*:\s*/i;
+
+// A source alias (S1, S 2, Source 3) or a UUID fragment anywhere in the
+// bracket. Such a bracket is a citation attempt even when malformed ("[S1, S2]",
+// "[3f2a9c1e-77b0...]"), so it must resolve or the answer is rejected.
+const CITATION_SHAPED_PATTERN =
+  /\b(?:s|source)\s*\d+\b|[0-9a-f]{8}-[0-9a-f]{4}/i;
+
+/**
+ * Only citation-shaped brackets count as citations. Other bracketed text is
+ * quoted content and stays as written: OpenRouter's input guardrail and the
+ * local provider firewall replace PII with placeholders like [PERSON_NAME] or
+ * [REDACTED_PII_EMAIL], and a model quoting such an excerpt is not citing.
+ */
 function normalizeInlineCitations(
   answer: string,
   chunks: RetrievalChunk[]
@@ -322,6 +336,7 @@ function normalizeInlineCitations(
 } {
   const ids: string[] = [];
   const seen = new Set<string>();
+  const availableIds = new Set(chunks.map((chunk) => chunk.id));
   const aliases = new Map<string, string>(
     chunks.map((chunk, index) => [`s${index + 1}`, chunk.id])
   );
@@ -329,8 +344,13 @@ function normalizeInlineCitations(
     /\[([^\[\]\r\n]+)\]|【([^【】\r\n]+)】/g,
     (original, squareContent: string | undefined, wideContent: string | undefined) => {
       const raw = (squareContent ?? wideContent ?? "").trim();
-      const token = raw.replace(/^chunk_id\s*:\s*/i, "").trim();
+      const token = raw.replace(CHUNK_ID_LABEL_PATTERN, "").trim();
       if (!token) return original;
+      const isCitation =
+        availableIds.has(token) ||
+        CHUNK_ID_LABEL_PATTERN.test(raw) ||
+        CITATION_SHAPED_PATTERN.test(token);
+      if (!isCitation) return original;
       const resolvedId = aliases.get(token.toLowerCase()) ?? token;
       if (!seen.has(resolvedId)) {
         seen.add(resolvedId);

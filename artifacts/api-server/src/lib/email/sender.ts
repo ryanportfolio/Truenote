@@ -97,7 +97,7 @@ export class ResendEmailSender implements EmailSender {
           return new mod.Resend(this.apiKey);
         } catch (err) {
           throw new Error(
-            `The 'resend' package is not installed. Install it on Replit. (${String(err)})`
+            `The 'resend' package is not installed. Add it to @workspace/api-server. (${String(err)})`
           );
         }
       })();

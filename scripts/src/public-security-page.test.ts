@@ -26,13 +26,6 @@ const pciReadiness = readFileSync(
   new URL("../../docs/security/truenote-pci-security-capabilities.html", import.meta.url),
   "utf8"
 );
-const internalPciLedger = readFileSync(
-  new URL(
-    "../../docs/compliance/pci/security-readiness-session-report-2026-07-16.html",
-    import.meta.url
-  ),
-  "utf8"
-);
 const viteConfig = readFileSync(
   new URL("../../artifacts/rag-app/vite.config.ts", import.meta.url),
   "utf8"
@@ -163,8 +156,6 @@ describe("public security reporting surface", () => {
         );
       }
     }
-    assert.ok(internalPciLedger.includes("Earliest incomplete gate"));
-    assert.ok(internalPciLedger.includes("TN-WORK-"));
     assert.ok(
       viteConfig.includes(
         '"../../docs/security/truenote-pci-security-capabilities.html"'

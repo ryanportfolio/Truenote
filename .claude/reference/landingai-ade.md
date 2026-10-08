@@ -1,14 +1,16 @@
 # LandingAI ADE (Agentic Document Extraction)
 
 > Researched 2026-07-13 for replacing Mistral OCR + the gpt-4o image captioner with a
-> single ZDR-capable document parser. Source of truth: https://docs.landing.ai/llms.txt
+> single ZDR-capable document parser. The swap shipped the same day (commit `bd6f0616`):
+> ingestion parses PDFs and images with Parse v2 in `lib/parsing/landing-parse.ts`, and
+> Mistral OCR and the gpt-4o captioner are gone. Source of truth: https://docs.landing.ai/llms.txt
 
-## Why we care
+## Why we chose it
 
 One LandingAI **Parse** call returns markdown with **figures described inline**, so it
-replaces BOTH the Mistral OCR step AND the separate gpt-4o image-captioning step, and it
-can be run under Zero Data Retention. That closes two of Truenote's ZDR gaps with one
-component.
+replaced BOTH the Mistral OCR step AND the separate gpt-4o image-captioning step, and it
+can be run under Zero Data Retention. That closed two of Truenote's ZDR gaps with one
+component, once ZDR is enabled on the account (below).
 
 ## The critical ZDR reality (read first)
 
@@ -19,9 +21,9 @@ ZDR here is **NOT a per-request flag** like OpenRouter. It is:
 
 So the API key alone does not guarantee ZDR. To be ZDR-compliant: (1) account must be on
 **Team plan minimum**, (2) ZDR toggled ON in Org Settings, (3) verified. The request body
-sends no ZDR parameter — it is enforced at the account level. **The code change (swap
-Mistral → LandingAI) is orthogonal to ZDR enablement; both are needed for the goal but the
-build does not depend on the toggle.** When ZDR is on: in-memory only, never stored at
+sends no ZDR parameter; it is enforced at the account level. **The code change (the
+Mistral → LandingAI swap, done) is orthogonal to ZDR enablement; both are needed for the goal
+but the build does not depend on the toggle.** When ZDR is on: in-memory only, never stored at
 rest, discarded after processing, no training. Certs: GDPR, SOC 2 Type II, HIPAA (HIPAA
 also needs a signed BAA). To disable ZDR later, contact support.
 
@@ -46,7 +48,7 @@ SDK only if we later want Section/Split/Classify; v1 and v2 response shapes are 
 ## Auth
 
 `Authorization: Bearer <key>`. Read from `VISION_AGENT_API_KEY` (the vendor-canonical name and
-the TS SDK default; Replit secret renamed from `LANDINGAI_API` to this on 2026-07-13). For
+the TS SDK default; secret renamed from `LANDINGAI_API` to this on 2026-07-13). For
 direct HTTP the env-var name is arbitrary; we standardize on `VISION_AGENT_API_KEY`.
 
 ## Parse v2 request
@@ -111,15 +113,15 @@ parsed one page at a time; an image counts as one page. Password-protected files
 
 ## Mapping to Truenote's ingestion pipeline
 
-Current (`artifacts/api-server/src/lib/ingestion/run.ts`): validate → sha256 → store →
+Before the swap (`artifacts/api-server/src/lib/ingestion/run.ts`): validate → sha256 → store →
 **Mistral OCR (PDF/images) → markdown + base64 images** → chunk (~500 tok, tables/lists atomic,
 heading context) → **gpt-4o vision caption each image → image chunks** → embed → store.
 
-With Parse v2: **one call → markdown with figures already described inline** → chunk → embed.
+Now, with Parse v2: **one call → markdown with figures already described inline** → chunk → embed.
 The separate image-extract + caption stage (`lib/ingestion/image-describer.ts`, the
-`MAX_IMAGES_DESCRIBED_PER_VERSION` cap, and the per-image loop in `run.ts`) becomes obsolete for
-this path — Mistral no longer returns the base64 images the captioner consumed. DOCX stays on
-Mammoth; MD/txt stay passthrough. Keep the existing chunker; figures-as-text flow in as normal text.
+`MAX_IMAGES_DESCRIBED_PER_VERSION` cap, and the per-image loop in `run.ts`) was removed, since
+Parse returns no base64 images for a captioner to consume. DOCX stays on Mammoth; MD/txt stay
+passthrough. The existing chunker was kept; figures-as-text flow in as normal text.
 
 ## Extra opportunities (beyond the OCR swap)
 
@@ -130,9 +132,9 @@ Mammoth; MD/txt stay passthrough. Keep the existing chunker; figures-as-text flo
 3. **Extract → structured metadata.** Effective dates, policy numbers, plan names from SOPs via schema.
 4. **Classify / Split → messy uploads.** Split a bundle PDF into sub-documents; classify page types.
 
-These are follow-ons, not the first PR.
+These are follow-ons; the swap PR did not include them.
 
-## Open items to resolve before/while implementing
+## Open items
 
 - Confirm the account plan is **Team/Enterprise (US Ohio)** with **ZDR ON** in Org Settings.
 - Confirm whether **DPT-3/Parse v2 supports `custom_prompts.figure`** (docs say DPT-2 only). If not,
@@ -140,7 +142,9 @@ These are follow-ons, not the first PR.
   another way / consider ADE v1 DPT-2 for custom figure prompts.
 - Resolve the **ZDR credit-cost doc conflict** (billing question, not code).
 - **Sync vs async**: >100-page PDFs need async Parse Jobs; the worker is async-friendly.
-- Wrap the call with the existing `getDeadlineConfig()` timeout/retry pattern; 429 backoff.
+
+Done: the Parse call uses `getDeadlineConfig()` (`DOCUMENT_PARSE_TIMEOUT_MS` / `DOCUMENT_PARSE_MAX_RETRIES`)
+and retries 429 and 5xx with exponential backoff.
 
 ## Source pages
 
