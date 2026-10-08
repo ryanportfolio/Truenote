@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
-import { ChevronRight, FileText, Lock, Search, X } from "lucide-react";
+import { Link } from "wouter";
+import { ChevronRight, FileText, Lock, MessageSquare, Search, X } from "lucide-react";
 import { categoryPathLabel, docCategoryPaths, type KbSearchResults } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
 import type { KbDocumentListItem } from "@/types/api";
@@ -8,6 +9,25 @@ import { useMediaQuery } from "./useMediaQuery";
 import { pathsLabel } from "./KbDocRow";
 import { FolderGlyph, StatusPill } from "./KbShared";
 import { kbEffectiveCategoryColor } from "@/lib/kbLibraryColors";
+
+/**
+ * The way out of a search with no match: ask the question in chat, where
+ * Truenote searches inside every source. /chat takes no prefilled question,
+ * so the link opens the chat and the user types it there.
+ */
+export function AskTruenoteLink({ className }: { className?: string }): JSX.Element {
+  return (
+    <Link
+      href="/chat"
+      data-kb-ask-truenote
+      title="Ask your question in chat. Truenote searches inside every source."
+      className={cn("btn-whisper shrink-0 gap-1.5 px-3 py-1.5 text-sm text-foreground", className)}
+    >
+      <MessageSquare className="h-4 w-4" aria-hidden />
+      Ask Truenote instead
+    </Link>
+  );
+}
 
 type Option =
   | { kind: "doc"; doc: KbDocumentListItem; best: boolean }
@@ -190,7 +210,8 @@ export function KbSearch({
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder={roomy ? "Search for a policy or procedure" : "Search sources"}
-          title="Searches titles, your notes, tags and folder names"
+          title="Searches titles, folder names, tags and your notes. Press / to search from anywhere on this page."
+          aria-keyshortcuts="/"
           autoComplete="off"
           spellCheck={false}
           className="h-12 w-full rounded-lg border border-input bg-card pl-10 pr-9 text-base shadow-card sm:pl-12 sm:pr-11 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
@@ -209,7 +230,17 @@ export function KbSearch({
             <X className="h-4 w-4" aria-hidden />
           </button>
         ) : (
-          <span className="pointer-events-none absolute right-4 top-1/2 hidden -translate-y-1/2 sm:block" aria-hidden>
+          // The key that jumps here; hovering it says so. The input itself names the shortcut for screen readers.
+          <span
+            aria-hidden
+            data-kb-search-key
+            title="Press / to search"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              searchRef.current?.focus();
+            }}
+            className="absolute right-4 top-1/2 hidden -translate-y-1/2 cursor-text sm:block"
+          >
             <kbd className="kbd">/</kbd>
           </span>
         )}
@@ -236,8 +267,9 @@ export function KbSearch({
                 </ul>
               </li>
             ) : (
-              <li role="presentation" className="px-1 py-2 text-sm text-muted-foreground">
-                No sources match &ldquo;{query.trim()}&rdquo;.
+              <li role="presentation" className="flex flex-wrap items-center gap-x-3 gap-y-2 px-1 py-2 text-sm text-muted-foreground">
+                <span className="min-w-0 flex-1">No sources match &ldquo;{query.trim()}&rdquo;.</span>
+                <AskTruenoteLink />
               </li>
             )}
             {results.others.length > 0 ? (

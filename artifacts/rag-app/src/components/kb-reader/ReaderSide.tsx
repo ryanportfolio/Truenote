@@ -1,6 +1,6 @@
-import type { MouseEvent } from "react";
+import { useId, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { Link } from "wouter";
-import { FileText, Link2, ListTree, Lock, Pencil } from "lucide-react";
+import { FileText, Highlighter, Link2, ListTree, Lock, Pencil } from "lucide-react";
 import { RelativeTime } from "@/components/RelativeTime";
 import type { KbDocPersonal } from "@/components/kb-library/KbDocPersonalBar";
 import { NoteForm } from "@/components/kb-library/KbShared";
@@ -55,7 +55,7 @@ export function ReaderNoteCard({
         </div>
       ) : item.note ? (
         <>
-          <p className="mt-2 whitespace-pre-wrap break-words text-[15px] leading-relaxed">{item.note}</p>
+          <ClampedNote note={item.note} />
           <p className="mt-3 flex flex-wrap items-center gap-x-1.5 border-t border-[oklch(var(--highlight-yellow)/0.55)] pt-2.5 text-xs text-muted-foreground">
             <Lock className="h-3.5 w-3.5" aria-hidden />
             <span>Only you can see this.</span>
@@ -81,6 +81,73 @@ export function ReaderNoteCard({
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * The note text. On phones it shows 2 lines with "Show all", so the document
+ * title still starts on the first screen; from 640px up it shows in full.
+ */
+function ClampedNote({ note }: { note: string }): JSX.Element {
+  const textRef = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const textId = useId();
+
+  useLayoutEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+    function measure(): void {
+      if (!el) return;
+      // Measured while clamped; the clamp only applies below 640px.
+      setOverflows(el.scrollHeight > el.clientHeight + 1);
+    }
+    if (!expanded) measure();
+    const observer = new ResizeObserver(() => {
+      if (!expanded) measure();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [note, expanded]);
+
+  return (
+    <>
+      <p
+        ref={textRef}
+        id={textId}
+        className={cn(
+          "mt-2 whitespace-pre-wrap break-words text-[15px] leading-relaxed",
+          !expanded && "max-sm:line-clamp-2"
+        )}
+      >
+        {note}
+      </p>
+      {overflows || expanded ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={textId}
+          onClick={() => setExpanded((open) => !open)}
+          className="mt-1 rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden"
+        >
+          {expanded ? "Show less" : "Show all"}
+        </button>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * One quiet line telling readers below 1280px that passages can be
+ * highlighted (at 1280 and up the empty note card says it). readerBody.css
+ * hides it once the document has a saved highlight.
+ */
+export function ReaderHighlightHint(): JSX.Element {
+  return (
+    <p data-kb-highlight-hint className="flex items-center gap-2 px-1 text-sm text-muted-foreground xl:hidden">
+      <Highlighter className="h-4 w-4 shrink-0" aria-hidden />
+      Select any passage to highlight it.
+    </p>
   );
 }
 

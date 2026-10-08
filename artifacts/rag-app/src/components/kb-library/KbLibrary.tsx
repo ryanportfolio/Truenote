@@ -20,6 +20,7 @@ import {
   shortcutShelf,
   sortForView,
   sortTags,
+  usedOftenIds,
   type KbFilters,
   type KbPrefs,
   type KbTab
@@ -33,7 +34,7 @@ import { KbFilterSentence, KbFiltersButton } from "./KbFilters";
 import { KbLabels } from "./KbLabels";
 import { KbMenu } from "./KbMenu";
 import { KbOrganize } from "./KbOrganize";
-import { KbSearch } from "./KbSearch";
+import { AskTruenoteLink, KbSearch } from "./KbSearch";
 import { KbShortcutDock, KbShortcutShelf } from "./KbShelf";
 import { useKbLibrary } from "./useKbLibrary";
 import { KB_WIDE_QUERY, useMediaQuery } from "./useMediaQuery";
@@ -74,7 +75,8 @@ export function KbLibrary({
 }): JSX.Element {
   const { data, actionError, clearActionError, announcement, actions } = useKbLibrary(initial, cacheKey);
   const [prefs, setPrefs] = useState<KbPrefs>(() => loadPrefs(user.id));
-  const [query, setQuery] = useState("");
+  // The search lives in the URL (`?q=`), so browser back to /kb brings back the text and its results.
+  const [query, setQueryState] = useState(() => new URLSearchParams(window.location.search).get("q") ?? "");
   const [organizing, setOrganizing] = useState(false);
   const [dialog, setDialog] = useState<KbDialogState | null>(null);
   const [lastMoved, setLastMoved] = useState<{ key: string; at: number } | null>(null);
@@ -89,6 +91,28 @@ export function KbLibrary({
   const [shelfInView, setShelfInView] = useState(true);
   const wide = useMediaQuery(KB_WIDE_QUERY);
   const tabsId = useId();
+
+  // Typing replaces the history entry (one entry per search, not per key);
+  // a `?q=` that changes some other way (back, forward) updates the box.
+  const urlQuery = new URLSearchParams(search).get("q") ?? "";
+  const writtenQuery = useRef(urlQuery);
+  useEffect(() => {
+    if (urlQuery === writtenQuery.current) return;
+    writtenQuery.current = urlQuery;
+    setQueryState(urlQuery);
+  }, [urlQuery]);
+
+  const setQuery = useCallback(
+    (next: string, params = new URLSearchParams(window.location.search)) => {
+      setQueryState(next);
+      if (next.trim()) params.set("q", next);
+      else params.delete("q");
+      writtenQuery.current = params.get("q") ?? "";
+      const qs = params.toString();
+      navigate(qs ? `/kb?${qs}` : "/kb", { replace: true });
+    },
+    [navigate]
+  );
 
   useEffect(() => {
     savePrefs(user.id, prefs);
@@ -195,9 +219,11 @@ export function KbLibrary({
   const showDock = showShelf && shelf.length > 0 && !shelfInView;
 
   const markMoved = useCallback((key: string) => setLastMoved({ key, at: Date.now() }), []);
+  // Over the whole library, not the filtered list, so a short list does not mark every row.
+  const usedOften = useMemo(() => usedOftenIds(data.items), [data.items]);
   const context = useMemo<KbLibraryContextValue>(
-    () => ({ data, lookup, actions, canOrganize, openDialog: setDialog, markMoved }),
-    [data, lookup, actions, canOrganize, markMoved]
+    () => ({ data, lookup, actions, canOrganize, openDialog: setDialog, markMoved, usedOften }),
+    [data, lookup, actions, canOrganize, markMoved, usedOften]
   );
 
   function toggleCollapsed(key: string): void {
@@ -219,7 +245,12 @@ export function KbLibrary({
   }
 
   function clearLinked(): void {
-    navigate("/kb", { replace: true });
+    // Keeps the search (`?q=`); drops the Source usage link and any open folder.
+    const params = new URLSearchParams();
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) params.set("q", q);
+    const qs = params.toString();
+    navigate(qs ? `/kb?${qs}` : "/kb", { replace: true });
   }
 
   function clearFilters(): void {
@@ -228,8 +259,15 @@ export function KbLibrary({
   }
 
   function reset(): void {
-    clearFilters();
-    if (linked) clearLinked();
+    setPrefs((p) => ({ ...p, filters: EMPTY_FILTERS }));
+    // One URL change: no search, no Source usage link.
+    const params = new URLSearchParams(window.location.search);
+    if (linked) {
+      params.delete("ids");
+      params.delete("from");
+      params.delete("folder");
+    }
+    setQuery("", params);
   }
 
   function setTab(tab: KbTab, focus = false): void {
@@ -248,8 +286,12 @@ export function KbLibrary({
 
   function openFolder(folderId: string): void {
     setPrefs((p) => ({ ...p, tab: "all", view: "folders" }));
-    setQuery("");
-    navigate(folderHref(search, folderId));
+    // Leave the search on the current history entry, so back returns to it, then open the folder.
+    setQueryState("");
+    const params = new URLSearchParams(search);
+    params.delete("q");
+    writtenQuery.current = "";
+    navigate(folderHref(params.toString(), folderId));
   }
 
   function seeAll(): void {
@@ -271,9 +313,12 @@ export function KbLibrary({
         title="No sources match"
         hint={query.trim() ? `Nothing matches "${query.trim()}" with the current filters.` : "No sources match the current filters."}
       >
-        <button type="button" onClick={reset} className="btn-whisper px-3 py-1.5 text-sm">
-          Clear search and filters
-        </button>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {query.trim() ? <AskTruenoteLink /> : null}
+          <button type="button" onClick={reset} className="btn-whisper px-3 py-1.5 text-sm">
+            Clear search and filters
+          </button>
+        </div>
       </EmptyState>
     ) : prefs.view === "folders" ? (
       <KbFoldersView visible={visible} sort={sort} filtering={narrowed} scope={scope} search={search} />

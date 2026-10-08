@@ -59,26 +59,27 @@ export function MostUsedList({
                   activeDocumentId === source.documentId && "bg-primary/5"
                 )}
               >
+                {/* Below sm the title takes the full width and the count sits on the bar's line. */}
                 <SourceOpener
                   documentId={source.documentId}
                   title={source.title}
                   isLive={source.isLive}
                   onOpen={onOpen}
-                  className="min-w-0 text-sm font-medium"
+                  className="col-span-2 min-w-0 text-sm font-medium sm:col-span-1"
                 />
-                <span className="whitespace-nowrap text-sm tabular-nums text-muted-foreground sm:order-last">
-                  {usedTimes(source.citationCount)}
-                </span>
-                <div
-                  className="col-span-2 h-2 overflow-hidden rounded-full bg-muted sm:col-span-1"
-                  aria-hidden
-                >
+                <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
                   <div
                     data-bar=""
                     className="h-full rounded-full bg-primary/60"
                     style={{ width: barWidth(source.citationCount, max) }}
                   />
                 </div>
+                <span
+                  className="whitespace-nowrap text-sm tabular-nums text-muted-foreground"
+                  data-used-count=""
+                >
+                  {usedTimes(source.citationCount)}
+                </span>
               </li>
             ))}
           </ol>

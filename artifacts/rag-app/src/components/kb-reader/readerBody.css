@@ -44,11 +44,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* First sentence of a step, bold on its own line so it reads aloud first. */
+/* First sentence of a step, semibold on its own line so it reads aloud
+ * first. Only steps with more text after it get a lead (see
+ * splitFirstSentence); one-sentence steps stay regular weight. */
 .kb-steps > li .kb-step-lead {
   display: block;
-  font-family: Georgia, Cambria, "Times New Roman", serif;
-  font-weight: 700;
+  font-family: Verdana, Geneva, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
   color: oklch(var(--foreground));
 }
 
@@ -98,6 +100,33 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* The "Select any passage to highlight it." line goes away once the
+ * highlighter shows its saved-highlights button (one or more saved). */
+[data-kb-reader]:has(.kb-reader-highlights > div > div:first-child button) [data-kb-highlight-hint] {
+  display: none;
+}
+
+/* One filled primary per screen: the header's "Add to my shortcuts" stays
+ * the page's main action, so the highlight toolbar's "Highlight" button
+ * (portaled to body) reads as a whisper button with primary text while a
+ * reader is mounted. */
+body:has([data-kb-reader]) [data-kb-highlight-toolbar] .btn-primary {
+  background-color: oklch(var(--secondary));
+  color: oklch(var(--primary));
+  box-shadow: inset 0 0 0 1px oklch(var(--border));
+  transform: none;
+}
+
+body:has([data-kb-reader]) [data-kb-highlight-toolbar] .btn-primary:hover:not(:disabled) {
+  background-color: oklch(var(--secondary));
+  box-shadow: inset 0 0 0 1px oklch(var(--foreground) / 0.18);
+  transform: none;
+}
+
+body:has([data-kb-reader]) [data-kb-highlight-toolbar] .btn-primary:active:not(:disabled) {
+  background-color: oklch(var(--muted));
 }
 
 /* Phones: smaller circles leave the step text room to breathe. */

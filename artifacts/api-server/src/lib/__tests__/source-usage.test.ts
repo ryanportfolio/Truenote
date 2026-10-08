@@ -109,7 +109,7 @@ describe("source suggestions", () => {
   it("falls back to the team's most cited sources when nothing is related", () => {
     expect(
       selectSourceSuggestions([
-        { ...base, documentId: "a", title: "A", teamCitations: 2 },
+        { ...base, documentId: "a", title: "A", teamCitations: 3 },
         { ...base, documentId: "b", title: "B", teamCitations: 7 },
         { ...base, documentId: "c", title: "C", teamCitations: 4 },
         { ...base, documentId: "d", title: "D", teamCitations: 1 }
@@ -119,6 +119,15 @@ describe("source suggestions", () => {
       ["c", "team_top"],
       ["a", "team_top"]
     ]);
+  });
+
+  it("leaves out fallback sources with fewer than three team answers", () => {
+    expect(
+      selectSourceSuggestions([
+        { ...base, documentId: "a", title: "A", teamCitations: 2 },
+        { ...base, documentId: "b", title: "B", teamCitations: 3 }
+      ]).map((s) => s.documentId)
+    ).toEqual(["b"]);
   });
 
   it("returns at most three, breaking ties by recency then id", () => {
@@ -142,10 +151,10 @@ describe("source suggestions", () => {
       selectSourceSuggestions([
         { ...base, documentId: "hidden", title: null, teamCitations: 9, related: true },
         { ...base, documentId: "zero", title: "Zero", teamCitations: 0 },
-        { ...base, documentId: "dup", title: "Dup", teamCitations: 2 },
-        { ...base, documentId: "dup", title: "Dup", teamCitations: 2 }
+        { ...base, documentId: "dup", title: "Dup", teamCitations: 4 },
+        { ...base, documentId: "dup", title: "Dup", teamCitations: 4 }
       ])
-    ).toEqual([{ documentId: "dup", title: "Dup", reason: "team_top", teamCitations: 2 }]);
+    ).toEqual([{ documentId: "dup", title: "Dup", reason: "team_top", teamCitations: 4 }]);
     expect(selectSourceSuggestions([])).toEqual([]);
   });
 });

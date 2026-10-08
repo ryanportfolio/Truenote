@@ -12,7 +12,6 @@ import {
   myPins,
   sortDocs,
   subtreeDocumentIds,
-  usedOftenIds,
   type KbCategoryNode,
   type KbSort,
   type KbTree
@@ -110,9 +109,9 @@ export function FolderColorMenu({ category }: { category: KbCategory }): JSX.Ele
   );
 }
 
-/** Quiet rows in one card; "Used often" marks the three most opened of exactly these rows. */
+/** Quiet rows in one card; "Used often" marks the three most opened sources of the whole library. */
 export function KbRows({ docs, label }: { docs: KbDocumentListItem[]; label: string }): JSX.Element {
-  const often = usedOftenIds(docs);
+  const { usedOften: often } = useKbLibraryContext();
   return (
     <ul aria-label={label} className="divide-y divide-border rounded-lg border border-border bg-card shadow-card">
       {docs.map((doc) => (
@@ -468,10 +467,9 @@ export function KbOutlineView({
   collapsed: Set<string>;
   onToggle: (key: string) => void;
 }): JSX.Element {
-  const { lookup } = useKbLibraryContext();
+  const { lookup, usedOften: often } = useKbLibraryContext();
   const byId = new Map(props.visible.map((d) => [d.documentId, d]));
   const loose = sortInCategory(docsWithoutFolder(props.visible, lookup.tree), props.sort, null);
-  const often = usedOftenIds(props.visible);
 
   if (lookup.tree.roots.length === 0) return <KbRows docs={loose} label="Sources" />;
 

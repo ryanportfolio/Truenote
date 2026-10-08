@@ -21,6 +21,8 @@ export interface KbLibraryContextValue {
   openDialog: (dialog: KbDialogState) => void;
   /** Organize: note the item about to move ("doc:<id>" or "cat:<id>") so the live preview can point at it. */
   markMoved: (key: string) => void;
+  /** The three most opened sources of the whole library this user can see; their rows say "Used often". */
+  usedOften: Set<string>;
 }
 
 export const KbLibraryContext = createContext<KbLibraryContextValue | null>(null);

@@ -24,7 +24,7 @@ export function UsageKpis({ totals, days, onShowNeverCited }: UsageKpisProps): J
         Different sources used in answers.
       </Kpi>
       <Kpi label="Never cited" value={totals.sourcesNeverCited}>
-        <span className="block">Live sources no answer used.</span>
+        <span className="block">Live sources no answer used in the last {days} days.</span>
         {totals.sourcesNeverCited > 0 && onShowNeverCited ? (
           <button
             type="button"

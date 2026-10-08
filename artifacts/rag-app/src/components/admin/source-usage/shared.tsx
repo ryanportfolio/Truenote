@@ -209,7 +209,7 @@ export function SourceOpener({
   );
 }
 
-/** Muted category path line under a source title ("Billing / Refunds"). */
+/** Muted folder path line under a source title ("Billing / Refunds"). */
 export function CategoryPath({ path }: { path: string | null }): JSX.Element | null {
   if (!path) return null;
   return <span className="block truncate text-xs text-muted-foreground">{path}</span>;

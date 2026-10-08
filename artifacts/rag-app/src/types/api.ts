@@ -416,7 +416,9 @@ export interface SourceUsageMatrix {
  * window in the same top-level categories as the sources behind this
  * person's refused or thumbs-down questions, and this person never cited it.
  * Fallback when that yields nothing: the team's most-cited sources this
- * person never cited. Title-gated like `sources`; restricted ones are omitted.
+ * person never cited, each with at least 3 team answers in the window. The
+ * two reasons are never mixed in one response. Only sources both the viewer
+ * and the person can open; restricted titles are omitted.
  */
 export interface SourceUsageSuggestion {
   documentId: string;

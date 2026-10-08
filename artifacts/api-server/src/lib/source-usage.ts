@@ -98,6 +98,8 @@ export function takePage<T>(rows: T[], limit: number): { items: T[]; truncated: 
 }
 
 export const MAX_SOURCE_SUGGESTIONS = 3;
+/** Team answers a fallback ("team_top") suggestion needs in the window. */
+export const MIN_TEAM_TOP_CITATIONS = 3;
 
 export interface SourceUsageSuggestion {
   documentId: string;
@@ -147,7 +149,13 @@ export function selectSourceSuggestions(
   );
   const related = usable.filter((c) => c.related);
   const reason: SourceUsageSuggestion["reason"] = related.length > 0 ? "related" : "team_top";
-  return (related.length > 0 ? related : usable).slice(0, Math.max(0, max)).map((c) => ({
+  // The fallback says "teammates use these", so a source a teammate cited once
+  // or twice does not qualify.
+  const picked =
+    related.length > 0
+      ? related
+      : usable.filter((c) => c.teamCitations >= MIN_TEAM_TOP_CITATIONS);
+  return picked.slice(0, Math.max(0, max)).map((c) => ({
     documentId: c.documentId,
     title: c.title,
     reason,

@@ -290,6 +290,13 @@ function usageCtes(filter: UsageFilter): SQL {
         ql.id,
         ql.user_id,
         ql.question,
+        -- Same wording rule as the drawer's grouping: case, spacing and
+        -- trailing ?.! do not make a different question.
+        regexp_replace(
+          regexp_replace(lower(btrim(ql.question)), '\\s+', ' ', 'g'),
+          '[?.!\\s]+$',
+          ''
+        ) AS norm_question,
         COALESCE(ql.refused, false) AS refused,
         ql.feedback,
         ql.created_at,
@@ -474,6 +481,19 @@ function suggestionsQuery(input: {
       INNER JOIN doc_root AS dr ON dr.document_id = cited.document_id
       WHERE q.user_id = ${userId}
         AND (q.refused OR q.feedback = -1)
+      UNION
+      -- A refused answer cites nothing, so its topic comes from the sources
+      -- behind teammates' answers to the same question.
+      SELECT DISTINCT dr.root_id
+      FROM q AS own
+      INNER JOIN q AS other
+        ON other.norm_question = own.norm_question
+       AND other.user_id IS DISTINCT FROM own.user_id
+       AND NOT other.refused
+      INNER JOIN cited ON cited.query_id = other.id
+      INNER JOIN doc_root AS dr ON dr.document_id = cited.document_id
+      WHERE own.user_id = ${userId}
+        AND own.refused
     ),
     team AS (
       SELECT

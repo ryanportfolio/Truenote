@@ -1,10 +1,11 @@
 import { forwardRef, useEffect, useId, useRef } from "react";
 import { Link } from "wouter";
 import { Star } from "lucide-react";
-import { KB_NUMBERED_PINS, type KbShortcut } from "@/lib/kbLibrary";
+import { KB_NUMBERED_PINS, docCategoryPaths, type KbShortcut } from "@/lib/kbLibrary";
 import { kbColorDot } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
 import { useKbLibraryContext } from "./KbContext";
+import { pathsLabel } from "./KbDocRow";
 import { ColorDot, SourceColorLabel } from "./KbShared";
 
 /** Team shortcut: two people, the manager's pick for everyone. */
@@ -41,53 +42,80 @@ function RecentGlyph(): JSX.Element {
 
 const SHORTCUT_SOURCE = {
   team: { label: "From your team", detail: "Your manager added this for everyone.", Glyph: TeamGlyph, tone: "bg-primary/10 text-primary" },
-  mine: { label: "Pinned by you", detail: "You added this to your shortcuts.", Glyph: MineGlyph, tone: "bg-amber-100 text-amber-700" },
+  mine: { label: "Added by you", detail: "You added this to your shortcuts.", Glyph: MineGlyph, tone: "bg-amber-100 text-amber-700" },
   recent: { label: "Recently opened", detail: "You opened this lately.", Glyph: RecentGlyph, tone: "bg-muted text-muted-foreground" }
 } as const;
 
-function ShortcutTile({ shortcut, index }: { shortcut: KbShortcut; index: number }): JSX.Element {
-  const { data } = useKbLibraryContext();
+/**
+ * Which edge the hover card lines up with, so tiles near the right end open
+ * it leftward and it never runs past the page: in the five-column grid
+ * (1024 to 1279px) the last two columns, in the one-row shelf (1280px and
+ * up) the right half.
+ */
+function cardSide(index: number, count: number): string {
+  return cn(
+    "left-0",
+    index % 5 >= 3 ? "lg:left-auto lg:right-0" : "lg:left-0 lg:right-auto",
+    index >= Math.ceil(count / 2) ? "xl:left-auto xl:right-0" : "xl:left-0 xl:right-auto"
+  );
+}
+
+function ShortcutTile({ shortcut, index, count }: { shortcut: KbShortcut; index: number; count: number }): JSX.Element {
+  const { data, lookup } = useKbLibraryContext();
   const tipId = useId();
   const { doc } = shortcut;
   const number = index + 1;
   const source = SHORTCUT_SOURCE[shortcut.source];
+  const paths = docCategoryPaths(doc, lookup.tree);
+  const where = paths.length > 0 ? `In ${pathsLabel(paths)}` : "Not in a folder";
   return (
     <li
       data-kb-shortcut={number}
       data-kb-shortcut-source={shortcut.source}
-      className="group/tile relative flex min-w-0 flex-col rounded-lg border border-border bg-card px-2.5 pb-3 pt-2 shadow-card transition-colors duration-100 ease-out focus-within:z-20 hover:bg-muted/40 max-sm:w-40 max-sm:shrink-0 lg:min-w-[7rem] lg:flex-1 lg:basis-0"
+      className="group/tile relative flex min-w-0 flex-col rounded-lg border border-border bg-card px-2.5 pb-3 pt-2 shadow-card transition-colors duration-100 ease-out focus-within:z-20 hover:z-20 hover:bg-muted/40 max-sm:w-40 max-sm:shrink-0 xl:px-2"
     >
       {doc.myColor ? (
         <span aria-hidden className="absolute inset-y-2 left-0 w-1 rounded-r-full" style={kbColorDot(doc.myColor)} />
       ) : null}
       <span className="flex items-center justify-between gap-2 text-muted-foreground">
-        {/* Above the tile link's click overlay so hovering the icon shows its description. */}
-        <span className="group/why relative z-10 inline-flex" data-kb-shortcut-why={source.label}>
-          <span aria-hidden className={cn("inline-flex h-6 w-6 items-center justify-center rounded-md", source.tone)}>
-            <source.Glyph />
-          </span>
-          <span
-            id={tipId}
-            role="tooltip"
-            className="pointer-events-none absolute left-0 top-full z-30 mt-1 hidden w-max max-w-[11rem] rounded-md border border-border bg-card px-2.5 py-1.5 text-xs leading-snug text-foreground shadow-panel group-hover/why:block group-has-[a:focus-visible]/tile:block motion-safe:animate-in motion-safe:fade-in motion-safe:duration-100"
-          >
-            <span className="block font-medium">{source.label}</span>
-            <span className="block text-muted-foreground">{source.detail}</span>
-          </span>
+        {/* Above the tile link's click overlay so hovering the icon shows the card. */}
+        <span
+          aria-hidden
+          className={cn("relative z-10 inline-flex h-6 w-6 items-center justify-center rounded-md", source.tone)}
+          data-kb-shortcut-why={source.label}
+        >
+          <source.Glyph />
         </span>
         <span aria-hidden className="text-xs font-medium tabular-nums">
           {number}
+        </span>
+      </span>
+      {/* The hover card: why the source is here and its folder. Shown on icon hover and on keyboard focus. */}
+      <span
+        id={tipId}
+        role="tooltip"
+        data-kb-shortcut-card
+        className={cn(
+          "pointer-events-none absolute top-9 z-30 mt-1 hidden w-max max-w-[15rem] rounded-md border border-border bg-card px-2.5 py-1.5 text-xs leading-snug text-foreground shadow-panel group-has-[[data-kb-shortcut-why]:hover]/tile:block group-has-[a:focus-visible]/tile:block motion-safe:animate-in motion-safe:fade-in motion-safe:duration-100",
+          cardSide(index, count)
+        )}
+      >
+        <span className="block font-medium">{source.label}</span>
+        <span className="block text-muted-foreground">{source.detail}</span>
+        <span data-kb-shortcut-path className="mt-1 block border-t border-border pt-1 text-muted-foreground">
+          {where}
         </span>
       </span>
       <Link
         href={`/kb/${doc.documentId}`}
         aria-keyshortcuts={number <= KB_NUMBERED_PINS ? String(number) : undefined}
         aria-describedby={tipId}
-        title={doc.title}
-        className="mt-1.5 line-clamp-3 break-words rounded-sm text-sm font-medium leading-snug text-foreground after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        title={`${doc.title}\n${where}`}
+        className="mt-1.5 line-clamp-3 break-words rounded-sm hyphens-auto text-sm font-medium leading-snug text-foreground after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         <span className="sr-only">Shortcut {number}, {source.label.toLowerCase()}: </span>
         <span data-kb-title>{doc.title}</span>
+        <span className="sr-only">, {where.charAt(0).toLowerCase() + where.slice(1)}.</span>
         <SourceColorLabel color={doc.myColor} labels={data.labels} />
       </Link>
     </li>
@@ -97,8 +125,10 @@ function ShortcutTile({ shortcut, index }: { shortcut: KbShortcut; index: number
 /**
  * "Your shortcuts": one shelf of up to nine tiles, team shortcuts first, then
  * the user's own, then sources they opened lately. Each tile has the number
- * key that opens it. Tiles share one row from 1024px (scrolling sideways when
- * they do not fit), wrap below that, and scroll sideways on phones.
+ * key that opens it. Every numbered tile stays in view: one row of equal
+ * tiles from 1280px (titles clamp to three lines), a five-column grid from
+ * 1024px (five, then four), a wrapping grid from 640px, and a sideways row on
+ * phones.
  */
 export const KbShortcutShelf = forwardRef<
   HTMLElement,
@@ -136,14 +166,16 @@ export const KbShortcutShelf = forwardRef<
         <ol
           aria-label="Your shortcuts"
           className={cn(
-            // Phones: one sideways-scrolling row. 640 to 1023px: wraps. 1024px and up: one row of equal tiles.
+            // Phones: one sideways-scrolling row. 640 to 1023px: wraps. 1024 to 1279px: five columns.
+            // 1280px and up: one row of equal tiles that shrink to fit, never a sideways scrollbar.
             "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]",
             "sm:grid sm:grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] sm:overflow-visible",
-            "lg:flex lg:overflow-x-auto"
+            "lg:grid-cols-5",
+            "xl:grid-flow-col xl:grid-cols-none xl:auto-cols-[minmax(0,1fr)]"
           )}
         >
           {shelf.map((shortcut, i) => (
-            <ShortcutTile key={shortcut.doc.documentId} shortcut={shortcut} index={i} />
+            <ShortcutTile key={shortcut.doc.documentId} shortcut={shortcut} index={i} count={shelf.length} />
           ))}
         </ol>
       ) : (

@@ -19,6 +19,11 @@ export interface PanelSource {
   documentId: string;
   title: string | null;
   isLive: boolean;
+  /**
+   * Shows only this person's questions in the drawer while the page keeps its
+   * own view (a heatmap cell). Without it the drawer follows the page's person.
+   */
+  person?: { userId: string; name: string | null };
 }
 
 interface SourceQuestionsPanelProps {
@@ -95,8 +100,15 @@ export function SourceQuestionsPanel({
 }: SourceQuestionsPanelProps): JSX.Element {
   const [data, setData] = useState<SourceUsageQuestionsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The drawer's own person filter: a cell's person, else the page's person.
+  // "Show everyone's" widens only this list; the page stays where it is.
+  const person = source.person ?? (userId ? { userId, name: personName } : null);
+  const [widenedFor, setWidenedFor] = useState<string | null>(null);
+  const widened = person !== null && widenedFor === person.userId;
+  const listUserId = widened ? null : (person?.userId ?? null);
+  const listPersonName = widened ? null : (person?.name ?? null);
   // Tab and "Show more" belong to one source and filter; any change starts over.
-  const viewKey = `${source.documentId}:${days}:${userId ?? ""}`;
+  const viewKey = `${source.documentId}:${days}:${listUserId ?? ""}`;
   const [view, setView] = useState<{ key: string; tab: TabKey; shown: number }>({
     key: viewKey,
     tab: "all",
@@ -129,9 +141,34 @@ export function SourceQuestionsPanel({
     function onPointerDown(event: PointerEvent): void {
       if (!panelRef.current?.contains(event.target as Node)) onClose();
     }
+    // On document, so Escape still closes after the focused control inside the
+    // drawer unmounted (focus fell to the body). Keys meant for other open
+    // layers, or already handled, are left alone.
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target;
+      const inPanel = target instanceof Node && panelRef.current?.contains(target);
+      if (inPanel || target === document.body || target === document.documentElement) onClose();
+    }
     document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [onClose]);
+
+  // "Show more questions" unmounts once every group is shown; focus then moves
+  // to the first group it revealed instead of falling to the page.
+  const focusGroupAt = useRef<number | null>(null);
+  useEffect(() => {
+    const index = focusGroupAt.current;
+    if (index === null) return;
+    focusGroupAt.current = null;
+    panelRef.current
+      ?.querySelectorAll<HTMLElement>("[data-question-group]")
+      [index]?.focus();
+  });
 
   useEffect(() => {
     // Restricted sources: the viewer may not read the questions, so nothing is requested.
@@ -141,7 +178,7 @@ export function SourceQuestionsPanel({
     setData(null);
     fetchSourceUsageQuestions({
       windowDays: days,
-      userId,
+      userId: listUserId,
       documentId: source.documentId,
       limit: PAGE_LIMIT
     })
@@ -156,7 +193,7 @@ export function SourceQuestionsPanel({
     return () => {
       cancelled = true;
     };
-  }, [restricted, source.documentId, days, userId, reloadKey]);
+  }, [restricted, source.documentId, days, listUserId, reloadKey]);
 
   const lists = useMemo(() => {
     const items = data?.items ?? [];
@@ -171,7 +208,11 @@ export function SourceQuestionsPanel({
   }, [data]);
 
   const canOpen = !restricted && source.isLive;
-  const personFirst = userId ? (personName ? firstName(personName) : "this person") : null;
+  const personFirst = listUserId
+    ? listPersonName
+      ? firstName(listPersonName)
+      : "this person"
+    : null;
   const tabs: { key: TabKey; label: string; count: number }[] = [
     { key: "all", label: "All", count: lists.all.count },
     { key: "negative", label: "Thumbs down", count: lists.negative.count },
@@ -228,9 +269,6 @@ export function SourceQuestionsPanel({
       role="dialog"
       aria-labelledby="source-questions-title"
       data-usage-panel=""
-      onKeyDown={(event) => {
-        if (event.key === "Escape") onClose();
-      }}
       className="fixed right-0 top-16 z-40 flex h-[calc(100vh-4rem)] w-[min(560px,92vw)] flex-col border-l border-border bg-card shadow-panel motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-right-4 motion-safe:duration-240 motion-safe:ease-out-quart"
     >
       <div className="flex-1 overflow-auto">
@@ -279,17 +317,21 @@ export function SourceQuestionsPanel({
               {summary}
             </p>
           ) : null}
-          {userId ? (
-            <div className="flex flex-wrap items-center gap-2">
+          {person ? (
+            <div className="flex flex-wrap items-center gap-2" data-panel-scope={widened ? "everyone" : "person"}>
               <span className="text-sm text-muted-foreground">
-                Only {personName ?? "this person"}'s questions.
+                {widened
+                  ? "Everyone's questions."
+                  : `Only ${person.name ?? "this person"}'s questions.`}
               </span>
               <button
                 type="button"
-                onClick={() => onSelectPerson(null)}
+                onClick={() => setWidenedFor(widened ? null : person.userId)}
                 className="btn-whisper px-3 py-1 text-xs"
               >
-                Show everyone's
+                {widened
+                  ? `Show only ${person.name ? firstName(person.name) : "this person"}'s`
+                  : "Show everyone's"}
               </button>
             </div>
           ) : null}
@@ -393,9 +435,11 @@ export function SourceQuestionsPanel({
                 <div className="flex justify-center px-5 py-3">
                   <button
                     type="button"
-                    onClick={() =>
-                      setView({ key: viewKey, tab: activeTab, shown: shown + GROUPS_PER_STEP })
-                    }
+                    onClick={() => {
+                      // The button stays while more remain; focus moves only when it goes.
+                      if (active.groups.length <= shown + GROUPS_PER_STEP) focusGroupAt.current = shown;
+                      setView({ key: viewKey, tab: activeTab, shown: shown + GROUPS_PER_STEP });
+                    }}
                     className="btn-whisper inline-flex items-center gap-1.5 px-4 py-1.5 text-sm"
                   >
                     Show more questions
@@ -431,7 +475,12 @@ function GroupItem({
   const detailsId = useId();
   const times = group.items.length;
   return (
-    <li className="flex flex-col gap-2 px-5 py-3" data-question-group="" data-asked={times}>
+    <li
+      tabIndex={-1}
+      className="flex flex-col gap-2 px-5 py-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      data-question-group=""
+      data-asked={times}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="whitespace-pre-wrap break-words text-sm font-medium">{group.question}</p>
@@ -463,15 +512,10 @@ function GroupItem({
             key={asker.userId ?? asker.name}
             name={asker.name}
             userId={asker.userId}
+            negativeCount={asker.negativeCount}
             onSelectPerson={onSelectPerson}
           />
         ))}
-        {group.negativeCount > 0 ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
-            <ThumbsDown className="h-3 w-3" aria-hidden />
-            Thumbs down{group.negativeCount > 1 ? ` ${group.negativeCount}` : ""}
-          </span>
-        ) : null}
         {group.refusedCount > 0 ? (
           <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
             Refused
@@ -491,13 +535,20 @@ function GroupItem({
   );
 }
 
+/**
+ * Who asked: initials and name. A thumbs-down from this person shows as a
+ * small icon inside their own chip, so the signal sits with the person who
+ * gave it.
+ */
 function AskerChip({
   name,
   userId,
+  negativeCount,
   onSelectPerson
 }: {
   name: string;
   userId: string | null;
+  negativeCount: number;
   onSelectPerson: (userId: string) => void;
 }): JSX.Element {
   const content = (
@@ -509,6 +560,15 @@ function AskerChip({
         {initials(name)}
       </span>
       <span className="truncate">{name}</span>
+      {negativeCount > 0 ? (
+        <span className="inline-flex shrink-0 items-center gap-0.5 text-destructive" data-asker-negative={negativeCount}>
+          <ThumbsDown className="h-3 w-3" aria-hidden />
+          {negativeCount > 1 ? <span aria-hidden>{negativeCount}</span> : null}
+          <span className="sr-only">
+            {negativeCount > 1 ? `, ${negativeCount} thumbs down` : ", thumbs down"}
+          </span>
+        </span>
+      ) : null}
     </>
   );
   const chipClass =

@@ -235,11 +235,16 @@ export function PersonFocus({
             ) : null}
           </p>
 
+          {/*
+            Cards size to their content. From lg the relied-on list sits under
+            Going well in the first column, so its top rows share the first
+            screen with Talk about; the DOM keeps the reading order.
+          */}
           <div
             className={
               suggestions.length > 0
-                ? "grid items-stretch gap-4 lg:grid-cols-3"
-                : "grid items-stretch gap-4 lg:grid-cols-2"
+                ? "grid items-start gap-4 lg:grid-cols-3"
+                : "grid items-start gap-4 lg:grid-cols-2"
             }
           >
             <GoingWell
@@ -262,15 +267,14 @@ export function PersonFocus({
             {suggestions.length > 0 ? (
               <SuggestSources name={name} suggestions={suggestions} pathOf={pathOf} />
             ) : null}
+            <ReliesOn
+              shortName={shortName}
+              days={days}
+              sources={sources}
+              categoryPaths={categoryPaths}
+              onOpenSource={onOpenSource}
+            />
           </div>
-
-          <ReliesOn
-            shortName={shortName}
-            days={days}
-            sources={sources}
-            categoryPaths={categoryPaths}
-            onOpenSource={onOpenSource}
-          />
 
           <AllQuestions
             total={totals.questions}
@@ -383,7 +387,11 @@ function GoingWell({
 }): JSX.Element {
   const rate = formatPercent(answeredRate(totals.answered, totals.questions));
   return (
-    <section aria-labelledby="going-well-title" className={CARD_CLASS} data-coaching-card="going-well">
+    <section
+      aria-labelledby="going-well-title"
+      className={`${CARD_CLASS} lg:col-start-1 lg:row-start-1`}
+      data-coaching-card="going-well"
+    >
       <CardTitle
         id="going-well-title"
         icon={
@@ -402,6 +410,9 @@ function GoingWell({
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
           {totals.answered} of {totals.questions} got a cited answer.
+          {teamAverage !== null
+            ? ` Team average: ${plural(teamAverage, "question", "questions")} per person.`
+            : ""}
         </p>
       </div>
       <div className="border-t border-border pt-4">
@@ -428,11 +439,6 @@ function GoingWell({
           </p>
         )}
       </div>
-      {teamAverage !== null ? (
-        <p className="mt-auto border-t border-border pt-3 text-sm text-muted-foreground">
-          Team average: {plural(teamAverage, "question", "questions")} per person.
-        </p>
-      ) : null}
     </section>
   );
 }
@@ -457,7 +463,11 @@ function TalkAbout({
 }): JSX.Element {
   const nothing = refusedTotal === 0 && negativeTotal === 0;
   return (
-    <section aria-labelledby="talk-about-title" className={CARD_CLASS} data-coaching-card="talk-about">
+    <section
+      aria-labelledby="talk-about-title"
+      className={`${CARD_CLASS} lg:col-start-2 lg:row-span-2 lg:row-start-1`}
+      data-coaching-card="talk-about"
+    >
       <CardTitle
         id="talk-about-title"
         icon={
@@ -590,7 +600,11 @@ function SuggestSources({
     .map((reason) => ({ reason, items: suggestions.filter((item) => item.reason === reason) }))
     .filter((group) => group.items.length > 0);
   return (
-    <section aria-labelledby="suggest-title" className={CARD_CLASS} data-coaching-card="suggest">
+    <section
+      aria-labelledby="suggest-title"
+      className={`${CARD_CLASS} lg:col-start-3 lg:row-span-2 lg:row-start-1`}
+      data-coaching-card="suggest"
+    >
       <CardTitle
         id="suggest-title"
         icon={<BookOpen className="h-6 w-6 text-muted-foreground" aria-hidden />}
@@ -716,14 +730,15 @@ function ReliesOn({
   return (
     <section
       aria-labelledby="relies-on-title"
-      className="flex min-w-0 flex-col gap-4 rounded-lg border border-border bg-card p-5 shadow-card"
+      className={`${CARD_CLASS} lg:col-start-1 lg:row-start-2`}
+      data-relies-on=""
     >
       <div>
         <h2 id="relies-on-title" className="text-lg font-semibold tracking-tight">
           Sources {shortName} relies on
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Answers that used each source in the last {days} days.
+          Answers in the last {days} days.
         </p>
       </div>
       {sources.length === 0 ? (
@@ -731,7 +746,7 @@ function ReliesOn({
           No answer used a source in this period. Every question went without an answer.
         </p>
       ) : (
-        <ol className="grid gap-x-8 gap-y-3 md:grid-cols-2">
+        <ol className="grid gap-x-8 gap-y-3 md:grid-cols-2 lg:grid-cols-1">
           {rows.map((source) => (
             <li key={source.documentId} className="min-w-0">
               <div className="flex items-baseline justify-between gap-3">

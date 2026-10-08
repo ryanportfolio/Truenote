@@ -1,12 +1,16 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Link } from "wouter";
 import {
   firstName,
-  joinNames,
   neverCitedHref,
   personLabel,
   type AttentionCard
 } from "@/lib/sourceUsage";
+
+type AttentionCardPerson = Extract<AttentionCard, { kind: "refused" }>["people"][number];
+
+const NAME_LINK_CLASS =
+  "rounded-sm font-medium text-primary underline underline-offset-2 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 const ACTION_CLASS =
   "btn-whisper inline-flex w-full items-center justify-center px-4 py-2 text-sm font-medium text-primary";
@@ -26,9 +30,12 @@ function Big({ children }: { children: ReactNode }): JSX.Element {
  */
 export function AttentionCards({
   cards,
+  days,
   onSelectPerson
 }: {
   cards: readonly AttentionCard[];
+  /** The window the facts come from, named in the never-used sentence. */
+  days: number;
   onSelectPerson: (userId: string) => void;
 }): JSX.Element | null {
   if (cards.length === 0) return null;
@@ -44,7 +51,7 @@ export function AttentionCards({
             data-attention={card.kind}
             className="flex min-w-0 flex-col justify-between gap-4 rounded-lg border border-border bg-card p-5 shadow-card"
           >
-            <CardBody card={card} onSelectPerson={onSelectPerson} />
+            <CardBody card={card} days={days} onSelectPerson={onSelectPerson} />
           </li>
         ))}
       </ul>
@@ -54,9 +61,11 @@ export function AttentionCards({
 
 function CardBody({
   card,
+  days,
   onSelectPerson
 }: {
   card: AttentionCard;
+  days: number;
   onSelectPerson: (userId: string) => void;
 }): JSX.Element {
   switch (card.kind) {
@@ -64,19 +73,18 @@ function CardBody({
       return (
         <>
           <p className="text-base leading-snug">
-            <Big>{card.count}</Big> {card.count === 1 ? "source was" : "sources were"} never used
-            in an answer.
+            <Big>{card.count}</Big> {card.count === 1 ? "source was" : "sources were"} not used in
+            any answer in the last {days} days.
           </p>
-          <Link href={neverCitedHref(card.documentIds)} className={ACTION_CLASS}>
+          <Link href={neverCitedHref(card.documentIds, days)} className={ACTION_CLASS}>
             Review sources
           </Link>
         </>
       );
     case "refused":
     case "negative": {
-      const names = card.people.map((person) => personLabel(person));
       const lead = card.people[0];
-      const each = card.people.length > 1 ? " each" : "";
+      const tie = card.people.length > 1;
       const what =
         card.kind === "refused"
           ? card.count === 1
@@ -88,7 +96,9 @@ function CardBody({
       return (
         <>
           <p className="text-base leading-snug">
-            {joinNames(names)} had{each} <Big>{card.count}</Big> {what}.
+            <Names people={card.people} linked={tie} onSelectPerson={onSelectPerson} />
+            {tie ? " each had " : " had "}
+            <Big>{card.count}</Big> {what}.
           </p>
           {lead ? (
             <button
@@ -119,4 +129,47 @@ function CardBody({
         </>
       );
   }
+}
+
+/**
+ * "Jordan Reyes", "Jordan Reyes and Marcus Webb", "A, B and C". In a tie each
+ * name opens that person's coaching guide, so the card keeps one button and
+ * every tied person is still one click away.
+ */
+function Names({
+  people,
+  linked,
+  onSelectPerson
+}: {
+  people: AttentionCardPerson[];
+  linked: boolean;
+  onSelectPerson: (userId: string) => void;
+}): JSX.Element {
+  return (
+    <>
+      {people.map((person, index) => {
+        const label = personLabel(person);
+        const separator =
+          index === 0 ? "" : index === people.length - 1 ? " and " : ", ";
+        return (
+          <Fragment key={person.userId}>
+            {separator}
+            {linked ? (
+              <button
+                type="button"
+                data-coach-name={person.userId}
+                title={`Open ${label}'s coaching guide`}
+                onClick={() => onSelectPerson(person.userId)}
+                className={NAME_LINK_CLASS}
+              >
+                {label}
+              </button>
+            ) : (
+              label
+            )}
+          </Fragment>
+        );
+      })}
+    </>
+  );
 }

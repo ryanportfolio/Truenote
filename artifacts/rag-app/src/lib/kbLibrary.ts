@@ -309,26 +309,69 @@ export interface KbLookup {
   tagsById: Map<string, KbTag>;
 }
 
+/**
+ * The tags of the library a tree was built with (buildLookup), so helpers
+ * that are handed only `lookup.tree`, such as relatedSources, can still read
+ * tag names.
+ */
+const tagsOfTree = new WeakMap<KbTree, Map<string, KbTag>>();
+
 export function buildLookup(data: Pick<KbDocumentListResponse, "categories" | "tags">): KbLookup {
-  return {
+  const lookup = {
     tree: buildCategoryTree(data.categories),
     tagsById: new Map(data.tags.map((t) => [t.id, t]))
   };
+  tagsOfTree.set(lookup.tree, lookup.tagsById);
+  return lookup;
 }
 
-/** Title, private note, tag names and category names all count as a match. */
+/** The lowercased words of a search, split on whitespace ("late fee" is "late" and "fee"). */
+export function queryTokens(query: string): string[] {
+  return query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+/** The text a search looks in for one source, lowercased. */
+interface SearchFields {
+  title: string;
+  /** Full folder paths ("billing / fees"), so a word from a parent folder matches too. */
+  paths: string[];
+  tags: string[];
+  note: string;
+}
+
+function searchFields(doc: KbDocumentListItem, lookup: KbLookup): SearchFields {
+  const paths: string[] = [];
+  for (const id of doc.categoryIds) {
+    const node = lookup.tree.byId.get(id);
+    if (node) paths.push(categoryPathLabel(node).toLowerCase());
+  }
+  const tags: string[] = [];
+  for (const id of doc.tagIds) {
+    const tag = lookup.tagsById.get(id);
+    if (tag) tags.push(tag.name.toLowerCase());
+  }
+  return { title: doc.title.toLowerCase(), paths, tags, note: doc.note?.toLowerCase() ?? "" };
+}
+
+function fieldsInclude(fields: SearchFields, text: string): boolean {
+  return (
+    fields.title.includes(text) ||
+    fields.paths.some((p) => p.includes(text)) ||
+    fields.tags.some((t) => t.includes(text)) ||
+    fields.note.includes(text)
+  );
+}
+
+/**
+ * Every word of the search appears somewhere in the title, a folder path, a
+ * tag name or the private note (the words can be in different places), so
+ * "late fee" finds "Late payment fee waivers".
+ */
 export function docMatchesQuery(doc: KbDocumentListItem, query: string, lookup: KbLookup): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  if (doc.title.toLowerCase().includes(q)) return true;
-  if (doc.note?.toLowerCase().includes(q)) return true;
-  for (const tagId of doc.tagIds) {
-    if (lookup.tagsById.get(tagId)?.name.toLowerCase().includes(q)) return true;
-  }
-  for (const categoryId of doc.categoryIds) {
-    if (lookup.tree.byId.get(categoryId)?.category.name.toLowerCase().includes(q)) return true;
-  }
-  return false;
+  const tokens = queryTokens(query);
+  if (tokens.length === 0) return true;
+  const fields = searchFields(doc, lookup);
+  return tokens.every((token) => fieldsInclude(fields, token));
 }
 
 export function docPassesFilters(doc: KbDocumentListItem, filters: KbFilters, now = Date.now()): boolean {
@@ -562,30 +605,48 @@ export interface KbSearchResults {
   total: number;
 }
 
+/** `q` (a word or a phrase) appears in `text` at the start of a word. */
 function wordStart(text: string, q: string): boolean {
-  return text.split(/[^a-z0-9]+/).some((word) => word.startsWith(q));
+  for (let i = text.indexOf(q); i !== -1; i = text.indexOf(q, i + 1)) {
+    if (i === 0 || !/[a-z0-9]/.test(text.charAt(i - 1))) return true;
+  }
+  return false;
 }
 
-/** How well a source matches: title beats folder name, which beats tag and note. 0 = no match. */
-function matchScore(doc: KbDocumentListItem, q: string, lookup: KbLookup): number {
-  const title = doc.title.toLowerCase();
-  if (title === q) return 100;
-  if (title.startsWith(q)) return 80;
-  if (wordStart(title, q)) return 60;
-  if (title.includes(q)) return 50;
-  for (const id of doc.categoryIds) {
-    if (lookup.tree.byId.get(id)?.category.name.toLowerCase().includes(q)) return 30;
+/**
+ * How well a source matches the search words. 0 = some word is missing (the
+ * same rule as docMatchesQuery). Words found in the title count most, so
+ * title hits always rank first; the whole search as one phrase in the title
+ * adds a bonus on top; then each word counts by where it was found (title,
+ * folder path, tag, note).
+ */
+function matchScore(doc: KbDocumentListItem, tokens: string[], phrase: string, lookup: KbLookup): number {
+  const fields = searchFields(doc, lookup);
+  let titleHits = 0;
+  let wordScore = 0;
+  for (const token of tokens) {
+    if (fields.title.includes(token)) {
+      titleHits += 1;
+      wordScore += wordStart(fields.title, token) ? 12 : 10;
+    } else if (fields.paths.some((p) => p.includes(token))) wordScore += 4;
+    else if (fields.tags.some((t) => t.includes(token))) wordScore += 3;
+    else if (fields.note.includes(token)) wordScore += 2;
+    else return 0;
   }
-  for (const id of doc.tagIds) {
-    if (lookup.tagsById.get(id)?.name.toLowerCase().includes(q)) return 25;
-  }
-  return doc.note?.toLowerCase().includes(q) ? 20 : 0;
+  let phraseBonus = 0;
+  if (fields.title === phrase) phraseBonus = 400;
+  else if (fields.title.startsWith(phrase)) phraseBonus = 300;
+  else if (wordStart(fields.title, phrase)) phraseBonus = 200;
+  else if (fields.title.includes(phrase)) phraseBonus = 100;
+  else if (tokens.length > 1 && fieldsInclude(fields, phrase)) phraseBonus = 20;
+  return titleHits * 1000 + phraseBonus + wordScore;
 }
 
 /**
  * The grouped search panel: the best match, up to `limit` other sources,
- * and folders whose name matches. Searches only `docs` (already filtered),
- * so the panel agrees with the list below. Ties go to the most opened.
+ * and folders whose path holds every search word. Searches only `docs`
+ * (already filtered with docMatchesQuery, the same word rule), so the panel
+ * agrees with the list below. Ties go to the most opened.
  */
 export function searchLibrary(
   docs: KbDocumentListItem[],
@@ -593,15 +654,22 @@ export function searchLibrary(
   lookup: KbLookup,
   limit = 5
 ): KbSearchResults {
-  const q = query.trim().toLowerCase();
-  if (!q) return { best: null, others: [], folders: [], total: 0 };
+  const tokens = queryTokens(query);
+  if (tokens.length === 0) return { best: null, others: [], folders: [], total: 0 };
+  const phrase = tokens.join(" ");
   const ranked = docs
-    .map((doc) => ({ doc, score: matchScore(doc, q, lookup) }))
+    .map((doc) => ({ doc, score: matchScore(doc, tokens, phrase, lookup) }))
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score || b.doc.viewCount - a.doc.viewCount || byTitle(a.doc, b.doc))
     .map((x) => x.doc);
   const folders = lookup.tree.order
-    .filter((node) => node.category.name.toLowerCase().includes(q))
+    .filter((node) => {
+      const path = categoryPathLabel(node).toLowerCase();
+      const name = node.category.name.toLowerCase();
+      // Every word in the path, and at least one in this folder's own name, so
+      // "billing" lists Billing, not each folder inside it.
+      return tokens.every((t) => path.includes(t)) && tokens.some((t) => name.includes(t));
+    })
     .map((node) => ({ node, count: docsInFolder(docs, node).length }))
     .filter((match) => match.count > 0)
     .slice(0, 3);
@@ -692,51 +760,97 @@ export function groupedRowCount(
   return { rows, repeated, maxRows };
 }
 
-/**
- * How close two categories sit in the tree: the same category scores most,
- * a parent, child or sibling (same parent) less, anything else 0. Deeper
- * categories are narrower, so sharing one says more than sharing a broad
- * top-level one: "Billing / Refunds" beside "Billing / Refunds / Annual
- * plans" outranks two sources that only share "Retention".
- */
-function categoryCloseness(a: KbCategoryNode, b: KbCategoryNode): number {
-  if (a.category.id === b.category.id) return 2 * a.depth;
-  const aParent = a.category.parentId ?? null;
-  const bParent = b.category.parentId ?? null;
-  const related =
-    aParent === b.category.id || bParent === a.category.id || (aParent !== null && aParent === bParent);
-  return related ? 2 * Math.min(a.depth, b.depth) - 1 : 0;
+/** The parent folder as the tree shows it (a parent the user cannot see counts as top level). */
+function parentOf(node: KbCategoryNode, tree: KbTree): string | null {
+  const parentId = node.category.parentId ?? null;
+  return parentId !== null && tree.byId.has(parentId) ? parentId : null;
 }
 
 /**
- * Sources related to this one, closest first: each shared or nearby
- * category adds its closeness (categoryCloseness) and each shared tag adds
- * 1. Ties go to the most cited. Never includes the source itself.
+ * How close two folders sit in the tree, in tiers: the same folder (100),
+ * a parent or child folder (60), a sibling under the same parent (40),
+ * anything else 0. Inside a tier a deeper folder adds a little, because it
+ * is narrower: two sources in "Billing / Refunds" are closer than two in
+ * "Billing". Top-level folders are not siblings of each other.
+ */
+function folderCloseness(a: KbCategoryNode, b: KbCategoryNode, tree: KbTree): number {
+  if (a.category.id === b.category.id) return 100 + a.depth;
+  const aParent = parentOf(a, tree);
+  const bParent = parentOf(b, tree);
+  if (aParent === b.category.id || bParent === a.category.id) return 60 + Math.min(a.depth, b.depth);
+  if (aParent !== null && aParent === bParent) return 40 + a.depth;
+  return 0;
+}
+
+/**
+ * Tags that name a kind of document or its status rather than its topic.
+ * Sharing one ("both are Policy", "both are Script") says nothing about
+ * whether two sources cover the same thing, so they do not count toward
+ * related sources.
+ */
+const FORMAT_TAGS = new Set([
+  "policy",
+  "policies",
+  "procedure",
+  "procedures",
+  "script",
+  "scripts",
+  "quick reference",
+  "reference",
+  "guide",
+  "how-to",
+  "how to",
+  "faq",
+  "checklist",
+  "form",
+  "template",
+  "updated",
+  "new"
+]);
+
+/** One shared topic tag; the lowest tier, below any folder relation. */
+const RELATED_TOPIC_TAG = 10;
+
+/**
+ * Sources related to this one, closest first: the closest folder relation
+ * (folderCloseness: same folder, then parent or child, then sibling), plus
+ * RELATED_TOPIC_TAG for each shared topic tag. Format and status tags
+ * (FORMAT_TAGS) add nothing, so a source that only shares "Script" is not
+ * related. Anything scoring below one shared topic tag is dropped, so the
+ * list can be shorter than `limit` or empty. Ties go to the most cited.
+ * Never includes the source itself.
  */
 export function relatedSources(
   doc: Pick<KbDocumentListItem, "documentId" | "categoryIds" | "tagIds">,
   items: KbDocumentListItem[],
   tree: KbTree,
-  limit = 5
+  limit = 5,
+  /** Tag names; defaults to the tags the tree was built with in buildLookup. */
+  tagsById: Map<string, KbTag> | undefined = tagsOfTree.get(tree)
 ): KbDocumentListItem[] {
   const mine = doc.categoryIds
     .map((id) => tree.byId.get(id))
     .filter((n): n is KbCategoryNode => Boolean(n));
-  const tags = new Set(doc.tagIds);
-  if (mine.length === 0 && tags.size === 0) return [];
+  // Without its name a tag cannot be told apart from a format tag, so it does not count.
+  const isTopic = (tagId: string): boolean => {
+    const name = tagsById?.get(tagId)?.name.trim().toLowerCase();
+    return name !== undefined && !FORMAT_TAGS.has(name);
+  };
+  const topics = new Set(doc.tagIds.filter(isTopic));
+  if (mine.length === 0 && topics.size === 0) return [];
   const score = (d: KbDocumentListItem): number => {
-    let total = d.tagIds.filter((id) => tags.has(id)).length;
+    let folder = 0;
     for (const id of d.categoryIds) {
       const node = tree.byId.get(id);
       if (!node) continue;
-      total += Math.max(0, ...mine.map((m) => categoryCloseness(m, node)));
+      for (const m of mine) folder = Math.max(folder, folderCloseness(m, node, tree));
     }
-    return total;
+    return folder + RELATED_TOPIC_TAG * d.tagIds.filter((id) => topics.has(id)).length;
   };
   return items
     .filter((d) => d.documentId !== doc.documentId)
     .map((d) => ({ d, score: score(d) }))
-    .filter((x) => x.score > 0)
+    .filter((x) => x.score >= RELATED_TOPIC_TAG)
     .sort((a, b) => b.score - a.score || b.d.citationCount - a.d.citationCount || byTitle(a.d, b.d))
     .slice(0, limit)
     .map((x) => x.d);

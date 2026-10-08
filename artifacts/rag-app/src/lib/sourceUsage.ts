@@ -3,6 +3,7 @@ import type {
   KbDocumentListItem,
   SourceUsageQuestion,
   SourceUsageSource,
+  SourceUsageSuggestion,
   SourceUsageUser
 } from "@/types/api";
 
@@ -432,10 +433,29 @@ export function heatBin(value: number, bins: readonly HeatBin[]): HeatBin {
   return bins.find((bin) => value >= bin.min && value <= bin.max) ?? bins[bins.length - 1]!;
 }
 
-/** Sources page filtered to the given documents, with a note that the list came from here. */
-export function neverCitedHref(documentIds: readonly string[]): string {
+/**
+ * Sources page filtered to the given documents, with a note that the list
+ * came from here. `days` names the window the list was built from.
+ */
+export function neverCitedHref(documentIds: readonly string[], days: number): string {
   if (documentIds.length === 0) return "/kb";
-  return `/kb?ids=${documentIds.map(encodeURIComponent).join(",")}&from=usage`;
+  return `/kb?ids=${documentIds.map(encodeURIComponent).join(",")}&from=usage&days=${days}`;
+}
+
+/** A fallback ("team_top") suggestion needs at least this many team answers in the window. */
+export const TEAM_TOP_MIN_CITATIONS = 3;
+
+/**
+ * Suggestions worth showing: "related" ones as sent, "team_top" ones only
+ * when teammates used the source at least TEAM_TOP_MIN_CITATIONS times, so a
+ * source two teammates opened once is not offered as a team habit.
+ */
+export function shownSuggestions(
+  suggestions: readonly SourceUsageSuggestion[]
+): SourceUsageSuggestion[] {
+  return suggestions.filter(
+    (item) => item.reason === "related" || item.teamCitations >= TEAM_TOP_MIN_CITATIONS
+  );
 }
 
 /** Share of `part` in `whole` as "12%", or null when there is nothing to divide. */
@@ -524,12 +544,6 @@ export function attentionCards(input: {
   return cards.slice(0, 3);
 }
 
-/** "Aisha Bello", "Aisha Bello and Marcus Webb", "A, B and C". */
-export function joinNames(names: readonly string[]): string {
-  if (names.length <= 1) return names[0] ?? "";
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
-
 // ---------------------------------------------------------------------------
 // Source drawer: identical questions grouped
 
@@ -545,6 +559,8 @@ export function normalizeQuestion(text: string): string {
 export interface QuestionAsker {
   userId: string | null;
   name: string;
+  /** This person's asks in the group whose answer they marked thumbs down. */
+  negativeCount: number;
 }
 
 export interface QuestionGroup {
@@ -582,9 +598,12 @@ export function groupQuestions(items: readonly SourceUsageQuestion[]): QuestionG
     if (item.refused) group.refusedCount += 1;
     if (item.feedback === -1) group.negativeCount += 1;
     const askerKey = item.userId ?? `name:${item.userName ?? ""}`;
-    if (!group.askers.some((asker) => (asker.userId ?? `name:${asker.name}`) === askerKey)) {
-      group.askers.push({ userId: item.userId, name: personLabel({ name: item.userName }) });
+    let asker = group.askers.find((entry) => (entry.userId ?? `name:${entry.name}`) === askerKey);
+    if (!asker) {
+      asker = { userId: item.userId, name: personLabel({ name: item.userName }), negativeCount: 0 };
+      group.askers.push(asker);
     }
+    if (item.feedback === -1) asker.negativeCount += 1;
   }
   return [...groups.values()];
 }

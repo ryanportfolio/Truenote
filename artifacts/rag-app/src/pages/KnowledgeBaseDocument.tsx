@@ -33,6 +33,7 @@ import { PassageHighlighter } from "@/components/kb/PassageHighlighter";
 import { KbDocPersonalError, useKbDocPersonal } from "@/components/kb-library/KbDocPersonalBar";
 import { ReaderHeader, type ReaderCrumb } from "@/components/kb-reader/ReaderHeader";
 import {
+  ReaderHighlightHint,
   ReaderNoteCard,
   ReaderOutline,
   ReaderRelated,
@@ -49,6 +50,9 @@ import type {
   KbLibraryColor,
   KbTag
 } from "@/types/api";
+
+/** Tag names that describe a source's status, not its subject. */
+const STATUS_TAG_NAMES = new Set(["updated", "new"]);
 
 type DocState =
   | { status: "loading" }
@@ -219,9 +223,13 @@ function ReaderArticle({
   const lookup = useMemo(() => (library ? buildLookup(library) : null), [library?.categories, library?.tags]);
   const listItem = library?.items.find((item) => item.documentId === doc.documentId) ?? null;
   const { crumbs, others } = lookup && listItem ? folderCrumbs(listItem, lookup.tree) : { crumbs: [], others: [] };
+  // Status tags ("Updated", "New") stay out of the meta line: the date
+  // phrase beside it already says when the source changed.
   const tags =
     lookup && listItem
-      ? listItem.tagIds.map((id) => lookup.tagsById.get(id)).filter((t): t is KbTag => Boolean(t))
+      ? listItem.tagIds
+          .map((id) => lookup.tagsById.get(id))
+          .filter((t): t is KbTag => t !== undefined && !STATUS_TAG_NAMES.has(t.name.trim().toLowerCase()))
       : [];
   const related =
     lookup && library && listItem
@@ -292,6 +300,7 @@ function ReaderArticle({
             headings={headings}
             className="rounded-lg border border-border bg-card px-4 py-3 xl:rounded-none xl:border-0 xl:bg-transparent xl:p-0"
           />
+          {doc.markdown && doc.isCurrentVersion ? <ReaderHighlightHint /> : null}
         </div>
         <article
           aria-labelledby="kb-doc-title"
@@ -331,7 +340,7 @@ function ReaderArticle({
                   <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
                     {doc.citationTarget
                       ? "The exact source span used by the answer is marked below."
-                      : "The cited version is pinned, but this receipt has no direct text location."}
+                      : "This is the exact version the answer cited, but this receipt has no direct text location."}
                   </span>
                 </span>
               </p>
@@ -599,17 +608,20 @@ function rehypeSectionIds() {
 const OrderedListContext = createContext(false);
 
 /**
- * Split a step's first sentence from the rest, so it can read in bold on its
- * own line. Works on the leading text only; the text itself is unchanged.
+ * Split a step's first sentence from the rest, so it can read in semibold on
+ * its own line. Only for steps with more text after that sentence; a
+ * one-sentence step stays regular weight. Works on the leading text only;
+ * the text itself is unchanged.
  */
 function splitFirstSentence(children: ReactNode): ReactNode {
   const parts = Children.toArray(children);
   const first = parts[0];
   if (typeof first !== "string") return children;
   const match = /^\s*[\s\S]*?[.!?](?=\s|$)/.exec(first);
-  // No sentence end in the leading text: bold it only when it is the whole step.
-  const lead = match ? match[0] : parts.length === 1 ? first : null;
+  const lead = match ? match[0] : null;
   if (!lead || !lead.trim()) return children;
+  const hasMore = first.slice(lead.length).trim() !== "" || parts.length > 1;
+  if (!hasMore) return children;
   return (
     <>
       <span className="kb-step-lead">{lead}</span>
@@ -636,12 +648,13 @@ const ReaderMarkdown = memo(function ReaderMarkdown({
   const citationAttributes = useCitationAttributes(citationTarget);
   // A single leading "# Title" that repeats the page title is the document's
   // own title: hidden (text kept for highlight offsets), and "##" sections
-  // become the page's second-level headings.
+  // become the page's second-level headings. No scroll margin: the reader
+  // header sets the scroll pane's padding to clear the sticky header.
   const h1Count = (markdown.match(/^#\s/gm) ?? []).length;
   const normalizedTitle = docTitle?.trim().toLowerCase() ?? null;
   const leadingTitle = h1Count === 1;
   const sectionClass =
-    "mb-3 mt-7 scroll-mt-4 border-t border-border pt-6 font-display text-2xl font-semibold tracking-tight first:mt-0 first:border-t-0 first:pt-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring md:scroll-mt-36";
+    "mb-3 mt-7 border-t border-border pt-6 font-display text-2xl font-semibold tracking-tight first:mt-0 first:border-t-0 first:pt-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   return (
     <ReactMarkdown
@@ -767,7 +780,7 @@ const ReaderMarkdown = memo(function ReaderMarkdown({
         blockquote: ({ children, node }) => {
           const cited = citationAttributes(node);
           return (
-            <blockquote {...cited} className={cn("my-3 border-l-2 border-border pl-3 text-muted-foreground", cited.className)}>
+            <blockquote {...cited} className={cn("my-3 border-l-2 border-border pl-3 text-foreground", cited.className)}>
               {children}
             </blockquote>
           );

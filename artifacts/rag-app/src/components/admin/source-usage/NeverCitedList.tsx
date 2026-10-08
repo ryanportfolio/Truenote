@@ -112,7 +112,7 @@ export function NeverCitedList({
         </>
       )}
       <Link
-        href={neverCitedHref(result?.items.map((doc) => doc.documentId) ?? [])}
+        href={neverCitedHref(result?.items.map((doc) => doc.documentId) ?? [], days)}
         className="inline-flex items-center gap-1 self-start rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         Review in Sources

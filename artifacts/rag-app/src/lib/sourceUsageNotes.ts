@@ -32,7 +32,7 @@ export interface CoachingNotesInput {
 export function suggestionReasonText(reason: SourceUsageSuggestion["reason"], name: string): string {
   return reason === "related"
     ? "Teammates use these for similar topics."
-    : `Your team uses these often; ${firstName(name)} has not used them yet.`;
+    : `Teammates used these; ${firstName(name)} has not yet.`;
 }
 
 function quoted(question: SourceUsageQuestion): string {

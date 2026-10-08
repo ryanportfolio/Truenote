@@ -171,14 +171,19 @@ function makeTreeKeyboardCoordinates(
         else [0.15, 0.5, 0.85].forEach((ratio) => add(ratio));
         return;
       }
-      if (drop.type !== "document") {
-        add(0.5);
-        return;
-      }
-      if (drop.documentId === drag.documentId && drop.categoryId === drag.fromCategoryId) {
+      if (drop.type === "document" && drop.documentId === drag.documentId && drop.categoryId === drag.fromCategoryId) {
         add(0.5, true);
         return;
       }
+      if (drop.type !== "document") {
+        // The "Not in a folder" heading is a stop only for a source that is in a folder.
+        if (drop.type === "uncategorized" && !drag.fromCategoryId) return;
+        add(0.5);
+        return;
+      }
+      // Sources not in a folder have no order, so their rows are no stop: every
+      // press lands on a folder, a line between sources, or the heading above.
+      if (drop.categoryId === null) return;
       add(0.25);
       const next = rows[i + 1]?.container.data.current as DropData | undefined;
       if (!(next?.type === "document" && next.categoryId === drop.categoryId)) add(0.75);
@@ -285,11 +290,17 @@ function computeTarget(
   };
 }
 
+/**
+ * The short label on a line or slot. It stays inside the tree card (at most
+ * 60% of the row, cut with an ellipsis); the screen reader announcement and
+ * the drag preview carry the full text.
+ */
 function DropLabel({ target }: { target: DropTarget }): JSX.Element {
   return (
     <span
+      data-kb-drop-label
       className={cn(
-        "absolute right-10 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium shadow-card",
+        "absolute right-10 top-1/2 max-w-[60%] -translate-y-1/2 truncate whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium shadow-card",
         target.valid ? "bg-primary text-primary-foreground" : "bg-destructive text-destructive-foreground"
       )}
     >
@@ -380,11 +391,14 @@ function insideClass(dropId: string, target: DropTarget | null): string | false 
 
 function DragHandle({
   label,
+  dragKey,
   setRef,
   attributes,
   listeners
 }: {
   label: string;
+  /** The draggable's id ("cat:<id>" or "doc:<folder id or none>:<id>"), so focus can find the handle after a move. */
+  dragKey: string;
   setRef: (el: HTMLElement | null) => void;
   attributes: ReturnType<typeof useDraggable>["attributes"];
   listeners: ReturnType<typeof useDraggable>["listeners"];
@@ -395,6 +409,7 @@ function DragHandle({
       type="button"
       {...attributes}
       {...listeners}
+      data-kb-drag-handle={dragKey}
       aria-label={label}
       title="Drag to move"
       className="btn-icon h-8 w-8 shrink-0 cursor-grab touch-none active:cursor-grabbing"
@@ -515,6 +530,7 @@ function OrganizeDoc({
       <DropIndicator dropId={dropId} />
       <DragHandle
         label={`Drag ${doc.title}`}
+        dragKey={key}
         setRef={drag.setActivatorNodeRef}
         attributes={drag.attributes}
         listeners={drag.listeners}
@@ -662,6 +678,7 @@ function OrganizeCategory({
         <DropIndicator dropId={dropId} />
         <DragHandle
           label={`Drag folder ${node.category.name}`}
+          dragKey={`cat:${id}`}
           setRef={drag.setActivatorNodeRef}
           attributes={drag.attributes}
           listeners={drag.listeners}
@@ -803,11 +820,12 @@ export function KbOrganizeTree({
   const [active, setActive] = useState<DragData | null>(null);
   const [target, setTarget] = useState<DropTarget | null>(null);
   const targetRef = useRef<DropTarget | null>(null);
-  // The drag preview reads the drop zone's position, which exists only after the
-  // zone mounts; one more render then places the preview under its wording.
+  const keyboardDrag = useRef(false);
+  // The drag preview reads the drop zone's or label's position, which exists only
+  // after it mounts; one more render then places the preview clear of the wording.
   const [, setZoneRender] = useState(0);
   useLayoutEffect(() => {
-    if (target?.zoneFor) setZoneRender((n) => n + 1);
+    if (target) setZoneRender((n) => n + 1);
   }, [target]);
   onKeyboardSpot.current = (a, spot) => updateTarget(computeTarget(a, spot.over, spotY(spot), lookup.tree));
 
@@ -829,6 +847,7 @@ export function KbOrganizeTree({
   }
 
   function onDragStart(event: DragStartEvent): void {
+    keyboardDrag.current = isKeyboardEvent(event.activatorEvent);
     keyboardSpot.current = null;
     overlayOrigin = null;
     setActive((event.active.data.current as DragData | undefined) ?? null);
@@ -849,8 +868,9 @@ export function KbOrganizeTree({
 
   function onDragEnd(event: DragEndEvent): void {
     const drag = event.active.data.current as DragData | undefined;
-    const spot = isKeyboardEvent(event.activatorEvent) ? keyboardSpot.current : null;
-    const over = spot ? spot.over : isKeyboardEvent(event.activatorEvent) ? null : freshOver(event);
+    const keyboard = isKeyboardEvent(event.activatorEvent);
+    const spot = keyboard ? keyboardSpot.current : null;
+    const over = spot ? spot.over : keyboard ? null : freshOver(event);
     const drop = over?.data.current as DropData | undefined;
     const final = computeTarget(event.active, over, spot ? spotY(spot) : currentY(event), lookup.tree);
     reset();
@@ -860,6 +880,15 @@ export function KbOrganizeTree({
       return;
     }
     markMoved(drag.type === "category" ? `cat:${drag.categoryId}` : `doc:${drag.documentId}`);
+    // A keyboard move keeps going from the moved item: its handle in the new place gets focus.
+    if (keyboard) {
+      if (drag.type === "category") focusHandle(`cat:${drag.categoryId}`, null);
+      else {
+        const to =
+          drop.type === "category" || (drop.type === "document" && drop.categoryId !== null) ? drop.categoryId : null;
+        focusHandle(`doc:${to ?? "none"}:${drag.documentId}`, to ? `cat:${to}` : null);
+      }
+    }
     if (drag.type === "category" && drop.type === "category") {
       if (final.place === "inside") {
         actions.moveCategory(drag.categoryId, drop.categoryId);
@@ -911,8 +940,12 @@ export function KbOrganizeTree({
         },
         announcements: {
           onDragStart: ({ active: a }) => `Picked up ${labelOf(a)}.`,
-          onDragOver: () => targetRef.current?.message,
-          onDragMove: () => undefined,
+          // Pointer drags: say the target when the row under the pointer changes.
+          onDragOver: () => (keyboardDrag.current ? undefined : targetRef.current?.message),
+          // Keyboard drags: say the target on every arrow press (dnd-kit's own "over"
+          // can stay on the previous row while the page scrolls, so it is not used).
+          onDragMove: () =>
+            keyboardDrag.current ? (targetRef.current?.message ?? "Back where it started.") : undefined,
           onDragEnd: ({ active: a }) => `Dropped ${labelOf(a)}.`,
           onDragCancel: ({ active: a }) => `Cancelled. ${labelOf(a)} stayed in place.`
         }
@@ -969,13 +1002,35 @@ export function KbOrganizeTree({
   );
 }
 
-/** Push a preview box down until it no longer covers the drop zone's wording. */
-function clearOfZoneLabel(top: number, left: number, width: number, height: number): number {
-  const label = document.querySelector<HTMLElement>("[data-kb-drop-zone-label]");
-  if (!label) return top;
-  const r = label.getBoundingClientRect();
-  const overlaps = left < r.right + 4 && left + width > r.left - 4 && top < r.bottom + 4 && top + height > r.top - 4;
-  return overlaps ? r.bottom + 8 : top;
+/**
+ * After a keyboard drop, focus the moved item's drag handle once the tree has
+ * re-rendered it in its new place (dnd-kit puts focus back on the handle that
+ * started the drag, which unmounts when the item changes folders). When the
+ * new place is inside a closed folder, that folder's handle gets focus.
+ */
+function focusHandle(key: string, fallback: string | null): void {
+  const find = (k: string): HTMLElement | null =>
+    document.querySelector<HTMLElement>(`[data-kb-drag-handle="${CSS.escape(k)}"]`);
+  let frames = 0;
+  const attempt = (): void => {
+    frames += 1;
+    const el = find(key) ?? (frames > 6 && fallback ? find(fallback) : null);
+    if (el && document.activeElement !== el) el.focus({ preventScroll: false });
+    // Keep checking for a few frames so dnd-kit's own focus restore cannot win.
+    if (frames < 12) requestAnimationFrame(attempt);
+  };
+  requestAnimationFrame(attempt);
+}
+
+/** Push a preview box down until it no longer covers a drop label (the zone's wording or a line's label). */
+function clearOfLabels(top: number, left: number, width: number, height: number): number {
+  let next = top;
+  for (const label of document.querySelectorAll<HTMLElement>("[data-kb-drop-zone-label], [data-kb-drop-label]")) {
+    const r = label.getBoundingClientRect();
+    const overlaps = left < r.right + 4 && left + width > r.left - 4 && next < r.bottom + 4 && next + height > r.top - 4;
+    if (overlaps) next = r.bottom + 8;
+  }
+  return next;
 }
 
 /**
@@ -1003,7 +1058,9 @@ const offsetFromPointer: Modifier = ({ activatorEvent, activeNodeRect: measured,
     // Into a folder: the preview waits inside the zone, under its wording, so the folder name stays visible.
     const label = document.querySelector<HTMLElement>("[data-kb-drop-zone-label]");
     if (label) return { ...transform, y: label.getBoundingClientRect().bottom + 8 - activeNodeRect.top };
-    return transform;
+    // On a line or slot the preview stays at the row's left; when it would cover the label on the right, it moves below it.
+    const top = clearOfLabels(activeNodeRect.top + transform.y, activeNodeRect.left + transform.x, width, height);
+    return { ...transform, y: top - activeNodeRect.top };
   }
   const point = activatorEvent ? getEventCoordinates(activatorEvent) : null;
   if (!point) return transform;
@@ -1013,7 +1070,7 @@ const offsetFromPointer: Modifier = ({ activatorEvent, activeNodeRect: measured,
   // Below and right of the pointer; flip above or left near the viewport edge.
   const left = x + 16 + width > window.innerWidth - 8 ? x - 16 - width : x + 16;
   const below = y + 16 + height > window.innerHeight - 8 ? y - 16 - height : y + 16;
-  const top = clearOfZoneLabel(below, left, width, height);
+  const top = clearOfLabels(below, left, width, height);
   // The overlay renders at activeNodeRect plus the returned transform.
   return { ...transform, x: left - activeNodeRect.left, y: top - activeNodeRect.top };
 };

@@ -157,6 +157,7 @@ export function ReaderLabelMenu({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         data-kb-reader-label
+        aria-label={value ? `Color label: ${currentName ?? kbColorLabel(value)}` : "Color label"}
         title="A color label only you see"
         onClick={() => (open ? close() : setOpen(true))}
         onKeyDown={(event) => {
@@ -165,17 +166,22 @@ export function ReaderLabelMenu({
             setOpen(true);
           }
         }}
-        className="btn-whisper min-w-0 max-w-full gap-2 px-3.5 py-2 sm:px-4"
+        className="btn-whisper max-w-full shrink-0 gap-1.5 px-2.5 py-1.5 text-[13px] sm:min-w-0 sm:shrink sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
       >
-        <Tag className="h-4 w-4 shrink-0" aria-hidden />
+        {/* On phones the swatch stands in for the tag icon once a label is set. */}
+        <Tag className={cn("h-4 w-4 shrink-0", value && "max-sm:hidden")} aria-hidden />
+        {/* Phones: a compact "Label" pill; the full name stays in aria-label. */}
+        <span className="sm:hidden">Label</span>
         {value ? (
           <>
-            <span className="shrink-0">Color label:</span>
+            <span className="hidden shrink-0 sm:inline">Color label:</span>
             <Swatch color={value} />
-            <span className="min-w-0 truncate sm:max-w-[16rem]">{currentName ?? kbColorLabel(value)}</span>
+            <span className="hidden min-w-0 truncate sm:inline sm:max-w-[16rem]">
+              {currentName ?? kbColorLabel(value)}
+            </span>
           </>
         ) : (
-          "Color label"
+          <span className="hidden sm:inline">Color label</span>
         )}
       </button>
       {open

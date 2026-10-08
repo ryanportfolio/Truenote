@@ -47,6 +47,7 @@ import {
   saveMoreDetailOpen,
   saveSourceColumns,
   saveSourceView,
+  shownSuggestions,
   type SourceColumn,
   type SourceView
 } from "@/lib/sourceUsage";
@@ -310,7 +311,8 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
           ? document.querySelector<HTMLElement>(`[data-hm-person="${id}"]`)
           : null) ??
         document.querySelector<HTMLElement>(`[data-person-row="${id}"]`) ??
-        document.querySelector<HTMLElement>(`[data-coach-person="${id}"]`);
+        document.querySelector<HTMLElement>(`[data-coach-person="${id}"]`) ??
+        document.querySelector<HTMLElement>(`[data-coach-name="${id}"]`);
       if (row) {
         row.focus({ preventScroll: point !== null });
         if (!point) row.scrollIntoView({ block: "center" });
@@ -341,11 +343,13 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
       // Restricted sources are never openers; this guard keeps it that way.
       if (title === null) return;
       const ranked = data?.sources.find((source) => source.documentId === documentId);
-      setPanel({
+      setPanel((current) => ({
         documentId,
         title: ranked ? ranked.title : title,
-        isLive: ranked ? ranked.isLive : true
-      });
+        isLive: ranked ? ranked.isLive : true,
+        // A source opened from inside the drawer keeps the drawer's person.
+        person: current?.person
+      }));
     },
     [data]
   );
@@ -360,6 +364,24 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
       setPanel({ documentId, title, isLive: true });
     },
     [selectPerson]
+  );
+
+  /**
+   * A heatmap cell: that person's questions for that source in the drawer,
+   * while the page stays on the heatmap so closing returns to the cell.
+   */
+  const openCell = useCallback(
+    (id: string, documentId: string, title: string | null) => {
+      if (title === null) return;
+      const ranked = data?.sources.find((source) => source.documentId === documentId);
+      setPanel({
+        documentId,
+        title,
+        isLive: ranked ? ranked.isLive : true,
+        person: { userId: id, name: knownNames.current.get(id) ?? null }
+      });
+    },
+    [data]
   );
 
   const changeColumns = useCallback(
@@ -536,7 +558,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
           row={selectedRow}
           totals={data.totals}
           sources={data.sources}
-          suggestions={data.suggestions ?? []}
+          suggestions={shownSuggestions(data.suggestions ?? [])}
           team={teamNumbers}
           categoryPaths={categoryPaths}
           days={days}
@@ -565,7 +587,11 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
       ) : (
         <div className="flex flex-col gap-8">
           <AtAGlance totals={data.totals} days={days} />
-          <AttentionCards cards={attention} onSelectPerson={(id) => selectPerson(id)} />
+          <AttentionCards
+            cards={attention}
+            days={days}
+            onSelectPerson={(id) => selectPerson(id)}
+          />
           <MostUsedList
             sources={data.sources}
             days={days}
@@ -659,7 +685,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
                         model={heatmap}
                         onSelectPerson={(id) => selectPerson(id)}
                         onOpenSource={openSource}
-                        onOpenCell={openPersonSource}
+                        onOpenCell={openCell}
                       />
                     ) : (
                       <SourcesTable

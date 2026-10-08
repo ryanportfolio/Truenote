@@ -87,7 +87,7 @@ export function KbDocRow({
   roundedEdges = false
 }: {
   doc: KbDocumentListItem;
-  /** One of the three most opened sources in the list on screen. */
+  /** One of the three most opened sources in the whole library (context usedOften). */
   usedOften?: boolean;
   /** Round the hover wash on the first and last row when the list is the whole card. */
   roundedEdges?: boolean;
@@ -121,17 +121,18 @@ export function KbDocRow({
         </Link>
         <SourceColorLabel color={doc.myColor} labels={data.labels} />
         {doc.note ? (
+          // As wide as the title column (up to the status column); two lines on phones, one from 640px.
           <button
             type="button"
             data-kb-note
             onClick={() => openDialog({ kind: "note", documentId: doc.documentId })}
             title={doc.note}
             aria-label={`My private note: ${doc.note}. Edit note`}
-            className="relative z-10 mt-1 flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-0.5 text-left text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:max-w-md"
+            className="relative z-10 mt-1 flex max-w-full cursor-pointer items-start gap-1.5 rounded-md px-2 py-0.5 text-left text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:items-center"
             style={NOTE_STICKY_STYLE}
           >
-            <Lock className="h-3.5 w-3.5 shrink-0 text-foreground/70" aria-hidden />
-            <span className="min-w-0 truncate">{doc.note}</span>
+            <Lock className="mt-[3px] h-3.5 w-3.5 shrink-0 text-foreground/70 sm:mt-0" aria-hidden />
+            <span className="line-clamp-2 min-w-0 break-words sm:line-clamp-none sm:truncate">{doc.note}</span>
           </button>
         ) : null}
         <p data-kb-path className="mt-0.5 text-sm text-muted-foreground">
