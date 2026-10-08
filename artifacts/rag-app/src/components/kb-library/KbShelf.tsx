@@ -239,7 +239,7 @@ export function KbShortcutDock({ shelf, shown }: { shelf: KbShortcut[]; shown: b
               href={`/kb/${doc.documentId}`}
               title={doc.title}
               aria-keyshortcuts={String(i + 1)}
-              className="btn-base max-w-full gap-1.5 border border-border bg-secondary px-2.5 py-1 text-xs text-foreground hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className="btn-base relative max-w-full gap-1.5 border border-border bg-secondary px-2.5 py-1 text-xs text-foreground hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
               <span aria-hidden className="tabular-nums text-muted-foreground">
                 {i + 1}

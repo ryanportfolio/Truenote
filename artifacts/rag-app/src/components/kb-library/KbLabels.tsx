@@ -87,7 +87,7 @@ function LabelNamesForm({ onDone }: { onDone: () => void }): JSX.Element {
 /**
  * "My labels": each label color the user uses, with the name they gave it.
  * Choosing one filters the list; Edit renames them. Shown as a card beside
- * the list from 1440px and inside Filters below that.
+ * the list from 1280px and inside Filters below that.
  */
 export function KbLabels({
   selected,

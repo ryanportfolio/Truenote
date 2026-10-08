@@ -132,7 +132,7 @@ export function PersonPicker({
         <div
           id={panelId}
           onKeyDown={onPanelKeyDown}
-          className="absolute right-0 z-30 mt-2 w-[min(20rem,85vw)] rounded-lg border border-border bg-card p-2 shadow-panel motion-safe:animate-in motion-safe:fade-in motion-safe:duration-100"
+          className="absolute left-0 z-30 mt-2 w-[min(20rem,calc(100vw-6rem))] rounded-lg sm:left-auto sm:right-0 border border-border bg-card p-2 shadow-panel motion-safe:animate-in motion-safe:fade-in motion-safe:duration-100"
         >
           <label htmlFor={searchId} className="sr-only">
             Search people

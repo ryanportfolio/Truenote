@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 export const KB_WIDE_QUERY = "(min-width: 1280px)";
 
 /** The My labels card beside the list; narrower screens keep labels inside Filters. */
-export const KB_LABELS_QUERY = "(min-width: 1440px)";
+export const KB_LABELS_QUERY = "(min-width: 1280px)";
 
 /**
  * Whether a media query matches, kept in sync with resizes. Used where a

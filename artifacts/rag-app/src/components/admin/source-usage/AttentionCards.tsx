@@ -91,8 +91,8 @@ function CardBody({
             ? "question with no answer"
             : "questions with no answer"
           : card.count === 1
-            ? "answer marked thumbs down"
-            : "answers marked thumbs down";
+            ? "question marked thumbs down"
+            : "questions marked thumbs down";
       return (
         <>
           <p className="text-base leading-snug">

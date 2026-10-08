@@ -456,7 +456,7 @@ export function KbLibrary({
 
           {errorBanner}
 
-          <div className={cn("grid items-start gap-5", labelsBeside && "grid-cols-[minmax(0,1fr)_18rem]")}>
+          <div className={cn("grid items-start gap-5", labelsBeside && "grid-cols-[minmax(0,1fr)_15rem] min-[1440px]:grid-cols-[minmax(0,1fr)_18rem]")}>
             <section ref={listRef} aria-label="Sources list" className="flex min-w-0 scroll-mt-4 flex-col gap-4">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <div role="tablist" aria-label="Which sources" className="flex gap-2">
