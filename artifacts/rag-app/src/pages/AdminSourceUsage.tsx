@@ -641,7 +641,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
                           id="most-cited-title"
                           className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
                         >
-                          {view === "heatmap" ? "Answers by person and source" : "All sources"}
+                          {view === "heatmap" ? "Who uses which sources" : "All sources"}
                         </h3>
                         <div className="flex flex-wrap items-center gap-2">
                           <SourcesViewSwitch view={view} onChange={changeView} />
@@ -650,8 +650,9 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
                           ) : null}
                         </div>
                       </div>
+                      {/* The heatmap help is hidden on screen; it is still read out as the grid's description. */}
                       {view === "heatmap" ? (
-                        <p id="heatmap-help" className="mt-1 text-sm text-muted-foreground">
+                        <p id="heatmap-help" className="sr-only">
                           Answers from each person that cited each of the{" "}
                           {plural(
                             heatmap?.columns.length ?? 0,
