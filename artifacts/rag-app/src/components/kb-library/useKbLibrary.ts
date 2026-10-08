@@ -44,6 +44,8 @@ import {
 } from "@/lib/kbLibrary";
 import { updateKbLibraryCache, writeKbLibraryCache } from "@/lib/kbLibraryCache";
 import { kbColorLabel, kbLabelText } from "@/lib/kbLibraryColors";
+import { getSelectedProgramIdRaw } from "@/lib/selectedProgram";
+import { createSerialQueue } from "@/lib/serialQueue";
 import type {
   CreateKbCategoryRequest,
   CreateKbTagRequest,
@@ -78,6 +80,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
   const versionRef = useRef(0);
   const [actionError, setActionError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  const featuredQueueRef = useRef(createSerialQueue());
 
   const commit = useCallback(
     (next: Data) => {
@@ -231,13 +234,21 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
 
   // Team pins -----------------------------------------------------------------
 
+  // Each save replaces the whole list, so saves go out one at a time, in the
+  // order they were made: an older list reaching the server last would undo a
+  // newer one the screen already shows. The program is fixed when the change
+  // is made, so a save still queued after a program switch writes to the
+  // program it was made in.
   const setTeamPins = useCallback(
-    (documentIds: string[], success?: string) =>
-      mutate(
+    (documentIds: string[], success?: string) => {
+      const programId = getSelectedProgramIdRaw();
+      const enqueue = featuredQueueRef.current;
+      return mutate(
         (d) => applyFeatured(d, documentIds),
-        () => setKbFeatured(documentIds),
+        () => enqueue(() => setKbFeatured(documentIds, programId)),
         { success }
-      ),
+      );
+    },
     [mutate]
   );
 
