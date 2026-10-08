@@ -31,5 +31,8 @@ export const libraryOrganizeLimit = perUserLimit(120, 60_000);
 /** Ask page example question edits: 30 a minute per user. */
 export const askExamplesWriteLimit = perUserLimit(30, 60_000);
 
+/** Team assignment moves: 30 a minute per user. */
+export const teamsWriteLimit = perUserLimit(30, 60_000);
+
 /** Source usage analytics reads (heavier queries): 60 a minute per user. */
 export const sourceUsageReadLimit = perUserLimit(60, 60_000);

@@ -15,6 +15,7 @@ import {
   setKbNote,
   setKbPin,
   setKbSourceColor,
+  setKbTeamShortcuts,
   updateKbCategory,
   updateKbTag
 } from "@/lib/api";
@@ -32,6 +33,7 @@ import {
   applyPin,
   applySourceColor,
   applyTagDelete,
+  applyTeamShortcuts,
   applyTagUpsert,
   applyUserFields,
   buildCategoryTree,
@@ -40,6 +42,7 @@ import {
   moveItem,
   nestBlockReason,
   siblingIds,
+  supervisorPins,
   teamPins
 } from "@/lib/kbLibrary";
 import { updateKbLibraryCache, writeKbLibraryCache } from "@/lib/kbLibraryCache";
@@ -248,10 +251,10 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       const ids = currentTeamPinIds();
       if (ids.includes(documentId)) return;
       if (ids.length >= KB_MAX_TEAM_PINS) {
-        setActionError(`Team shortcuts hold at most ${KB_MAX_TEAM_PINS} sources. Remove one first.`);
+        setActionError(`You can recommend at most ${KB_MAX_TEAM_PINS} sources to everyone. Stop recommending one first.`);
         return;
       }
-      void setTeamPins([...ids, documentId], `Added ${find(documentId)?.title ?? "source"} to team shortcuts.`);
+      void setTeamPins([...ids, documentId], `Recommended ${find(documentId)?.title ?? "source"} to everyone.`);
     },
     [setTeamPins]
   );
@@ -260,7 +263,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
     (documentId: string) => {
       void setTeamPins(
         currentTeamPinIds().filter((id) => id !== documentId),
-        `Removed ${find(documentId)?.title ?? "source"} from team shortcuts.`
+        `Stopped recommending ${find(documentId)?.title ?? "source"} to everyone.`
       );
     },
     [setTeamPins]
@@ -275,6 +278,48 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       void setTeamPins(moveItem(ids, from, to), `Moved ${find(documentId)?.title ?? "source"} to position ${to + 1}.`);
     },
     [setTeamPins]
+  );
+
+  // A supervisor's recommendations to their own team ------------------------------
+
+  const setMyTeamShortcuts = useCallback(
+    (documentIds: string[], success?: string) =>
+      mutate(
+        (d) => applyTeamShortcuts(d, documentIds),
+        () => setKbTeamShortcuts(documentIds),
+        { success }
+      ),
+    [mutate]
+  );
+
+  const currentMyTeamIds = () => supervisorPins(dataRef.current.items).map((d) => d.documentId);
+
+  const addMyTeamPin = useCallback(
+    (documentId: string) => {
+      const ids = currentMyTeamIds();
+      if (ids.includes(documentId)) return;
+      if (ids.length >= KB_MAX_TEAM_PINS) {
+        setActionError(`You can recommend at most ${KB_MAX_TEAM_PINS} sources to your team. Stop recommending one first.`);
+        return;
+      }
+      void setMyTeamShortcuts(
+        [...ids, documentId],
+        `Recommended ${find(documentId)?.title ?? "source"} to your team.`
+      );
+    },
+    [setMyTeamShortcuts]
+  );
+
+  const removeMyTeamPin = useCallback(
+    (documentId: string) => {
+      const ids = currentMyTeamIds();
+      if (!ids.includes(documentId)) return;
+      void setMyTeamShortcuts(
+        ids.filter((id) => id !== documentId),
+        `Stopped recommending ${find(documentId)?.title ?? "source"} to your team.`
+      );
+    },
+    [setMyTeamShortcuts]
   );
 
   // Document membership and tags -----------------------------------------------
@@ -532,6 +577,8 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       addTeamPin,
       removeTeamPin,
       moveTeamPinBy,
+      addMyTeamPin,
+      removeMyTeamPin,
       setDocumentCategories,
       setDocumentTags,
       moveDocument,
@@ -557,6 +604,8 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       addTeamPin,
       removeTeamPin,
       moveTeamPinBy,
+      addMyTeamPin,
+      removeMyTeamPin,
       setDocumentCategories,
       setDocumentTags,
       moveDocument,

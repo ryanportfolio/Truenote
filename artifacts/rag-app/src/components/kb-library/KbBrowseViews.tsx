@@ -10,9 +10,9 @@ import {
   memberOrder,
   mostUsed,
   myPins,
+  recommendedDocs,
   sortDocs,
   subtreeDocumentIds,
-  teamPins,
   type KbCategoryNode,
   type KbSort,
   type KbTree
@@ -523,14 +523,15 @@ export function KbListView({ visible, sort }: BrowseProps): JSX.Element {
 
 /** My shortcuts tab: the sources this user starred, in shelf order. Unstar to remove one. */
 /**
- * Every shortcut in shelf order: the team's first, then the ones the user
- * added. A source that is both appears once, with the team's, as on the shelf.
+ * Every shortcut in shelf order: Recommended first (the manager's, then the
+ * supervisor's), then the ones the user added. A source in both appears once,
+ * under Recommended, as on the shelf.
  */
 export function myShortcutGroups(visible: KbDocumentListItem[]): {
   team: KbDocumentListItem[];
   mine: KbDocumentListItem[];
 } {
-  const team = teamPins(visible);
+  const team = recommendedDocs(visible);
   const teamIds = new Set(team.map((d) => d.documentId));
   return { team, mine: myPins(visible).filter((d) => !teamIds.has(d.documentId)) };
 }
@@ -551,7 +552,7 @@ export function KbMyShortcuts({ visible, filtering }: { visible: KbDocumentListI
   const { team, mine } = myShortcutGroups(visible);
   return (
     <div className="flex flex-col gap-4" data-kb-my-shortcuts>
-      {team.length > 0 ? <ShortcutGroup title="From your team" docs={team} /> : null}
+      {team.length > 0 ? <ShortcutGroup title="Recommended" docs={team} /> : null}
       {mine.length > 0 ? <ShortcutGroup title="Added by you" docs={mine} /> : null}
       {team.length + mine.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">

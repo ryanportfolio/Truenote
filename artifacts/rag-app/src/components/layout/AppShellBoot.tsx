@@ -86,7 +86,8 @@ const ADMIN_TITLES: Record<string, string> = {
   "/admin/model-routing": "Model routing",
   "/admin/evaluations": "Evaluation Center",
   "/admin/security": "Security",
-  "/admin/programs": "Programs"
+  "/admin/programs": "Programs",
+  "/admin/teams": "Teams"
 };
 
 /** Pages that show no visible title (the sidebar names them), so their placeholder shows none either. */

@@ -23,6 +23,7 @@ import {
   FEATURED_LIMIT_MESSAGE,
   TAG_NAME_TAKEN_MESSAGE,
   canNestAt,
+  canPinForTeam,
   categoryConflictMessage,
   categoryDocumentsSchema,
   createCategorySchema,
@@ -36,6 +37,7 @@ import {
   sameIdSet,
   serializeCategory,
   serializeTag,
+  teamShortcutsSchema,
   updateCategorySchema,
   updateTagSchema,
   validationMessage,
@@ -48,7 +50,9 @@ import { libraryOrganizeLimit } from "../lib/security/route-rate-limit.js";
 /**
  * Source library organization: categories (nested, many-to-many with
  * documents), tags, and team pins. Manager+ and never demo accounts; the
- * personal pin and note live on the CSR-facing kbRouter instead.
+ * personal pin and note live on the CSR-facing kbRouter instead. The one
+ * exception is PUT /team-shortcuts, a supervisor's own list for their team
+ * (supervisors only, never demo accounts).
  *
  * Program scoping is a security boundary. Every statement filters by the
  * effective program, unknown or cross-program ids return 404, and the 0003
@@ -64,12 +68,17 @@ import { libraryOrganizeLimit } from "../lib/security/route-rate-limit.js";
  */
 export const kbLibraryRouter = Router();
 
-kbLibraryRouter.use(
-  requireAuth,
-  requireFreshPassword,
-  requireManagerOrAbove,
-  blockDemoWrites
+kbLibraryRouter.use(requireAuth, requireFreshPassword);
+// A supervisor's own team list is the one route below manager. It is
+// registered ahead of the manager+ guard so supervisors can reach it.
+kbLibraryRouter.put(
+  "/team-shortcuts",
+  requireTeamPinner,
+  blockDemoWrites,
+  libraryOrganizeLimit,
+  libraryRoute(putTeamShortcuts)
 );
+kbLibraryRouter.use(requireManagerOrAbove, blockDemoWrites);
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -796,3 +805,75 @@ kbLibraryRouter.put(
     res.json({ ok: true });
   })
 );
+
+// Team shortcuts: a supervisor's recommended list for their own team.
+// Mounted near the top of the file, ahead of the manager+ guard.
+
+function requireTeamPinner(req: Request, res: Response, next: NextFunction): void {
+  if (!canPinForTeam(authedUser(req).role)) {
+    res.status(403).json({ error: "Only supervisors can recommend sources to a team." });
+    return;
+  }
+  next();
+}
+
+/**
+ * Replaces the acting supervisor's own list, like /featured replaces the
+ * program's: other supervisors' rows are never touched, and the actor's rows
+ * for sources they can't see right now are kept and count toward the cap.
+ */
+async function putTeamShortcuts(ctx: LibraryContext, res: Response): Promise<void> {
+  const { documentIds } = parseBody(
+    teamShortcutsSchema,
+    ctx.req.body,
+    "Send the list of sources to recommend to your team."
+  );
+  await db.transaction(async (tx) => {
+    await lockLibrary(tx, ctx.programId);
+    await requireVisibleDocuments(tx, ctx, documentIds);
+    const ids = uuidArray(documentIds);
+    await tx.execute(sql`
+      DELETE FROM kb_team_shortcuts AS t
+      WHERE t.supervisor_user_id = ${ctx.user.id}::uuid
+        AND t.program_id = ${ctx.programId}::uuid
+        AND t.document_id <> ALL(${ids})
+        AND ${documentVisibleSql(sql.raw("t.document_id"), ctx.programId, ctx.clearance)}
+    `);
+    if (documentIds.length > 0) {
+      await tx.execute(sql`
+        INSERT INTO kb_team_shortcuts (supervisor_user_id, document_id, program_id, position)
+        SELECT ${ctx.user.id}::uuid, t.id, ${ctx.programId}::uuid, (t.ord - 1)::int
+        FROM unnest(${ids}) WITH ORDINALITY AS t(id, ord)
+        ON CONFLICT (supervisor_user_id, document_id) DO UPDATE
+        SET position = EXCLUDED.position
+      `);
+    }
+    await tx.execute(sql`
+      UPDATE kb_team_shortcuts AS t
+      SET position = ${documentIds.length} + kept.rn
+      FROM (
+        SELECT document_id,
+          (row_number() OVER (ORDER BY position, pinned_at, document_id) - 1)::int AS rn
+        FROM kb_team_shortcuts
+        WHERE supervisor_user_id = ${ctx.user.id}::uuid
+          AND program_id = ${ctx.programId}::uuid
+          AND document_id <> ALL(${ids})
+      ) AS kept
+      WHERE t.supervisor_user_id = ${ctx.user.id}::uuid
+        AND t.document_id = kept.document_id
+    `);
+    const total = await tx.execute(sql`
+      SELECT count(*)::int AS count
+      FROM kb_team_shortcuts
+      WHERE supervisor_user_id = ${ctx.user.id}::uuid
+        AND program_id = ${ctx.programId}::uuid
+    `);
+    if (featuredOverCap(Number((total.rows[0] as { count?: unknown } | undefined)?.count ?? 0))) {
+      throw new LibraryError(400, FEATURED_LIMIT_MESSAGE);
+    }
+    await audit(tx, ctx, res, "kb.library.team_shortcuts.set", "kb_team_shortcuts", null, {
+      documentIds
+    });
+  });
+  res.json({ ok: true });
+}

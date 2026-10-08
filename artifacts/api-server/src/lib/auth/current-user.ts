@@ -30,6 +30,7 @@ const ROLE_RANK: Record<UserRole, number> = {
   super_user: 100,
   senior_manager: 80,
   manager: 60,
+  supervisor: 40,
   csr: 20
 };
 
@@ -72,9 +73,13 @@ export interface TargetUserSummary {
  * Capability matrix (mirrored in the UI as a hint, but THIS is the
  * authoritative server-side gate):
  *   super_user       → anyone, any program
- *   senior_manager   → csr or manager in their OWN program; never another
- *                      senior_manager or super_user, never another program
- *   manager          → csr in their OWN program only
+ *   senior_manager   → csr, supervisor or manager in their OWN program; never
+ *                      another senior_manager or super_user, never another
+ *                      program
+ *   manager          → csr or supervisor in their OWN program only
+ *   supervisor       → no admin rights here (password resets for their own
+ *                      team are a separate, team-scoped check in the users
+ *                      route)
  *   csr              → no admin rights
  *
  * Self-administration is intentionally rejected here. Editing your own
@@ -104,12 +109,16 @@ export function canManageUser(
   if (actor.programId !== target.programId) return false;
   // Same-program scope confirmed; now role-tier rules.
   if (actor.role === "senior_manager") {
-    // senior_manager → csr or manager (promote/demote within own program).
-    return target.role === "csr" || target.role === "manager";
+    // senior_manager → csr, supervisor or manager (promote/demote within own program).
+    return (
+      target.role === "csr" ||
+      target.role === "supervisor" ||
+      target.role === "manager"
+    );
   }
   if (actor.role === "manager") {
-    // manager → csr only.
-    return target.role === "csr";
+    // manager → csr or supervisor.
+    return target.role === "csr" || target.role === "supervisor";
   }
   return false;
 }
@@ -129,14 +138,14 @@ export function canManageUser(
  *     - any other role → programId MUST be non-null
  *
  *   senior_manager
- *     - csr or manager only
+ *     - csr, supervisor or manager only
  *     - programId MUST equal actor.programId
  *
  *   manager
- *     - csr only
+ *     - csr or supervisor only
  *     - programId MUST equal actor.programId
  *
- *   csr
+ *   supervisor, csr
  *     - never
  */
 export function canAssignRole(
@@ -152,15 +161,19 @@ export function canAssignRole(
   if (targetRole !== "super_user" && targetProgramId === null) return false;
 
   if (actor.role === "super_user") return true;
-  if (actor.role === "csr") return false;
+  if (actor.role === "csr" || actor.role === "supervisor") return false;
   // senior_manager / manager — target must be in actor's program.
   if (actor.programId === null) return false;
   if (targetProgramId !== actor.programId) return false;
   if (actor.role === "senior_manager") {
-    return targetRole === "csr" || targetRole === "manager";
+    return (
+      targetRole === "csr" ||
+      targetRole === "supervisor" ||
+      targetRole === "manager"
+    );
   }
   if (actor.role === "manager") {
-    return targetRole === "csr";
+    return targetRole === "csr" || targetRole === "supervisor";
   }
   return false;
 }

@@ -10,6 +10,7 @@ describe("pageTitleForPath", () => {
     expect(pageTitleForPath("/chat")).toBe("Ask a Question | Truenote");
     expect(pageTitleForPath("/kb/document-1")).toBe("Knowledge Base | Truenote");
     expect(pageTitleForPath("/admin/users?role=manager")).toBe("Users | Truenote");
+    expect(pageTitleForPath("/admin/teams")).toBe("Teams | Truenote");
   });
 
   it("labels unknown routes as not found", () => {

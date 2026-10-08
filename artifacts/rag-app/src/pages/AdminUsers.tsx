@@ -58,7 +58,7 @@ function Forbidden(): JSX.Element {
     <div className="mx-auto max-w-5xl px-6 py-8">
       <h1 className="font-display text-3xl font-semibold tracking-tight">Forbidden</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Users admin is restricted to managers and above.
+        Users admin is restricted to supervisors and above.
       </p>
     </div>
   );
@@ -68,10 +68,15 @@ const ROLE_LABEL: Record<UserRole, string> = {
   super_user: "Super user",
   senior_manager: "Senior manager",
   manager: "Manager",
+  supervisor: "Supervisor",
   csr: "CSR"
 };
 
 function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
+  // Supervisors get a reduced page: the server returns only their team's
+  // CSRs and allows only password resets on them, so the create form,
+  // the import and every other row action stay hidden.
+  const teamView = user.role === "supervisor";
   const [items, setItems] = useState<UserListItem[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,6 +103,9 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
   }, []);
 
   const refreshPrograms = useCallback(async (): Promise<void> => {
+    // The programs list is manager+ on the server, and the team view
+    // shows no program names or create form that would need it.
+    if (teamView) return;
     try {
       const response = await listPrograms();
       setPrograms(response.items);
@@ -105,7 +113,7 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
       // Non-fatal — the create form will just have an empty program
       // dropdown. The list view doesn't need programs at all.
     }
-  }, []);
+  }, [teamView]);
 
   useEffect(() => {
     void refresh();
@@ -172,6 +180,11 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
       {/* The sidebar already says where you are; the heading stays for screen readers. */}
       <h1 className="sr-only">Users</h1>
+      {teamView ? (
+        <p className="text-sm text-muted-foreground">
+          The CSRs on your team. You can reset their passwords here.
+        </p>
+      ) : null}
 
       {credentialBanner ? (
         <CredentialBanner
@@ -181,13 +194,17 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
         />
       ) : null}
 
-      <CreateUserForm
-        actor={user}
-        programs={programs}
-        onCreated={handleCreated}
-      />
+      {teamView ? null : (
+        <>
+          <CreateUserForm
+            actor={user}
+            programs={programs}
+            onCreated={handleCreated}
+          />
 
-      <BulkUserImport onImported={handleBulkImported} />
+          <BulkUserImport onImported={handleBulkImported} />
+        </>
+      )}
 
       {error ? (
         <p
@@ -477,8 +494,8 @@ interface CreateUserFormProps {
  * Capability map (matches server-side canAssignRole):
  *   super_user     → any role; programId required for non-super_user
  *                    targets, must be null for super_user
- *   senior_manager → csr or manager in own program (locked)
- *   manager        → csr in own program (locked)
+ *   senior_manager → csr, supervisor or manager in own program (locked)
+ *   manager        → csr or supervisor in own program (locked)
  */
 function CreateUserForm({
   actor,
@@ -487,23 +504,25 @@ function CreateUserForm({
 }: CreateUserFormProps): JSX.Element {
   const assignableRoles = useMemo<UserRole[]>(() => {
     if (actor.role === "super_user") {
-      return ["super_user", "senior_manager", "manager", "csr"];
+      return ["super_user", "senior_manager", "manager", "supervisor", "csr"];
     }
-    if (actor.role === "senior_manager") return ["manager", "csr"];
-    if (actor.role === "manager") return ["csr"];
+    if (actor.role === "senior_manager") return ["manager", "supervisor", "csr"];
+    if (actor.role === "manager") return ["supervisor", "csr"];
     return [];
   }, [actor.role]);
 
   // Default to Manager when the actor can assign it (super_user and
   // senior_manager actors) rather than the top of the list — for a
   // super_user that would be the high-privilege super_user role, a poor
-  // default for a destructive-if-wrong choice. Managers can only assign
-  // csr, so they fall through to it.
+  // default for a destructive-if-wrong choice. Managers can't assign
+  // manager, so they default to csr, the role they create most.
   const defaultRole = useMemo<UserRole>(
     () =>
       assignableRoles.includes("manager")
         ? "manager"
-        : assignableRoles[0] ?? "csr",
+        : assignableRoles.includes("csr")
+          ? "csr"
+          : assignableRoles[0] ?? "csr",
     [assignableRoles]
   );
 
@@ -729,7 +748,13 @@ function UsersTable({
     return new Map(programs.map((p) => [p.id, p.name]));
   }, [programs]);
   if (items.length === 0) {
-    return (
+    return actor.role === "supervisor" ? (
+      <EmptyState
+        icon={Users}
+        title="No one on your team yet"
+        hint="A manager adds CSRs to your team. They show up here once assigned."
+      />
+    ) : (
       <EmptyState
         icon={Users}
         title="No users in this scope"
@@ -788,6 +813,9 @@ function UserRow({
   const confirm = useConfirm();
 
   const manageable = canManageUserClient(actor, item);
+  // A supervisor's only action is resetting a team member's password.
+  const resetOnly = !manageable && canResetTeamPasswordClient(actor, item);
+  const teamView = actor.role === "supervisor";
 
   async function handleSaveName(): Promise<void> {
     const trimmed = editedName.trim();
@@ -898,10 +926,16 @@ function UserRow({
             ) : null}
           </div>
           <div className="text-xs text-muted-foreground">
-            {item.programId
-              ? `Program: ${programName ?? item.programId.slice(0, 8) + "…"}`
-              : "No program (super user)"}
-            {" · "}
+            {/* Everyone a supervisor sees shares their program, and the
+              * programs list is closed to them, so the team view skips it. */}
+            {teamView ? null : (
+              <>
+                {item.programId
+                  ? `Program: ${programName ?? item.programId.slice(0, 8) + "…"}`
+                  : "No program (super user)"}
+                {" · "}
+              </>
+            )}
             {item.lastLoginAt ? (
               <>
                 Last login <RelativeTime iso={item.lastLoginAt} />
@@ -978,6 +1012,17 @@ function UserRow({
               </button>
             ) : null}
           </div>
+        ) : resetOnly ? (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleResetPassword()}
+              disabled={busy === "reset"}
+              className="btn-whisper px-3 py-1 text-xs"
+            >
+              {busy === "reset" ? "Resetting…" : "Reset password"}
+            </button>
+          </div>
         ) : null}
       </div>
       {error ? (
@@ -1022,10 +1067,31 @@ function canManageUserClient(
   if (actor.programId === null || target.programId === null) return false;
   if (actor.programId !== target.programId) return false;
   if (actor.role === "senior_manager") {
-    return target.role === "csr" || target.role === "manager";
+    return (
+      target.role === "csr" ||
+      target.role === "supervisor" ||
+      target.role === "manager"
+    );
   }
   if (actor.role === "manager") {
-    return target.role === "csr";
+    return target.role === "csr" || target.role === "supervisor";
   }
+  // Supervisors never get full management; see canResetTeamPasswordClient.
   return false;
+}
+
+/**
+ * UI mirror of the server's supervisor reset-password rule: a CSR in the
+ * supervisor's program whose team row points at them. The list endpoint
+ * returns only that team to a supervisor, so the team check rides on it;
+ * the server re-checks the team row and 404s anyone else.
+ */
+function canResetTeamPasswordClient(
+  actor: CurrentUser,
+  target: UserListItem
+): boolean {
+  if (actor.role !== "supervisor") return false;
+  if (actor.id === target.id) return false;
+  if (target.role !== "csr") return false;
+  return actor.programId !== null && actor.programId === target.programId;
 }

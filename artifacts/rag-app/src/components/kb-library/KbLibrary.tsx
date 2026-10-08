@@ -537,7 +537,7 @@ export function KbLibrary({
                       data-kb-organize-button
                       onClick={() => setOrganizing(true)}
                       className="btn-whisper gap-1.5 px-3 py-1.5 text-sm"
-                      title="Arrange folders, tags and team shortcuts for everyone"
+                      title="Arrange folders, tags and recommended sources for everyone"
                     >
                       <FolderCog className="h-4 w-4" aria-hidden />
                       Organize
