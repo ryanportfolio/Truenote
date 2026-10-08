@@ -1,5 +1,9 @@
 /** Runs tasks handed to it one at a time, in the order given. */
-export type SerialQueue = <T>(task: () => Promise<T>) => Promise<T>;
+export interface SerialQueue {
+  <T>(task: () => Promise<T>): Promise<T>;
+  /** Settles once every task queued so far, and any queued while waiting, has settled. */
+  idle(): Promise<void>;
+}
 
 /**
  * A queue for saves that each replace a whole list on the server: each task
@@ -9,10 +13,18 @@ export type SerialQueue = <T>(task: () => Promise<T>) => Promise<T>;
  */
 export function createSerialQueue(): SerialQueue {
   let tail: Promise<unknown> = Promise.resolve();
-  return <T>(task: () => Promise<T>): Promise<T> => {
+  const enqueue = <T>(task: () => Promise<T>): Promise<T> => {
     const run = tail.then(task);
     // A rejected task must not stop the ones queued behind it.
     tail = run.catch(() => undefined);
     return run;
   };
+  const idle = async (): Promise<void> => {
+    let seen: Promise<unknown>;
+    do {
+      seen = tail;
+      await seen;
+    } while (seen !== tail);
+  };
+  return Object.assign(enqueue, { idle });
 }

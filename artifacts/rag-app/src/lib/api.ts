@@ -111,7 +111,19 @@ export class UnauthorizedError extends Error {
  */
 export const SESSION_EXPIRED_EVENT = "rag-csr:session-expired";
 
+let authSession = 0;
+
+/**
+ * Changes whenever this tab's sign-in ends (logout, a 401) or a new one
+ * starts. A save queued before the change checks it, so it never goes out
+ * under someone else's sign-in.
+ */
+export function currentAuthSession(): number {
+  return authSession;
+}
+
 function notifySessionExpired(): void {
+  authSession += 1;
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
   }
@@ -170,6 +182,7 @@ export async function login(
   email: string,
   password: string
 ): Promise<CurrentUser> {
+  authSession += 1;
   const response = await fetch(
     "/api/auth/login",
     withDefaults({
@@ -189,6 +202,7 @@ export async function login(
 }
 
 export async function logout(): Promise<void> {
+  authSession += 1;
   await fetch("/api/auth/logout", withDefaults({ method: "POST" }));
 }
 

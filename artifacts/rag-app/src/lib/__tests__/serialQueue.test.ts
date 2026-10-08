@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { setKbFeatured } from "../api";
+import { currentAuthSession, logout, setKbFeatured } from "../api";
 import { createSerialQueue } from "../serialQueue";
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (err: unknown) => void } {
@@ -48,6 +48,37 @@ describe("createSerialQueue", () => {
     const next = enqueue(async () => "next");
     await expect(failed).rejects.toThrow("no");
     await expect(next).resolves.toBe("next");
+  });
+
+  it("idle waits for every queued task, including ones queued while it waits", async () => {
+    const enqueue = createSerialQueue();
+    const first = deferred<void>();
+    const second = deferred<void>();
+    const done: string[] = [];
+    void enqueue(() => first.promise.then(() => void done.push("first")));
+    let idle = false;
+    const waiting = enqueue.idle().then(() => {
+      idle = true;
+    });
+    void enqueue(() => second.promise.then(() => void done.push("second")));
+    first.resolve();
+    await flush();
+    expect(idle).toBe(false);
+    second.resolve();
+    await waiting;
+    expect(done).toEqual(["first", "second"]);
+  });
+});
+
+describe("currentAuthSession", () => {
+  it("changes when the user signs out", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ok())
+    );
+    const before = currentAuthSession();
+    await logout();
+    expect(currentAuthSession()).not.toBe(before);
   });
 });
 

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import {
   createKbCategory,
   createKbTag,
+  currentAuthSession,
   deleteKbCategory,
   deleteKbTag,
   listKbDocuments,
@@ -236,16 +237,27 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
 
   // Each save replaces the whole list, so saves go out one at a time, in the
   // order they were made: an older list reaching the server last would undo a
-  // newer one the screen already shows. The program is fixed when the change
-  // is made, so a save still queued after a program switch writes to the
-  // program it was made in.
+  // newer one the screen already shows. The program and sign-in are fixed when
+  // the change is made: a save still queued after a program switch writes to
+  // the program it was made in, and one still queued after a sign-out is
+  // dropped rather than sent under the next sign-in.
   const setTeamPins = useCallback(
     (documentIds: string[], success?: string) => {
       const programId = getSelectedProgramIdRaw();
+      const session = currentAuthSession();
       const enqueue = featuredQueueRef.current;
       return mutate(
         (d) => applyFeatured(d, documentIds),
-        () => enqueue(() => setKbFeatured(documentIds, programId)),
+        () =>
+          enqueue(async () => {
+            if (currentAuthSession() !== session) return;
+            await setKbFeatured(documentIds, programId);
+          }).catch(async (err: unknown) => {
+            // mutate reloads the list on failure; a reload racing a newer
+            // queued save could show the older list, so wait for those first.
+            await enqueue.idle();
+            throw err;
+          }),
         { success }
       );
     },
