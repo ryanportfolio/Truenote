@@ -1,34 +1,50 @@
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
+  SOURCE_COLUMN_OPTIONS,
   barWidth,
   nextSort,
   plural,
   sortSources,
   type SortState,
+  type SourceColumn,
   type SourceSortKey
 } from "@/lib/sourceUsage";
 import type { SourceUsageSource } from "@/types/api";
-import { InlineBar, SortHeader, SourceName } from "./shared";
+import { InlineBar, SortHeader, SourceOpener } from "./shared";
 
 const TEXT_KEYS: readonly SourceSortKey[] = ["title"];
-const INITIAL_ROWS = 25;
+const INITIAL_ROWS = 10;
 
 interface SourcesTableProps {
   sources: readonly SourceUsageSource[];
-  /** One person selected: the People column always reads 1, so it hides. */
-  personMode: boolean;
+  /** Optional columns the manager turned on, in menu order. Citations always shows. */
+  columns: readonly SourceColumn[];
   activeDocumentId: string | null;
-  onOpen: (source: SourceUsageSource) => void;
+  onOpen: (documentId: string, title: string | null) => void;
+}
+
+function columnUnit(key: SourceColumn, value: number): string {
+  switch (key) {
+    case "userCount":
+      return plural(value, "person", "people");
+    case "questionCount":
+      return plural(value, "distinct question", "distinct questions");
+    case "viewCount":
+      return plural(value, "view", "views");
+    case "negativeCount":
+      return `${value} thumbs down`;
+  }
 }
 
 /**
  * Ranked sources with an inline citation bar. The title is the one control
  * per row: it opens the side panel with the questions behind the numbers.
+ * Restricted sources show their numbers but cannot be opened.
  */
 export function SourcesTable({
   sources,
-  personMode,
+  columns,
   activeDocumentId,
   onOpen
 }: SourcesTableProps): JSX.Element {
@@ -45,6 +61,11 @@ export function SourcesTable({
   );
   const rows = showAll ? sorted : sorted.slice(0, INITIAL_ROWS);
   const onSort = (key: SourceSortKey): void => setSort((current) => nextSort(current, key, TEXT_KEYS));
+  const optional = SOURCE_COLUMN_OPTIONS.filter((option) => columns.includes(option.key));
+  // Narrow screens fold optional columns into the title cell: People below
+  // sm, the rest below md.
+  const columnClass = (key: SourceColumn): string =>
+    key === "userCount" ? "hidden sm:table-cell" : "hidden md:table-cell";
 
   return (
     <div className="flex flex-col gap-2">
@@ -58,45 +79,24 @@ export function SourcesTable({
               <SortHeader label="Source" sortKey="title" sort={sort} onSort={onSort} />
               <SortHeader
                 label="Citations"
+                title="Answers that cited the source"
                 sortKey="citationCount"
                 sort={sort}
                 onSort={onSort}
                 align="right"
               />
-              <SortHeader
-                label="Questions"
-                sortKey="questionCount"
-                sort={sort}
-                onSort={onSort}
-                align="right"
-                className="hidden md:table-cell"
-              />
-              {personMode ? null : (
+              {optional.map((option) => (
                 <SortHeader
-                  label="People"
-                  sortKey="userCount"
+                  key={option.key}
+                  label={option.label}
+                  title={option.hint}
+                  sortKey={option.key}
                   sort={sort}
                   onSort={onSort}
                   align="right"
-                  className="hidden md:table-cell"
+                  className={columnClass(option.key)}
                 />
-              )}
-              <SortHeader
-                label="Views"
-                sortKey="viewCount"
-                sort={sort}
-                onSort={onSort}
-                align="right"
-                className="hidden sm:table-cell"
-              />
-              <SortHeader
-                label="Thumbs down"
-                sortKey="negativeCount"
-                sort={sort}
-                onSort={onSort}
-                align="right"
-                className="hidden lg:table-cell"
-              />
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -105,60 +105,48 @@ export function SourcesTable({
               return (
                 <tr
                   key={source.documentId}
+                  data-source-row={source.documentId}
                   className={cn(
                     "border-t border-border align-top transition-colors duration-100 ease-out hover:bg-muted/40",
                     active && "bg-primary/5"
                   )}
                 >
-                  <td className="max-w-md px-3 py-2">
-                    <button
-                      type="button"
-                      aria-haspopup="dialog"
-                      onClick={() => onOpen(source)}
-                      className={cn(
-                        "rounded-sm text-left font-medium underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                        active && "text-primary"
-                      )}
-                    >
-                      <SourceName title={source.title} isLive={source.isLive} />
-                      <span className="sr-only">, show the questions that cited it</span>
-                    </button>
+                  <td className="w-full max-w-md px-3 py-2">
+                    <SourceOpener
+                      documentId={source.documentId}
+                      title={source.title}
+                      isLive={source.isLive}
+                      onOpen={onOpen}
+                      className={cn("font-medium", active && "text-primary")}
+                    />
                     <InlineBar width={barWidth(source.citationCount, maxCitations)} />
-                    {/* Narrow screens fold the hidden columns into one line. */}
-                    <span className="mt-1 block text-xs text-muted-foreground md:hidden">
-                      {plural(source.questionCount, "question", "questions")}
-                      {personMode ? "" : ` · ${plural(source.userCount, "person", "people")}`}
-                      {` · ${plural(source.viewCount, "view", "views")}`}
-                    </span>
-                    {source.negativeCount > 0 ? (
-                      <span className="mt-1 block text-xs text-destructive lg:hidden">
-                        {source.negativeCount} thumbs down
+                    {optional.length > 0 ? (
+                      <span className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground md:hidden">
+                        {optional.map((option) => (
+                          <span
+                            key={option.key}
+                            className={option.key === "userCount" ? "sm:hidden" : undefined}
+                          >
+                            {columnUnit(option.key, source[option.key])}
+                          </span>
+                        ))}
                       </span>
                     ) : null}
                   </td>
-                  <td className="px-3 py-2 text-right font-medium tabular-nums">
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums">
                     {source.citationCount}
                   </td>
-                  <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground md:table-cell">
-                    {source.questionCount}
-                  </td>
-                  {personMode ? null : (
-                    <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground md:table-cell">
-                      {source.userCount}
+                  {optional.map((option) => (
+                    <td
+                      key={option.key}
+                      className={cn(
+                        "whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground",
+                        columnClass(option.key)
+                      )}
+                    >
+                      {source[option.key]}
                     </td>
-                  )}
-                  <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground sm:table-cell">
-                    {source.viewCount}
-                  </td>
-                  <td className="hidden px-3 py-2 text-right tabular-nums lg:table-cell">
-                    {source.negativeCount > 0 ? (
-                      <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
-                        {source.negativeCount}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">0</span>
-                    )}
-                  </td>
+                  ))}
                 </tr>
               );
             })}
@@ -169,6 +157,7 @@ export function SourcesTable({
         <button
           type="button"
           onClick={() => setShowAll((value) => !value)}
+          aria-expanded={showAll}
           className="btn-whisper self-start px-3 py-1 text-xs"
         >
           {showAll ? `Show the top ${INITIAL_ROWS}` : `Show all ${sorted.length} sources`}

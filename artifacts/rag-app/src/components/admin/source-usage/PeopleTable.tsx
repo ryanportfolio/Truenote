@@ -13,7 +13,7 @@ import {
   type UserSortKey
 } from "@/lib/sourceUsage";
 import type { SourceUsageUser } from "@/types/api";
-import { SortHeader, SourceName } from "./shared";
+import { SortHeader, SourceOpener } from "./shared";
 
 const TEXT_KEYS: readonly UserSortKey[] = ["name"];
 
@@ -51,6 +51,7 @@ export function PeopleTable({
             <SortHeader label="Person" sortKey="name" sort={sort} onSort={onSort} />
             <SortHeader
               label="Questions"
+              title="Questions this person asked in the window"
               sortKey="questionCount"
               sort={sort}
               onSort={onSort}
@@ -58,6 +59,7 @@ export function PeopleTable({
             />
             <SortHeader
               label="Answered"
+              title="Share of their questions that got a cited answer"
               sortKey="answeredRate"
               sort={sort}
               onSort={onSort}
@@ -66,6 +68,7 @@ export function PeopleTable({
             />
             <SortHeader
               label="Refused"
+              title="Questions the sources could not answer"
               sortKey="refusedCount"
               sort={sort}
               onSort={onSort}
@@ -74,13 +77,14 @@ export function PeopleTable({
             />
             <SortHeader
               label="Thumbs down"
+              title="Answers they marked unhelpful"
               sortKey="negativeCount"
               sort={sort}
               onSort={onSort}
               align="right"
               className="hidden md:table-cell"
             />
-            <th scope="col" className="hidden px-3 py-2 font-medium lg:table-cell">
+            <th scope="col" className="hidden whitespace-nowrap px-3 py-2 font-medium lg:table-cell">
               Most-used sources
             </th>
           </tr>
@@ -97,11 +101,11 @@ export function PeopleTable({
                 <td className="px-3 py-2">
                   <button
                     type="button"
+                    aria-label={`${name}, show their questions`}
                     onClick={() => onSelectPerson(person.userId)}
                     className="group inline-flex items-center gap-1 rounded-sm text-left font-medium underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     {name}
-                    <span className="sr-only">, show their questions</span>
                     <ChevronRight
                       className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-100 ease-out group-hover:translate-x-0.5 motion-reduce:transition-none"
                       aria-hidden
@@ -121,7 +125,7 @@ export function PeopleTable({
                     {rate} answered
                   </span>
                   <span className="mt-0.5 block text-xs text-muted-foreground md:hidden">
-                    {plural(person.refusedCount, "refused", "refused")}
+                    {person.refusedCount} refused
                     {person.negativeCount > 0 ? ` · ${person.negativeCount} thumbs down` : ""}
                   </span>
                 </td>
@@ -134,14 +138,8 @@ export function PeopleTable({
                 <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground md:table-cell">
                   {person.refusedCount}
                 </td>
-                <td className="hidden px-3 py-2 text-right tabular-nums md:table-cell">
-                  {person.negativeCount > 0 ? (
-                    <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
-                      {person.negativeCount}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">0</span>
-                  )}
+                <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground md:table-cell">
+                  {person.negativeCount}
                 </td>
                 <td className="hidden max-w-xs px-3 py-2 lg:table-cell">
                   {person.topSources.length === 0 ? (
@@ -150,20 +148,21 @@ export function PeopleTable({
                     <ul className="flex flex-col gap-1">
                       {person.topSources.map((source) => (
                         <li key={source.documentId} className="flex items-baseline gap-2 text-xs">
-                          <button
-                            type="button"
-                            aria-haspopup="dialog"
-                            onClick={() =>
-                              onOpenPersonSource(person.userId, source.documentId, source.title)
+                          <SourceOpener
+                            documentId={source.documentId}
+                            title={source.title}
+                            label={
+                              source.title === null
+                                ? undefined
+                                : `${source.title}, show ${name}'s questions that cited it`
                             }
-                            className="min-w-0 truncate rounded-sm text-left underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                            title={source.title ?? "Restricted source"}
-                          >
-                            <SourceName title={source.title} />
-                            <span className="sr-only">, show {name}'s questions that cited it</span>
-                          </button>
-                          <span className="shrink-0 tabular-nums text-muted-foreground">
-                            {source.count}
+                            onOpen={(documentId, title) =>
+                              onOpenPersonSource(person.userId, documentId, title)
+                            }
+                            className="min-w-0 truncate"
+                          />
+                          <span className="shrink-0 whitespace-nowrap tabular-nums text-muted-foreground">
+                            {plural(source.count, "answer", "answers")}
                           </span>
                         </li>
                       ))}

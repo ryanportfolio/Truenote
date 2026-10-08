@@ -1,4 +1,5 @@
 import type {
+  KbCategory,
   KbDocumentListItem,
   SourceUsageSource,
   SourceUsageUser
@@ -171,4 +172,148 @@ export function roleLabel(role: SourceUsageUser["role"]): string {
 
 export function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
+}
+
+/** First word of a name, for headings like "Sources Jordan relies on". */
+export function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] || name;
+}
+
+/**
+ * Category paths ("Billing / Refunds") for every document, from the library's
+ * category list. A document in several categories gets several paths,
+ * sorted A to Z. Parents missing from the list end the path where they stop.
+ */
+export function categoryPathsByDocument(
+  categories: readonly KbCategory[]
+): Map<string, string[]> {
+  const byId = new Map(categories.map((category) => [category.id, category]));
+  const pathOf = (category: KbCategory): string => {
+    const names: string[] = [];
+    const seen = new Set<string>();
+    let current: KbCategory | undefined = category;
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      names.unshift(current.name);
+      current = current.parentId ? byId.get(current.parentId) : undefined;
+    }
+    return names.join(" / ");
+  };
+  const result = new Map<string, string[]>();
+  for (const category of categories) {
+    const path = pathOf(category);
+    for (const documentId of category.documentIds) {
+      const list = result.get(documentId) ?? [];
+      list.push(path);
+      result.set(documentId, list);
+    }
+  }
+  for (const list of result.values()) {
+    list.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }
+  return result;
+}
+
+/** "Billing / Refunds" or "Billing / Refunds +1 more"; null when the source is in no category. */
+export function formatCategoryPaths(paths: readonly string[] | undefined): string | null {
+  if (!paths || paths.length === 0) return null;
+  const first = paths[0] ?? "";
+  return paths.length === 1 ? first : `${first} +${paths.length - 1} more`;
+}
+
+// ---------------------------------------------------------------------------
+// Sources table columns (customizable, saved per user in localStorage)
+
+export type SourceColumn = "userCount" | "questionCount" | "viewCount" | "negativeCount";
+
+export const SOURCE_COLUMN_OPTIONS: readonly { key: SourceColumn; label: string; hint: string }[] = [
+  { key: "userCount", label: "People", hint: "Different people whose answers cited it" },
+  {
+    key: "questionCount",
+    label: "Distinct questions",
+    hint: "Different wordings; the same question asked twice counts once"
+  },
+  { key: "viewCount", label: "Views", hint: "Times the source was opened in the reader" },
+  { key: "negativeCount", label: "Thumbs down", hint: "Answers citing it that got a thumbs-down" }
+];
+
+export const DEFAULT_SOURCE_COLUMNS: readonly SourceColumn[] = ["userCount"];
+
+const COLUMNS_PREFIX = "truenote:source-usage:columns:v1:";
+
+/** Keeps only known columns, in the menu's order. */
+export function parseSourceColumns(raw: string | null): SourceColumn[] | null {
+  if (raw === null) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (!Array.isArray(value)) return null;
+    const known = new Set(SOURCE_COLUMN_OPTIONS.map((option) => option.key));
+    const chosen = new Set(value.filter((key): key is SourceColumn => known.has(key)));
+    return SOURCE_COLUMN_OPTIONS.map((option) => option.key).filter((key) => chosen.has(key));
+  } catch {
+    return null;
+  }
+}
+
+export function loadSourceColumns(userId: string): SourceColumn[] {
+  try {
+    return (
+      parseSourceColumns(window.localStorage.getItem(COLUMNS_PREFIX + userId)) ?? [
+        ...DEFAULT_SOURCE_COLUMNS
+      ]
+    );
+  } catch {
+    return [...DEFAULT_SOURCE_COLUMNS];
+  }
+}
+
+export function saveSourceColumns(userId: string, columns: readonly SourceColumn[]): void {
+  try {
+    window.localStorage.setItem(COLUMNS_PREFIX + userId, JSON.stringify(columns));
+  } catch {
+    // Private mode or a full quota: the choice lasts until reload.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Data-built highlights for the everyone view
+
+export interface UsageHighlights {
+  topSource: { source: SourceUsageSource; share: number; next: SourceUsageSource | null } | null;
+  mostRefused: SourceUsageUser | null;
+  mostNegative: SourceUsageUser | null;
+}
+
+/**
+ * The few standouts a manager acts on: the most-cited source and its share of
+ * answered questions, and who had the most refusals and thumbs-down answers.
+ * Ties go to the person with more questions (the server's order).
+ */
+export function usageHighlights(
+  sources: readonly SourceUsageSource[],
+  users: readonly SourceUsageUser[],
+  answered: number
+): UsageHighlights {
+  const ranked = [...sources].sort((a, b) => b.citationCount - a.citationCount);
+  const top = ranked[0] ?? null;
+  const pick = (key: "refusedCount" | "negativeCount"): SourceUsageUser | null => {
+    let best: SourceUsageUser | null = null;
+    for (const user of users) {
+      if (user[key] > 0 && (best === null || user[key] > best[key])) best = user;
+    }
+    return best;
+  };
+  return {
+    topSource:
+      top && answered > 0
+        ? { source: top, share: top.citationCount / answered, next: ranked[1] ?? null }
+        : null,
+    mostRefused: pick("refusedCount"),
+    mostNegative: pick("negativeCount")
+  };
+}
+
+/** Share of `part` in `whole` as "12%", or null when there is nothing to divide. */
+export function percentOf(part: number, whole: number): string | null {
+  return whole > 0 ? `${Math.round((part / whole) * 100)}%` : null;
 }

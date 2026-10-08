@@ -1,10 +1,11 @@
 import { useId, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Bookmark, Eye, Lock, Quote, StickyNote } from "lucide-react";
+import { Bookmark, CircleSlash, Lock, NotebookPen, Palette, Pencil } from "lucide-react";
 import { KB_LIBRARY_COLORS, kbColorChip, kbColorDot, kbColorLabel } from "@/lib/kbLibraryColors";
 import { KB_NOTE_MAX } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
 import type { KbDocumentListItem, KbLibraryColor, KbTag } from "@/types/api";
 import { KbDialogActions, KbInlineError } from "./KbDialog";
+import { KbMenu, type KbMenuEntry } from "./KbMenu";
 import type { ActionResult } from "./useKbLibrary";
 
 export function NewBadge(): JSX.Element {
@@ -122,10 +123,12 @@ function notePreview(note: string): string {
 /** Shown only when the user has a note: opens the editor, previews on hover or focus. */
 export function NoteIndicator({
   doc,
-  onOpen
+  onOpen,
+  className
 }: {
   doc: KbDocumentListItem;
   onOpen: () => void;
+  className?: string;
 }): JSX.Element | null {
   const tooltipId = useId();
   if (!doc.note) return null;
@@ -136,9 +139,9 @@ export function NoteIndicator({
         onClick={onOpen}
         aria-label={`Edit my note on ${doc.title}`}
         aria-describedby={tooltipId}
-        className="btn-icon h-8 w-8 text-foreground"
+        className={cn("btn-icon h-8 w-8 text-foreground", className)}
       >
-        <StickyNote className="h-4 w-4" aria-hidden />
+        <NotebookPen className="h-4 w-4" aria-hidden />
       </button>
       <span
         id={tooltipId}
@@ -152,26 +155,126 @@ export function NoteIndicator({
   );
 }
 
-/** Views and citations over the last 30 days. Numbers stay quiet; labels are spoken in full. */
+/**
+ * Views and citations over the last 30 days, each with its word ("12 views",
+ * "3 cited") so no number stands alone next to an icon.
+ */
 export function DocCounts({ doc }: { doc: KbDocumentListItem }): JSX.Element {
   return (
-    <span className="hidden items-center gap-3 tabular-nums text-xs text-muted-foreground sm:inline-flex">
-      <span className="inline-flex items-center gap-1" title="Opens in the last 30 days">
-        <Eye className="h-3.5 w-3.5" aria-hidden />
-        <span aria-hidden>{doc.viewCount}</span>
+    <span className="hidden items-center gap-3 whitespace-nowrap tabular-nums text-xs text-muted-foreground sm:inline-flex">
+      <span title="Times anyone in the program opened it in the last 30 days">
+        <span aria-hidden>
+          {doc.viewCount} {doc.viewCount === 1 ? "view" : "views"}
+        </span>
         <span className="sr-only">
           Opened {doc.viewCount} {doc.viewCount === 1 ? "time" : "times"} in the last 30 days.
         </span>
       </span>
-      <span className="inline-flex items-center gap-1" title="Answers that cited it in the last 30 days">
-        <Quote className="h-3.5 w-3.5" aria-hidden />
-        <span aria-hidden>{doc.citationCount}</span>
+      <span title="Answers that cited it in the last 30 days">
+        <span aria-hidden>{doc.citationCount} cited</span>
         <span className="sr-only">
           Cited in {doc.citationCount} {doc.citationCount === 1 ? "answer" : "answers"} in the last 30 days.
         </span>
       </span>
     </span>
   );
+}
+
+/**
+ * The user's private note shown in place under a source, so it reads without
+ * hovering. The card says it is private; Edit opens the note editor.
+ */
+export function NoteCard({
+  doc,
+  onEdit,
+  className
+}: {
+  doc: KbDocumentListItem;
+  onEdit: () => void;
+  className?: string;
+}): JSX.Element | null {
+  if (!doc.note) return null;
+  return (
+    <div
+      className={cn(
+        "relative z-10 mb-1 mt-0.5 flex max-w-xl items-start gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-xs",
+        className
+      )}
+    >
+      <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+      <div className="min-w-0 flex-1">
+        <p className="text-muted-foreground">
+          <span className="font-medium uppercase tracking-wide">My note</span>
+          <span> · only you can see it</span>
+        </p>
+        <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap break-words leading-relaxed text-foreground" title={doc.note}>
+          {doc.note}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-label={`Edit my note on ${doc.title}`}
+        className="btn-icon -my-0.5 h-7 shrink-0 gap-1 px-2 text-xs"
+      >
+        <Pencil className="h-3.5 w-3.5" aria-hidden />
+        Edit
+      </button>
+    </div>
+  );
+}
+
+/** Color button for one source: opens the "My color" picker. */
+export function SourceColorMenu({
+  doc,
+  onSelect,
+  className
+}: {
+  doc: KbDocumentListItem;
+  onSelect: (color: KbLibraryColor | null) => void;
+  className?: string;
+}): JSX.Element {
+  const current = doc.myColor ? `, now ${kbColorLabel(doc.myColor)}` : "";
+  return (
+    <KbMenu
+      label={`My color for ${doc.title}${current}`}
+      title={doc.myColor ? `My color: ${kbColorLabel(doc.myColor)}` : "My color"}
+      buttonClassName={cn("btn-icon h-8 w-8", className)}
+      items={myColorEntries(doc.myColor, onSelect)}
+    >
+      {doc.myColor ? (
+        <span
+          aria-hidden
+          className="h-3.5 w-3.5 rounded-full border border-foreground/15"
+          style={kbColorDot(doc.myColor)}
+        />
+      ) : (
+        <Palette className="h-4 w-4" aria-hidden />
+      )}
+    </KbMenu>
+  );
+}
+
+/** "My color" swatches plus "No color", shared by the row, reader and row menu. */
+export function myColorEntries(
+  value: KbLibraryColor | null,
+  onSelect: (color: KbLibraryColor | null) => void
+): KbMenuEntry[] {
+  return [
+    {
+      kind: "swatches",
+      label: "My color",
+      hint: "Only you can see this.",
+      value,
+      onSelect: (color) => onSelect(color)
+    },
+    {
+      label: "No color",
+      icon: CircleSlash,
+      disabled: value === null,
+      onSelect: () => onSelect(null)
+    }
+  ];
 }
 
 /** Swatch radio group for category and tag colors. */

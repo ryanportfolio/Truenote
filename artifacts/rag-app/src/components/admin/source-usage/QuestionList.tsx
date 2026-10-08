@@ -1,7 +1,7 @@
 import { RelativeTime } from "@/components/RelativeTime";
 import { personLabel } from "@/lib/sourceUsage";
 import type { SourceUsageQuestion } from "@/types/api";
-import { QuestionSignals, SourceName } from "./shared";
+import { QuestionSignals, SourceOpener } from "./shared";
 
 interface QuestionListProps {
   items: readonly SourceUsageQuestion[];
@@ -11,7 +11,12 @@ interface QuestionListProps {
   onOpenSource: (documentId: string, title: string | null) => void;
   /** The source the list is about; it is left out of each item's source chips. */
   currentDocumentId?: string | null;
+  /** Hide the Refused / Thumbs down chips when the list is already grouped by them. */
+  hideSignals?: boolean;
 }
+
+const CHIP_CLASS =
+  "max-w-full truncate rounded-full border border-border bg-secondary px-2 py-0.5 transition-colors duration-100 ease-out hover:border-foreground/30 hover:no-underline";
 
 /**
  * Exact question text with who asked, when, the outcome, and the sources the
@@ -22,7 +27,8 @@ export function QuestionList({
   items,
   onSelectPerson,
   onOpenSource,
-  currentDocumentId = null
+  currentDocumentId = null,
+  hideSignals = false
 }: QuestionListProps): JSX.Element {
   return (
     <ul className="divide-y divide-border">
@@ -30,6 +36,7 @@ export function QuestionList({
         const otherSources = item.sources.filter(
           (source) => source.documentId !== currentDocumentId
         );
+        const asker = personLabel({ name: item.userName });
         return (
           <li key={item.queryLogId} className="flex flex-col gap-1.5 px-4 py-3">
             <p className="whitespace-pre-wrap break-words text-sm font-medium">{item.question}</p>
@@ -38,18 +45,20 @@ export function QuestionList({
                 item.userId ? (
                   <button
                     type="button"
+                    aria-label={`${asker}, show all their questions`}
                     onClick={() => item.userId && onSelectPerson(item.userId)}
                     className="rounded-sm font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
-                    {personLabel({ name: item.userName })}
-                    <span className="sr-only">, show all their questions</span>
+                    {asker}
                   </button>
                 ) : (
-                  <span>{personLabel({ name: item.userName })}</span>
+                  <span>{asker}</span>
                 )
               ) : null}
               <RelativeTime iso={item.askedAt} />
-              <QuestionSignals refused={item.refused} feedback={item.feedback} />
+              {hideSignals ? null : (
+                <QuestionSignals refused={item.refused} feedback={item.feedback} />
+              )}
             </div>
             {otherSources.length > 0 ? (
               <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -57,21 +66,17 @@ export function QuestionList({
                   {currentDocumentId ? "Also cited:" : "Cited:"}
                 </span>
                 {otherSources.map((source) => (
-                  <button
+                  <SourceOpener
                     key={source.documentId}
-                    type="button"
-                    aria-haspopup="dialog"
-                    onClick={() => onOpenSource(source.documentId, source.title)}
-                    className="max-w-full truncate rounded-full border border-border bg-secondary px-2 py-0.5 text-left transition-colors duration-100 ease-out hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    title={source.title ?? "Restricted source"}
-                  >
-                    <SourceName title={source.title} />
-                    <span className="sr-only">, show the questions that cited it</span>
-                  </button>
+                    documentId={source.documentId}
+                    title={source.title}
+                    onOpen={onOpenSource}
+                    className={CHIP_CLASS}
+                  />
                 ))}
               </div>
             ) : item.sources.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No source cited.</p>
+              <p className="text-xs text-muted-foreground">No cited answer.</p>
             ) : null}
           </li>
         );

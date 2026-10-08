@@ -35,6 +35,8 @@ export interface KbPrefs {
   filters: KbFilters;
   /** Folder-view categories the user collapsed. */
   collapsed: string[];
+  /** My pins and Recently opened folded to one line above the library. */
+  quickCollapsed: boolean;
 }
 
 export const KB_MAX_CATEGORY_DEPTH = 4;
@@ -42,6 +44,9 @@ export const KB_NOTE_MAX = 4000;
 export const KB_MAX_TEAM_PINS = 12;
 export const KB_CATEGORY_NAME_MAX = 80;
 export const KB_TAG_NAME_MAX = 40;
+
+/** Drag settle and sortable shifts: DESIGN.md ease-out-quart, under the 250 ms bar. Off under reduced motion. */
+export const KB_DRAG_MOTION = { duration: 200, easing: "cubic-bezier(0.25, 1, 0.5, 1)" } as const;
 
 export const KB_VIEWS: readonly KbView[] = ["folders", "categories", "list"];
 
@@ -67,7 +72,7 @@ export function defaultSort(view: KbView): KbSort {
 }
 
 export function defaultPrefs(): KbPrefs {
-  return { view: "folders", sortByView: {}, filters: EMPTY_FILTERS, collapsed: [] };
+  return { view: "folders", sortByView: {}, filters: EMPTY_FILTERS, collapsed: [], quickCollapsed: false };
 }
 
 export function sortForView(prefs: KbPrefs, view: KbView): KbSort {
@@ -113,7 +118,8 @@ export function parsePrefs(raw: string | null): KbPrefs {
         tagIds: stringArray(rawFilters.tagIds),
         colors: Array.isArray(rawFilters.colors) ? rawFilters.colors.filter(isKbLibraryColor) : []
       },
-      collapsed: stringArray(parsed.collapsed)
+      collapsed: stringArray(parsed.collapsed),
+      quickCollapsed: parsed.quickCollapsed === true
     };
   } catch {
     return fallback;
@@ -381,6 +387,71 @@ export function myPins(items: KbDocumentListItem[]): KbDocumentListItem[] {
   return items
     .filter((d) => d.pinnedAt !== null)
     .sort((a, b) => time(b.pinnedAt) - time(a.pinnedAt) || byTitle(a, b));
+}
+
+/** My pins that get a number key (1 to 9), in strip order. */
+export const KB_NUMBERED_PINS = 9;
+
+/** Sources this user opened, newest open first. */
+export function recentlyOpened(items: KbDocumentListItem[], limit = 5): KbDocumentListItem[] {
+  return items
+    .filter((d) => d.lastViewedByMeAt !== null && time(d.lastViewedByMeAt) > 0)
+    .sort((a, b) => time(b.lastViewedByMeAt) - time(a.lastViewedByMeAt) || byTitle(a, b))
+    .slice(0, limit);
+}
+
+/** Full paths ("Billing / Refunds") of every category the source is in, in library order. */
+export function docCategoryPaths(doc: Pick<KbDocumentListItem, "categoryIds">, tree: KbTree): string[] {
+  const known = new Set(doc.categoryIds);
+  return tree.order.filter((node) => known.has(node.category.id)).map((node) => categoryPathLabel(node));
+}
+
+/**
+ * Rows the Folders and Categories views render for these sources: one per
+ * category membership (a source in two categories is listed twice), or one
+ * for a source in no category. `repeated` counts sources listed more than
+ * once; `maxRows` is the most rows any one source gets.
+ */
+export function groupedRowCount(
+  docs: KbDocumentListItem[],
+  tree: KbTree
+): { rows: number; repeated: number; maxRows: number } {
+  let rows = 0;
+  let repeated = 0;
+  let maxRows = 0;
+  for (const doc of docs) {
+    const memberships = doc.categoryIds.filter((id) => tree.byId.has(id)).length;
+    rows += Math.max(1, memberships);
+    maxRows = Math.max(maxRows, memberships);
+    if (memberships > 1) repeated += 1;
+  }
+  return { rows, repeated, maxRows };
+}
+
+/**
+ * Sources that share a category or a tag with this one, most shared first,
+ * then most cited. Never includes the source itself.
+ */
+export function relatedSources(
+  doc: Pick<KbDocumentListItem, "documentId" | "categoryIds" | "tagIds">,
+  items: KbDocumentListItem[],
+  limit = 5
+): KbDocumentListItem[] {
+  const categories = new Set(doc.categoryIds);
+  const tags = new Set(doc.tagIds);
+  if (categories.size === 0 && tags.size === 0) return [];
+  return items
+    .filter((d) => d.documentId !== doc.documentId)
+    .map((d) => ({
+      d,
+      shared:
+        d.categoryIds.filter((id) => categories.has(id)).length * 2 +
+        d.tagIds.filter((id) => tags.has(id)).length
+    }))
+    .filter((x) => x.shared > 0)
+    .sort((a, b) => b.shared - a.shared || b.d.citationCount - a.d.citationCount || byTitle(a.d, b.d))
+    .slice(0, limit)
+    .map((x) => x.d);
 }
 
 /** Move one entry of a list to a new index (copy). */

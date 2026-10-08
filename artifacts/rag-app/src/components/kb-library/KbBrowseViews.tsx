@@ -24,6 +24,8 @@ interface BrowseProps {
   sort: KbSort;
   /** True while a search or filter narrows the list: every folder opens and empty ones hide. */
   filtering: boolean;
+  /** True while a search query is typed: rows name their category path, since results sit out of context. */
+  searching: boolean;
 }
 
 function sortInCategory(
@@ -46,11 +48,11 @@ function uncategorized(visible: KbDocumentListItem[], known: Map<string, KbCateg
   return visible.filter((d) => !d.categoryIds.some((id) => known.has(id)));
 }
 
-function CountLabel({ count }: { count: number }): JSX.Element {
+/** "10 sources": every source in the category and the categories inside it (same meaning in Organize). */
+export function CountLabel({ count }: { count: number }): JSX.Element {
   return (
-    <span className="ml-auto shrink-0 tabular-nums text-xs font-normal text-muted-foreground">
-      {count}
-      <span className="sr-only">{count === 1 ? " source" : " sources"}</span>
+    <span className="ml-auto shrink-0 whitespace-nowrap tabular-nums text-xs font-normal text-muted-foreground">
+      {count} {count === 1 ? "source" : "sources"}
     </span>
   );
 }
@@ -74,7 +76,7 @@ function CategoryColorMenu({ category }: { category: KbCategory }): JSX.Element 
         {
           kind: "swatches",
           label: "My color",
-          hint: "Only you see it. It replaces the team color for you.",
+          hint: "Only you can see this. It replaces the team color for you.",
           value: category.myColor,
           onSelect: (color) => actions.setCategoryColor(category.id, color)
         },
@@ -170,7 +172,7 @@ function FolderNode({
         leading={<ColorDot color={kbEffectiveCategoryColor(node.category)} />}
         trailing={<CategoryColorMenu category={node.category} />}
       >
-        <div className="ml-6 border-l border-border">
+        <div className="ml-3 border-l border-border sm:ml-6">
           {node.children.length > 0 ? (
             <ul aria-label={`Categories in ${node.category.name}`} className="divide-y divide-border">
               {node.children.map((child) => (
@@ -191,7 +193,12 @@ function FolderNode({
               className={cn("divide-y divide-border", node.children.length > 0 && "border-t border-border")}
             >
               {docs.map((doc) => (
-                <KbDocRow key={doc.documentId} doc={doc} />
+                <KbDocRow
+                  key={doc.documentId}
+                  doc={doc}
+                  inCategoryId={node.category.id}
+                  showPath={props.searching}
+                />
               ))}
             </ul>
           ) : node.children.length === 0 ? (
@@ -238,7 +245,7 @@ export function KbFoldersView({
               onToggle={() => onToggle(UNCATEGORIZED_KEY)}
               leading={<span className="h-2.5 w-2.5 shrink-0 rounded-full border border-dashed border-muted-foreground" aria-hidden />}
             >
-              <ul aria-label="Sources not in a category" className="ml-6 divide-y divide-border border-l border-border">
+              <ul aria-label="Sources not in a category" className="ml-3 divide-y divide-border border-l border-border sm:ml-6">
                 {loose.map((doc) => (
                   <KbDocRow key={doc.documentId} doc={doc} />
                 ))}
@@ -308,7 +315,13 @@ export function KbCategoriesView(props: BrowseProps): JSX.Element {
           >
             <ul className="divide-y divide-border rounded-lg border border-border bg-card shadow-card">
               {docs.map((doc) => (
-                <KbDocRow key={doc.documentId} doc={doc} roundedEdges />
+                <KbDocRow
+                  key={doc.documentId}
+                  doc={doc}
+                  inCategoryId={node.category.id}
+                  showPath={props.searching}
+                  roundedEdges
+                />
               ))}
             </ul>
           </SectionCard>

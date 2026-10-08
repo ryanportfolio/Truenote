@@ -18,6 +18,7 @@ import {
   snapshotsArraySql
 } from "../../lib/kb-library-sql.js";
 import {
+  MAX_MATRIX_SOURCES,
   MAX_TOP_SOURCES_PER_USER,
   MAX_USAGE_SOURCES,
   gatedTitle,
@@ -25,7 +26,9 @@ import {
   parseOptionalUuid,
   parseQuestionLimit,
   parseUsageWindowDays,
-  takePage
+  shapeUsageMatrix,
+  takePage,
+  type UsageMatrix
 } from "../../lib/source-usage.js";
 
 export const insightsRouter = Router();
@@ -210,9 +213,21 @@ export interface SourceUsageUser {
   lastAskedAt: string | null;
 }
 
+export interface SourceUsagePerson {
+  userId: string;
+  name: string;
+  role: UserRole;
+  questionCount: number;
+}
+
+export type SourceUsageMatrix = UsageMatrix;
+
 export interface SourceUsageResponse {
   windowDays: number;
   userId: string | null;
+  person: { userId: string; name: string; email: string; role: UserRole } | null;
+  people: SourceUsagePerson[];
+  matrix: SourceUsageMatrix;
   totals: {
     questions: number;
     answered: number;
@@ -286,19 +301,20 @@ function usageCtes(filter: UsageFilter): SQL {
 const ANSWERED = sql.raw("NOT refused AND jsonb_array_length(snaps) > 0");
 
 /**
- * Resolve the optional ?userId= filter. The user must belong to the
- * effective program or have asked questions in it (super users); anything
- * else is a 404 so ids from other programs reveal nothing.
+ * Resolve the optional ?userId= filter to the person's identity. The user
+ * must belong to the effective program or have asked questions in it
+ * (super users); anything else is a 404 so ids from other programs reveal
+ * nothing. Membership does not depend on the window.
  */
 async function resolveUsageUser(
   raw: unknown,
   programId: string
-): Promise<string | null | "not_found"> {
+): Promise<SourceUsageResponse["person"] | "not_found"> {
   const parsed = parseOptionalUuid(raw);
   if (parsed === "invalid") return "not_found";
   if (parsed === null) return null;
   const result = await db.execute(sql`
-    SELECT 1
+    SELECT u.id::text AS user_id, u.name, u.email, u.role::text AS role
     FROM users AS u
     WHERE u.id = ${parsed}::uuid
       AND (
@@ -311,7 +327,28 @@ async function resolveUsageUser(
       )
     LIMIT 1
   `);
-  return result.rows.length > 0 ? parsed : "not_found";
+  const row = result.rows[0] as unknown as UsagePersonRow | undefined;
+  if (!row) return "not_found";
+  return { userId: row.user_id, name: row.name, email: row.email, role: row.role };
+}
+
+interface UsagePersonRow {
+  user_id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+}
+
+interface UsagePeopleRow {
+  user_id: string;
+  name: string;
+  role: UserRole;
+  question_count: number;
+}
+
+interface UsageMatrixRow {
+  document_ids: unknown;
+  matrix_rows: unknown;
 }
 
 interface UsageTotalsRow {
@@ -365,6 +402,9 @@ insightsRouter.get("/source-usage", async (req, res, next) => {
       const empty: SourceUsageResponse = {
         windowDays,
         userId: null,
+        person: null,
+        people: [],
+        matrix: { documentIds: [], rows: [] },
         totals: {
           questions: 0,
           answered: 0,
@@ -384,13 +424,16 @@ insightsRouter.get("/source-usage", async (req, res, next) => {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    const userId = await resolveUsageUser(req.query["userId"], programId);
-    if (userId === "not_found") {
+    const person = await resolveUsageUser(req.query["userId"], programId);
+    if (person === "not_found") {
       res.status(404).json({ error: "Not found" });
       return;
     }
+    const userId = person?.userId ?? null;
     const clearance = await getUserMaxClassification(user.id);
     const ctes = usageCtes({ programId, windowDays, userId });
+    // The matrix always covers everyone, whatever the person filter.
+    const everyoneCtes = usageCtes({ programId, windowDays, userId: null });
 
     const totalsQuery = db.execute(sql`
       WITH ${ctes}
@@ -502,12 +545,102 @@ insightsRouter.get("/source-usage", async (req, res, next) => {
       WHERE r.rn <= ${MAX_TOP_SOURCES_PER_USER}
       ORDER BY r.user_id, r.rn
     `);
-    const [totalsResult, sourcesResult, usersResult, topSourcesResult] = await Promise.all([
+    // Person picker: every active program member at csr level or above,
+    // including people who asked nothing in the window. Super users have no
+    // program_id, so they never appear here.
+    const peopleQuery = db.execute(sql`
+      SELECT
+        u.id::text AS user_id,
+        u.name,
+        u.role::text AS role,
+        COALESCE(qc.question_count, 0)::int AS question_count
+      FROM users AS u
+      LEFT JOIN (
+        SELECT ql.user_id, count(*)::int AS question_count
+        FROM query_log AS ql
+        WHERE ql.program_id = ${programId}::uuid
+          AND ql.created_at > now() - make_interval(days => ${windowDays})
+          AND ql.user_id IS NOT NULL
+        GROUP BY ql.user_id
+      ) AS qc ON qc.user_id = u.id::text
+      WHERE u.program_id = ${programId}::uuid
+        AND u.is_active
+        AND u.role IN ('csr', 'manager', 'senior_manager')
+      ORDER BY lower(u.name), u.id
+    `);
+    // People x sources. Columns rank like `sources` with no person filter
+    // (citations desc, last cited desc, id); rows order like the unfiltered
+    // `users` list. One row with two JSON arrays, so an empty window still
+    // returns well-formed columns.
+    const matrixQuery = db.execute(sql`
+      WITH ${everyoneCtes},
+      top_docs AS (
+        SELECT
+          cited.document_id,
+          row_number() OVER (
+            ORDER BY count(*) DESC, max(q.created_at) DESC, cited.document_id
+          ) AS ord
+        FROM cited
+        INNER JOIN q ON q.id = cited.query_id
+        GROUP BY cited.document_id
+        ORDER BY ord
+        LIMIT ${MAX_MATRIX_SOURCES}
+      ),
+      cells AS (
+        SELECT q.user_id, cited.document_id, count(*)::int AS cnt
+        FROM cited
+        INNER JOIN q ON q.id = cited.query_id
+        INNER JOIN top_docs ON top_docs.document_id = cited.document_id
+        WHERE q.user_id IS NOT NULL
+        GROUP BY q.user_id, cited.document_id
+      ),
+      per_user AS (
+        SELECT user_id, count(*)::int AS question_count, max(created_at) AS last_asked_at
+        FROM q
+        WHERE user_id IS NOT NULL
+        GROUP BY user_id
+      )
+      SELECT
+        COALESCE(
+          (SELECT json_agg(t.document_id::text ORDER BY t.ord) FROM top_docs AS t),
+          '[]'::json
+        ) AS document_ids,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'userId', u.id::text,
+                'counts', (
+                  SELECT COALESCE(json_agg(COALESCE(c.cnt, 0) ORDER BY t.ord), '[]'::json)
+                  FROM top_docs AS t
+                  LEFT JOIN cells AS c
+                    ON c.document_id = t.document_id AND c.user_id = pu.user_id
+                )
+              )
+              ORDER BY pu.question_count DESC, pu.last_asked_at DESC, u.id
+            )
+            FROM per_user AS pu
+            INNER JOIN users AS u ON u.id::text = pu.user_id
+          ),
+          '[]'::json
+        ) AS matrix_rows
+    `);
+    const [
+      totalsResult,
+      sourcesResult,
+      usersResult,
+      topSourcesResult,
+      peopleResult,
+      matrixResult
+    ] = await Promise.all([
       totalsQuery,
       sourcesQuery,
       usersQuery,
-      topSourcesQuery
+      topSourcesQuery,
+      peopleQuery,
+      matrixQuery
     ]);
+    const matrixRow = matrixResult.rows[0] as unknown as UsageMatrixRow | undefined;
 
     const totals = totalsResult.rows[0] as unknown as UsageTotalsRow | undefined;
     const topByUser = new Map<string, SourceUsageUser["topSources"]>();
@@ -524,6 +657,14 @@ insightsRouter.get("/source-usage", async (req, res, next) => {
     const payload: SourceUsageResponse = {
       windowDays,
       userId,
+      person,
+      people: (peopleResult.rows as unknown as UsagePeopleRow[]).map((r) => ({
+        userId: r.user_id,
+        name: r.name,
+        role: r.role,
+        questionCount: Number(r.question_count)
+      })),
+      matrix: shapeUsageMatrix(matrixRow?.document_ids, matrixRow?.matrix_rows),
       totals: {
         questions: Number(totals?.questions ?? 0),
         answered: Number(totals?.answered ?? 0),

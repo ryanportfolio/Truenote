@@ -9,8 +9,8 @@ import {
   RotateCcw,
   Rows3,
   Search,
+  NotebookPen,
   Sparkles,
-  StickyNote,
   Tags,
   X
 } from "lucide-react";
@@ -63,6 +63,12 @@ function FilterChip({
   );
 }
 
+/** "(1 listed twice)": why Folders and Categories show more rows than the count. */
+function repeatedNote(repeated: number, max: number): string {
+  if (repeated <= 0) return "";
+  return max <= 2 ? ` (${repeated} listed twice)` : ` (${repeated} listed more than once)`;
+}
+
 export function KbToolbar({
   query,
   onQuery,
@@ -76,6 +82,8 @@ export function KbToolbar({
   colors,
   shown,
   total,
+  repeated,
+  repeatedMax,
   active,
   onReset,
   canOrganize,
@@ -95,6 +103,10 @@ export function KbToolbar({
   colors: KbLibraryColor[];
   shown: number;
   total: number;
+  /** Sources the grouped views list more than once (one row per category). */
+  repeated: number;
+  /** Most rows any one source gets in the grouped views. */
+  repeatedMax: number;
   active: boolean;
   onReset: () => void;
   canOrganize: boolean;
@@ -119,8 +131,9 @@ export function KbToolbar({
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <label className="relative block">
+    <div className="flex flex-col gap-2.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <label className="relative block min-w-0 basis-full lg:min-w-[14rem] lg:flex-1 lg:basis-0">
         <Search
           className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
           aria-hidden
@@ -146,9 +159,7 @@ export function KbToolbar({
           </span>
         ) : null}
       </label>
-
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div role="group" aria-label="View" className="inline-flex rounded-full border border-border bg-secondary p-0.5">
+        <div role="group" aria-label="View" className="inline-flex rounded-full border border-border bg-card p-0.5">
           {VIEWS.map(({ id, label, icon: Icon, hint }) => (
             <button
               key={id}
@@ -158,9 +169,10 @@ export function KbToolbar({
               onClick={() => onView(id)}
               className={cn(
                 "btn-base gap-1.5 px-3 py-1 text-xs",
+                // Same selected recipe as the /admin/gaps time window.
                 view === id
-                  ? "bg-card text-foreground shadow-card"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-primary/10 font-medium text-primary"
+                  : "font-normal text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               <Icon className="h-3.5 w-3.5" aria-hidden />
@@ -189,7 +201,7 @@ export function KbToolbar({
           <button
             type="button"
             onClick={onOrganize}
-            className="btn-whisper ml-auto gap-1.5 px-3 py-1 text-xs"
+            className="btn-whisper gap-1.5 px-3 py-1 text-xs"
             title="Arrange categories, tags and team pins for everyone"
           >
             <FolderCog className="h-3.5 w-3.5" aria-hidden />
@@ -215,7 +227,7 @@ export function KbToolbar({
         </FilterChip>
         <FilterChip
           pressed={filters.hasNote}
-          icon={StickyNote}
+          icon={NotebookPen}
           onClick={() => onFilters({ ...filters, hasNote: !filters.hasNote })}
         >
           Has my note
@@ -271,30 +283,33 @@ export function KbToolbar({
             }))}
           >
             <Palette className="h-3.5 w-3.5" aria-hidden />
-            Color{filters.colors.length > 0 ? ` (${filters.colors.length})` : ""}
+            Color
           </KbMenu>
         ) : null}
-        {filters.colors.map((color) => (
+        {filters.colors.length > 0 ? (
           <button
-            key={color}
             type="button"
-            onClick={() => toggleColor(color)}
-            aria-label={`Remove color filter ${kbColorLabel(color)}`}
-            className="btn-base gap-1.5 border border-border bg-card px-2.5 py-1 text-xs text-foreground hover:border-foreground/20"
+            data-kb-color-chip
+            onClick={() => onFilters({ ...filters, colors: [] })}
+            aria-label={`Remove filter Color: ${filters.colors.map(kbColorLabel).join(", ")}`}
+            className="btn-base gap-1.5 border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs text-primary hover:border-primary/60"
           >
-            <ColorDot color={color} />
-            {kbColorLabel(color)}
-            <X className="h-3 w-3 text-muted-foreground" aria-hidden />
+            {filters.colors.map((color) => (
+              <ColorDot key={color} color={color} />
+            ))}
+            Color: {filters.colors.map(kbColorLabel).join(", ")}
+            <X className="h-3 w-3" aria-hidden />
           </button>
-        ))}
+        ) : null}
         {active ? (
           <button type="button" onClick={onReset} className="btn-icon gap-1 px-2 text-xs">
             <RotateCcw className="h-3.5 w-3.5" aria-hidden />
             Reset
           </button>
         ) : null}
-        <p className="ml-auto text-xs tabular-nums text-muted-foreground" aria-live="polite">
+        <p data-kb-count className="ml-auto text-xs tabular-nums text-muted-foreground" aria-live="polite">
           {active ? `${shown} of ${total} sources` : `${total} ${total === 1 ? "source" : "sources"}`}
+          {repeatedNote(repeated, repeatedMax)}
         </p>
       </div>
     </div>

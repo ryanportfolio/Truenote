@@ -9,6 +9,40 @@ export const DEFAULT_QUESTION_LIMIT = 50;
 export const MAX_QUESTION_LIMIT = 200;
 export const MAX_USAGE_SOURCES = 100;
 export const MAX_TOP_SOURCES_PER_USER = 3;
+export const MAX_MATRIX_SOURCES = 10;
+
+export interface UsageMatrix {
+  documentIds: string[];
+  rows: { userId: string; counts: number[] }[];
+}
+
+/**
+ * Shape the people x sources matrix from the JSON the summary query returns.
+ * Every row gets exactly one count per column (missing or non-numeric cells
+ * read as 0), so counts[i] always belongs to documentIds[i].
+ */
+export function shapeUsageMatrix(rawDocumentIds: unknown, rawRows: unknown): UsageMatrix {
+  const documentIds = Array.isArray(rawDocumentIds)
+    ? rawDocumentIds.filter((id): id is string => typeof id === "string")
+    : [];
+  const rows: UsageMatrix["rows"] = [];
+  if (Array.isArray(rawRows)) {
+    for (const raw of rawRows) {
+      if (!raw || typeof raw !== "object") continue;
+      const { userId, counts } = raw as { userId?: unknown; counts?: unknown };
+      if (typeof userId !== "string") continue;
+      const cells = Array.isArray(counts) ? counts : [];
+      rows.push({
+        userId,
+        counts: documentIds.map((_, i) => {
+          const n = Number(cells[i]);
+          return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
+        })
+      });
+    }
+  }
+  return { documentIds, rows };
+}
 
 function clampInt(raw: unknown, min: number, max: number, fallback: number): number {
   if (typeof raw !== "string" || !/^\d+$/.test(raw.trim())) return fallback;

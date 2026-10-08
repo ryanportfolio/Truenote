@@ -71,27 +71,39 @@ export function KbMenu({
   const menuItems = () =>
     Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([disabled])') ?? []);
 
-  useLayoutEffect(() => {
-    if (!open) {
-      setPosition(null);
-      return;
-    }
+  const focusedRef = useRef(false);
+
+  /** Place the menu under (or above) its button; false when the button left the viewport. */
+  function place(): boolean {
     const button = buttonRef.current;
     const menu = menuRef.current;
-    if (!button || !menu) return;
+    if (!button || !menu) return false;
     const rect = button.getBoundingClientRect();
+    if (rect.bottom < 0 || rect.top > window.innerHeight) return false;
     const width = menu.offsetWidth;
     const height = menu.offsetHeight;
     const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
     const below = rect.bottom + 4;
     const top = below + height > window.innerHeight - 8 ? Math.max(8, rect.top - height - 4) : below;
-    setPosition({ top, left });
+    setPosition((prev) => (prev && prev.top === top && prev.left === left ? prev : { top, left }));
+    return true;
+  }
+
+  useLayoutEffect(() => {
+    focusedRef.current = false;
+    if (!open) {
+      setPosition(null);
+      return;
+    }
+    place();
   }, [open]);
 
+  // Focus moves into the menu once per opening, after it is positioned and visible.
   useEffect(() => {
-    if (!open || !position) return;
+    if (!open || !position || focusedRef.current) return;
+    focusedRef.current = true;
     const list = menuItems();
-    (focusFirstRef.current === "last" ? list[list.length - 1] : list[0])?.focus();
+    (focusFirstRef.current === "last" ? list[list.length - 1] : list[0])?.focus({ preventScroll: true });
   }, [open, position]);
 
   useEffect(() => {
@@ -101,8 +113,10 @@ export function KbMenu({
       if (menuRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
       setOpen(false);
     }
+    // Scrolling or resizing keeps the menu beside its button; it closes only
+    // when the button leaves the screen.
     function onViewportChange(): void {
-      setOpen(false);
+      if (!place()) setOpen(false);
     }
     document.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("resize", onViewportChange);
@@ -120,7 +134,13 @@ export function KbMenu({
   }
 
   function onButtonKeyDown(event: KeyboardEvent<HTMLButtonElement>): void {
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    if (open && event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      close(true);
+    } else if (open && event.key === "Tab") {
+      close(false);
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       focusFirstRef.current = event.key === "ArrowUp" ? "last" : "first";
       setOpen(true);
@@ -135,7 +155,8 @@ export function KbMenu({
       event.stopPropagation();
       close(true);
     } else if (event.key === "Tab") {
-      close(false);
+      // Back on the button first, so the browser moves Tab on from where the menu was opened.
+      close(true);
     } else if (event.key === "ArrowDown" || event.key === "ArrowRight") {
       event.preventDefault();
       list[(index + 1) % list.length]?.focus();
@@ -199,7 +220,11 @@ export function KbMenu({
                 left: position?.left ?? 0,
                 visibility: position ? "visible" : "hidden"
               }}
-              className="fixed z-40 min-w-[12rem] max-w-[18rem] rounded-lg border border-border bg-card py-1 text-sm shadow-panel motion-safe:animate-in motion-safe:fade-in motion-safe:duration-100"
+              // transition-none: the menu is visibility:hidden until positioned. A
+              // transition-duration (Tailwind's duration-* sets it) would tween
+              // visibility from hidden, and focus() on the first item would miss.
+              // The fade runs as an animation, which never touches visibility.
+              className="fixed z-40 min-w-[12rem] max-w-[18rem] rounded-lg border border-border bg-card py-1 text-sm shadow-panel transition-none motion-safe:animate-in motion-safe:fade-in motion-safe:[animation-duration:100ms]"
             >
               {items.map((entry, i) =>
                 entry === "separator" ? (
@@ -260,13 +285,23 @@ function SwatchGroup({
   onPick: (color: KbLibraryColor) => void;
 }): JSX.Element {
   const labelId = useId();
+  const hintId = useId();
   return (
-    <div role="group" aria-labelledby={labelId} className="px-3 py-1.5">
-      <p id={labelId} className="text-xs font-medium text-muted-foreground">
+    <div
+      role="group"
+      aria-labelledby={labelId}
+      aria-describedby={group.hint ? hintId : undefined}
+      className="px-3 pb-1.5 pt-2"
+    >
+      <p id={labelId} className="text-sm font-medium text-foreground">
         {group.label}
       </p>
-      {group.hint ? <p className="text-xs text-muted-foreground">{group.hint}</p> : null}
-      <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {group.hint ? (
+        <p id={hintId} className="text-xs text-muted-foreground">
+          {group.hint}
+        </p>
+      ) : null}
+      <div className="mt-2 grid grid-cols-4 gap-1">
         {KB_LIBRARY_COLORS.map((color) => {
           const checked = group.value === color;
           return (
@@ -275,17 +310,22 @@ function SwatchGroup({
               type="button"
               role="menuitemradio"
               aria-checked={checked}
-              aria-label={kbColorLabel(color)}
-              title={kbColorLabel(color)}
               tabIndex={-1}
               onClick={() => onPick(color)}
-              className={cn(
-                // The checked ring and the focus outline differ, so both read at once.
-                "h-6 w-6 shrink-0 cursor-pointer rounded-full border border-foreground/15 transition-shadow duration-100 ease-out focus:outline focus:outline-2 focus:outline-offset-4 focus:outline-ring",
-                checked && "ring-2 ring-foreground/70 ring-offset-2 ring-offset-card"
-              )}
-              style={kbColorDot(color)}
-            />
+              className="flex cursor-pointer flex-col items-center gap-1 rounded-md px-1 py-1.5 text-xs text-foreground hover:bg-muted focus:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  "grid h-6 w-6 place-items-center rounded-full border border-foreground/15",
+                  checked && "ring-2 ring-foreground/70 ring-offset-2 ring-offset-card"
+                )}
+                style={kbColorDot(color)}
+              >
+                {checked ? <Check className="h-3.5 w-3.5 text-foreground" strokeWidth={3} /> : null}
+              </span>
+              <span className={cn(checked && "font-medium")}>{kbColorLabel(color)}</span>
+            </button>
           );
         })}
       </div>

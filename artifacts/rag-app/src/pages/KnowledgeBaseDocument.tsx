@@ -1,17 +1,24 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Link } from "wouter";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowLeft, BookOpen, TextQuote } from "lucide-react";
-import { getKbDocument } from "@/lib/api";
+import { ArrowLeft, BookOpen, FileText, TextQuote } from "lucide-react";
+import { getKbDocument, listKbDocuments } from "@/lib/api";
+import { buildLookup, docCategoryPaths, relatedSources } from "@/lib/kbLibrary";
 import { markdownNodeIsCited } from "@/lib/citationPassage";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
 import { PassageHighlighter } from "@/components/kb/PassageHighlighter";
-import { KbDocPersonalBar } from "@/components/kb-library/KbDocPersonalBar";
+import {
+  KbDocNoteCard,
+  KbDocPersonalActions,
+  KbDocPersonalError,
+  useKbDocPersonal
+} from "@/components/kb-library/KbDocPersonalBar";
+import { TagChip } from "@/components/kb-library/KbShared";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
-import type { KbDocumentResponse } from "@/types/api";
+import type { KbDocumentListResponse, KbDocumentResponse, KbTag } from "@/types/api";
 
 type DocState =
   | { status: "loading" }
@@ -80,7 +87,7 @@ export function KbDocumentPage({ documentId }: { documentId: string }): JSX.Elem
       <div>
         <Link href="/kb" className="btn-whisper inline-flex gap-1.5 px-3 py-1.5 text-sm">
           <ArrowLeft className="h-4 w-4" aria-hidden />
-          Knowledge base
+          Sources
         </Link>
       </div>
 
@@ -111,63 +118,136 @@ export function KbDocumentPage({ documentId }: { documentId: string }): JSX.Elem
       ) : null}
 
       {state.status === "ready" ? (
-        <article className="rounded-lg border border-border bg-card p-6 shadow-card">
-          <header className="border-b border-border pb-4">
-            <h1 className="font-display text-2xl font-semibold tracking-tight">
-              {state.doc.title}
-            </h1>
-            {state.doc.updatedAt ? (
-              <p className="mt-1 text-xs text-muted-foreground">
-                {state.doc.isCurrentVersion ? "Updated" : "Uploaded"}{" "}
-                <RelativeTime iso={state.doc.updatedAt} />
-              </p>
+        <ReaderArticle key={state.doc.documentId} doc={state.doc} documentContentRef={documentContentRef} />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Library context for the reader: category path, tags and related sources
+ * come from the Sources list (one request, after the document itself). The
+ * reader works without it; those parts simply stay hidden.
+ */
+function useLibraryForReader(documentId: string): KbDocumentListResponse | null {
+  const [library, setLibrary] = useState<KbDocumentListResponse | null>(null);
+  useEffect(() => {
+    let disposed = false;
+    listKbDocuments()
+      .then((response) => {
+        if (!disposed && !response.noProgramSelected) setLibrary(response);
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+    };
+  }, [documentId]);
+  return library;
+}
+
+function ReaderArticle({
+  doc,
+  documentContentRef
+}: {
+  doc: KbDocumentResponse;
+  documentContentRef: RefObject<HTMLDivElement>;
+}): JSX.Element {
+  const personal = useKbDocPersonal(doc.documentId, doc);
+  const library = useLibraryForReader(doc.documentId);
+  const lookup = useMemo(() => (library ? buildLookup(library) : null), [library]);
+  const listItem = library?.items.find((item) => item.documentId === doc.documentId) ?? null;
+  const paths = lookup && listItem ? docCategoryPaths(listItem, lookup.tree) : [];
+  const tags =
+    lookup && listItem
+      ? listItem.tagIds.map((id) => lookup.tagsById.get(id)).filter((t): t is KbTag => Boolean(t))
+      : [];
+  const related = library && listItem ? relatedSources(listItem, library.items) : [];
+
+  return (
+    <article className="rounded-lg border border-border bg-card p-6 shadow-card">
+      <header className="border-b border-border pb-4">
+        <nav aria-label="Breadcrumb" data-kb-breadcrumb className="mb-1.5 text-xs text-muted-foreground">
+          <ol className="flex flex-wrap items-center gap-x-1.5">
+            <li>
+              <Link href="/kb" className="rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Sources
+              </Link>
+            </li>
+            {paths.length > 0
+              ? paths[0]!.split(" / ").map((part, i) => (
+                  <li key={`${part}-${i}`} className="flex items-center gap-x-1.5">
+                    <span aria-hidden>/</span>
+                    <span>{part}</span>
+                  </li>
+                ))
+              : null}
+            {paths.length > 1 ? (
+              <li className="ml-1.5" title={paths.slice(1).join("; ")}>
+                (also in {paths.slice(1).join(" · ")})
+              </li>
             ) : null}
-            <KbDocPersonalBar
-              key={state.doc.documentId}
-              documentId={state.doc.documentId}
-              initial={state.doc}
-            />
-          </header>
-          {state.doc.citationAuthorized ? (
+          </ol>
+        </nav>
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+          <h1 className="min-w-0 font-display text-2xl font-semibold tracking-tight">{doc.title}</h1>
+          <KbDocPersonalActions personal={personal} />
+        </div>
+        {tags.length > 0 || doc.updatedAt ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {tags.length > 0 ? <span className="sr-only">Tags:</span> : null}
+            {tags.map((tag) => (
+              <TagChip key={tag.id} tag={tag} />
+            ))}
+            {doc.updatedAt ? (
+              <span>
+                {doc.isCurrentVersion ? "Updated" : "Uploaded"} <RelativeTime iso={doc.updatedAt} />
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+        <KbDocPersonalError personal={personal} />
+      </header>
+      <KbDocNoteCard personal={personal} className="my-4" />
+      {doc.citationAuthorized ? (
             <div className="mt-4 flex flex-wrap items-start justify-between gap-3 rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-sm">
               <p className="flex min-w-0 items-start gap-2">
                 <TextQuote className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
                 <span>
                   <span className="font-medium">
-                    {state.doc.citationTarget ? "Cited passage" : "Cited version"} · Version {state.doc.versionNumber}
+                    {doc.citationTarget ? "Cited passage" : "Cited version"} · Version {doc.versionNumber}
                   </span>
                   <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
-                    {state.doc.citationTarget
+                    {doc.citationTarget
                       ? "The exact source span used by the answer is marked below."
                       : "The cited version is pinned, but this receipt has no direct text location."}
                   </span>
                 </span>
               </p>
-              {!state.doc.isCurrentVersion ? (
-                <Link href={`/kb/${state.doc.documentId}`} className="btn-whisper shrink-0 px-2.5 py-1 text-xs">
+              {!doc.isCurrentVersion ? (
+                <Link href={`/kb/${doc.documentId}`} className="btn-whisper shrink-0 px-2.5 py-1 text-xs">
                   Open current version
                 </Link>
               ) : null}
             </div>
           ) : null}
-          {state.doc.markdown ? (
-            state.doc.isCurrentVersion ? (
+          {doc.markdown ? (
+            doc.isCurrentVersion ? (
               <PassageHighlighter
-                documentId={state.doc.documentId}
-                documentVersionId={state.doc.documentVersionId}
+                documentId={doc.documentId}
+                documentVersionId={doc.documentVersionId}
               >
                 <div ref={documentContentRef}>
                   <DocMarkdown
-                    markdown={state.doc.markdown}
-                    citationTarget={state.doc.citationTarget}
+                    markdown={doc.markdown}
+                    citationTarget={doc.citationTarget}
                   />
                 </div>
               </PassageHighlighter>
             ) : (
               <div ref={documentContentRef}>
                 <DocMarkdown
-                  markdown={state.doc.markdown}
-                  citationTarget={state.doc.citationTarget}
+                  markdown={doc.markdown}
+                  citationTarget={doc.citationTarget}
                 />
               </div>
             )
@@ -176,11 +256,45 @@ export function KbDocumentPage({ documentId }: { documentId: string }): JSX.Elem
               This document has no readable content yet.
             </p>
           )}
-        </article>
+      {related.length > 0 && lookup ? (
+        <section aria-labelledby="kb-related" data-kb-related className="mt-6 border-t border-border pt-4">
+          <h2
+            id="kb-related"
+            className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+          >
+            Related sources
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">In the same category or with the same tag.</p>
+          <ul className="mt-2 flex flex-col gap-2">
+            {related.map((item) => {
+              const itemPath = docCategoryPaths(item, lookup.tree)[0];
+              return (
+                <li key={item.documentId}>
+                  <Link
+                    href={`/kb/${item.documentId}`}
+                    className="inline-flex items-start gap-2 rounded-sm text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <span>
+                      {item.title}
+                      {itemPath ? (
+                        <span className="block text-xs text-muted-foreground">
+                          <span className="sr-only">In </span>
+                          {itemPath}
+                        </span>
+                      ) : null}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       ) : null}
-    </div>
+    </article>
   );
 }
+
 /**
  * Full-document renderer. Unlike AnswerMarkdown (which bans headings and
  * links per the generation contract), real documents legitimately carry

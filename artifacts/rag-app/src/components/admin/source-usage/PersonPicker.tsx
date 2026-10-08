@@ -1,11 +1,12 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { personLabel, plural } from "@/lib/sourceUsage";
-import type { SourceUsageUser } from "@/types/api";
+import { personLabel, plural, roleLabel } from "@/lib/sourceUsage";
+import type { SourceUsagePerson } from "@/types/api";
 
 interface PersonPickerProps {
-  people: readonly SourceUsageUser[];
+  /** Every program member, including people with no questions in the window. */
+  people: readonly SourceUsagePerson[];
   selectedId: string | null;
   /** Shown on the trigger when the selected person is not in `people` (no questions this window). */
   selectedLabel: string | null;
@@ -13,7 +14,8 @@ interface PersonPickerProps {
 }
 
 /**
- * Searchable person filter. A disclosure button opens a small panel with a
+ * Searchable person filter over every program member (zero-question people
+ * included, so a new hire can be checked). A disclosure button opens a small panel with a
  * search box and option buttons; arrow keys move between options, Enter in
  * the search box picks the first match, Escape closes and returns focus.
  */
@@ -38,10 +40,7 @@ export function PersonPicker({
       personLabel(a).localeCompare(personLabel(b), undefined, { sensitivity: "base" })
     );
     if (!needle) return sorted;
-    return sorted.filter(
-      (person) =>
-        person.name.toLowerCase().includes(needle) || person.email.toLowerCase().includes(needle)
-    );
+    return sorted.filter((person) => person.name.toLowerCase().includes(needle));
   }, [people, query]);
 
   useEffect(() => {
@@ -143,7 +142,7 @@ export function PersonPicker({
                   if (first) choose(first.userId);
                 }
               }}
-              placeholder="Name or email"
+              placeholder="Search by name"
               className="w-full rounded-md border border-input bg-background py-1.5 pl-8 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
             />
           </div>
@@ -162,8 +161,12 @@ export function PersonPicker({
               <li key={person.userId}>
                 <PersonOption
                   label={personLabel(person)}
-                  detail={person.name ? person.email : null}
-                  count={plural(person.questionCount, "question", "questions")}
+                  detail={roleLabel(person.role)}
+                  count={
+                    person.questionCount > 0
+                      ? plural(person.questionCount, "question", "questions")
+                      : "No questions yet"
+                  }
                   selected={selectedId === person.userId}
                   onClick={() => choose(person.userId)}
                 />
@@ -172,7 +175,7 @@ export function PersonPicker({
             {matches.length === 0 ? (
               <li className="px-2 py-2 text-sm text-muted-foreground">
                 {people.length === 0
-                  ? "Nobody asked a question in this window."
+                  ? "No people in this program yet."
                   : "No one matches that search."}
               </li>
             ) : null}

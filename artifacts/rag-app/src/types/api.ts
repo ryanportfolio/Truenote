@@ -383,10 +383,36 @@ export interface SourceUsageUser {
   lastAskedAt: string | null;
 }
 
+/** A program member, listed whether or not they asked anything in the window. */
+export interface SourceUsagePerson {
+  userId: string;
+  name: string;
+  role: UserRole;
+  /** Questions in the window (0 for people who asked nothing). */
+  questionCount: number;
+}
+
+/**
+ * People x sources: how many answers for each person cited each of the top
+ * sources. Columns are the window's top 10 sources by citations (title-gated
+ * like `sources`); rows are people with at least one question, same order as
+ * `users`. counts[i] belongs to documentIds[i].
+ */
+export interface SourceUsageMatrix {
+  documentIds: string[];
+  rows: { userId: string; counts: number[] }[];
+}
+
 export interface SourceUsageResponse {
   windowDays: number;
   /** Echo of the userId filter, or null for everyone. */
   userId: string | null;
+  /** The filtered person's identity (any window, even with 0 questions); null when userId is null. */
+  person: { userId: string; name: string; email: string; role: UserRole } | null;
+  /** Every active member of the program with role csr or above, for the person picker. Sorted by name. */
+  people: SourceUsagePerson[];
+  /** Always computed for everyone in the window (ignores userId). */
+  matrix: SourceUsageMatrix;
   totals: {
     questions: number;
     answered: number;

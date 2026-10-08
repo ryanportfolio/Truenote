@@ -16,8 +16,10 @@ import {
   type DragEndEvent,
   type DragMoveEvent,
   type DragStartEvent,
+  type Modifier,
   type Over
 } from "@dnd-kit/core";
+import { getEventCoordinates } from "@dnd-kit/utilities";
 import {
   ArrowDown,
   ArrowUp,
@@ -30,20 +32,23 @@ import {
   GripVertical,
   Megaphone,
   Pencil,
+  Plus,
   Tags,
   Trash2
 } from "lucide-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import {
+  KB_DRAG_MOTION,
   KB_MAX_CATEGORY_DEPTH,
   nestBlockReason,
+  subtreeDocumentIds,
   type KbCategoryNode,
   type KbTree
 } from "@/lib/kbLibrary";
 import { kbColorLabel } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
 import type { KbDocumentListItem, KbLibraryColor } from "@/types/api";
-import { UNCATEGORIZED_KEY } from "./KbBrowseViews";
+import { CountLabel, UNCATEGORIZED_KEY } from "./KbBrowseViews";
 import { useKbLibraryContext } from "./KbContext";
 import { KbMenu, type KbMenuEntry } from "./KbMenu";
 import { ColorDot, NewBadge, TagChips } from "./KbShared";
@@ -146,26 +151,62 @@ function computeTarget(
   };
 }
 
+function DropLabel({ target }: { target: DropTarget }): JSX.Element {
+  return (
+    <span
+      className={cn(
+        "absolute right-10 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium shadow-card",
+        target.valid ? "bg-primary text-primary-foreground" : "bg-destructive text-destructive-foreground"
+      )}
+    >
+      {target.message}
+    </span>
+  );
+}
+
+/**
+ * Where a drop lands: an insertion line with its label ("Place before Fees")
+ * between items, or a labeled dashed slot over the row when it goes inside.
+ */
 function DropIndicator({ dropId }: { dropId: string }): JSX.Element | null {
   const target = useContext(TargetContext);
-  if (!target || target.dropId !== dropId || target.place === "inside") return null;
+  if (!target || target.dropId !== dropId) return null;
+  if (target.place === "inside") {
+    return (
+      <span aria-hidden data-kb-drop-slot className="pointer-events-none absolute inset-0 z-10">
+        <DropLabel target={target} />
+      </span>
+    );
+  }
   return (
     <span
       aria-hidden
+      data-kb-drop-line
       className={cn(
         "pointer-events-none absolute inset-x-2 z-10 h-0.5 rounded-full",
         target.valid ? "bg-primary" : "bg-destructive",
         target.place === "before" ? "-top-px" : "-bottom-px"
       )}
-    />
+    >
+      <span
+        className={cn(
+          "absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full",
+          target.valid ? "bg-primary" : "bg-destructive"
+        )}
+      />
+      <DropLabel target={target} />
+    </span>
   );
 }
+
+/** Where a dragged item came from stays in place as a faded, dashed ghost. */
+const GHOST = "rounded-md opacity-50 outline-dashed outline-1 -outline-offset-1 outline-primary/50";
 
 function insideClass(dropId: string, target: DropTarget | null): string | false {
   if (!target || target.dropId !== dropId || target.place !== "inside") return false;
   return target.valid
-    ? "bg-primary/10 ring-2 ring-inset ring-primary/40"
-    : "bg-destructive/5 ring-2 ring-inset ring-destructive/40";
+    ? "rounded-md bg-primary/10 outline-dashed outline-2 -outline-offset-2 outline-primary/60"
+    : "rounded-md bg-destructive/5 outline-dashed outline-2 -outline-offset-2 outline-destructive/60";
 }
 
 function DragHandle({
@@ -274,7 +315,7 @@ function OrganizeDoc({
       }}
       className={cn(
         "relative flex items-center gap-1 py-1 pl-1 pr-2 transition-colors duration-100 ease-out",
-        drag.isDragging && "opacity-40",
+        drag.isDragging && GHOST,
         insideClass(dropId, target)
       )}
     >
@@ -337,6 +378,11 @@ function OrganizeCategory({
   const docs = node.category.documentIds
     .map((docId) => docsById.get(docId))
     .filter((d): d is KbDocumentListItem => Boolean(d));
+  // Same meaning as the browse view: every source in this category and the ones inside it.
+  let total = 0;
+  subtreeDocumentIds(node).forEach((docId) => {
+    if (docsById.has(docId)) total += 1;
+  });
 
   async function onDelete(): Promise<void> {
     const ok = await confirm({
@@ -395,7 +441,7 @@ function OrganizeCategory({
   ];
 
   return (
-    <li className={cn(drag.isDragging && "opacity-40")}>
+    <li className={cn(drag.isDragging && GHOST)}>
       <div
         ref={(el) => {
           drag.setNodeRef(el);
@@ -430,10 +476,7 @@ function OrganizeCategory({
           <ColorDot color={node.category.color} />
           <span className="min-w-0 truncate">{node.category.name}</span>
           <span className="sr-only">Team color: {kbColorLabel(node.category.color)}.</span>
-          <span className="ml-auto shrink-0 tabular-nums text-xs font-normal text-muted-foreground">
-            {docs.length}
-            <span className="sr-only">{docs.length === 1 ? " source" : " sources"}</span>
-          </span>
+          <CountLabel count={total} />
         </button>
         <KbMenu label={`Organize category ${node.category.name}`} items={menu}>
           <Ellipsis className="h-4 w-4" aria-hidden />
@@ -509,7 +552,7 @@ function UncategorizedGroup({
             aria-hidden
           />
           Not in a category
-          <span className="ml-auto shrink-0 tabular-nums text-xs font-normal">{docs.length}</span>
+          <CountLabel count={docs.length} />
         </button>
       </div>
       <div id={panelId} hidden={!open} className="ml-5 border-l border-border pl-1">
@@ -536,7 +579,7 @@ export function KbOrganizeTree({
   collapsed: Set<string>;
   onToggle: (key: string) => void;
 }): JSX.Element {
-  const { data, lookup, actions } = useKbLibraryContext();
+  const { data, lookup, actions, openDialog } = useKbLibraryContext();
   const reducedMotion = useReducedMotion();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -645,7 +688,7 @@ export function KbOrganizeTree({
         <div className="rounded-lg border border-border bg-card py-1 shadow-card">
           {lookup.tree.roots.length === 0 ? (
             <p className="px-4 py-3 text-sm text-muted-foreground">
-              No categories yet. Use "New category" above to create the first one.
+              No categories yet. Use "New category" to create the first one.
             </p>
           ) : null}
           <ul aria-label="Library structure">
@@ -661,14 +704,45 @@ export function KbOrganizeTree({
             ))}
             <UncategorizedGroup docs={loose} collapsed={collapsed} onToggle={onToggle} />
           </ul>
+          <div className="px-2 pb-1 pt-1.5">
+            <button
+              type="button"
+              data-kb-new-category-row
+              onClick={() => openDialog({ kind: "category-create", parentId: null })}
+              className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-left text-sm text-muted-foreground transition-colors duration-100 ease-out hover:border-primary/40 hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              New category
+            </button>
+          </div>
         </div>
       </TargetContext.Provider>
-      <DragOverlay dropAnimation={reducedMotion ? null : undefined}>
+      <DragOverlay modifiers={[offsetFromPointer]} dropAnimation={reducedMotion ? null : KB_DRAG_MOTION}>
         {active ? <DragPreview label={active.label} target={target} /> : null}
       </DragOverlay>
     </DndContext>
   );
 }
+
+/**
+ * Keep the drag preview below and right of the pointer so the row under it,
+ * the drop target, stays readable. Keyboard drags shift it below the item.
+ */
+const offsetFromPointer: Modifier = ({ activatorEvent, activeNodeRect, overlayNodeRect, transform }) => {
+  if (!activeNodeRect) return transform;
+  const point = activatorEvent ? getEventCoordinates(activatorEvent) : null;
+  if (!point) return { ...transform, y: transform.y + activeNodeRect.height + 8 };
+  const width = overlayNodeRect?.width ?? 0;
+  const height = overlayNodeRect?.height ?? 0;
+  // Pointer position now, in viewport coordinates.
+  const x = point.x + transform.x;
+  const y = point.y + transform.y;
+  // Below and right of the pointer; flip above or left near the viewport edge.
+  const left = x + 16 + width > window.innerWidth - 8 ? x - 16 - width : x + 16;
+  const top = y + 16 + height > window.innerHeight - 8 ? y - 16 - height : y + 16;
+  // The overlay renders at activeNodeRect plus the returned transform.
+  return { ...transform, x: left - activeNodeRect.left, y: top - activeNodeRect.top };
+};
 
 function DragPreview({ label, target }: { label: string; target: DropTarget | null }): JSX.Element {
   return (

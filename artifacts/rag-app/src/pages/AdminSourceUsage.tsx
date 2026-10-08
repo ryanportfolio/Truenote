@@ -2,18 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { BarChart3 } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
+import { ColumnsMenu } from "@/components/admin/source-usage/ColumnsMenu";
 import { NeverCitedList } from "@/components/admin/source-usage/NeverCitedList";
 import { PeopleTable } from "@/components/admin/source-usage/PeopleTable";
-import { PersonFocus } from "@/components/admin/source-usage/PersonFocus";
+import { PersonFocus, type TeamNumbers } from "@/components/admin/source-usage/PersonFocus";
 import { PersonPicker } from "@/components/admin/source-usage/PersonPicker";
 import {
   SourceQuestionsPanel,
   type PanelSource
 } from "@/components/admin/source-usage/SourceQuestionsPanel";
 import { SourcesTable } from "@/components/admin/source-usage/SourcesTable";
+import { UsageHighlights } from "@/components/admin/source-usage/UsageHighlights";
 import { UsageKpis } from "@/components/admin/source-usage/UsageKpis";
 import { ErrorAlert } from "@/components/admin/source-usage/shared";
-import { fetchSourceUsage } from "@/lib/api";
+import { fetchSourceUsage, listKbDocuments } from "@/lib/api";
 import {
   SELECTED_PROGRAM_CHANGED_EVENT,
   getSelectedProgramIdRaw
@@ -21,11 +23,22 @@ import {
 import {
   USAGE_WINDOW_OPTIONS,
   buildUsageHref,
+  categoryPathsByDocument,
+  formatCategoryPaths,
+  loadSourceColumns,
   parseUsageQuery,
-  personLabel
+  personLabel,
+  saveSourceColumns,
+  type SourceColumn
 } from "@/lib/sourceUsage";
 import { cn } from "@/lib/utils";
-import type { CurrentUser, SourceUsageResponse, SourceUsageUser } from "@/types/api";
+import type {
+  CurrentUser,
+  KbCategory,
+  KbDocumentListItem,
+  SourceUsagePerson,
+  SourceUsageResponse
+} from "@/types/api";
 
 interface AdminSourceUsagePageProps {
   user: CurrentUser;
@@ -34,9 +47,9 @@ interface AdminSourceUsagePageProps {
 /**
  * Source usage (/admin/sources, manager+): which sources answers cite, which
  * questions hit them, and who asks what. Managers use it for coaching
- * (one person's questions and the sources they lean on) and curation
- * (sources nobody uses). Window and person live in the URL so a link to one
- * person's view can be shared.
+ * (one person's profile against the team) and curation (sources nobody
+ * uses). Window and person live in the URL so a link to one person's view
+ * can be shared.
  *
  * Wrapper + inner pattern matches AdminGapsPage: the role-gate early return
  * must not sit above hooks.
@@ -52,19 +65,23 @@ export function AdminSourceUsagePage({ user }: AdminSourceUsagePageProps): JSX.E
       </div>
     );
   }
-  return <AdminSourceUsageInner />;
+  return <AdminSourceUsageInner viewerId={user.id} />;
 }
 
-/** Everyone's numbers for one window, kept to fill the person picker while a person is selected. */
-interface TeamSnapshot {
+/** Everyone's numbers for one window, kept for the team comparison while a person is selected. */
+interface TeamSnapshot extends TeamNumbers {
   key: string;
-  users: SourceUsageUser[];
-  totals: SourceUsageResponse["totals"];
+}
+
+interface LibraryState {
+  key: number;
+  items: KbDocumentListItem[];
+  categories: KbCategory[];
 }
 
 const NEVER_CITED_ID = "never-cited-sources";
 
-function AdminSourceUsageInner(): JSX.Element {
+function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element {
   const search = useSearch();
   const [, navigate] = useLocation();
   const { days, userId } = useMemo(() => parseUsageQuery(search), [search]);
@@ -79,10 +96,13 @@ function AdminSourceUsageInner(): JSX.Element {
   const error = failure?.key === requestKey ? failure.message : null;
   const [team, setTeam] = useState<TeamSnapshot | null>(null);
   const [panel, setPanel] = useState<PanelSource | null>(null);
-  const [neverCitedOpen, setNeverCitedOpen] = useState(false);
-  // Names seen in any response, so a selected person keeps a label in a
-  // window where they asked nothing.
-  const knownPeople = useRef(new Map<string, SourceUsageUser>());
+  const [library, setLibrary] = useState<LibraryState | null>(null);
+  const [libraryError, setLibraryError] = useState<{ key: number; message: string } | null>(null);
+  const [columns, setColumns] = useState<SourceColumn[]>(() => loadSourceColumns(viewerId));
+  // The roster from the last response, so the picker stays filled while the next one loads.
+  const [roster, setRoster] = useState<SourceUsagePerson[]>([]);
+  // Names seen in any response, so a selected person keeps a label while loading.
+  const knownNames = useRef(new Map<string, string>());
 
   const go = useCallback(
     (next: { days?: number; userId?: string | null }, replace = false) => {
@@ -108,10 +128,14 @@ function AdminSourceUsageInner(): JSX.Element {
     ])
       .then(([result, everyone]) => {
         if (cancelled) return;
-        for (const person of [...(result.users ?? []), ...(everyone?.users ?? [])]) {
-          knownPeople.current.set(person.userId, person);
+        for (const person of result.people ?? []) {
+          knownNames.current.set(person.userId, person.name);
+        }
+        if (result.person) {
+          knownNames.current.set(result.person.userId, personLabel(result.person));
         }
         setLoaded({ key: requestKey, result });
+        if (result.people) setRoster(result.people);
         const snapshot = userId === null ? result : everyone;
         if (snapshot && !snapshot.noProgramSelected) {
           setTeam({ key: teamKey, users: snapshot.users, totals: snapshot.totals });
@@ -128,9 +152,32 @@ function AdminSourceUsageInner(): JSX.Element {
     return () => {
       cancelled = true;
     };
-    // `team` is read only to skip a duplicate roster request; reading it must
+    // `team` is read only to skip a duplicate team request; reading it must
     // not trigger a refetch, so it stays out of the dependencies.
   }, [days, userId, requestKey, teamKey]);
+
+  // The library supplies category paths and the never-cited list. One
+  // request per program; sources the viewer cannot see are not in it.
+  useEffect(() => {
+    let cancelled = false;
+    listKbDocuments()
+      .then((result) => {
+        if (!cancelled) {
+          setLibrary({ key: reloadKey, items: result.items, categories: result.categories ?? [] });
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setLibraryError({
+            key: reloadKey,
+            message: err instanceof Error ? err.message : "Could not load the sources."
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
 
   // A super_user switching program (this tab or another) reloads the page
   // data. The person filter is cleared because people belong to one program.
@@ -141,9 +188,9 @@ function AdminSourceUsageInner(): JSX.Element {
       if (current === lastProgram.current) return;
       lastProgram.current = current;
       setPanel(null);
-      setNeverCitedOpen(false);
       setTeam(null);
-      knownPeople.current.clear();
+      setRoster([]);
+      knownNames.current.clear();
       setReloadKey((key) => key + 1);
       if (userId !== null) go({ userId: null }, true);
     }
@@ -164,6 +211,8 @@ function AdminSourceUsageInner(): JSX.Element {
 
   const openSource = useCallback(
     (documentId: string, title: string | null) => {
+      // Restricted sources are never openers; this guard keeps it that way.
+      if (title === null) return;
       const ranked = data?.sources.find((source) => source.documentId === documentId);
       setPanel({
         documentId,
@@ -176,24 +225,53 @@ function AdminSourceUsageInner(): JSX.Element {
 
   const closePanel = useCallback(() => setPanel(null), []);
 
-  const roster = team?.key === teamKey ? team.users : userId === null ? data?.users ?? [] : [];
-  // Numbers come only from this window's response; the remembered record
-  // from another window supplies just the name.
-  const selectedPerson =
+  const changeColumns = useCallback(
+    (next: SourceColumn[]) => {
+      setColumns(next);
+      saveSourceColumns(viewerId, next);
+    },
+    [viewerId]
+  );
+
+  const showNeverCited = useCallback(() => {
+    const heading = document.getElementById(`${NEVER_CITED_ID}-title`);
+    heading?.scrollIntoView({ block: "center" });
+    heading?.focus({ preventScroll: true });
+  }, []);
+
+  const currentLibrary = library?.key === reloadKey ? library : null;
+  const currentLibraryError = libraryError?.key === reloadKey ? libraryError.message : null;
+  const categoryPaths = useMemo(
+    () => categoryPathsByDocument(currentLibrary?.categories ?? []),
+    [currentLibrary]
+  );
+
+  const pickerPeople = data?.people ?? roster;
+  const selectedRow =
     userId === null ? null : data?.users.find((person) => person.userId === userId) ?? null;
-  const namedPerson =
-    userId === null ? null : selectedPerson ?? knownPeople.current.get(userId) ?? null;
-  const selectedName = userId === null ? null : namedPerson ? personLabel(namedPerson) : "This person";
+  const selectedName =
+    userId === null
+      ? null
+      : data?.person
+        ? personLabel(data.person)
+        : knownNames.current.get(userId) ?? "This person";
   const noProgramSelected = data?.noProgramSelected === true;
   const panelStats = panel
     ? data?.sources.find((source) => source.documentId === panel.documentId) ?? null
     : null;
+  const teamNumbers = team?.key === teamKey ? team : null;
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
       <header className="flex flex-col gap-4">
         <div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight">Source usage</h1>
+          <h1
+            id="source-usage-title"
+            tabIndex={-1}
+            className="rounded-sm font-display text-3xl font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            Source usage
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Which sources answer your team's questions, and who relies on them. Pick a person to
             coach from their exact questions; open a source to see what people asked.
@@ -213,18 +291,20 @@ function AdminSourceUsageInner(): JSX.Element {
                   aria-pressed={days === option}
                   onClick={() => go({ days: option }, true)}
                   className={cn(
-                    "px-3 py-1.5 text-xs font-medium transition-colors duration-100",
+                    "relative whitespace-nowrap px-3 py-1.5 text-xs font-medium transition-colors duration-100",
                     days === option
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                 >
-                  Last {option} days
+                  {/* Phones drop the visible "Last" so all three fit; the name stays "Last N days". */}
+                  <span className="sr-only sm:not-sr-only">Last </span>
+                  {option} days
                 </button>
               ))}
             </div>
             <PersonPicker
-              people={roster}
+              people={pickerPeople}
               selectedId={userId}
               selectedLabel={selectedName}
               onSelect={selectPerson}
@@ -251,114 +331,114 @@ function AdminSourceUsageInner(): JSX.Element {
         </ErrorAlert>
       ) : !data ? (
         <LoadingSkeleton />
+      ) : userId !== null ? (
+        <PersonFocus
+          key={userId}
+          userId={userId}
+          identity={data.person}
+          name={selectedName ?? "Selected person"}
+          row={selectedRow}
+          totals={data.totals}
+          sources={data.sources}
+          team={teamNumbers}
+          categoryPaths={categoryPaths}
+          days={days}
+          reloadKey={reloadKey}
+          onClear={() => selectPerson(null)}
+          onOpenSource={openSource}
+          onWiderWindow={days < 90 ? () => go({ days: 90 }, true) : null}
+        />
+      ) : data.totals.questions === 0 ? (
+        <EmptyState
+          icon={BarChart3}
+          title={`No questions in the last ${days} days`}
+          hint="Usage appears after people ask questions in Ask."
+        >
+          {days < 90 ? (
+            <button
+              type="button"
+              onClick={() => go({ days: 90 }, true)}
+              className="btn-whisper px-3 py-1 text-xs"
+            >
+              Show the last 90 days
+            </button>
+          ) : null}
+        </EmptyState>
       ) : (
         <div className="flex flex-col gap-6">
-          {userId !== null ? (
-            <PersonFocus
-              userId={userId}
-              person={selectedPerson}
-              name={selectedName ?? "Selected person"}
-              totals={data.totals}
-              teamTotals={team?.key === teamKey ? team.totals : null}
-              days={days}
-              reloadKey={reloadKey}
-              onClear={() => selectPerson(null)}
-              onOpenSource={openSource}
-            />
-          ) : null}
+          <UsageKpis totals={data.totals} days={days} onShowNeverCited={showNeverCited} />
+          <UsageHighlights
+            sources={data.sources}
+            users={data.users}
+            answered={data.totals.answered}
+            onOpenSource={openSource}
+            onSelectPerson={(id) => selectPerson(id)}
+          />
 
-          {data.totals.questions === 0 ? (
-            userId === null ? (
-              <EmptyState
-                icon={BarChart3}
-                title={`No questions in the last ${days} days`}
-                hint="Usage appears after people ask questions in Ask."
-              >
-                {days < 90 ? (
-                  <button
-                    type="button"
-                    onClick={() => go({ days: 90 }, true)}
-                    className="btn-whisper px-3 py-1 text-xs"
-                  >
-                    Show the last 90 days
-                  </button>
-                ) : null}
-              </EmptyState>
-            ) : null
-          ) : (
-            <>
-              <UsageKpis
-                totals={data.totals}
-                days={days}
-                personMode={userId !== null}
-                neverCitedOpen={neverCitedOpen}
-                neverCitedPanelId={NEVER_CITED_ID}
-                onToggleNeverCited={() => setNeverCitedOpen((open) => !open)}
-              />
-
-              <section aria-labelledby="most-cited-title" className="flex flex-col gap-3">
-                <div>
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_17rem]">
+            <section aria-labelledby="most-cited-title" className="flex min-w-0 flex-col gap-3">
+              <div>
+                <div className="flex items-center justify-between gap-3">
                   <h2
                     id="most-cited-title"
                     className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
                   >
-                    {userId === null ? "Most-cited sources" : "Sources their answers used"}
+                    Most-cited sources
                   </h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    A citation is an answer that quoted the source. Select a source to read the
-                    questions behind it.
-                  </p>
+                  <ColumnsMenu columns={columns} onChange={changeColumns} />
                 </div>
-                {data.sources.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                    No answer cited a source in this window. Every question was refused.
-                  </p>
-                ) : (
-                  <SourcesTable
-                    sources={data.sources}
-                    personMode={userId !== null}
-                    activeDocumentId={panel?.documentId ?? null}
-                    onOpen={(source) => openSource(source.documentId, source.title)}
-                  />
-                )}
-              </section>
-
-              {neverCitedOpen ? (
-                <NeverCitedList
-                  id={NEVER_CITED_ID}
-                  days={days}
-                  personMode={userId !== null}
-                  cited={data.sources}
-                  reloadKey={reloadKey}
+                <p className="mt-1 text-sm text-muted-foreground">
+                  A citation is an answer that quoted the source. Select a source to read the
+                  questions behind it.
+                </p>
+              </div>
+              {data.sources.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                  No answer cited a source in this window. Every question was refused.
+                </p>
+              ) : (
+                <SourcesTable
+                  sources={data.sources}
+                  columns={columns}
+                  activeDocumentId={panel?.documentId ?? null}
+                  onOpen={openSource}
                 />
-              ) : null}
+              )}
+            </section>
 
-              {userId === null ? (
-                <section aria-labelledby="by-person-title" className="flex flex-col gap-3">
-                  <div>
-                    <h2
-                      id="by-person-title"
-                      className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
-                    >
-                      By person
-                    </h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Select a name for that person's questions and the sources their answers
-                      used.
-                    </p>
-                  </div>
-                  <PeopleTable
-                    users={data.users}
-                    onSelectPerson={(id) => selectPerson(id)}
-                    onOpenPersonSource={(id, documentId, title) => {
-                      selectPerson(id);
-                      setPanel({ documentId, title, isLive: true });
-                    }}
-                  />
-                </section>
-              ) : null}
-            </>
-          )}
+            <NeverCitedList
+              id={NEVER_CITED_ID}
+              days={days}
+              cited={data.sources}
+              library={currentLibrary?.items ?? null}
+              libraryError={currentLibraryError}
+              categoryPaths={categoryPaths}
+            />
+          </div>
+
+          <section aria-labelledby="by-person-title" className="flex flex-col gap-3">
+            <div>
+              <h2
+                id="by-person-title"
+                className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
+              >
+                By person
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Select a name for that person's coaching view: their numbers against the team,
+                the sources they rely on, and their questions.
+              </p>
+            </div>
+            <PeopleTable
+              users={data.users}
+              onSelectPerson={(id) => selectPerson(id)}
+              onOpenPersonSource={(id, documentId, title) => {
+                if (title === null) return;
+                selectPerson(id);
+                setPanel({ documentId, title, isLive: true });
+              }}
+            />
+          </section>
         </div>
       )}
 
@@ -366,6 +446,7 @@ function AdminSourceUsageInner(): JSX.Element {
         <SourceQuestionsPanel
           source={panel}
           stats={panelStats}
+          categoryPath={formatCategoryPaths(categoryPaths.get(panel.documentId))}
           days={days}
           userId={userId}
           personName={selectedName}
@@ -384,7 +465,7 @@ function LoadingSkeleton(): JSX.Element {
     <div role="status" className="flex flex-col gap-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {[0, 1, 2, 3, 4].map((i) => (
-          <div key={i} className="skeleton h-20 rounded-lg" />
+          <div key={i} className="skeleton h-24 rounded-lg" />
         ))}
       </div>
       <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">

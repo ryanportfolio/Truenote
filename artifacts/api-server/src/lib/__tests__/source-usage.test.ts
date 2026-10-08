@@ -5,6 +5,7 @@ import {
   parseOptionalUuid,
   parseQuestionLimit,
   parseUsageWindowDays,
+  shapeUsageMatrix,
   takePage
 } from "../source-usage.js";
 
@@ -51,5 +52,39 @@ describe("source usage shaping", () => {
   it("splits a limit+1 fetch into a page and a truncated flag", () => {
     expect(takePage([1, 2, 3], 2)).toEqual({ items: [1, 2], truncated: true });
     expect(takePage([1, 2], 2)).toEqual({ items: [1, 2], truncated: false });
+  });
+});
+
+describe("source usage matrix", () => {
+  it("gives every row one count per column, zero for missing cells", () => {
+    expect(
+      shapeUsageMatrix(
+        ["doc-a", "doc-b"],
+        [
+          { userId: "u1", counts: [3, 1] },
+          { userId: "u2", counts: [2] },
+          { userId: "u3", counts: ["4", null, 9] }
+        ]
+      )
+    ).toEqual({
+      documentIds: ["doc-a", "doc-b"],
+      rows: [
+        { userId: "u1", counts: [3, 1] },
+        { userId: "u2", counts: [2, 0] },
+        { userId: "u3", counts: [4, 0] }
+      ]
+    });
+  });
+
+  it("returns empty columns and rows for an empty window", () => {
+    expect(shapeUsageMatrix([], [])).toEqual({ documentIds: [], rows: [] });
+    expect(shapeUsageMatrix(null, null)).toEqual({ documentIds: [], rows: [] });
+  });
+
+  it("keeps rows with no columns and drops rows without a user id", () => {
+    expect(shapeUsageMatrix([], [{ userId: "u1", counts: [] }, { counts: [1] }, null])).toEqual({
+      documentIds: [],
+      rows: [{ userId: "u1", counts: [] }]
+    });
   });
 });

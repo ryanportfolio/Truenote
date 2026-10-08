@@ -1,91 +1,72 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { RelativeTime } from "@/components/RelativeTime";
-import { listKbDocuments } from "@/lib/api";
-import { neverCitedDocuments, plural } from "@/lib/sourceUsage";
+import { ArrowRight } from "lucide-react";
+import { formatCategoryPaths, neverCitedDocuments } from "@/lib/sourceUsage";
 import type { KbDocumentListItem, SourceUsageSource } from "@/types/api";
-import { ErrorAlert } from "./shared";
+import { CategoryPath, ErrorAlert } from "./shared";
 
 interface NeverCitedListProps {
   id: string;
   days: number;
-  personMode: boolean;
   cited: readonly SourceUsageSource[];
-  reloadKey: number;
+  /** The program's library as this manager sees it; null while loading. */
+  library: readonly KbDocumentListItem[] | null;
+  libraryError: string | null;
+  categoryPaths: ReadonlyMap<string, string[]>;
 }
 
+const INITIAL_ITEMS = 8;
+
 /**
- * Live sources no answer cited in the window. The usage endpoint returns
- * only the count, so the list is the library minus the cited sources; the
- * library request runs only when a manager opens this list.
+ * Side card: live sources no answer cited in the window. The usage endpoint
+ * returns only the count, so the list is the library minus the cited sources.
  */
 export function NeverCitedList({
   id,
   days,
-  personMode,
   cited,
-  reloadKey
+  library,
+  libraryError,
+  categoryPaths
 }: NeverCitedListProps): JSX.Element {
-  const [library, setLibrary] = useState<KbDocumentListItem[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLibrary(null);
-    setError(null);
-    listKbDocuments()
-      .then((result) => {
-        if (!cancelled) setLibrary(result.items);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not load the sources.");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
-
+  const [showAll, setShowAll] = useState(false);
   const result = useMemo(
     () => (library ? neverCitedDocuments(library, cited) : null),
     [library, cited]
   );
+  const items = result ? (showAll ? result.items : result.items.slice(0, INITIAL_ITEMS)) : [];
 
   return (
-    <section id={id} aria-labelledby={`${id}-title`} className="flex flex-col gap-3">
+    <section
+      id={id}
+      aria-labelledby={`${id}-title`}
+      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5 shadow-card"
+    >
       <div>
         <h2
           id={`${id}-title`}
-          className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
+          tabIndex={-1}
+          className="rounded-sm text-base font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
-          Never cited
+          Never cited{result ? ` (${result.items.length})` : ""}
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {personMode
-            ? `None of this person's answers in the last ${days} days used these sources.`
-            : `No answer in the last ${days} days used these sources.`}{" "}
-          They may be out of date, hard to match, or not needed.
+        <p className="mt-1 text-xs text-muted-foreground">
+          Live sources no answer used in the last {days} days. They may be out of date, hard to
+          match, or not needed.
         </p>
       </div>
 
-      {error ? (
-        <ErrorAlert message={error} />
+      {libraryError ? (
+        <ErrorAlert message={libraryError} />
       ) : !result ? (
-        <div role="status" className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              className="flex items-center justify-between gap-4 border-t border-border px-3 py-3 first:border-t-0"
-            >
-              <div className="skeleton h-4 w-64" />
-              <div className="skeleton h-4 w-24" />
-            </div>
+        <div role="status" className="flex flex-col gap-3">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="skeleton h-4 w-full" />
           ))}
           <span className="sr-only">Loading sources…</span>
         </div>
       ) : result.items.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Every source you can see was cited at least once.
         </p>
       ) : (
@@ -96,32 +77,38 @@ export function NeverCitedList({
               here.
             </p>
           ) : null}
-          <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card shadow-card">
-            {result.items.map((doc) => (
-              <li
-                key={doc.documentId}
-                className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 py-2 text-sm"
-              >
+          <ul className="flex flex-col divide-y divide-border border-y border-border">
+            {items.map((doc) => (
+              <li key={doc.documentId} className="min-w-0 py-2 text-sm">
                 <Link
                   href={`/kb/${encodeURIComponent(doc.documentId)}`}
-                  className="font-medium underline-offset-2 hover:underline"
+                  className="block rounded-sm underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                   {doc.title}
                 </Link>
-                <span className="text-xs text-muted-foreground">
-                  {doc.createdAt ? (
-                    <>
-                      Added <RelativeTime iso={doc.createdAt} />
-                      {" · "}
-                    </>
-                  ) : null}
-                  {plural(doc.viewCount, "view", "views")} in 30 days
-                </span>
+                <CategoryPath path={formatCategoryPaths(categoryPaths.get(doc.documentId))} />
               </li>
             ))}
           </ul>
+          {result.items.length > INITIAL_ITEMS ? (
+            <button
+              type="button"
+              aria-expanded={showAll}
+              onClick={() => setShowAll((value) => !value)}
+              className="btn-whisper self-start px-3 py-1 text-xs"
+            >
+              {showAll ? `Show the first ${INITIAL_ITEMS}` : `Show all ${result.items.length}`}
+            </button>
+          ) : null}
         </>
       )}
+      <Link
+        href="/kb"
+        className="inline-flex items-center gap-1 self-start rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      >
+        Review in Sources
+        <ArrowRight className="h-4 w-4" aria-hidden />
+      </Link>
     </section>
   );
 }
