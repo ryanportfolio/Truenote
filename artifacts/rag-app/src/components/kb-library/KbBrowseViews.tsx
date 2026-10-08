@@ -179,7 +179,12 @@ function Cabinet({ visible, search }: { visible: KbDocumentListItem[]; search: s
   );
 }
 
-/** An open folder: breadcrumb, title and count, subfolder chips, then its sources (folders inside included). */
+/**
+ * An open folder: breadcrumb, title, folder chips, then its sources (folders
+ * inside included). The chips list the folder's subfolders; inside a
+ * subfolder with none of its own they list its siblings, so the other
+ * subfolders stay one click away and "All" goes back to the parent.
+ */
 function OpenFolder({
   scope,
   visible,
@@ -194,7 +199,7 @@ function OpenFolder({
   const rows = listOrder(docs, sort, node, lookup.tree, Boolean(node && node.children.length > 0));
   const ancestors = node ? ancestorsOf(node, lookup.tree) : [];
   const name = node ? node.category.name : "Not in a folder";
-
+  const chipParent = node && node.children.length > 0 ? node : ancestors[ancestors.length - 1] ?? null;
   return (
     <section aria-labelledby={headingId} data-kb-open-folder={scope} className="flex flex-col gap-3">
       <nav aria-label="Breadcrumb">
@@ -234,34 +239,33 @@ function OpenFolder({
             {name}
           </h2>
         </div>
-        <p className="text-sm text-muted-foreground">
-          {filtering
-            ? `${docs.length} matching ${docs.length === 1 ? "source" : "sources"}`
-            : `${docs.length} ${docs.length === 1 ? "source" : "sources"}`}
-        </p>
       </div>
-      {node && node.children.length > 0 ? (
-        <nav aria-label={`Folders in ${name}`}>
+      {chipParent ? (
+        <nav aria-label={`Folders in ${chipParent.category.name}`}>
           <ul className="flex flex-wrap gap-2">
-            <li>
-              <span
-                aria-current="page"
-                className="btn-base border border-primary bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground"
-              >
-                All
-              </span>
-            </li>
-            {node.children.map((child) => (
-              <li key={child.category.id}>
-                <Link
-                  href={folderHref(search, child.category.id)}
-                  data-kb-subfolder={child.category.id}
-                  className="btn-whisper px-4 py-1.5 text-sm"
-                >
-                  {child.category.name}
-                </Link>
-              </li>
-            ))}
+            {[{ id: chipParent.category.id, label: "All" }, ...chipParent.children.map((c) => ({ id: c.category.id, label: c.category.name }))].map(
+              (chip) => (
+                <li key={chip.id}>
+                  {chip.id === scope ? (
+                    <span
+                      aria-current="page"
+                      data-kb-subfolder={chip.label === "All" ? undefined : chip.id}
+                      className="btn-base border border-primary bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground"
+                    >
+                      {chip.label}
+                    </span>
+                  ) : (
+                    <Link
+                      href={folderHref(search, chip.id)}
+                      data-kb-subfolder={chip.label === "All" ? undefined : chip.id}
+                      className="btn-whisper px-4 py-1.5 text-sm"
+                    >
+                      {chip.label}
+                    </Link>
+                  )}
+                </li>
+              )
+            )}
           </ul>
         </nav>
       ) : null}
