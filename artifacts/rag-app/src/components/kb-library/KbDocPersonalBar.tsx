@@ -1,8 +1,8 @@
 import { useRef, useState, type RefObject } from "react";
 import { Lock, NotebookPen, Pencil, Star, Tag } from "lucide-react";
 import { setKbNote, setKbPin, setKbSourceColor } from "@/lib/api";
-import { applyUserState } from "@/lib/kbLibrary";
-import { patchKbLibraryCache } from "@/lib/kbLibraryCache";
+import { applyUserFields } from "@/lib/kbLibrary";
+import { currentKbLibraryCacheKey, patchKbLibraryCache } from "@/lib/kbLibraryCache";
 import { kbColorLabel } from "@/lib/kbLibraryColors";
 import { RelativeTime } from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
@@ -51,13 +51,16 @@ export function useKbDocPersonal(documentId: string, initial: Personal): KbDocPe
   async function togglePin(): Promise<void> {
     const before = item.pinnedAt;
     const version = ++pinVersion.current;
+    const cacheKey = currentKbLibraryCacheKey();
     const next = item.pinnedAt === null;
     setError(null);
     setItem((prev) => ({ ...prev, pinnedAt: next ? new Date().toISOString() : null }));
     try {
       const saved = await setKbPin(documentId, next);
-      patchKbLibraryCache((d) => applyUserState(d, saved));
-      if (version === pinVersion.current) setItem((prev) => ({ ...prev, pinnedAt: saved.pinnedAt }));
+      // An older answer arriving after a newer toggle must not win anywhere.
+      if (version !== pinVersion.current) return;
+      patchKbLibraryCache(cacheKey, (d) => applyUserFields(d, documentId, { pinnedAt: saved.pinnedAt }));
+      setItem((prev) => ({ ...prev, pinnedAt: saved.pinnedAt }));
     } catch (err) {
       if (version === pinVersion.current) setItem((prev) => ({ ...prev, pinnedAt: before }));
       setError(err instanceof Error ? err.message : "The shortcut didn't save. Try again.");
@@ -68,12 +71,14 @@ export function useKbDocPersonal(documentId: string, initial: Personal): KbDocPe
     if (color === item.myColor) return;
     const before = item.myColor;
     const version = ++colorVersion.current;
+    const cacheKey = currentKbLibraryCacheKey();
     setError(null);
     setItem((prev) => ({ ...prev, myColor: color }));
     try {
       const saved = await setKbSourceColor(documentId, color);
-      patchKbLibraryCache((d) => applyUserState(d, saved));
-      if (version === colorVersion.current) setItem((prev) => ({ ...prev, myColor: saved.color }));
+      if (version !== colorVersion.current) return;
+      patchKbLibraryCache(cacheKey, (d) => applyUserFields(d, documentId, { myColor: saved.color }));
+      setItem((prev) => ({ ...prev, myColor: saved.color }));
     } catch (err) {
       if (version === colorVersion.current) setItem((prev) => ({ ...prev, myColor: before }));
       setError(err instanceof Error ? err.message : "The label didn't save. Try again.");
@@ -96,9 +101,12 @@ export function useKbDocPersonal(documentId: string, initial: Personal): KbDocPe
   }
 
   async function saveNote(note: string): Promise<ActionResult> {
+    const cacheKey = currentKbLibraryCacheKey();
     try {
       const saved = await setKbNote(documentId, note);
-      patchKbLibraryCache((d) => applyUserState(d, saved));
+      patchKbLibraryCache(cacheKey, (d) =>
+        applyUserFields(d, documentId, { note: saved.note, noteUpdatedAt: saved.noteUpdatedAt })
+      );
       // Take only the note: a shortcut or label change may still be in flight.
       setItem((prev) => ({ ...prev, note: saved.note, noteUpdatedAt: saved.noteUpdatedAt }));
       stopEditing();

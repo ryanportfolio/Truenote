@@ -33,7 +33,7 @@ import {
   applySourceColor,
   applyTagDelete,
   applyTagUpsert,
-  applyUserState,
+  applyUserFields,
   buildCategoryTree,
   insertRelative,
   KB_MAX_TEAM_PINS,
@@ -63,9 +63,11 @@ function errorMessage(err: unknown): string {
 
 /**
  * Library state plus every mutation the Sources page can make. Mutations are
- * optimistic: the local state changes first, then the server call runs. On
+ * optimistic: the local state changes first, then the server call runs. A
+ * server answer is applied only when no newer change started since. On
  * failure the previous state comes back when nothing else changed in the
- * meantime; otherwise the list reloads so it matches the server again.
+ * meantime, and the list reloads either way: a change made of several
+ * requests may have saved some of them.
  * Dialog flows pass `report: false` and show the returned message inline.
  * Every change is written through to the shared library cache under
  * `cacheKey`, so the reader and a return visit see it.
@@ -110,12 +112,13 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       if (options.report !== false) setActionError(null);
       try {
         const reconcile = await call();
-        if (reconcile) commit(reconcile(dataRef.current));
+        // A newer change already set the state it wants; an older answer must not undo it.
+        if (reconcile && versionRef.current === version) commit(reconcile(dataRef.current));
         if (options.success) setAnnouncement(options.success);
         return { ok: true };
       } catch (err) {
         if (versionRef.current === version) commit(before);
-        else void refresh();
+        void refresh();
         const message = errorMessage(err);
         if (options.report !== false) setActionError(message);
         return { ok: false, message };
@@ -140,7 +143,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
         (d) => applyPin(d, documentId, pinned),
         async () => {
           const state = await setKbPin(documentId, pinned);
-          return (d: Data) => applyUserState(d, state);
+          return (d: Data) => applyUserFields(d, documentId, { pinnedAt: state.pinnedAt });
         },
         { success: pinned ? `Added ${doc.title} to your shortcuts.` : `Removed ${doc.title} from your shortcuts.` }
       );
@@ -152,7 +155,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
     async (documentId: string, note: string): Promise<ActionResult> => {
       try {
         const state = await setKbNote(documentId, note);
-        commit(applyUserState(dataRef.current, state));
+        commit(applyUserFields(dataRef.current, documentId, { note: state.note, noteUpdatedAt: state.noteUpdatedAt }));
         setAnnouncement(state.note ? "Note saved." : "Note deleted.");
         return { ok: true };
       } catch (err) {
@@ -171,7 +174,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
         (d) => applySourceColor(d, documentId, color),
         async () => {
           const state = await setKbSourceColor(documentId, color);
-          return (d: Data) => applyUserState(d, state);
+          return (d: Data) => applyUserFields(d, documentId, { myColor: state.color });
         },
         {
           success: color

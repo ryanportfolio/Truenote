@@ -445,18 +445,21 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
   const heatmapEmpty = !heatmap || heatmap.columns.length === 0 || heatmap.rows.length === 0;
   const attention = useMemo(() => {
     if (!data || userId !== null) return [];
-    // The library (what this manager can see) names the unused sources; without
-    // it the card keeps the server count and links to the whole library.
+    // The library (what this manager can see) names the unused sources. When
+    // the cited list was capped it cannot prove a source unused, so the card
+    // keeps the server count and links to the whole library, as it does
+    // without the library.
     const unused = currentLibrary ? neverCitedDocuments(currentLibrary.items, data.sources) : null;
     return attentionCards({
       sources: data.sources,
       users: data.users,
       answered: data.totals.answered,
-      neverUsed: unused
-        ? { count: unused.items.length, documentIds: unused.items.map((doc) => doc.documentId) }
-        : currentLibraryError
-          ? { count: data.totals.sourcesNeverCited, documentIds: [] }
-          : null
+      neverUsed:
+        unused && unused.complete
+          ? { count: unused.items.length, documentIds: unused.items.map((doc) => doc.documentId) }
+          : unused || currentLibraryError
+            ? { count: data.totals.sourcesNeverCited, documentIds: [] }
+            : null
     });
   }, [data, userId, currentLibrary, currentLibraryError]);
 

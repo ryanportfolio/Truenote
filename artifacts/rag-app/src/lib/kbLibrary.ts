@@ -931,6 +931,15 @@ export function applyUserState(data: Data, state: KbSourceUserState): Data {
   }));
 }
 
+/** Set only the personal fields one change owns, so concurrent changes never undo each other. */
+export function applyUserFields(
+  data: Data,
+  documentId: string,
+  fields: Partial<Pick<KbDocumentListItem, "pinnedAt" | "note" | "noteUpdatedAt" | "myColor">>
+): Data {
+  return mapItem(data, documentId, (d) => ({ ...d, ...fields }));
+}
+
 /** The user just opened this source in the reader. */
 export function applyOpened(data: Data, documentId: string, at: string): Data {
   return mapItem(data, documentId, (d) => ({ ...d, lastViewedByMeAt: at }));

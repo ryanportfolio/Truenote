@@ -906,9 +906,9 @@ insightsRouter.get("/source-usage/questions", async (req, res, next) => {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    const userId = await resolveUsageUser(req.query["userId"], programId);
+    const person = await resolveUsageUser(req.query["userId"], programId);
     const documentId = parseOptionalUuid(req.query["documentId"]);
-    if (userId === "not_found" || documentId === "invalid") {
+    if (person === "not_found" || documentId === "invalid") {
       res.status(404).json({ error: "Not found" });
       return;
     }
@@ -944,7 +944,7 @@ insightsRouter.get("/source-usage/questions", async (req, res, next) => {
         FROM query_log AS ql
         WHERE ql.program_id = ${programId}::uuid
           AND ql.created_at > now() - make_interval(days => ${windowDays})
-          ${userId ? sql`AND ql.user_id = ${userId}` : sql``}
+          ${person ? sql`AND ql.user_id = ${person.userId}` : sql``}
           ${
             documentId
               ? sql`AND EXISTS (

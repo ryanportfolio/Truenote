@@ -23,7 +23,12 @@ import {
   relatedSources,
   type KbTree
 } from "@/lib/kbLibrary";
-import { kbLibraryCacheKey, loadKbLibrary, patchKbLibraryCache } from "@/lib/kbLibraryCache";
+import {
+  currentKbLibraryCacheKey,
+  kbLibraryCacheKey,
+  loadKbLibrary,
+  patchKbLibraryCache
+} from "@/lib/kbLibraryCache";
 import { KB_LIBRARY_COLORS } from "@/lib/kbLibraryColors";
 import { markdownNodeIsCited } from "@/lib/citationPassage";
 import { cn } from "@/lib/utils";
@@ -72,6 +77,7 @@ export function KbDocumentPage({ documentId }: { documentId: string }): JSX.Elem
     let disposed = false;
     async function load(): Promise<void> {
       const generation = ++loadGenerationRef.current;
+      const cacheKey = currentKbLibraryCacheKey();
       setState({ status: "loading" });
       try {
         const doc = await getKbDocument(documentId, citationRequest ?? undefined);
@@ -79,7 +85,7 @@ export function KbDocumentPage({ documentId }: { documentId: string }): JSX.Elem
         // shelf on Sources lists it without waiting for the cache to expire.
         if (doc.isCurrentVersion) {
           const at = new Date().toISOString();
-          patchKbLibraryCache((d) => applyOpened(d, doc.documentId, at));
+          patchKbLibraryCache(cacheKey, (d) => applyOpened(d, doc.documentId, at));
         }
         if (!disposed && generation === loadGenerationRef.current) {
           setState({ status: "ready", doc });
@@ -170,10 +176,19 @@ function useLibraryForReader(
   documentId: string
 ): [KbDocumentListResponse | null, (apply: (data: KbDocumentListResponse) => KbDocumentListResponse) => void] {
   const [library, setLibrary] = useState<KbDocumentListResponse | null>(null);
+  /** The cache key of the library shown here; changes only ever patch that one. */
+  const cacheKeyRef = useRef<string | null>(null);
   useEffect(() => {
     let disposed = false;
     fetchMe()
-      .then((user) => (user ? loadKbLibrary(kbLibraryCacheKey(user.id)) : null))
+      .then((user) => {
+        if (!user) return null;
+        const key = kbLibraryCacheKey(user.id);
+        return loadKbLibrary(key).then((response) => {
+          if (!disposed) cacheKeyRef.current = key;
+          return response;
+        });
+      })
       .then((response) => {
         if (!disposed && response && !response.noProgramSelected) setLibrary(response);
       })
@@ -184,7 +199,7 @@ function useLibraryForReader(
   }, [documentId]);
   function update(apply: (data: KbDocumentListResponse) => KbDocumentListResponse): void {
     setLibrary((prev) => (prev ? apply(prev) : prev));
-    patchKbLibraryCache(apply);
+    patchKbLibraryCache(cacheKeyRef.current, apply);
   }
   return [library, update];
 }

@@ -52,9 +52,19 @@ export function updateKbLibraryCache(key: string, data: Data): void {
   if (entry && entry.key === key && entry.data) entry = { ...entry, data };
 }
 
-/** Apply a change to the cached library, whoever it belongs to (used by the reader). */
-export function patchKbLibraryCache(apply: (data: Data) => Data): void {
-  if (entry?.data) entry = { ...entry, data: apply(entry.data) };
+/**
+ * The key of the library cached right now, or null. A change that finishes
+ * later reads this when it starts and passes it to patchKbLibraryCache, so it
+ * never lands in a library that was replaced in the meantime (another user
+ * signed in, or the program changed).
+ */
+export function currentKbLibraryCacheKey(): string | null {
+  return entry?.data ? entry.key : null;
+}
+
+/** Apply a change to the cached library when it still belongs to `key` (used by the reader). */
+export function patchKbLibraryCache(key: string | null, apply: (data: Data) => Data): void {
+  if (key !== null && entry?.data && entry.key === key) entry = { ...entry, data: apply(entry.data) };
 }
 
 export function invalidateKbLibraryCache(): void {
