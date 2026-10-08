@@ -532,18 +532,11 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
         )
       ) : (
         <header className="flex flex-col gap-4">
-          <div>
-            <h1
-              id="source-usage-title"
-              tabIndex={-1}
-              className="rounded-sm font-display text-3xl font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              Source usage
-            </h1>
-            <p className="mt-1 text-base text-muted-foreground">
-              See which sources help your team.
-            </p>
-          </div>
+          {/* The sidebar already says where you are; the heading stays for
+              screen readers and as the focus target when leaving a person. */}
+          <h1 id="source-usage-title" tabIndex={-1} className="sr-only">
+            Source usage
+          </h1>
           {noProgramSelected ? null : (
             <div className="flex flex-wrap items-center gap-3">{controls}</div>
           )}
@@ -622,10 +615,6 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
                   />
                 </button>
               </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                All the numbers, the full sources table, each person's results and sources nobody
-                used.
-              </p>
             </div>
 
             {moreOpen ? (

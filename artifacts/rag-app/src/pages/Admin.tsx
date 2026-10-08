@@ -80,13 +80,8 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
-      <header>
-        <h1 className="font-display text-3xl font-semibold tracking-tight">Documents</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Add the documents reps need during calls. Check the parsed text before it can answer
-          questions.
-        </p>
-      </header>
+      {/* The sidebar already says where you are; the heading stays for screen readers. */}
+      <h1 className="sr-only">Documents</h1>
       {!controlsReady ? (
         <div
           role="alert"

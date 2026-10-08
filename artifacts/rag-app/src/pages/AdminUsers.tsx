@@ -170,14 +170,8 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
-      <header>
-        <h1 className="font-display text-3xl font-semibold tracking-tight">Users</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {user.role === "super_user"
-            ? "Manage people across programs. Choose a program above to narrow this list."
-            : "Manage the people who use this program."}
-        </p>
-      </header>
+      {/* The sidebar already says where you are; the heading stays for screen readers. */}
+      <h1 className="sr-only">Users</h1>
 
       {credentialBanner ? (
         <CredentialBanner

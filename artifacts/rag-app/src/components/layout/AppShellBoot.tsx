@@ -83,16 +83,20 @@ function KnowledgeRouteBoot({ document }: { document: boolean }): JSX.Element {
 }
 
 const ADMIN_TITLES: Record<string, string> = {
-  "/admin/documents": "Documents",
-  "/admin/gaps": "Content gaps",
-  "/admin/insights": "Content gaps",
-  "/admin/sources": "Source usage",
   "/admin/model-routing": "Model routing",
   "/admin/evaluations": "Evaluation Center",
   "/admin/security": "Security",
-  "/admin/programs": "Programs",
-  "/admin/users": "Users"
+  "/admin/programs": "Programs"
 };
+
+/** Pages that show no visible title (the sidebar names them), so their placeholder shows none either. */
+const UNTITLED_ADMIN_PATHS = new Set([
+  "/admin/documents",
+  "/admin/gaps",
+  "/admin/insights",
+  "/admin/sources",
+  "/admin/users"
+]);
 
 function AdminRouteBoot({ path }: { path: string }): JSX.Element {
   const compact = path === "/admin/programs" || path === "/admin/model-routing";
@@ -102,15 +106,17 @@ function AdminRouteBoot({ path }: { path: string }): JSX.Element {
         compact ? "max-w-3xl" : "max-w-5xl"
       }`}
     >
-      <header className="flex items-start justify-between gap-4">
-        <div className="w-full">
-          <h1 className="font-display text-3xl font-semibold tracking-tight">
-            {ADMIN_TITLES[path] ?? "Truenote"}
-          </h1>
-          <div className="skeleton mt-2 h-4 w-full max-w-lg" />
-        </div>
-        <div className="skeleton h-10 w-32 shrink-0 rounded-full" />
-      </header>
+      {UNTITLED_ADMIN_PATHS.has(path) ? null : (
+        <header className="flex items-start justify-between gap-4">
+          <div className="w-full">
+            <h1 className="font-display text-3xl font-semibold tracking-tight">
+              {ADMIN_TITLES[path] ?? "Truenote"}
+            </h1>
+            <div className="skeleton mt-2 h-4 w-full max-w-lg" />
+          </div>
+          <div className="skeleton h-10 w-32 shrink-0 rounded-full" />
+        </header>
+      )}
       <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
         <div className="flex items-center gap-6 border-b border-border px-5 py-4">
           <div className="skeleton h-4 w-48" />
