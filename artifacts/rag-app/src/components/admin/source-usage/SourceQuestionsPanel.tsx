@@ -48,9 +48,6 @@ const GROUPS_PER_STEP = 10;
 
 type TabKey = "all" | "negative" | "refused";
 
-/** Elements the page marks as focus targets when the opener is gone. */
-const FALLBACK_FOCUS_IDS = ["person-focus-title", "source-usage-title"];
-
 /** Controls that take focus themselves when pressed. */
 const FOCUSABLE_SELECTOR = "a[href], button, input, select, textarea, summary, [tabindex]";
 
@@ -76,13 +73,17 @@ function restoreFocus(opener: HTMLElement | null, documentIds: readonly string[]
       return;
     }
   }
-  for (const id of FALLBACK_FOCUS_IDS) {
-    const el = document.getElementById(id);
-    if (el) {
-      el.focus(options);
-      return;
-    }
-  }
+  // The overview's title is screen-reader-only, so its first control (which
+  // shows a focus ring) comes before it.
+  const control = document.querySelector<HTMLElement>(
+    "[data-usage-controls] button, [data-usage-controls] select, [data-usage-controls] a[href]"
+  );
+  const fallback = [
+    document.getElementById("person-focus-title"),
+    control,
+    document.getElementById("source-usage-title")
+  ].find((el): el is HTMLElement => el !== null);
+  fallback?.focus(options);
 }
 
 /**

@@ -23,8 +23,8 @@ const NAV: ReadonlyArray<{
   { href: "/chat", label: "Ask", icon: MessageSquare, minRole: "csr" },
   { href: "/kb", label: "Sources", icon: BookOpen, minRole: "csr" },
   { href: "/admin/documents", label: "Documents", icon: FileText, minRole: "manager" },
-  { href: "/admin/gaps", label: "Content gaps", icon: Flag, minRole: "manager" },
-  { href: "/admin/sources", label: "Source usage", icon: BarChart3, minRole: "manager" },
+  { href: "/admin/gaps", label: "Gaps", icon: Flag, minRole: "manager" },
+  { href: "/admin/sources", label: "Usage", icon: BarChart3, minRole: "manager" },
   { href: "/admin/users", label: "Users", icon: Users, minRole: "manager" },
   { href: "/admin/programs", label: "Programs", icon: Building2, minRole: "super_user" },
   { href: "/admin/observability", label: "Timing", icon: Activity, minRole: "super_user" },
@@ -54,10 +54,10 @@ export function Sidebar({ user, onNavigateIntent }: SidebarProps): JSX.Element {
                 onFocus={() => onNavigateIntent(href)}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "sidebar-link flex items-center justify-center gap-2.5 px-2 py-2.5 text-base md:justify-start md:px-3",
+                  "sidebar-link flex items-center justify-center gap-2.5 px-2 py-2.5 font-display text-[1.375rem] leading-7 md:justify-start md:px-3",
                   // Active = tint + weight: color is never the sole channel.
                   active
-                    ? "sidebar-link-active font-medium text-primary"
+                    ? "sidebar-link-active font-semibold text-primary"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >

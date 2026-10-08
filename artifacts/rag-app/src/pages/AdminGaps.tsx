@@ -149,13 +149,8 @@ function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
-      <header>
-        <h1 className="font-display text-3xl font-semibold tracking-tight">Content gaps</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Questions the documents did not answer. Flags and refusals appear here. Add the missing
-          document to close a gap.
-        </p>
-      </header>
+      {/* The sidebar already says where you are; the heading stays for screen readers. */}
+      <h1 className="sr-only">Content gaps</h1>
 
       {noProgramSelected ? (
         <div className="rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
@@ -236,9 +231,10 @@ function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
                     query.
                   </p>
                 ) : (
-                  <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
+                  <div data-gaps-table className="overflow-clip rounded-lg border border-border bg-card shadow-card">
                     <table className="w-full text-sm">
-                      <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      {/* Stays in view while the list scrolls. overflow-clip (not hidden) on the card keeps the page as the sticky scroller. */}
+                      <thead className="sticky top-0 z-10 bg-card text-left text-xs uppercase tracking-wide text-muted-foreground shadow-[0_1px_0_oklch(var(--border))]">
                         <tr>
                           <th className="px-3 py-2 font-medium">Question</th>
                           <th className="px-3 py-2 text-right font-medium">Asked</th>

@@ -33,6 +33,7 @@ import type {
   SourceUsageSuggestion,
   SourceUsageUser
 } from "@/types/api";
+import { cn } from "@/lib/utils";
 import { QuestionList } from "./QuestionList";
 import { CategoryPath, ErrorAlert, InlineBar, RoleBadge, SourceOpener } from "./shared";
 
@@ -274,17 +275,12 @@ export function PersonFocus({
           </p>
 
           {/*
-            Cards size to their content. From lg the relied-on list sits under
-            Going well in the first column, so its top rows share the first
-            screen with Talk about; the DOM keeps the reading order.
+            Reads top to bottom: the summary band across the full width, then
+            Talk about beside Suggest these sources, then the relied-on list
+            across the full width (beside Talk about when there is nothing to
+            suggest). The DOM keeps the reading order.
           */}
-          <div
-            className={
-              suggestions.length > 0
-                ? "grid items-start gap-4 lg:grid-cols-3"
-                : "grid items-start gap-4 lg:grid-cols-2"
-            }
-          >
+          <div className="grid items-start gap-4 lg:grid-cols-2">
             <GoingWell
               totals={totals}
               negative={negativeCount}
@@ -307,6 +303,7 @@ export function PersonFocus({
               <SuggestSources name={name} suggestions={suggestions} pathOf={pathOf} />
             ) : null}
             <ReliesOn
+              fullWidth={suggestions.length > 0}
               shortName={shortName}
               days={days}
               sources={sources}
@@ -436,7 +433,7 @@ function GoingWell({
   return (
     <section
       aria-labelledby="going-well-title"
-      className={`${CARD_CLASS} lg:col-start-1 lg:row-start-1`}
+      className={`${CARD_CLASS} lg:col-span-2`}
       data-coaching-card={goingWell ? "going-well" : "at-a-glance"}
     >
       <CardTitle
@@ -455,7 +452,8 @@ function GoingWell({
       >
         {goingWell ? "Going well" : "At a glance"}
       </CardTitle>
-      <div>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-8">
+      <div className="min-w-0 flex-1">
         <p className="text-4xl font-semibold tabular-nums tracking-tight">{rate}</p>
         <p className="mt-1 text-sm">
           Answered {rate} of questions
@@ -479,7 +477,7 @@ function GoingWell({
             : ""}
         </p>
       </div>
-      <div className="border-t border-border pt-4">
+      <div className="border-t border-border pt-4 lg:w-80 lg:shrink-0 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
         <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Most-used source
         </h3>
@@ -502,6 +500,7 @@ function GoingWell({
             No answer used a source in this period.
           </p>
         )}
+      </div>
       </div>
     </section>
   );
@@ -529,7 +528,7 @@ function TalkAbout({
   return (
     <section
       aria-labelledby="talk-about-title"
-      className={`${CARD_CLASS} lg:col-start-2 lg:row-span-2 lg:row-start-1`}
+      className={CARD_CLASS}
       data-coaching-card="talk-about"
     >
       <CardTitle
@@ -671,7 +670,7 @@ function SuggestSources({
   return (
     <section
       aria-labelledby="suggest-title"
-      className={`${CARD_CLASS} lg:col-start-3 lg:row-span-2 lg:row-start-1`}
+      className={CARD_CLASS}
       data-coaching-card="suggest"
     >
       <CardTitle
@@ -781,12 +780,15 @@ function NoQuestions({
 }
 
 function ReliesOn({
+  fullWidth,
   shortName,
   days,
   sources,
   categoryPaths,
   onOpenSource
 }: {
+  /** Span both columns from lg (when Suggest these sources takes the second). */
+  fullWidth: boolean;
   shortName: string;
   days: number;
   sources: readonly SourceUsageSource[];
@@ -799,7 +801,7 @@ function ReliesOn({
   return (
     <section
       aria-labelledby="relies-on-title"
-      className={`${CARD_CLASS} lg:col-start-1 lg:row-start-2`}
+      className={cn(CARD_CLASS, fullWidth && "lg:col-span-2")}
       data-relies-on=""
     >
       <div>
@@ -815,7 +817,7 @@ function ReliesOn({
           No answer used a source in this period. Every question went without an answer.
         </p>
       ) : (
-        <ol className="grid gap-x-8 gap-y-3 md:grid-cols-2 lg:grid-cols-1">
+        <ol className={cn("grid gap-x-8 gap-y-3 md:grid-cols-2", !fullWidth && "lg:grid-cols-1")}>
           {rows.map((source) => (
             <li key={source.documentId} className="min-w-0">
               <div className="flex items-baseline justify-between gap-3">

@@ -126,6 +126,20 @@ function focusIsLost(): boolean {
   return !active || active === document.body || !active.isConnected;
 }
 
+/**
+ * Move focus to the top of the overview: its first control (the date range),
+ * which shows a focus ring. The page title is screen-reader-only, so it is
+ * only the fallback (no program selected, so no controls).
+ */
+function focusOverviewStart(): boolean {
+  const target =
+    document.querySelector<HTMLElement>(
+      "[data-usage-controls] button, [data-usage-controls] select, [data-usage-controls] a[href]"
+    ) ?? document.getElementById("source-usage-title");
+  target?.focus({ preventScroll: true });
+  return target !== null;
+}
+
 function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element {
   const search = useSearch();
   const [, navigate] = useLocation();
@@ -317,16 +331,15 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
         row.focus({ preventScroll: point !== null });
         if (!point) row.scrollIntoView({ block: "center" });
       } else {
-        document.getElementById("source-usage-title")?.focus({ preventScroll: true });
+        focusOverviewStart();
       }
     });
   }, [data, userId]);
 
   const retry = useCallback(() => {
-    (
-      document.getElementById("source-usage-title") ??
-      document.getElementById("person-focus-title")
-    )?.focus({ preventScroll: true });
+    if (!focusOverviewStart()) {
+      document.getElementById("person-focus-title")?.focus({ preventScroll: true });
+    }
     setReloadKey((current) => current + 1);
   }, []);
 
@@ -532,20 +545,13 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
         )
       ) : (
         <header className="flex flex-col gap-4">
-          <div>
-            <h1
-              id="source-usage-title"
-              tabIndex={-1}
-              className="rounded-sm font-display text-3xl font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              Source usage
-            </h1>
-            <p className="mt-1 text-base text-muted-foreground">
-              See which sources help your team.
-            </p>
-          </div>
+          {/* The sidebar already says where you are; the heading stays for
+              screen readers. Focus handoffs go to the first control instead. */}
+          <h1 id="source-usage-title" tabIndex={-1} className="sr-only">
+            Source usage
+          </h1>
           {noProgramSelected ? null : (
-            <div className="flex flex-wrap items-center gap-3">{controls}</div>
+            <div data-usage-controls className="flex flex-wrap items-center gap-3">{controls}</div>
           )}
         </header>
       )}
@@ -622,10 +628,6 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
                   />
                 </button>
               </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                All the numbers, the full sources table, each person's results and sources nobody
-                used.
-              </p>
             </div>
 
             {moreOpen ? (
@@ -652,7 +654,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
                           id="most-cited-title"
                           className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
                         >
-                          {view === "heatmap" ? "Answers by person and source" : "All sources"}
+                          {view === "heatmap" ? "Who uses which sources" : "All sources"}
                         </h3>
                         <div className="flex flex-wrap items-center gap-2">
                           <SourcesViewSwitch view={view} onChange={changeView} />
@@ -661,8 +663,9 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
                           ) : null}
                         </div>
                       </div>
+                      {/* The heatmap help is hidden on screen; it is still read out as the grid's description. */}
                       {view === "heatmap" ? (
-                        <p id="heatmap-help" className="mt-1 text-sm text-muted-foreground">
+                        <p id="heatmap-help" className="sr-only">
                           Answers from each person that cited each of the{" "}
                           {plural(
                             heatmap?.columns.length ?? 0,
