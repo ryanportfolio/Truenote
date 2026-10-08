@@ -2,6 +2,8 @@
 
 Production moved from Replit to Railway on 2026-10-07. The Railway stack runs with a copy of the Replit production data taken that day, and the owner switched `truenote.org` and `www.truenote.org` DNS to Railway at about 19:50 EDT the same day (see "Cutover").
 
+Stage (owner statement, 2026-10-07): pre-pilot. The owner built Truenote and is pitching it to their employer as the RAG system for the owner's program; it has not yet passed the employer's security review. There is no customer contract, production holds demo data only, and no CSRs use it. Treat "customer" in the security docs as that employer once it adopts Truenote.
+
 The Railway CLI stores `railway link` per directory, so a fresh worktree is not linked; every `railway` command here passes `-p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4deb-9434-e9b63a309bd9` (written `-p <project> -e <env>` below where it would repeat).
 
 ## Production

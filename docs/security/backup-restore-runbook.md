@@ -2,6 +2,7 @@
 
 **Status:** Proposed. No restore test has been run yet; the evidence table in section 9 is empty. RPO and RTO values are proposed targets, not measured results. Items marked `[CONFIRM: ...]` need an owner check before this runbook is relied on.
 **Current state (owner decision, 2026-10-07):** volume backups on the `pgvector` database service are off. The owner will turn them on (daily and weekly schedules proposed) before Truenote goes to full production; backups being on is a precondition for full production. Until then Railway holds no backup of the database, and a logical dump taken by the operator (section 4.1, step 5) is the only recovery copy. The volume-backup restore (path A) is written for that later state and is **not yet usable**.
+**Stage (owner statement, 2026-10-07):** pre-pilot. Truenote is being evaluated for adoption by the owner's employer and has not yet passed that company's security review. Production holds demo data only, and no CSRs use it.
 **Owner:** Truenote maintainer
 **Related:** [`incident-response-plan.md`](./incident-response-plan.md), [`.claude/reference/deployment.md`](../../.claude/reference/deployment.md) (Railway services, variables, deploys, schema changes; cited below as deployment.md), threat model entry TN-TM-024 in [`../compliance/pci/threat-model.md`](../compliance/pci/threat-model.md), evidence gaps in [`../compliance/pci/evidence-index.md`](../compliance/pci/evidence-index.md).
 

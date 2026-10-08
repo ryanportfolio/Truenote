@@ -1,6 +1,7 @@
 # Truenote incident response plan
 
-**Status:** Proposed. Not yet exercised. Items marked `[CONFIRM: ...]` need an owner decision or a contract check before this plan is relied on.
+**Status:** Proposed. Not yet exercised. No `[CONFIRM: ...]` items remain open; customer terms are to be filled in from the first customer contract (section 2 and section 7).
+**Stage (owner statement, 2026-10-07):** pre-pilot. Truenote is being evaluated for adoption by the owner's employer and has not yet passed that company's security review. Production holds demo data only, and no CSRs use it.
 **Owner:** Truenote maintainer (incident lead)
 **Review:** After every SEV-1 or SEV-2 incident, after every tabletop exercise, and at least once a year.
 
@@ -29,22 +30,19 @@ Truenote has one maintainer. That person holds every Truenote role below and mus
 | Incident lead | Truenote maintainer | Declares the incident and its severity, contains it, keeps the timeline, sends customer notices, runs the retrospective. |
 | Customer security contact | None yet: Truenote has no customer contract (owner statement, 2026-10-07). Fill in the name, email, phone, and backup contact from the first contract. | Receives notices, confirms customer-side actions such as SSO account disablement, agrees on public statements. |
 | Customer program owners | None yet: Truenote has no customer contract (owner statement, 2026-10-07). Fill in one contact per program from the first contract. | Confirm which documents are wrong or exposed and which CSRs to notify. |
-| Backup decision maker | `[CONFIRM: who can act if the maintainer is unreachable for more than 24 hours, and whether that person has access to the Railway project]` | Can stop the Railway services and can receive provider notices. |
 
-Provider contacts. Keep the current support or security contact for each service in the restricted contact sheet, not in this repository.
+Provider contacts. Each is the provider's published security or support channel, read on 2026-10-08; check it again before relying on it.
 
 | Provider | What Truenote sends or stores there | Contact |
 |---|---|---|
-| Railway (hosting, service variables, `pgvector` database and volume, bucket) | Application code and images, every variable value, all database rows, uploaded files. Railway Buckets run on Tigris servers ([Railway: storage buckets](https://docs.railway.com/guides/storage-buckets), accessed 2026-10-07). | `[CONFIRM: Railway support and security contact, and the support level on Truenote's plan]` |
-| OpenRouter | Questions and retrieved excerpts for answer generation | `[CONFIRM: security contact]` |
-| OpenAI | Chunk and question text for embeddings | `[CONFIRM: security contact]` |
-| Cohere | Question and candidate chunk text for reranking | `[CONFIRM: security contact]` |
-| LandingAI | Uploaded PDF and image bytes for parsing | `[CONFIRM: security contact]` |
-| Resend | Email addresses and password-reset links | `[CONFIRM: security contact]` |
-| Malware scanner and SIEM receiver (not configured on Railway today, deployment.md) | File bytes (scanner); security events (SIEM) | `[CONFIRM: customer or vendor contact for each, once configured]` |
-| GitHub | Source code, Actions logs, security alerts | GitHub Support `[CONFIRM: account recovery path]` |
-
-`[CONFIRM: which mailbox receives provider security notices, and that the maintainer checks it daily]`
+| Railway (hosting, service variables, `pgvector` database and volume, bucket) | Application code and images, every variable value, all database rows, uploaded files. Railway Buckets run on Tigris servers ([Railway: storage buckets](https://docs.railway.com/guides/storage-buckets), accessed 2026-10-07). | Security: `bugbounty@railway.app` ([Railway trust center](https://trust.railway.com/)). Support: on the Pro plan, "direct help from Railway via Central Station, usually within 72 hours" ([Railway: support](https://docs.railway.com/platform/support); [Central Station](https://station.railway.com/questions)). |
+| OpenRouter | Questions and retrieved excerpts for answer generation | `security@openrouter.ai` ([openrouter.ai/.well-known/security.txt](https://openrouter.ai/.well-known/security.txt)) |
+| OpenAI | Chunk and question text for embeddings | `disclosure@openai.com` ([openai.com/.well-known/security.txt](https://openai.com/.well-known/security.txt)); [OpenAI trust portal](https://trust.openai.com/) |
+| Cohere | Question and candidate chunk text for reranking | [Cohere trust center](https://trustcenter.cohere.com/), which holds its responsible disclosure policy ([cohere.com/security](https://cohere.com/security)); general support `support@cohere.com` |
+| LandingAI | Uploaded PDF and image bytes for parsing | [LandingAI trust center](https://trust.landing.ai/) ([Security at LandingAI](https://landing.ai/security-at-landingai)); no security email is published |
+| Resend | Email addresses and password-reset links | `security@resend.com` ([resend.com/.well-known/security.txt](https://resend.com/.well-known/security.txt)) |
+| Malware scanner and SIEM receiver (not configured on Railway today, deployment.md) | File bytes (scanner); security events (SIEM) | None: neither is configured. Add the contact when one is. |
+| GitHub | Source code, Actions logs, security alerts | [GitHub Support](https://support.github.com/); security reports through [HackerOne](https://hackerone.com/github) ([github.com/.well-known/security.txt](https://github.com/.well-known/security.txt)). Account recovery: [Recovering your account if you lose your 2FA credentials](https://docs.github.com/en/authentication/securing-your-account-with-two-factor-authentication-2fa/recovering-your-account-if-you-lose-your-2fa-credentials). |
 
 ## 3. Severity levels
 
