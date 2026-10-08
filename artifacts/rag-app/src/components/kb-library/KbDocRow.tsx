@@ -127,7 +127,7 @@ export function KbDocRow({
             data-kb-note
             onClick={() => openDialog({ kind: "note", documentId: doc.documentId })}
             title={doc.note}
-            aria-label={`My private note: ${doc.note}. Edit note`}
+            aria-label={`My notes: ${doc.note}. Edit note`}
             className="relative z-10 mt-1 flex max-w-full cursor-pointer items-start gap-1.5 rounded-md px-2 py-0.5 text-left text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:items-center"
             style={NOTE_STICKY_STYLE}
           >

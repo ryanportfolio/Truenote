@@ -200,14 +200,14 @@ export function KbDocNoteCard({ personal, className }: { personal: KbDocPersonal
   if (!item.note && !editing) return null;
   return (
     <section
-      aria-label="My private note"
+      aria-label="My Notes"
       data-kb-note-card
       className={cn("rounded-lg border border-border bg-muted/40 px-4 py-3", className)}
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="inline-flex items-center gap-1.5 text-sm font-medium">
           <Lock className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-          My private note
+          My Notes
         </h2>
         {!editing ? (
           <button
@@ -228,15 +228,11 @@ export function KbDocNoteCard({ personal, className }: { personal: KbDocPersonal
       ) : item.note ? (
         <>
           <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed">{item.note}</p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            <span>Only you can see this.</span>
-            {item.noteUpdatedAt ? (
-              <span>
-                {" "}
-                Updated <RelativeTime iso={item.noteUpdatedAt} />.
-              </span>
-            ) : null}
-          </p>
+          {item.noteUpdatedAt ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Updated <RelativeTime iso={item.noteUpdatedAt} />.
+            </p>
+          ) : null}
         </>
       ) : null}
     </section>

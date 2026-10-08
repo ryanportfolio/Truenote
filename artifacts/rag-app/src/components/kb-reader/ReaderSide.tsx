@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { Link } from "wouter";
-import { FileText, Highlighter, Link2, ListTree, Lock, Pencil } from "lucide-react";
+import { FileText, Highlighter, Link2, ListTree, Pencil } from "lucide-react";
 import { RelativeTime } from "@/components/RelativeTime";
 import type { KbDocPersonal } from "@/components/kb-library/KbDocPersonalBar";
 import { NoteForm } from "@/components/kb-library/KbShared";
@@ -11,10 +11,12 @@ const NOTE_PAPER =
   "border border-[oklch(var(--highlight-yellow)/0.55)] bg-[oklch(var(--highlight-yellow)/0.18)]";
 
 /**
- * "My private note" as a soft yellow card: the note, an edit pencil and who
- * can see it; edits in place. With no note it shows a short invitation and
- * the passage highlight hint (hidden below 1280px, where the header button
- * is the way in).
+ * "My Notes" as a soft yellow card: the note, a large edit pencil in the
+ * corner and when it was updated; edits in place. A click anywhere on the
+ * card opens the editor too (except on its own buttons or while text is selected,
+ * so copying the note still works); the pencil is the keyboard path. With no
+ * note it shows a short invitation and the passage highlight hint; below
+ * 1280px only the title and pencil, so the document stays near the top.
  */
 export function ReaderNoteCard({
   personal,
@@ -25,27 +27,42 @@ export function ReaderNoteCard({
 }): JSX.Element {
   const { item, editing } = personal;
   const empty = !item.note && !editing;
+  const editName = item.note ? "Edit my note" : "Write a private note";
+  function onCardClick(event: MouseEvent<HTMLElement>): void {
+    if (editing) return;
+    if ((event.target as HTMLElement).closest("button, a")) return;
+    if (window.getSelection()?.toString()) return;
+    personal.startEditing();
+  }
   return (
     <section
       aria-labelledby="kb-reader-note-title"
       data-kb-note-card
       data-kb-reader-note
-      className={cn("rounded-lg px-5 py-4 shadow-card", NOTE_PAPER, empty && "hidden xl:block", className)}
+      onClick={onCardClick}
+      className={cn(
+        "rounded-lg px-5 py-4 shadow-card",
+        NOTE_PAPER,
+        empty && "max-xl:py-2",
+        !editing && "cursor-pointer transition-colors duration-100 hover:bg-[oklch(var(--highlight-yellow)/0.26)]",
+        className
+      )}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-center justify-between gap-2">
         <h2 id="kb-reader-note-title" className="font-display text-lg font-semibold tracking-tight">
-          My private note
+          My Notes
         </h2>
-        {item.note && !editing ? (
+        {!editing ? (
           <button
             ref={personal.editButtonRef}
             type="button"
             onClick={personal.startEditing}
-            aria-label="Edit my note"
-            title="Edit my note"
-            className="btn-icon -mr-1 h-8 w-8 text-primary hover:text-primary"
+            aria-label={editName}
+            title={editName}
+            data-kb-note-edit
+            className="btn-icon -my-1 -mr-2 h-10 w-10 shrink-0 text-primary hover:text-primary"
           >
-            <Pencil className="h-4 w-4" aria-hidden />
+            <Pencil className="h-5 w-5" aria-hidden />
           </button>
         ) : null}
       </div>
@@ -56,29 +73,21 @@ export function ReaderNoteCard({
       ) : item.note ? (
         <>
           <ClampedNote note={item.note} />
-          <p className="mt-3 flex flex-wrap items-center gap-x-1.5 border-t border-[oklch(var(--highlight-yellow)/0.55)] pt-2.5 text-xs text-muted-foreground">
-            <Lock className="h-3.5 w-3.5" aria-hidden />
-            <span>Only you can see this.</span>
-            {item.noteUpdatedAt ? (
-              <span>
-                Updated <RelativeTime iso={item.noteUpdatedAt} />.
-              </span>
-            ) : null}
-          </p>
+          {item.noteUpdatedAt ? (
+            <p className="mt-3 border-t border-[oklch(var(--highlight-yellow)/0.55)] pt-2.5 text-xs text-muted-foreground">
+              Updated <RelativeTime iso={item.noteUpdatedAt} />.
+            </p>
+          ) : null}
         </>
       ) : (
-        <>
+        <div className="hidden xl:block">
           <p className="mt-2 text-sm leading-relaxed">
             Write down what you want to remember about this source, like the order you check things in.
           </p>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             You can also select any passage in the document to highlight it.
           </p>
-          <p className="mt-3 flex items-center gap-1.5 border-t border-[oklch(var(--highlight-yellow)/0.55)] pt-2.5 text-xs text-muted-foreground">
-            <Lock className="h-3.5 w-3.5" aria-hidden />
-            Only you can see this.
-          </p>
-        </>
+        </div>
       )}
     </section>
   );

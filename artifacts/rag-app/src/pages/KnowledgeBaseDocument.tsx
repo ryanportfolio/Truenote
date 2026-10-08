@@ -289,14 +289,6 @@ function ReaderArticle({
     }
   }
 
-  function openNote(): void {
-    if (personal.editing) {
-      document.querySelector<HTMLTextAreaElement>("[data-kb-reader-note] textarea")?.focus();
-      return;
-    }
-    personal.startEditing();
-  }
-
   return (
     <div data-kb-reader className="flex flex-col">
       <ReaderHeader
@@ -305,7 +297,6 @@ function ReaderArticle({
         personal={personal}
         labels={labels}
         onRenameLabel={renameLabel}
-        onNote={openNote}
       />
       <KbDocPersonalError personal={personal} />
       <div className="mt-2 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_20.5rem] xl:grid-rows-[auto_1fr] xl:gap-x-7">

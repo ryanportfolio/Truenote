@@ -1,6 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { Link } from "wouter";
-import { NotebookPen, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import type { KbDocPersonal } from "@/components/kb-library/KbDocPersonalBar";
 import { cn } from "@/lib/utils";
 import type { KbColorLabel } from "@/types/api";
@@ -55,21 +55,20 @@ function useScrollPaddingBelow(headerRef: RefObject<HTMLElement>): void {
 
 /**
  * Sticky reader header: where the source lives (Sources / folder / subfolder)
- * and the three personal actions, each a labeled button: keep it in my
- * shortcuts, write a private note, and a color label. Sticky from 768px up;
- * on phones it scrolls away so the document gets the screen, and the three
- * actions shrink to one row of short pills ("Shortcut", "Note", "Label")
- * whose accessible names keep the full wording. While the note editor is
- * open, "Save note" is the one filled button, so the shortcut button turns
- * quiet until the editor closes.
+ * and two personal actions, each a labeled button: keep it in my shortcuts
+ * and a color label. The private note is edited on its own card. Sticky from
+ * 768px up; on phones it scrolls away so the document gets the screen, and
+ * the actions shrink to short pills ("Shortcut", "Label") whose accessible
+ * names keep the full wording. While the note editor is open, "Save note" is
+ * the one filled button, so the shortcut button turns quiet until the editor
+ * closes.
  */
 export function ReaderHeader({
   crumbs,
   otherPaths,
   personal,
   labels,
-  onRenameLabel,
-  onNote
+  onRenameLabel
 }: {
   crumbs: ReaderCrumb[];
   /** Other folders the source is also in ("Retention"), each a link to that folder. */
@@ -77,15 +76,12 @@ export function ReaderHeader({
   personal: KbDocPersonal;
   labels: KbColorLabel[];
   onRenameLabel: SaveLabelName;
-  onNote: () => void;
 }): JSX.Element {
   const headerRef = useRef<HTMLDivElement>(null);
   useScrollPaddingBelow(headerRef);
   const { item, editing } = personal;
   const inShortcuts = item.pinnedAt !== null;
-  const hasNote = Boolean(item.note);
   const shortcutName = inShortcuts ? "In my shortcuts" : "Add to my shortcuts";
-  const noteName = hasNote ? "Edit my note" : "Write a private note";
   return (
     <div
       ref={headerRef}
@@ -156,17 +152,6 @@ export function ReaderHeader({
           <Star className="h-4 w-4" fill={inShortcuts ? "currentColor" : "none"} aria-hidden />
           <span className="sm:hidden">Shortcut</span>
           <span className="hidden sm:inline">{shortcutName}</span>
-        </button>
-        <button
-          type="button"
-          aria-label={noteName}
-          data-kb-reader-note-button
-          onClick={onNote}
-          className="btn-whisper shrink-0 gap-1.5 px-2.5 py-1.5 text-[13px] sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
-        >
-          <NotebookPen className="h-4 w-4" aria-hidden />
-          <span className="sm:hidden">Note</span>
-          <span className="hidden sm:inline">{noteName}</span>
         </button>
         <ReaderLabelMenu
           value={item.myColor}
