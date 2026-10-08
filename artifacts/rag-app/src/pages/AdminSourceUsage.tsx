@@ -52,6 +52,7 @@ import {
   type SourceView
 } from "@/lib/sourceUsage";
 import { cn } from "@/lib/utils";
+import { useStuck } from "@/lib/useStuck";
 import type {
   CurrentUser,
   KbCategory,
@@ -166,6 +167,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
   // Names seen in any response, so a selected person keeps a label while loading.
   const knownNames = useRef(new Map<string, string>());
   const rootRef = useRef<HTMLDivElement>(null);
+  const { ref: filtersRef, stuck: filtersStuck } = useStuck();
   // Focus handoffs across the loading state between everyone and one person.
   const returnPoint = useRef<ReturnPoint | null>(null);
   const pendingFocus = useRef<"person" | "everyone" | null>(null);
@@ -544,9 +546,9 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
           />
         )
       ) : (
-        <header className="sticky top-0 z-30 -my-3 flex flex-col gap-4 py-3 before:pointer-events-none before:absolute before:inset-y-0 before:-left-[100vw] before:-right-[100vw] before:-z-10 before:bg-background/80 before:backdrop-blur-md before:content-['']">
+        <header ref={filtersRef} data-stuck={filtersStuck || undefined} className="sticky-band sticky top-0 z-30 -my-3 flex flex-col gap-4 py-3">
           {/* The date and person filters stay in view while the page scrolls;
-              the blurred band runs the full width of the page (main clips it).
+              their band shows only once they are pinned.
               The sidebar already says where you are; the heading stays for
               screen readers. Focus handoffs go to the first control instead. */}
           <h1 id="source-usage-title" tabIndex={-1} className="sr-only">

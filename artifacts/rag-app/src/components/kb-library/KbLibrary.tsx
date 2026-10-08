@@ -27,6 +27,7 @@ import {
   type KbView
 } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
+import { useStuck } from "@/lib/useStuck";
 import type { CurrentUser, KbDocumentListResponse, KbLibraryColor } from "@/types/api";
 import { KbFoldersView, KbListView, KbMyShortcuts, KbOutlineView, folderHref, myShortcutGroups } from "./KbBrowseViews";
 import { KbLibraryContext, type KbDialogState, type KbLibraryContextValue } from "./KbContext";
@@ -89,6 +90,7 @@ export function KbLibrary({
   const [lastMoved, setLastMoved] = useState<{ key: string; at: number } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const shelfRef = useRef<HTMLElement>(null);
+  const { ref: searchBarRef, stuck: searchStuck } = useStuck();
   const listRef = useRef<HTMLElement>(null);
   const organizeButtonRef = useRef<HTMLButtonElement>(null);
   // The organizing value focus last followed; StrictMode's double effect run sees no change.
@@ -397,10 +399,12 @@ export function KbLibrary({
         />
       ) : (
         <>
-          {/* The search stays in view while the page scrolls; the blurred band runs the full width of the page (main clips it). */}
+          {/* The search stays in view while the page scrolls, over a band that shows only once it is pinned. */}
           <div
+            ref={searchBarRef}
             data-kb-search-bar
-            className="sticky top-0 z-30 -my-2 flex flex-col gap-2 py-2 before:pointer-events-none before:absolute before:inset-y-0 before:-left-[100vw] before:-right-[100vw] before:-z-10 before:bg-background/80 before:backdrop-blur-md before:content-['']"
+            data-stuck={searchStuck || undefined}
+            className="sticky-band sticky top-0 z-30 -my-2 flex flex-col gap-2 py-2"
           >
             <KbSearch
               query={query}
