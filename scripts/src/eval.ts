@@ -79,7 +79,7 @@ Options:
   --question, -q <uuid>   Run a single question by id
   --limit, -n <int>       Cap the number of questions
   --judge                 Claim-level faithfulness judge on every non-refused
-                          answer (one extra gpt-4o call per judged question)
+                          answer (one extra gpt-6.1-sol call per judged question)
   --json                  Emit the full report as JSON on stdout
                           (suppresses the human-readable summary)
   --help, -h              Show this help

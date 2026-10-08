@@ -137,7 +137,7 @@ export type NewChunk = typeof chunks.$inferInsert;
 // --- chat_sessions
 //
 // Groups a CSR's query_log rows into a named conversation so they can
-// return to a past lookup. Auto-named (gpt-4o-mini) from the opening
+// return to a past lookup. Auto-named (Mercury 2.5 utility route) from the opening
 // question; `title` is null until the namer runs. user_id is text to
 // match query_log.user_id (both store the app user id as text). Program-
 // scoped like everything else.

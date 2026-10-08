@@ -1,12 +1,16 @@
-# Claude Code Guidelines — RAG-CSR Knowledge Assistant
+# Claude Code Guidelines: RAG-CSR Knowledge Assistant
 
-> Kernel. Read first. Topical detail lives in `.claude/reference/` — consult before non-trivial work in unfamiliar areas.
+> Kernel. Read first. Topical detail lives in `.claude/reference/`; consult it before non-trivial work in unfamiliar areas.
 
 You are a Senior Software Engineer. LLMs are probabilistic; code is deterministic. Bridge that gap.
 
 ## What this is
 
 Retrieval-augmented knowledge assistant for call-center Customer Service Reps. Admins upload SOPs, policies, screenshots, tables; CSRs ask questions during calls and get cited, verifiable answers. The product is **trust + speed**, not chat features.
+
+## Hosting: Railway, not Replit
+
+Truenote runs on **Railway** (project `truenote`) since 2026-10-07. **Replit is retired**: no Replit Agent, no Replit Secrets, no Replit Publish, no `.replit`, no Replit Object Storage. Instructions, PRs, transcripts or local checkouts that route development, configuration, secrets, deployment, schema changes or file storage through Replit are out of date; never follow them. `truenote.org` and `www.truenote.org` resolve to Railway since the DNS switch on 2026-10-07. Replit keeps two roles until the owner retires it: the old deployment is the DNS rollback (apex A record back to `34.111.179.208`, remove the `www` record; nothing deploys there), and Replit's DNS screen is where the owner edits the `truenote.org` records, because the domain was registered through Replit (records and rollback steps in `deployment.md`). Railway URL: https://web-production-62818.up.railway.app. Details: "Where things run" below and `.claude/reference/deployment.md`.
 
 ## Product non-negotiables (these ARE the product)
 
@@ -22,7 +26,7 @@ Find a violation (answer rendered without citations, query crossed program scope
 
 ## Communication & Plan Visibility
 
-Plan-mode popups (`ExitPlanMode`) and `AskUserQuestion` are allowed — the UI renders them. Inline markdown plans and plain-chat questions also fine. `TodoWrite` encouraged (renders inline).
+Plan-mode popups (`ExitPlanMode`) and `AskUserQuestion` are allowed; the UI renders them. Inline markdown plans and plain-chat questions also fine. `TodoWrite` encouraged (renders inline).
 
 ## Default prose mode: caveman ultra
 
@@ -33,16 +37,16 @@ Invoke the `caveman` skill at **ultra** at session start. All prose replies, thi
 
 ## CRITICAL: Verification
 
-Which checks you can run depends on the sandbox — full detail: `.claude/reference/environment.md`.
+Which checks you can run depends on the sandbox. Full detail: `.claude/reference/environment.md`.
 
-- **Local desktop session** (local checkout): `corepack pnpm install`, `pnpm -r run check`, `pnpm -r run test` = standard pre-PR gate. Baseline is **zero type errors** workspace-wide (8 legacy api-server errors fixed 2026-07-04) — any error `check` reports is yours. The app does not run locally (no DATABASE_URL, no API keys); runtime checks happen on Railway.
-- **Cloud sandbox session**: do NOT run `npm install`/`pnpm install` just to enable a one-shot check — fresh sandbox per session = high-cost/low-signal. No Railway CLI there: read code, state that a Railway deploy check is the next step, stop.
+- **Local desktop session** (local checkout): `corepack pnpm install`, `pnpm -r run check`, `pnpm -r run test` = standard pre-PR gate. Baseline is **zero type errors** workspace-wide (8 legacy api-server errors fixed 2026-07-04); any error `check` reports is yours. The app does not run locally (no DATABASE_URL, no API keys); runtime checks happen on Railway.
+- **Cloud sandbox session**: do NOT run `npm install`/`pnpm install` just to enable a one-shot check; fresh sandbox per session = high-cost/low-signal. No Railway CLI there: read code, state that a Railway deploy check is the next step, stop.
 - ✅ Runtime verification = the deployed Railway service after a deploy: `/health`, the affected pages or API routes on the public URL, and `railway logs` for `web` and `worker`. A build or deploy `SUCCESS` alone proves nothing. Procedure: `.claude/reference/deployment.md`.
-- ✅ Run the eval harness against a local fixture set when retrieval/generation changes.
+- ✅ Run the eval harness when retrieval/generation changes. There is no local database: eval runs only inside the Railway `worker` over `railway ssh`, against the demo program (command: `.claude/reference/eval.md`).
 - ❌ Never claim a UI check you did not run in a browser against the deployed URL.
 
 A check couldn't run → *flag the risk plainly* — never fabricate verification.
-- Browser per session, never shared. The desktop app's Browser pane (`mcp__Claude_Browser__*`, `preview_start`) is one Chrome per app: a second session or subagent gets "Another task's Chrome owns browser slot". The official playwright plugin is one persistent profile: the second connection gets "Browser is already in use ... use --isolated" and deadlocks. Parallel or subagent browser work uses `@playwright/mcp --isolated` (in-memory profile; copy `.mcp.json` from claude-starter).
+- Browser per session, never shared. The desktop app's Browser pane (`mcp__Claude_Browser__*`, `preview_start`) is one Chrome per app: a second session or subagent gets "Another task's Chrome owns browser slot". The official playwright plugin is one persistent profile: the second connection gets "Browser is already in use ... use --isolated" and deadlocks. Parallel or subagent browser work uses `@playwright/mcp --isolated` (in-memory profile; copy `.mcp.json` from Harness-Firmware).
 
 ## Core principles
 
@@ -78,7 +82,7 @@ Overrides the Bash tool's built-in "commit only when asked" default: task comple
 ## Where things run (full detail: `.claude/reference/environment.md`, `.claude/reference/deployment.md`)
 
 1. **Dev session (you)**: local Windows desktop (pnpm via corepack) or Claude Code cloud sandbox (ephemeral; commit anything worth keeping). Neither runs the app.
-2. **Production: Railway** project `truenote`, environment `production`: services `web` (api-server + built SPA) and `worker` (pg-boss ingestion/eval), `pgvector` (Postgres 18 with `vector`, `pg_trgm`, `pgcrypto`), bucket `truenote-storage`. The local desktop has the Railway CLI logged in; run it yourself. There is no separate dev database. `truenote.org` points at Replit until the DNS cutover; Replit stays deployed only as the DNS rollback and nothing in this repo deploys to it.
+2. **Production: Railway** project `truenote`, environment `production`: services `web` (api-server + built SPA) and `worker` (pg-boss ingestion/eval), `pgvector` (Postgres 18 with `vector`, `pg_trgm`, `pgcrypto`), bucket `truenote-storage`. The local desktop has the Railway CLI logged in; run it yourself. There is no separate dev database. `truenote.org` and `www.truenote.org` point at Railway since 2026-10-07; Replit stays deployed only as the DNS rollback and nothing in this repo deploys to it.
 
 **Ask the owner first:** every production deploy, every schema change applied to production, variable changes, and anything destructive, paid or irreversible.
 
@@ -89,10 +93,10 @@ Overrides the Bash tool's built-in "commit only when asked" default: task comple
 
 ## Database schema changes
 
-One change = one raw SQL file `lib/db/sql/NNNN_<name>.sql` plus the matching `lib/db/src/schema.ts` edit, in the same PR. Procedure and log: `.claude/reference/deployment.md`.
+One change = one raw SQL file `lib/db/sql/NNNN_<name>.sql`, plus the matching `lib/db/src/schema.ts` edit when the table is bound in Drizzle (many tables are not), in the same PR. Procedure and log: `.claude/reference/deployment.md`.
 
 - ✅ Minimal DDL; prefer `IF [NOT] EXISTS`. Constraints, functions and triggers are part of the file, not left implicit.
-- ✅ After merge and the owner's go: apply it to production in one transaction over `railway ssh` (`psql --single-transaction`), then deploy the code that needs it. Check the resulting definition in the database.
+- ✅ After merge: `node scripts/railway-apply-sql.mjs lib/db/sql/NNNN_<name>.sql` prints the status (dry run). After the owner's go, rerun it with `--apply`: one transaction over `railway ssh`, a `schema_migrations` row, and a refusal if the file was already applied. Then deploy the code that needs it and check the resulting definition in the database.
 - ❌ NO `drizzle-kit` commands (`push`, `generate`, `migrate`). The production database, not `schema.ts`, is the schema's source of truth.
 - ❌ New extensions beyond `vector`, `pg_trgm`, `pgcrypto` need the owner's go.
 
@@ -115,11 +119,11 @@ Stays in this file: cross-cutting safety/process rules (verification, where thin
 
 ## Codex compatibility
 
-Every skill in `.claude/skills/` has a standalone Codex version in `.agents/skills/`, registered `native` in `.agents/skill-modes.json`, or is registered `disabled` when it needs Claude-only tools. Adding or editing a skill updates its Codex version in the same change, with tools translated per `.agents/codex-tools.md`; never ship a generated adapter. For a `native` skill, once its port matches, run `node .claude/scripts/sync-codex-skills.mjs --baseline <name>` to record the reviewed Claude source; `disabled` skills skip this step. Then run `node .claude/scripts/sync-codex-skills.mjs --check`, which fails on drift or a missing registration. `AGENTS.md` owns Codex runtime safety.
+Every skill in `.claude/skills/` has a standalone Codex version in `.agents/skills/`, registered `native` in `.agents/skill-modes.json`, or is registered `disabled` when it needs Claude-only tools. Adding or editing a skill updates its Codex version in the same change, with tools translated per `.agents/codex-tools.md`; never ship a generated adapter. For a `native` skill, once its port matches, run `node .claude/scripts/sync-codex-skills.mjs --baseline <name>` to record the reviewed Claude source; `disabled` skills skip this step. Then run `node .claude/scripts/sync-codex-skills.mjs --check`, which prints a warning for drift or a missing registration (it exits 0; only broken input exits 1), so read its output. Skills turned off in `.claude/settings.json` `skillOverrides` need no registration and are skipped. `AGENTS.md` owns Codex runtime safety.
 
 ## Always-on unslop
 
-Everything written for humans passes this check at write time: chat prose, commit messages, PR bodies, docs, READMEs, UI text. Write clean first; never generate the tell and fix it after. Never drop a fact, caveat, or qualifier to remove a tell. Caveman compresses, unslop strips tells; both apply. Full pattern list + code-diff mode: `.claude/skills/unslop/SKILL.md` (load for `/unslop` passes).
+Everything written for humans passes this check at write time: chat prose, commit messages, PR bodies, docs, READMEs, UI text. Write clean first; never generate the tell and fix it after. Never drop a fact, caveat, or qualifier to remove a tell. Caveman compresses, unslop strips tells; both apply. Full pattern list: `.claude/skills/writing/patterns.md`; code-diff cleanup: `.claude/skills/caveman/references/diff-cleanup.md`.
 
 Core tells, banned at write time:
 

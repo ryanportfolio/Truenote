@@ -1,10 +1,19 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
+  CURRENT_VERIFICATION_RECORD,
   verifyMarkdownLinks,
   verifyPublicEvidenceGrades,
   verifyReadOnlyEvidenceSql,
@@ -232,5 +241,26 @@ describe("verifyThreatModel", () => {
     assert.ok(issues.some((issue) => issue.includes("unsupported evidence grade")));
     assert.ok(issues.some((issue) => issue.includes("lacks a repository evidence path")));
     assert.ok(issues.includes("threat model contains duplicate threat IDs"));
+  });
+});
+
+describe("CURRENT_VERIFICATION_RECORD", () => {
+  it("is the newest dated record and names every source the gate pins", () => {
+    const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
+    const pciDirectory = resolve(repoRoot, "docs/compliance/pci");
+    const dated = readdirSync(pciDirectory)
+      .filter((name) => /^verification-record-\d{4}-\d{2}-\d{2}\.md$/.test(name))
+      .sort();
+    assert.equal(CURRENT_VERIFICATION_RECORD, `docs/compliance/pci/${dated.at(-1)}`);
+
+    const record = readFileSync(resolve(repoRoot, CURRENT_VERIFICATION_RECORD), "utf8");
+    for (const source of ["production-control-verification.sql", "threat-model.md"]) {
+      // verifyRecordedArtifactHash reads the first line that names the source.
+      const firstMention = record.split(/\r?\n/).find((line) => line.includes(source));
+      assert.match(
+        firstMention ?? "",
+        new RegExp(`\`${source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\` SHA-256 \`[0-9A-F]{64}\``)
+      );
+    }
   });
 });

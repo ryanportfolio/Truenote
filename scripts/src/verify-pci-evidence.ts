@@ -40,6 +40,11 @@ const ALLOWED_EVIDENCE_GRADES = new Set([
   "Not applicable"
 ]);
 
+// The newest dated verification record pins the current source hashes. Older
+// records stay as dated history; adding a newer record means updating this path.
+export const CURRENT_VERIFICATION_RECORD =
+  "docs/compliance/pci/verification-record-2026-10-07.md";
+
 function filesBelow(directory: string, extension: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -451,10 +456,7 @@ export function verifyPciEvidence(repoRoot: string): EvidenceVerificationResult 
     "docs/compliance/pci/production-control-verification.sql"
   );
   const threatModelPath = resolve(repoRoot, "docs/compliance/pci/threat-model.md");
-  const verificationRecordPath = resolve(
-    repoRoot,
-    "docs/compliance/pci/verification-record-2026-07-16.md"
-  );
+  const verificationRecordPath = resolve(repoRoot, CURRENT_VERIFICATION_RECORD);
   const vulnerabilityBaselinePath = resolve(
     repoRoot,
     "docs/compliance/pci/codeql-baseline-2026-07-16.json"

@@ -22,7 +22,7 @@ import {
  *   - Any rewrite failure falls back to the original question — the rewrite
  *     is an enhancement, never a gate.
  *
- * Routes through the shared OpenRouter ZDR utility (Mercury 2 on Inception), NOT
+ * Routes through the shared OpenRouter ZDR utility (Mercury 2.5 on Inception), NOT
  * direct OpenAI: the follow-up plus recent history stay inside the same
  * Zero Data Retention boundary the product enforces on answer generation.
  * Rewriting is low-stakes (worst case equals sending the raw follow-up to

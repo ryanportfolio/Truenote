@@ -9,10 +9,10 @@ Use the public capabilities brief as the baseline claim inventory. Repository, r
 
 ## Sources
 
-1. Read `docs/security/truenote-security-capabilities.html` and `docs/security/README.md` completely.
-2. Read `docs/security/p0-p1-security-controls.sql`, `docs/security/p1-siem-delivery-outbox.sql`, `CLAUDE.md`, and the relevant `.claude/reference/` files.
+1. Read `docs/security/truenote-security-capabilities.html`, `docs/security/truenote-pci-security-capabilities.html`, and `docs/security/README.md` completely.
+2. Read the DDL in `docs/security/` (`p0-p1-security-controls.sql`, `p1-siem-delivery-outbox.sql`, `malware-scanning-control.sql`, `review-approval-control.sql`), the numbered migrations in `lib/db/sql/`, `docs/compliance/pci/production-control-verification.sql`, `CLAUDE.md`, `.claude/reference/deployment.md`, and the other relevant `.claude/reference/` files.
 3. Inspect implementation, tests, CI, configuration defaults, `.env.example`, DDL, diffs, and verification output. Find fail-open behavior and conflicts with published claims.
-4. Request missing hosting (Railway), configuration, IdP/MFA, scanner, SIEM, vendor, branch-protection, incident, recovery, and assessment evidence.
+4. Request missing hosting (Railway), configuration, IdP/MFA, scanner, SIEM, vendor, branch-protection, incident, recovery, and assessment evidence. Known evidence gap: the Railway database inherited the `siem_delivery_outbox` table from Replit, but the functions and trigger from `p1-siem-delivery-outbox.sql` are missing there. Grade SIEM delivery from the live definitions (`\d+`, `pg_get_functiondef`), not from the SQL file.
 5. Recheck time-sensitive claims using official regulatory/provider sources. Record URL and access date; label unavailable verification explicitly.
 
 ## Evidence grades
@@ -35,7 +35,7 @@ Never promote a grade from comments, intended behavior, unchecked boxes, seeded 
 2. Re-grade each from current evidence. Cite exact files, command output, configuration, or external records.
 3. Check authentication, authorization, program/classification isolation, ingestion failures, approval separation, retrieval/citations, audit integrity/delivery, retention/purge, browser defenses, secrets, dependencies, and recovery.
 4. Determine the earliest incomplete gate:
-   - **P0:** safe deployment prerequisites, DDL, fail-closed integrations, SSO/MFA, audit delivery, negative tests, and staged verification.
+   - **P0:** safe deployment prerequisites, DDL, fail-closed integrations, SSO/MFA, audit delivery, negative tests, and pre-production verification. Railway has one environment (`production`) and no staging target, so pre-production verification stays a gap until a target exists or the owner names a substitute.
    - **P1:** boundary, governance, vendor, cryptography, incident/recovery, evidence ownership, and recurring review.
    - **Later phase:** label **proposed** unless already defined. Derive it from residual engineering, continuous evidence, and assessment work.
 5. Order five next actions by dependency. Give each an owner, evidence artifact, and binary acceptance test.

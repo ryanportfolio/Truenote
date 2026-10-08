@@ -49,12 +49,15 @@ actions. The maintainer keeps it outside this public repository.
 
 These migrations are forward-only operational changes. Review the embedded guardrails and verification queries before applying them. Repository presence does not prove they are installed in a given database.
 
+[`../../lib/db/sql/0000_baseline.sql`](../../lib/db/sql/0000_baseline.sql) is a schema-only dump of the Railway production database as of 2026-10-07 and includes the controls above that production had then. New schema changes, security DDL included, are numbered files in `lib/db/sql/` applied to production by `scripts/railway-apply-sql.mjs`, which records each file in `schema_migrations`. The production image is built from `Dockerfile.railway`.
+
 ## Evidence and operations
 
 - The base P0/P1 database controls passed owner-attested acceptance checks in the former Replit development database. Railway has no development database; its production database is a 2026-10-07 copy of Replit production with constraint definitions and the `append_security_event` body checked identical to the source (`.claude/reference/deployment.md`). Production verification of these controls on Railway is still pending.
 - The security workflow runs type checks, a production build, unit tests, dependency audit, SBOM generation, Gitleaks, and CodeQL.
 - OIDC and MFA, malware scanning, durable SIEM delivery, browser policy, and provider settings have defined configuration and verification paths. Backup/recovery procedures, RTO/RPO, and a retained restore exercise remain operational evidence requirements.
-- Hash-chained application events preserve tamper-evident receipts; the SIEM outbox provides durable external delivery with retry and dead-letter handling.
+- Hash-chained application events preserve tamper-evident receipts; the SIEM outbox provides durable external delivery with retry and dead-letter handling once installed and configured.
+- SIEM delivery is not active on Railway (checked 2026-10-07). The `siem_delivery_outbox` table exists, but the functions from `p1-siem-delivery-outbox.sql` (`enqueue_security_event_for_siem`, `claim_siem_deliveries`, `complete_siem_delivery`, `fail_siem_delivery`, `get_siem_delivery_health`) and the `security_events_siem_enqueue` trigger are absent, a gap inherited from the Replit database. `SIEM_WEBHOOK_URL` is unset.
 - [`incident-response-plan.md`](./incident-response-plan.md) defines severity levels, detection sources, containment steps mapped to the Railway services and CLI, proposed customer-notice windows, evidence preservation, and tabletop exercises. It is proposed and not yet exercised.
 - [`backup-restore-runbook.md`](./backup-restore-runbook.md) defines proposed RPO/RTO targets, a restore-to-non-production-first procedure for the Railway stack, verification checks, and the restore evidence record. Volume backups on the `pgvector` database are off (owner decision, 2026-10-07) and must be turned on before full production; until then an operator's logical dump is the only database recovery copy, and uploaded files have no backup. No restore test has been run yet.
 

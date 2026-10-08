@@ -1,6 +1,7 @@
 {
   "version": 1,
   "skills": {
+    "addskill": "native",
     "adopt-repo": "native",
     "advocate": "native",
     "arena": "native",
@@ -12,7 +13,6 @@
     "claude-review": "native",
     "codex-fullreview": "disabled",
     "codex-review": "native",
-    "compact-review": "disabled",
     "dare": "native",
     "design-truenote-ui": "native",
     "enhance-prompt": "native",
@@ -33,6 +33,7 @@
     "session-hub": "native",
     "showpiece": "native",
     "sync-starter": "native",
+    "why": "native",
     "wow-loop": "native",
     "wrapup": "native",
     "writing": "native",

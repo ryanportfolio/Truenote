@@ -8,8 +8,8 @@
  * Tests and seed scripts: InMemoryObjectStorage (RAG_STORAGE_DRIVER=memory),
  * same interface, no I/O.
  *
- * Phase 2 may add a signed-URL method; for now Mistral OCR receives base64,
- * so we never need a public URL for parsing. Keeping the interface minimal.
+ * Phase 2 may add a signed-URL method; for now LandingAI receives the file
+ * bytes in a multipart upload, so we never need a public URL for parsing. Keeping the interface minimal.
  */
 
 import {
