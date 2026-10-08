@@ -49,6 +49,7 @@ import {
   getUserMaxClassification,
   type Classification
 } from "../lib/security/classification.js";
+import { personalLibraryWriteLimit } from "../lib/security/route-rate-limit.js";
 
 /**
  * CSR-facing knowledge base reader. Unlike /api/documents (manager+ admin
@@ -63,6 +64,17 @@ import {
 export const kbRouter = Router();
 
 kbRouter.use(requireAuth, requireFreshPassword, requireCsrOrAbove);
+// Personal library writes (pins, notes, colors, label names) get a per-user limit.
+kbRouter.use(
+  [
+    "/documents/:id/pin",
+    "/documents/:id/note",
+    "/documents/:id/color",
+    "/categories/:id/color",
+    "/labels/:color"
+  ],
+  personalLibraryWriteLimit
+);
 // The mutations on this router are personal: highlights, source pins, notes
 // and colors, category color overrides, and color names. They remain available to demo
 // accounts so visitors can experience the features; every row is still

@@ -43,6 +43,7 @@ import {
   type TagRow
 } from "../lib/kb-library.js";
 import { documentVisibleSql, uuidArray } from "../lib/kb-library-sql.js";
+import { libraryOrganizeLimit } from "../lib/security/route-rate-limit.js";
 
 /**
  * Source library organization: categories (nested, many-to-many with
@@ -285,6 +286,7 @@ function nextSiblingPosition(programId: string, parentId: string | null, exclude
 
 kbLibraryRouter.post(
   "/categories",
+  libraryOrganizeLimit,
   libraryRoute(async (ctx, res) => {
     const body = parseBody(createCategorySchema, ctx.req.body, "Enter a category name.");
     const parentId = body.parentId ? body.parentId.toLowerCase() : null;
@@ -320,6 +322,7 @@ kbLibraryRouter.post(
 // differ (PUT here, PATCH/DELETE there) so Express never confuses them.
 kbLibraryRouter.put(
   "/categories/order",
+  libraryOrganizeLimit,
   libraryRoute(async (ctx, res) => {
     const body = parseBody(
       reorderCategoriesSchema,
@@ -363,6 +366,7 @@ kbLibraryRouter.put(
 
 kbLibraryRouter.patch(
   "/categories/:id",
+  libraryOrganizeLimit,
   libraryRoute(async (ctx, res) => {
     const categoryId = pathId(ctx.req, "id");
     const body = parseBody(updateCategorySchema, ctx.req.body, "Nothing to change.");
@@ -449,6 +453,7 @@ async function checkMove(
 
 kbLibraryRouter.delete(
   "/categories/:id",
+  libraryOrganizeLimit,
   libraryRoute(
     async (ctx, res) => {
       const categoryId = pathId(ctx.req, "id");
@@ -502,6 +507,7 @@ kbLibraryRouter.delete(
 
 kbLibraryRouter.put(
   "/categories/:id/documents",
+  libraryOrganizeLimit,
   libraryRoute(async (ctx, res) => {
     const categoryId = pathId(ctx.req, "id");
     const { documentIds } = parseBody(
@@ -558,6 +564,7 @@ kbLibraryRouter.put(
 
 kbLibraryRouter.put(
   "/documents/:id/categories",
+  libraryOrganizeLimit,
   libraryRoute(async (ctx, res) => {
     const documentId = pathId(ctx.req, "id");
     const { categoryIds } = parseBody(
@@ -607,6 +614,7 @@ kbLibraryRouter.put(
 
 kbLibraryRouter.put(
   "/documents/:id/tags",
+  libraryOrganizeLimit,
   libraryRoute(async (ctx, res) => {
     const documentId = pathId(ctx.req, "id");
     const { tagIds } = parseBody(
@@ -652,6 +660,7 @@ const tagConflict = (err: unknown) =>
 
 kbLibraryRouter.post(
   "/tags",
+  libraryOrganizeLimit,
   libraryRoute(async (ctx, res) => {
     const body = parseBody(createTagSchema, ctx.req.body, "Enter a tag name.");
     const item = await db.transaction(async (tx) => {
@@ -679,6 +688,7 @@ kbLibraryRouter.post(
 
 kbLibraryRouter.patch(
   "/tags/:id",
+  libraryOrganizeLimit,
   libraryRoute(async (ctx, res) => {
     const tagId = pathId(ctx.req, "id");
     const body = parseBody(updateTagSchema, ctx.req.body, "Nothing to change.");
@@ -706,6 +716,7 @@ kbLibraryRouter.patch(
 
 kbLibraryRouter.delete(
   "/tags/:id",
+  libraryOrganizeLimit,
   libraryRoute(async (ctx, res) => {
     const tagId = pathId(ctx.req, "id");
     await db.transaction(async (tx) => {
@@ -730,6 +741,7 @@ kbLibraryRouter.delete(
 
 kbLibraryRouter.put(
   "/featured",
+  libraryOrganizeLimit,
   libraryRoute(async (ctx, res) => {
     const { documentIds } = parseBody(
       featuredSchema,

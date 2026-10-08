@@ -38,6 +38,7 @@ import {
   type SourceUsageSuggestion,
   type UsageMatrix
 } from "../../lib/source-usage.js";
+import { sourceUsageReadLimit } from "../../lib/security/route-rate-limit.js";
 
 export const insightsRouter = Router();
 
@@ -536,7 +537,7 @@ function suggestionsQuery(input: {
   `;
 }
 
-insightsRouter.get("/source-usage", async (req, res, next) => {
+insightsRouter.get("/source-usage", sourceUsageReadLimit, async (req, res, next) => {
   try {
     const user = authedUser(req);
     const windowDays = parseUsageWindowDays(req.query["days"]);
@@ -887,7 +888,7 @@ interface UsageQuestionRow {
   sources: Array<{ documentId: string; title: string | null }> | null;
 }
 
-insightsRouter.get("/source-usage/questions", async (req, res, next) => {
+insightsRouter.get("/source-usage/questions", sourceUsageReadLimit, async (req, res, next) => {
   try {
     const user = authedUser(req);
     const windowDays = parseUsageWindowDays(req.query["days"]);
