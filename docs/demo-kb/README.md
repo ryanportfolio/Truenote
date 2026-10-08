@@ -37,7 +37,7 @@ All upload-ready files are in `files/`. The first 13 rows are the original forma
 | `education-and-nonprofit-discounts.md` | Markdown | Eligibility table, discounted prices |
 | `accessibility-and-relay-calls.md` | Markdown | Relay call etiquette, accommodations table |
 | `deceased-account-holder-requests.md` | Markdown | Request table by caller, LP-PRIV ticket |
-| `fraud-team-handoff.md` | Markdown | Uploaded as `confidential`: CSRs with `internal` clearance cannot see it, so it shows as a restricted source to them |
+| `fraud-team-handoff.md` | Markdown | Written as a confidential procedure. Uploaded as `internal` on 2026-10-08, because the agent account's clearance is `internal` and the upload route refuses content above the uploader's clearance. Re-upload it as `confidential` from an account with that clearance to show it as a restricted source to CSRs |
 
 Upload them all into the same program. The documents agree with each other; where one refers to another (for example the refund procedure and the reason codes in the billing screenshot), the facts match.
 
@@ -73,7 +73,7 @@ These are the answers a CSR should get, with the file that holds each one. Sever
 - Education and nonprofit discount: 30% off Pro and Enterprise (Pro monthly $8.39); students and teachers qualify for Pro; reviewed within 2 business days (`education-and-nonprofit-discounts.md`).
 - On relay calls, speak to the customer, not the operator, and verify with the same two factors (`accessibility-and-relay-calls.md`).
 - Bereavement: billing is paused the same day; account closure goes to Legal and Privacy, queue LP-PRIV, with no cancellation fee (`deceased-account-holder-requests.md`).
-- Suspected takeover or card testing is P1: lock the account and page Security Response, who respond within 1 hour (`fraud-team-handoff.md`, confidential).
+- Suspected takeover or card testing is P1: lock the account and page Security Response, who respond within 1 hour (`fraud-team-handoff.md`).
 
 ## Eval questions
 
@@ -99,6 +99,10 @@ Suggested additions, one per format, so the eval covers each parser path:
 2. Upload every file in `files/` to the demo program from the admin documents page, choosing the existing approved content source, and wait until each one shows as ready. The external malware scan is turned off in the demo's Security settings, so uploads are not quarantined for lack of a scanner.
 3. Open each of the two older demo documents ("Cancellation Policy v4" and "Refund Procedure v4") and choose **Revoke now**, so citations point at the new set. Their original files were never copied to Railway, so they can be read but not rescanned. Revoking is safe for the eval on the Railway demo: none of its 10 eval questions has an expected document bound (`expected_doc_id` is empty on all of them, checked 2026-10-07), so citation scoring does not look for the old documents. On a database seeded with `scripts/src/seed.ts`, which binds `expected_doc_id` to the seeded documents, point those questions at the new documents before revoking, or their citation checks fail even when the answer is right.
 4. Ask one question per format from the table above and check that each answer cites the expected file.
+
+## Showcase seed
+
+`scripts/src/seed-showcase.ts` uploads the 15 showcase files and fills the source library and Source usage pages with demo activity: six CSRs at `larkspur.example` (Devon Clarke asks nothing), nested folders, tags, team pins, about 200 real questions with thumbs up and down, reader opens, personal shortcuts, notes and colors, and a backdate step that spreads the activity over 90 days. Its header lists each step, what it needs and which steps add rows on a re-run. It ran once against the Railway demo on 2026-10-08.
 
 ## Rebuilding the files
 
