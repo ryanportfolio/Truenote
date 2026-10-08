@@ -43,11 +43,14 @@ function Swatch({ color, className }: { color: KbLibraryColor; className?: strin
 export function ReaderLabelMenu({
   value,
   labels,
+  labelsReady,
   onSelect,
   onRename
 }: {
   value: KbLibraryColor | null;
   labels: KbColorLabel[];
+  /** False until the user's labels have loaded; "New label…" waits, so it never picks a named color. */
+  labelsReady: boolean;
   onSelect: (color: KbLibraryColor | null) => void;
   onRename: SaveLabelName;
 }): JSX.Element {
@@ -224,7 +227,7 @@ export function ReaderLabelMenu({
                     );
                   })}
                   {shown.length > 0 ? <div role="separator" className="my-1 h-px bg-border" /> : null}
-                  {free.length > 0 ? (
+                  {labelsReady && free.length > 0 ? (
                     <button
                       type="button"
                       role="menuitem"
@@ -268,6 +271,8 @@ export function ReaderLabelMenu({
                   onCancel={() => close()}
                   onSave={async (name, color) => {
                     if (!name) return "A label needs a name.";
+                    // Saving names a color, so a color named meanwhile would be renamed.
+                    if (labelName(labels, color)) return "That color is already a label. Pick another.";
                     const error = await onRename(color, name);
                     if (!error) {
                       onSelect(color);

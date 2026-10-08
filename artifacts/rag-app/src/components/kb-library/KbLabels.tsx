@@ -53,7 +53,8 @@ function LabelListForm({ colors, onDone }: { colors: KbLibraryColor[]; onDone: (
   const [error, setError] = useState<string | null>(null);
   const baseId = useId();
   const count = (color: KbLibraryColor): number => data.items.filter((d) => d.myColor === color).length;
-  const rows = colors.filter((c) => !deleted.has(c));
+  // A deleted color stays hidden until it is a label again (named, or on a source).
+  const rows = colors.filter((c) => !deleted.has(c) || kbLabelName(c, data.labels) !== null || count(c) > 0);
   const nameOf = (color: KbLibraryColor): string => names[color] ?? kbLabelName(color, data.labels) ?? "";
 
   async function onSubmit(event: FormEvent): Promise<void> {
@@ -76,10 +77,10 @@ function LabelListForm({ colors, onDone }: { colors: KbLibraryColor[]; onDone: (
 
   async function remove(color: KbLibraryColor): Promise<void> {
     const name = kbLabelName(color, data.labels);
-    const used = count(color);
+    // Labels are shared across programs, so the count here can miss sources elsewhere.
     const ok = await confirm({
       title: name ? `Delete the label "${name}"?` : "Delete this label?",
-      message: used > 0 ? `It comes off ${sourcesLabel(used)}. The sources stay in the library.` : "No sources have it.",
+      message: "It comes off every source that has it, in all your programs. The sources stay in the library.",
       confirmLabel: "Delete label",
       tone: "danger"
     });

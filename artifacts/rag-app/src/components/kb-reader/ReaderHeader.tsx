@@ -75,6 +75,7 @@ export function ReaderHeader({
   otherPaths,
   personal,
   labels,
+  labelsReady,
   onRenameLabel
 }: {
   crumbs: ReaderCrumb[];
@@ -82,6 +83,8 @@ export function ReaderHeader({
   otherPaths: ReaderCrumb[];
   personal: KbDocPersonal;
   labels: KbColorLabel[];
+  /** False while the user's labels are still loading. */
+  labelsReady: boolean;
   onRenameLabel: SaveLabelName;
 }): JSX.Element {
   const headerRef = useRef<HTMLDivElement | null>(null);
@@ -172,6 +175,7 @@ export function ReaderHeader({
         <ReaderLabelMenu
           value={item.myColor}
           labels={labels}
+          labelsReady={labelsReady}
           onSelect={(color) => void personal.setColor(color)}
           onRename={onRenameLabel}
         />

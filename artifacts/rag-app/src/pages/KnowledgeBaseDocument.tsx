@@ -298,6 +298,7 @@ function ReaderArticle({
         otherPaths={others}
         personal={personal}
         labels={labels}
+        labelsReady={library !== null}
         onRenameLabel={renameLabel}
       />
       <KbDocPersonalError personal={personal} />
