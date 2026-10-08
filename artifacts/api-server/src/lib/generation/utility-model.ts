@@ -111,7 +111,7 @@ export async function runUtilityCompletion(
     }
   );
 
-  const text = completion.choices[0]?.message.content?.trim();
+  const text = completion.choices?.[0]?.message?.content?.trim();
   return text ? text : null;
 }
 

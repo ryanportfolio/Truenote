@@ -124,6 +124,11 @@ function getPrimaryClient(): OpenAI {
 export interface GenerateAnswerInput {
   programName: string;
   question: string;
+  /**
+   * The CSR's own wording when `question` is a model rewrite of a follow-up.
+   * Figures it holds need no excerpt; a rewrite's figures do. Defaults to `question`.
+   */
+  askedQuestion?: string;
   chunks: RetrievalChunk[];
   /** When retrieval returned refused=true, skip the LLM call entirely. */
   refusedByRetrieval?: boolean;
@@ -209,7 +214,7 @@ async function callGenerationModel(
     }
   );
 
-  const text = completion.choices[0]?.message.content?.trim();
+  const text = completion.choices?.[0]?.message?.content?.trim();
   return { text: text ? text : null, usage: readTokenUsage(completion.usage) };
 }
 
@@ -241,7 +246,8 @@ function readTokenUsage(usage: unknown): ProviderTokenUsage | null {
  */
 export function validateGeneratedAnswer(
   returnedText: string,
-  chunks: RetrievalChunk[]
+  chunks: RetrievalChunk[],
+  question?: string
 ): AnswerValidationResult {
   const answer = returnedText.trim();
   if (answer === REFUSAL_TEXT) return { payload: cannedRefusal(), failure: null };
@@ -294,8 +300,9 @@ export function validateGeneratedAnswer(
   }
   // Per-claim gate: every figure (fee, count, date, identifier) must appear in
   // an excerpt cited by its own claim: the nearest citation in the same
-  // sentence or table row (see figure-grounding.ts).
-  if (findUngroundedFigure(normalizedAnswer, chunks) !== null) {
+  // sentence or table row, or any excerpt the answer cites when the sentence
+  // has none (see figure-grounding.ts).
+  if (findUngroundedFigure(normalizedAnswer, chunks, question) !== null) {
     return {
       payload: null,
       failure: { reason: "ungrounded_figure", ...failureBase }
@@ -424,7 +431,11 @@ export async function generateAnswer(
       }
       // A valid refusal short-circuits the chain. Validation failures cascade
       // and carry exact diagnostics for the super-user error log.
-      const validation = validateGeneratedAnswer(routeText, input.chunks);
+      const validation = validateGeneratedAnswer(
+        routeText,
+        input.chunks,
+        input.askedQuestion ?? input.question
+      );
       validationFailure = validation.failure;
       if (!validation.payload) {
         outcome = "invalid";

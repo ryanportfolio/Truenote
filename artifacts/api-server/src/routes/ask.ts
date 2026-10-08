@@ -422,6 +422,7 @@ async function runAsk(
   const generation = await generateAnswer({
     programName,
     question: searchQuestion,
+    askedQuestion: question,
     chunks: retrieval.chunks,
     refusedByRetrieval: retrieval.refused,
     signal,
