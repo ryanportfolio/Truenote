@@ -14,7 +14,7 @@ import { resolveEffectiveProgramId } from "../../lib/auth/effective-program.js";
 import { clientIpFrom } from "../../lib/auth/rate-limit.js";
 import { uuidArray } from "../../lib/kb-library-sql.js";
 import { appendSecurityEvent } from "../../lib/security/audit.js";
-import { teamsWriteLimit } from "../../lib/security/route-rate-limit.js";
+import { teamsReadLimit, teamsWriteLimit } from "../../lib/security/route-rate-limit.js";
 import { assignmentBodySchema } from "../../lib/teams.js";
 
 /**
@@ -142,7 +142,7 @@ async function listSupervisors(
   }));
 }
 
-teamsRouter.get("/", async (req: Request, res: Response, next: NextFunction) => {
+teamsRouter.get("/", teamsReadLimit, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const programId = await programFor(req, res);
     if (programId === null) return;
@@ -159,6 +159,19 @@ teamsRouter.get("/", async (req: Request, res: Response, next: NextFunction) => 
     next(err);
   }
 });
+
+/**
+ * `{ [csrId]: previous supervisor id or null }` for every requested CSR, in
+ * request order. At the 200-id cap this is about 16 KB of JSON, which the
+ * security_events `details` jsonb column takes without a size limit.
+ */
+export function previousSupervisorMap(
+  csrIds: string[],
+  rows: { csr_id: string; supervisor_id: string }[]
+): Record<string, string | null> {
+  const byCsr = new Map(rows.map((row) => [row.csr_id, row.supervisor_id]));
+  return Object.fromEntries(csrIds.map((id) => [id, byCsr.get(id) ?? null]));
+}
 
 const CSRS_INVALID = "One or more people are not active CSRs in this program.";
 const SUPERVISOR_INVALID = "Choose an active supervisor in this program.";
@@ -227,6 +240,18 @@ teamsRouter.put(
           return { kind: "invalid", error: SUPERVISOR_INVALID };
         }
 
+        // Each CSR's supervisor before this write, for the audit event. The
+        // users rows above are locked, so the rows read here are current.
+        const previous = await executor.execute(sql`
+          SELECT csr_user_id::text AS csr_id, supervisor_user_id::text AS supervisor_id
+          FROM team_members
+          WHERE csr_user_id = ANY(${uuidArray(csrIds)})
+        `);
+        const previousSupervisorIds = previousSupervisorMap(
+          csrIds,
+          previous.rows as { csr_id: string; supervisor_id: string }[]
+        );
+
         if (supervisorId === null) {
           await executor.execute(sql`
             DELETE FROM team_members WHERE csr_user_id = ANY(${uuidArray(csrIds)})
@@ -256,7 +281,7 @@ teamsRouter.put(
             resourceId: null,
             requestId: typeof requestId === "string" ? requestId : null,
             sourceIp: clientIpFrom(req),
-            details: { count: csrIds.length, supervisorId }
+            details: { count: csrIds.length, supervisorId, csrIds, previousSupervisorIds }
           },
           executor
         );

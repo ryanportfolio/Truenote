@@ -137,6 +137,37 @@ export function assignmentChunks(ids: readonly string[], size: number = MAX_TEAM
   return chunks;
 }
 
+/** Runs tasks handed to it one at a time, in the order given. */
+export type SerialQueue = <T>(task: () => Promise<T>) => Promise<T>;
+
+/**
+ * A queue for the page's moves: each task starts only after every earlier
+ * task has settled, whether it resolved or rejected, so the server applies
+ * moves in the order they were made and the last answer includes them all.
+ * The returned promise settles with the task's own result.
+ */
+export function createSerialQueue(): SerialQueue {
+  let tail: Promise<unknown> = Promise.resolve();
+  return <T>(task: () => Promise<T>): Promise<T> => {
+    const run = tail.then(task);
+    // A rejected task must not stop the ones queued behind it.
+    tail = run.catch(() => undefined);
+    return run;
+  };
+}
+
+/**
+ * The drag keys to focus after a keyboard drop, in order: the dragged one,
+ * then the same person's other one. A row dropped onto a team may leave a
+ * filtered list, and a chip moved to Unassigned leaves its card, so the
+ * person is found as a chip or a row instead.
+ */
+export function focusKeysFor(key: string): string[] {
+  if (key.startsWith("row:")) return [key, `chip:${key.slice("row:".length)}`];
+  if (key.startsWith("chip:")) return [key, `row:${key.slice("chip:".length)}`];
+  return [key];
+}
+
 /**
  * Whether a cross-tab `storage` event should reload the page: only a change
  * to the selected program, or `null` (another tab cleared storage). Other

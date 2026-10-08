@@ -4,6 +4,7 @@ import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 import {
   applyMove,
   assignmentChunks,
+  createSerialQueue,
   idsToMove,
   moveAnnouncement,
   storageChangeReloads,
@@ -42,6 +43,9 @@ function errorText(err: unknown, fallback: string): string {
  * last answer) and shows the server's message. Same shape as the
  * library's `mutate` (useKbLibrary.ts): a newer move wins over an older
  * answer, and a failure behind a newer move reloads instead of rolling back.
+ * Moves reach the server one at a time, in the order they were made: a move's
+ * requests start only after every earlier move has settled, so the newest
+ * move's answer already includes the earlier ones.
  */
 export function useTeams(): TeamsState {
   const [data, setData] = useState<TeamsResponse | null>(null);
@@ -53,6 +57,9 @@ export function useTeams(): TeamsState {
   const dataRef = useRef<TeamsResponse | null>(null);
   const versionRef = useRef(0);
   const loadRef = useRef(0);
+  // Bumps on a program switch; a move queued before it must not send to the new program.
+  const programRef = useRef(0);
+  const queueRef = useRef(createSerialQueue());
 
   const commit = useCallback((next: TeamsResponse | null) => {
     dataRef.current = next;
@@ -88,6 +95,7 @@ export function useTeams(): TeamsState {
   // A super_user switching program (this tab or another) reloads the page.
   useEffect(() => {
     function reload(): void {
+      programRef.current += 1;
       versionRef.current += 1;
       setLoading(true);
       setActionError(null);
@@ -125,34 +133,55 @@ export function useTeams(): TeamsState {
       }
       const names = ids.map((id) => before.csrs.find((c) => c.id === id)?.name ?? "Someone");
       const version = ++versionRef.current;
+      const program = programRef.current;
+      const enqueue = queueRef.current;
+      // A quiet reload after the moves queued so far; skipped once the program changed,
+      // so it cannot take over from the program-switch load.
+      const resync = (): void => {
+        void enqueue(async () => {
+          if (programRef.current === program) await load(true);
+        });
+      };
       commit({ ...before, csrs: applyMove(before.csrs, ids, supervisorId) });
       setActionError(null);
       // The server takes a limited number of ids per request; big moves go in order, one request at a time.
       const chunks = assignmentChunks(ids);
-      // The server's CSR list after the last request it accepted.
-      let saved: TeamsCsr[] | null = null;
-      let moved = 0;
+      // `saved`: the server's CSR list after the last request it accepted; `moved`: ids it took.
+      const progress: { saved: TeamsCsr[] | null; moved: number } = { saved: null, moved: 0 };
       try {
-        for (const chunk of chunks) {
-          saved = (await assignTeam(chunk, supervisorId)).csrs;
-          moved += chunk.length;
-        }
+        // The page already shows the move; the requests wait for every earlier move to settle.
+        // Resolves false when a program switch came first: requests carry the program selected
+        // at send time, so the rest of this move would land in the wrong program.
+        const sent = await enqueue(async () => {
+          for (const chunk of chunks) {
+            if (programRef.current !== program) return false;
+            progress.saved = (await assignTeam(chunk, supervisorId)).csrs;
+            progress.moved += chunk.length;
+          }
+          return true;
+        });
+        // The program-switch reload owns the page now.
+        if (programRef.current !== program) return sent;
         // A newer move already set the state it wants; an older answer must not undo it.
-        // A multi-request move may have landed after that newer move's answer, so re-sync.
+        // A multi-request move re-syncs once the moves queued behind it have settled.
         const current = dataRef.current;
         if (versionRef.current === version) {
-          if (current && saved) commit({ ...current, csrs: saved });
+          if (current && progress.saved) commit({ ...current, csrs: progress.saved });
         } else if (chunks.length > 1) {
-          void load(true);
+          resync();
         }
         say(moveAnnouncement(names, supervisor));
         return true;
       } catch (err) {
+        if (programRef.current !== program) return false;
         // Some requests may have landed: show the server's last answer, never the stale snapshot.
+        // Behind a newer move, reload once that move settles; reloading now could finish before
+        // its rollback, which would put this failed move back on the page.
         const current = dataRef.current;
-        if (versionRef.current !== version) void load(true);
-        else if (saved && current) commit({ ...current, csrs: saved });
+        if (versionRef.current !== version) resync();
+        else if (progress.saved && current) commit({ ...current, csrs: progress.saved });
         else commit(before);
+        const moved = progress.moved;
         setActionError(
           moved > 0
             ? `Moved ${moved} of ${ids.length} people. ${errorText(err, "Could not move the rest.")}`

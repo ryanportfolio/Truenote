@@ -809,12 +809,40 @@ kbLibraryRouter.put(
 // Team shortcuts: a supervisor's recommended list for their own team.
 // Mounted near the top of the file, ahead of the manager+ guard.
 
+const TEAM_PINNER_MESSAGE = "Only supervisors can recommend sources to a team.";
+
 function requireTeamPinner(req: Request, res: Response, next: NextFunction): void {
   if (!canPinForTeam(authedUser(req).role)) {
-    res.status(403).json({ error: "Only supervisors can recommend sources to a team." });
+    res.status(403).json({ error: TEAM_PINNER_MESSAGE });
     return;
   }
   next();
+}
+
+/**
+ * Locks the actor's users row FOR SHARE and checks they are still an active
+ * supervisor in this program. It runs before any kb_team_shortcuts row is
+ * touched, so a concurrent role or program change on the actor (users row
+ * FOR UPDATE, then the 0006 cleanup trigger deleting their rows) waits for
+ * this save instead of deadlocking against it, or this save sees the change
+ * and refuses.
+ */
+async function lockActiveTeamPinner(tx: Tx, ctx: LibraryContext): Promise<void> {
+  const result = await tx.execute(sql`
+    SELECT role, program_id, is_active
+    FROM users
+    WHERE id = ${ctx.user.id}::uuid
+    FOR SHARE
+  `);
+  const row = result.rows[0] as
+    | { role?: unknown; program_id?: unknown; is_active?: unknown }
+    | undefined;
+  const stillPinner =
+    row !== undefined &&
+    row.is_active === true &&
+    row.role === "supervisor" &&
+    String(row.program_id ?? "").toLowerCase() === ctx.programId.toLowerCase();
+  if (!stillPinner) throw new LibraryError(403, TEAM_PINNER_MESSAGE);
 }
 
 /**
@@ -830,6 +858,7 @@ async function putTeamShortcuts(ctx: LibraryContext, res: Response): Promise<voi
   );
   await db.transaction(async (tx) => {
     await lockLibrary(tx, ctx.programId);
+    await lockActiveTeamPinner(tx, ctx);
     await requireVisibleDocuments(tx, ctx, documentIds);
     const ids = uuidArray(documentIds);
     await tx.execute(sql`

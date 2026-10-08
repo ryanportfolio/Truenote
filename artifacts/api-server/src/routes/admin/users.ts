@@ -38,6 +38,7 @@ import {
 import { resolveAppBaseUrl } from "../../lib/email/links.js";
 import { renderInviteEmail } from "../../lib/email/templates.js";
 import { recordAppError } from "../../lib/observability/error-log.js";
+import { userAdminWriteLimit } from "../../lib/security/route-rate-limit.js";
 import { workloadRateLimitMiddleware } from "../../middleware/workload-rate-limit.js";
 
 // Read once at module load — same convention as routes/auth.ts so the
@@ -266,7 +267,7 @@ export const CreateBody = z.object({
  * that exposes a plaintext password — admins are expected to communicate
  * it out-of-band to the new user.
  */
-usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), requireManagerOrAbove, async (req, res, next) => {
+usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), userAdminWriteLimit, requireManagerOrAbove, async (req, res, next) => {
   try {
     const actor = authedUser(req);
     const parsed = CreateBody.safeParse(req.body);
@@ -406,7 +407,7 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
  * up-front (creating nothing) if email delivery isn't wired in
  * production — otherwise we'd mint accounts no one can ever log into.
  */
-usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), requireManagerOrAbove, async (req, res, next) => {
+usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userAdminWriteLimit, requireManagerOrAbove, async (req, res, next) => {
   try {
     const actor = authedUser(req);
     const parsed = BulkUserEmailsSchema.safeParse(req.body);
@@ -637,7 +638,7 @@ export const PatchBody = z
  * If anything in the tx fails, the whole PATCH rolls back rather
  * than partially deactivating.
  */
-usersRouter.patch("/:id", requireManagerOrAbove, async (req, res, next) => {
+usersRouter.patch("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req, res, next) => {
   try {
     const actor = authedUser(req);
     const id = req.params.id;
@@ -937,7 +938,7 @@ usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_
  * Atomicity: SELECT ... FOR UPDATE locks the row so a concurrent
  * reactivate/PATCH can't slip between the isActive check and the DELETE.
  */
-usersRouter.delete("/:id", requireManagerOrAbove, async (req, res, next) => {
+usersRouter.delete("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req, res, next) => {
   try {
     const actor = authedUser(req);
     const id = req.params.id;

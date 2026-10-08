@@ -24,6 +24,7 @@ import { KB_DRAG_MOTION } from "@/lib/kbLibrary";
 import {
   dragSelection,
   firstName,
+  focusKeysFor,
   idsToMove,
   memberCount,
   peopleLabel,
@@ -91,13 +92,20 @@ function dropElement(dropId: string): HTMLElement | null {
 /**
  * After a keyboard drop, focus the moved person's handle or chip once it is
  * drawn in its new place (a chip remounts in another card, so dnd-kit's own
- * focus return lands on nothing).
+ * focus return lands on nothing). When the dragged row or chip is gone (a
+ * filtered list, a chip moved to Unassigned), the same person's other
+ * handle takes focus.
  */
 function focusDragHandle(key: string): void {
+  const keys = focusKeysFor(key);
   let frames = 0;
   const attempt = (): void => {
     frames += 1;
-    const el = document.querySelector<HTMLElement>(`[data-teams-drag="${CSS.escape(key)}"]`);
+    let el: HTMLElement | null = null;
+    for (const k of keys) {
+      el = document.querySelector<HTMLElement>(`[data-teams-drag="${CSS.escape(k)}"]`);
+      if (el) break;
+    }
     if (el && document.activeElement !== el) el.focus({ preventScroll: false });
     if (frames < 12) requestAnimationFrame(attempt);
   };
