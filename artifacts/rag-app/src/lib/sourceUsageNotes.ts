@@ -3,7 +3,7 @@ import type {
   SourceUsageSource,
   SourceUsageSuggestion
 } from "@/types/api";
-import { firstName, formatPercent, plural } from "./sourceUsage";
+import { firstName, formatPercent, plural, type TeamComparison } from "./sourceUsage";
 
 /**
  * Plain-text notes a manager pastes into a 1:1 doc or chat: the period, the
@@ -18,10 +18,14 @@ export interface CoachingNotesInput {
   days: number;
   questions: number;
   answered: number;
-  /** Team answered rate 0..1, or null while unknown. */
-  teamAnsweredRate: number | null;
+  /** Questions marked thumbs down (refused ones included). */
+  negativeCount: number;
+  /** The person's numbers against the team's (compareWithTeam). */
+  comparison: TeamComparison;
+  /** Folder paths here list every folder, joined with "; ". */
   topSource: { source: SourceUsageSource; path: string | null } | null;
   refused: readonly SourceUsageQuestion[];
+  /** Answered questions marked thumbs down; refused ones stay in `refused`. */
   negative: readonly SourceUsageQuestion[];
   /** True when the question list stopped at the server's limit. */
   truncated: boolean;
@@ -40,9 +44,10 @@ function quoted(question: SourceUsageQuestion): string {
 }
 
 function citedLine(question: SourceUsageQuestion): string {
-  if (question.sources.length === 0) return "No cited answer.";
+  const thumbsDown = question.refused && question.feedback === -1 ? " Thumbs down too." : "";
+  if (question.sources.length === 0) return `No cited answer.${thumbsDown}`;
   const titles = question.sources.map((source) => source.title ?? "Restricted source");
-  return `Answer used: ${titles.join(", ")}.`;
+  return `Answer used: ${titles.join(", ")}.${thumbsDown}`;
 }
 
 export function buildCoachingNotes(input: CoachingNotesInput): string {
@@ -53,10 +58,26 @@ export function buildCoachingNotes(input: CoachingNotesInput): string {
   lines.push("");
   lines.push(`Questions asked: ${input.questions}`);
   const rate = input.questions > 0 ? input.answered / input.questions : null;
+  const { comparison } = input;
   lines.push(
     `Answered with a source: ${formatPercent(rate)} (${input.answered} of ${input.questions})` +
-      (input.teamAnsweredRate !== null ? `. Team: ${formatPercent(input.teamAnsweredRate)}.` : ".")
+      (comparison.teamAnswered !== null ? `. Team: ${comparison.teamAnswered}%.` : ".")
   );
+  if (input.negativeCount > 0) {
+    lines.push(
+      `Thumbs down: ${comparison.negative}% (${input.negativeCount} of ${input.questions})` +
+        (comparison.teamNegative !== null ? `. Team: ${comparison.teamNegative}%.` : ".")
+    );
+  }
+  if (comparison.goingWell) {
+    lines.push("Going well: level with the team or better on answers and thumbs down.");
+  } else if (comparison.answeredBelow && comparison.teamAnswered !== null) {
+    lines.push(`Answered ${comparison.teamAnswered - comparison.answered} points below the team.`);
+  } else if (comparison.refusedAbove && comparison.teamRefused !== null) {
+    lines.push(
+      `${comparison.refused}% of questions got no answer; for the team, ${comparison.teamRefused}%.`
+    );
+  }
   if (input.topSource && input.topSource.source.title !== null) {
     const { source, path } = input.topSource;
     lines.push(

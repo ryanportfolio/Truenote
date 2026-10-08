@@ -812,13 +812,23 @@ const FORMAT_TAGS = new Set([
 const RELATED_TOPIC_TAG = 10;
 
 /**
- * Sources related to this one, closest first: the closest folder relation
- * (folderCloseness: same folder, then parent or child, then sibling), plus
- * RELATED_TOPIC_TAG for each shared topic tag. Format and status tags
- * (FORMAT_TAGS) add nothing, so a source that only shares "Script" is not
- * related. Anything scoring below one shared topic tag is dropped, so the
- * list can be shorter than `limit` or empty. Ties go to the most cited.
- * Never includes the source itself.
+ * A relation through one of the source's other folders counts this much of
+ * one through its primary folder, so a close neighbor of the primary folder
+ * (a parent or child) outranks the members of a second, broader folder.
+ */
+const RELATED_SECONDARY_WEIGHT = 0.5;
+
+/**
+ * Sources related to this one, closest first. Each of the source's folders
+ * is scored on its own with folderCloseness (same folder, then parent or
+ * child, then sibling). The deepest folder is the primary one and counts in
+ * full; the others count RELATED_SECONDARY_WEIGHT. A source scores its best
+ * folder relation plus RELATED_TOPIC_TAG for each shared topic tag. Format
+ * and status tags (FORMAT_TAGS) add nothing, so a source that only shares
+ * "Script" is not related. Anything scoring below one shared topic tag is
+ * dropped, so the list can be shorter than `limit` or empty. Ties go to the
+ * most cited. A never-cited source related only through a top-level folder
+ * comes last. Never includes the source itself.
  */
 export function relatedSources(
   doc: Pick<KbDocumentListItem, "documentId" | "categoryIds" | "tagIds">,
@@ -838,20 +848,39 @@ export function relatedSources(
   };
   const topics = new Set(doc.tagIds.filter(isTopic));
   if (mine.length === 0 && topics.size === 0) return [];
-  const score = (d: KbDocumentListItem): number => {
+  // The primary folder: the deepest one (the first in library order on a tie).
+  const primary = mine.reduce<KbCategoryNode | null>(
+    (best, m) => (best === null || m.depth > best.depth ? m : best),
+    null
+  );
+  const rank = (d: KbDocumentListItem): { score: number; weak: boolean } => {
     let folder = 0;
+    // Every folder relation found goes through a top-level folder (depth 1).
+    let broadOnly = true;
     for (const id of d.categoryIds) {
       const node = tree.byId.get(id);
       if (!node) continue;
-      for (const m of mine) folder = Math.max(folder, folderCloseness(m, node, tree));
+      for (const m of mine) {
+        const closeness = folderCloseness(m, node, tree) * (m === primary ? 1 : RELATED_SECONDARY_WEIGHT);
+        if (closeness === 0) continue;
+        if (Math.min(m.depth, node.depth) > 1) broadOnly = false;
+        folder = Math.max(folder, closeness);
+      }
     }
-    return folder + RELATED_TOPIC_TAG * d.tagIds.filter((id) => topics.has(id)).length;
+    const tagScore = RELATED_TOPIC_TAG * d.tagIds.filter((id) => topics.has(id)).length;
+    return { score: folder + tagScore, weak: d.citationCount === 0 && folder > 0 && broadOnly && tagScore === 0 };
   };
   return items
     .filter((d) => d.documentId !== doc.documentId)
-    .map((d) => ({ d, score: score(d) }))
+    .map((d) => ({ d, ...rank(d) }))
     .filter((x) => x.score >= RELATED_TOPIC_TAG)
-    .sort((a, b) => b.score - a.score || b.d.citationCount - a.d.citationCount || byTitle(a.d, b.d))
+    .sort(
+      (a, b) =>
+        Number(a.weak) - Number(b.weak) ||
+        b.score - a.score ||
+        b.d.citationCount - a.d.citationCount ||
+        byTitle(a.d, b.d)
+    )
     .slice(0, limit)
     .map((x) => x.d);
 }

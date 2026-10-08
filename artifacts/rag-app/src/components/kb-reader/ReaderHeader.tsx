@@ -59,7 +59,9 @@ function useScrollPaddingBelow(headerRef: RefObject<HTMLElement>): void {
  * shortcuts, write a private note, and a color label. Sticky from 768px up;
  * on phones it scrolls away so the document gets the screen, and the three
  * actions shrink to one row of short pills ("Shortcut", "Note", "Label")
- * whose accessible names keep the full wording.
+ * whose accessible names keep the full wording. While the note editor is
+ * open, "Save note" is the one filled button, so the shortcut button turns
+ * quiet until the editor closes.
  */
 export function ReaderHeader({
   crumbs,
@@ -70,8 +72,8 @@ export function ReaderHeader({
   onNote
 }: {
   crumbs: ReaderCrumb[];
-  /** Other folders the source is also in ("Retention"). */
-  otherPaths: string[];
+  /** Other folders the source is also in ("Retention"), each a link to that folder. */
+  otherPaths: ReaderCrumb[];
   personal: KbDocPersonal;
   labels: KbColorLabel[];
   onRenameLabel: SaveLabelName;
@@ -79,7 +81,7 @@ export function ReaderHeader({
 }): JSX.Element {
   const headerRef = useRef<HTMLDivElement>(null);
   useScrollPaddingBelow(headerRef);
-  const { item } = personal;
+  const { item, editing } = personal;
   const inShortcuts = item.pinnedAt !== null;
   const hasNote = Boolean(item.note);
   const shortcutName = inShortcuts ? "In my shortcuts" : "Add to my shortcuts";
@@ -88,7 +90,7 @@ export function ReaderHeader({
     <div
       ref={headerRef}
       data-kb-reader-header
-      className="z-20 -mx-4 bg-background px-4 pb-3 pt-1 sm:-mx-6 sm:px-6 md:sticky md:top-0 md:border-b md:border-border/70 md:pt-4"
+      className="z-20 -mx-3 bg-background px-3 pb-3 pt-1 sm:-mx-6 sm:px-6 md:sticky md:top-0 md:border-b md:border-border/70 md:pt-4"
     >
       <nav aria-label="Breadcrumb" data-kb-breadcrumb className="text-sm text-muted-foreground">
         <ol className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -116,8 +118,24 @@ export function ReaderHeader({
             </li>
           ))}
           {otherPaths.length > 0 ? (
-            <li className="text-xs" title={otherPaths.join("; ")}>
-              (also in {otherPaths.join(", ")})
+            <li data-kb-also-in className="text-xs">
+              (also in{" "}
+              {otherPaths.map((path, index) => (
+                <span key={`${path.id ?? path.name}-${index}`}>
+                  {index > 0 ? ", " : null}
+                  {path.id ? (
+                    <Link
+                      href={`/kb?folder=${encodeURIComponent(path.id)}`}
+                      className="rounded-sm underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {path.name}
+                    </Link>
+                  ) : (
+                    path.name
+                  )}
+                </span>
+              ))}
+              )
             </li>
           ) : null}
         </ol>
@@ -132,7 +150,7 @@ export function ReaderHeader({
           title={inShortcuts ? "Remove it from your shortcuts" : "Keep it in your shortcuts on Sources"}
           className={cn(
             "shrink-0 gap-1.5 px-2.5 py-1.5 text-[13px] sm:gap-2 sm:px-4 sm:py-2 sm:text-sm",
-            inShortcuts ? "btn-whisper text-primary" : "btn-primary"
+            inShortcuts || editing ? "btn-whisper text-primary" : "btn-primary"
           )}
         >
           <Star className="h-4 w-4" fill={inShortcuts ? "currentColor" : "none"} aria-hidden />

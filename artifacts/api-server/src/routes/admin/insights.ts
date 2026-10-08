@@ -290,8 +290,8 @@ function usageCtes(filter: UsageFilter): SQL {
         ql.id,
         ql.user_id,
         ql.question,
-        -- Same wording rule as the drawer's grouping: case, spacing and
-        -- trailing ?.! do not make a different question.
+        -- Case, repeated spaces and trailing ?.! do not make a different
+        -- question (used to match a refused question to teammates' answers).
         regexp_replace(
           regexp_replace(lower(btrim(ql.question)), '\\s+', ' ', 'g'),
           '[?.!\\s]+$',
@@ -439,7 +439,8 @@ interface UsageSuggestionRow {
  * that can be opened now (program, live version, and `clearance`, which the
  * caller sets to the lower of the viewer's and the person's). `related`
  * marks candidates sharing a top-level category with any source cited by
- * the person's refused or thumbs-down answers. Related rows sort first, so
+ * the person's thumbs-down answers, or by teammates' answers to the same
+ * question as one of the person's refused answers. Related rows sort first, so
  * the LIMIT keeps them whenever any exist; selectSourceSuggestions then
  * applies the related-or-fallback rule.
  */

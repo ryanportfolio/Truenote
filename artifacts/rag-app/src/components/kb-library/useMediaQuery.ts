@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 
-/** Wide-screen extras (My labels beside the list, the live preview beside Organize). Tailwind's xl. */
+/** Wide-screen extras (the live preview beside Organize). Tailwind's xl. */
 export const KB_WIDE_QUERY = "(min-width: 1280px)";
+
+/** The My labels card beside the list; narrower screens keep labels inside Filters. */
+export const KB_LABELS_QUERY = "(min-width: 1440px)";
 
 /**
  * Whether a media query matches, kept in sync with resizes. Used where a

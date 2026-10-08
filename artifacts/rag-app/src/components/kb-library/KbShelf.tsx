@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useId, useRef } from "react";
+import { forwardRef, useEffect, useId, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Star } from "lucide-react";
 import { KB_NUMBERED_PINS, docCategoryPaths, type KbShortcut } from "@/lib/kbLibrary";
@@ -90,13 +90,13 @@ function ShortcutTile({ shortcut, index, count }: { shortcut: KbShortcut; index:
           {number}
         </span>
       </span>
-      {/* The hover card: why the source is here and its folder. Shown on icon hover and on keyboard focus. */}
+      {/* The hover card: why the source is here and its folder. Shown on icon hover and on keyboard focus, below the tile so its title stays readable. */}
       <span
         id={tipId}
         role="tooltip"
         data-kb-shortcut-card
         className={cn(
-          "pointer-events-none absolute top-9 z-30 mt-1 hidden w-max max-w-[15rem] rounded-md border border-border bg-card px-2.5 py-1.5 text-xs leading-snug text-foreground shadow-panel group-has-[[data-kb-shortcut-why]:hover]/tile:block group-has-[a:focus-visible]/tile:block motion-safe:animate-in motion-safe:fade-in motion-safe:duration-100",
+          "pointer-events-none absolute top-full z-30 mt-1 hidden w-max max-w-[15rem] rounded-md border border-border bg-card px-2.5 py-1.5 text-xs leading-snug text-foreground shadow-panel group-has-[[data-kb-shortcut-why]:hover]/tile:block group-has-[a:focus-visible]/tile:block motion-safe:animate-in motion-safe:fade-in motion-safe:duration-100",
           cardSide(index, count)
         )}
       >
@@ -111,7 +111,7 @@ function ShortcutTile({ shortcut, index, count }: { shortcut: KbShortcut; index:
         aria-keyshortcuts={number <= KB_NUMBERED_PINS ? String(number) : undefined}
         aria-describedby={tipId}
         title={`${doc.title}\n${where}`}
-        className="mt-1.5 line-clamp-3 break-words rounded-sm hyphens-auto text-sm font-medium leading-snug text-foreground after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="mt-1.5 line-clamp-3 break-words rounded-sm text-sm font-medium leading-snug text-foreground after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         <span className="sr-only">Shortcut {number}, {source.label.toLowerCase()}: </span>
         <span data-kb-title>{doc.title}</span>
@@ -149,7 +149,7 @@ export const KbShortcutShelf = forwardRef<
                   {" "}to <kbd className="kbd">{shelf.length}</kbd>
                 </>
               ) : null}{" "}
-              to open one.
+              to open one. Star a source to add it.
             </p>
           ) : null}
         </div>
@@ -188,18 +188,35 @@ export const KbShortcutShelf = forwardRef<
   );
 });
 
+/** Below this width per chip, dock chips show only their number (the title stays in the tooltip and the accessible name). */
+const DOCK_CHIP_MIN_WIDTH = 100;
+
 /**
  * The shelf, docked to the bottom of the viewport in one row once the shelf
  * has scrolled away. Sticky inside the page column, so at the end of the page
- * it sits after the last row instead of over it.
+ * it sits after the last row instead of over it. Every chip stays whole: the
+ * chips share the row and their titles shorten with an ellipsis (7rem at
+ * most); when that would leave too little of each title, chips show only
+ * their number. Phones that still run out of room scroll the row.
  */
 export function KbShortcutDock({ shelf, shown }: { shelf: KbShortcut[]; shown: boolean }): JSX.Element {
   // Hidden, not unmounted: the page keeps the dock's space at its end, so the
   // dock can never cover the last row. inert keeps the hidden links out of Tab.
   const ref = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const [compact, setCompact] = useState(false);
   useEffect(() => {
     ref.current?.toggleAttribute("inert", !shown);
   }, [shown]);
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const measure = (): void => setCompact(list.clientWidth / Math.max(1, shelf.length) < DOCK_CHIP_MIN_WIDTH);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [shelf.length]);
   return (
     <nav
       data-kb-dock={shown ? "shown" : "hidden"}
@@ -215,20 +232,20 @@ export function KbShortcutDock({ shelf, shown }: { shelf: KbShortcut[]; shown: b
         <Star className="h-3.5 w-3.5" fill="currentColor" aria-hidden />
         <span className="hidden sm:inline">Shortcuts</span>
       </span>
-      <ul className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto py-0.5 [scrollbar-width:none]">
+      <ul ref={listRef} data-kb-dock-compact={compact || undefined} className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto py-0.5 [scrollbar-width:thin]">
         {shelf.map(({ doc }, i) => (
-          <li key={doc.documentId} className="shrink-0">
+          <li key={doc.documentId} className={compact ? "shrink-0" : "min-w-0"}>
             <Link
               href={`/kb/${doc.documentId}`}
               title={doc.title}
               aria-keyshortcuts={String(i + 1)}
-              className="btn-base gap-1.5 border border-border bg-secondary px-2.5 py-1 text-xs text-foreground hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className="btn-base max-w-full gap-1.5 border border-border bg-secondary px-2.5 py-1 text-xs text-foreground hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
               <span aria-hidden className="tabular-nums text-muted-foreground">
                 {i + 1}
               </span>
               {doc.myColor ? <ColorDot color={doc.myColor} /> : null}
-              <span className="max-w-[12rem] truncate">{doc.title}</span>
+              <span className={compact ? "sr-only" : "min-w-0 max-w-[7rem] truncate"}>{doc.title}</span>
             </Link>
           </li>
         ))}

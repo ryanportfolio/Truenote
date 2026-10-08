@@ -62,7 +62,7 @@ export function activeFilterCount(filters: KbFilters): number {
 
 /**
  * One "Filters" button. Its panel holds New, Updated, Has my note, Labels
- * (with their names; only below 1280px, where the My labels card is not on
+ * (with their names; only below 1440px, where the My labels card is not on
  * screen), Tags and Sort. Escape or a click outside closes it and focus
  * goes back to the button.
  */
@@ -71,6 +71,7 @@ export function KbFiltersButton({
   onFilters,
   sort,
   onSort,
+  sortChanged,
   tags,
   showLabels
 }: {
@@ -78,6 +79,8 @@ export function KbFiltersButton({
   onFilters: (filters: KbFilters) => void;
   sort: KbSort;
   onSort: (sort: KbSort) => void;
+  /** A sort other than the view's own counts in the badge. */
+  sortChanged: boolean;
   tags: KbTag[];
   /** Labels live here when the My labels card is not beside the list. */
   showLabels: boolean;
@@ -87,7 +90,9 @@ export function KbFiltersButton({
   const panelRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
   const sortName = useId();
-  const count = activeFilterCount(filters);
+  const count = activeFilterCount(filters) + Number(sortChanged);
+  // Phones: the panel never runs past the screen bottom, so Sort and Done stay reachable by scrolling inside it.
+  const [maxHeight, setMaxHeight] = useState<number | null>(null);
 
   function close(returnFocus: boolean): void {
     setOpen(false);
@@ -96,7 +101,18 @@ export function KbFiltersButton({
 
   useLayoutEffect(() => {
     if (!open) return;
+    function fit(): void {
+      const top = panelRef.current?.getBoundingClientRect().top;
+      if (top !== undefined) setMaxHeight(Math.min(640, Math.max(160, window.innerHeight - top - 16)));
+    }
+    fit();
     panelRef.current?.querySelector<HTMLElement>("input, button")?.focus({ preventScroll: true });
+    window.addEventListener("resize", fit);
+    window.addEventListener("scroll", fit, true);
+    return () => {
+      window.removeEventListener("resize", fit);
+      window.removeEventListener("scroll", fit, true);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -160,6 +176,7 @@ export function KbFiltersButton({
           role="dialog"
           aria-label="Filters"
           data-kb-filters-panel
+          style={maxHeight !== null ? { maxHeight } : undefined}
           className="absolute right-0 top-full z-40 mt-2 flex max-h-[min(40rem,75dvh)] flex-col max-sm:left-0 sm:w-[22rem] gap-3 overflow-y-auto rounded-lg border border-border bg-card p-4 shadow-panel motion-safe:animate-in motion-safe:fade-in motion-safe:[animation-duration:100ms]"
         >
           <Group title="Show only">
@@ -229,20 +246,56 @@ export function KbFiltersButton({
   );
 }
 
-/** The active filters in one sentence, with Clear. */
-export function KbFilterSentence({ sentence, onClear }: { sentence: string; onClear: () => void }): JSX.Element {
+/** A changed sort in words: "Sorted by most viewed." */
+const SORT_SENTENCE: Record<KbSort, string> = {
+  manual: "Sorted in the manager's order.",
+  newest: "Sorted by newest.",
+  updated: "Sorted by recently updated.",
+  views: "Sorted by most viewed.",
+  cited: "Sorted by most cited.",
+  title: "Sorted A to Z."
+};
+
+const LINK = "cursor-pointer rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+
+/**
+ * The active filters in one sentence with Clear right after it, then a
+ * changed sort ("Sorted by most viewed.") with Reset, all on one line.
+ */
+export function KbFilterSentence({
+  sentence,
+  onClear,
+  sort,
+  onResetSort
+}: {
+  sentence: string | null;
+  onClear: () => void;
+  /** The sort when it is not the view's own; null hides that part. */
+  sort: KbSort | null;
+  onResetSort: () => void;
+}): JSX.Element {
   return (
-    <div data-kb-filter-sentence className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-      <p className="min-w-0 text-sm text-foreground" role="status" aria-live="polite">
-        {sentence}
-      </p>
-      <button
-        type="button"
-        onClick={onClear}
-        className="cursor-pointer rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      >
-        Clear
-      </button>
+    <div data-kb-filter-sentence className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+      {sentence ? (
+        <>
+          <p className="min-w-0 text-foreground" role="status" aria-live="polite">
+            {sentence}
+          </p>
+          <button type="button" onClick={onClear} className={cn(LINK, sort && "mr-2")}>
+            Clear
+          </button>
+        </>
+      ) : null}
+      {sort ? (
+        <>
+          <p data-kb-sort-sentence className="min-w-0 text-foreground" role="status" aria-live="polite">
+            {SORT_SENTENCE[sort]}
+          </p>
+          <button type="button" onClick={onResetSort} aria-label="Reset sort" className={LINK}>
+            Reset
+          </button>
+        </>
+      ) : null}
     </div>
   );
 }

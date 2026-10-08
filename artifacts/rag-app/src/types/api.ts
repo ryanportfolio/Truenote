@@ -414,7 +414,10 @@ export interface SourceUsageMatrix {
 /**
  * A source to suggest to the selected person: teammates cited it in the
  * window in the same top-level categories as the sources behind this
- * person's refused or thumbs-down questions, and this person never cited it.
+ * person's thumbs-down answers, or behind teammates' answers to the same
+ * question (case, spaces and trailing ?.! ignored) as one of this person's
+ * refused answers; and this person never cited it. Ties: more team citations,
+ * then the latest team citation, then document id.
  * Fallback when that yields nothing: the team's most-cited sources this
  * person never cited, each with at least 3 team answers in the window. The
  * two reasons are never mixed in one response. Only sources both the viewer

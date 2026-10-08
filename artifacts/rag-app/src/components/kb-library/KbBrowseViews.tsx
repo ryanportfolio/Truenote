@@ -83,7 +83,7 @@ export function FolderColorMenu({ category }: { category: KbCategory }): JSX.Ele
   return (
     <KbMenu
       label={`Color for the folder ${category.name}. Showing ${showing}.`}
-      title="Choose my color for this folder"
+      title="Folder color (only you see it)"
       buttonClassName="btn-icon h-8 w-8 shrink-0"
       items={[
         {

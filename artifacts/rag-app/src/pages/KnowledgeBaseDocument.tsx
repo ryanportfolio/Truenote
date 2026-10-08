@@ -123,7 +123,7 @@ export function KbDocumentPage({ documentId }: { documentId: string }): JSX.Elem
   }, [state]);
 
   return (
-    <div className="mx-auto flex w-full max-w-[76rem] flex-col gap-4 px-4 pb-10 pt-4 sm:px-6 md:pt-2">
+    <div className="mx-auto flex w-full max-w-[76rem] flex-col gap-4 px-3 pb-10 pt-4 sm:px-6 md:pt-2">
       {state.status === "loading" ? (
         <div className="flex flex-col gap-2 pt-4" aria-hidden>
           <div className="skeleton h-4 w-1/3" />
@@ -197,7 +197,7 @@ function withLabel(labels: KbColorLabel[], color: KbLibraryColor, name: string |
 }
 
 /** Folder trail for the breadcrumb: the source's first folder and its parents. */
-function folderCrumbs(item: KbDocumentListItem, tree: KbTree): { crumbs: ReaderCrumb[]; others: string[] } {
+function folderCrumbs(item: KbDocumentListItem, tree: KbTree): { crumbs: ReaderCrumb[]; others: ReaderCrumb[] } {
   const known = new Set(item.categoryIds);
   const nodes = tree.order.filter((node) => known.has(node.category.id));
   const first = nodes[0];
@@ -208,7 +208,7 @@ function folderCrumbs(item: KbDocumentListItem, tree: KbTree): { crumbs: ReaderC
     const parentId: string | null = node.category.parentId;
     node = parentId ? tree.byId.get(parentId) : undefined;
   }
-  return { crumbs, others: nodes.slice(1).map((node) => node.category.name) };
+  return { crumbs, others: nodes.slice(1).map((node) => ({ id: node.category.id, name: node.category.name })) };
 }
 
 function ReaderArticle({
@@ -304,14 +304,14 @@ function ReaderArticle({
         </div>
         <article
           aria-labelledby="kb-doc-title"
-          className="kb-reader-doc min-w-0 rounded-lg border border-border bg-card px-5 py-6 shadow-card sm:px-8 sm:py-7 xl:col-start-1 xl:row-span-2 xl:row-start-1"
+          className="kb-reader-doc relative min-w-0 rounded-lg border border-border bg-card px-4 py-6 shadow-card sm:px-8 sm:py-7 xl:col-start-1 xl:row-span-2 xl:row-start-1"
         >
           <header>
             <h1 id="kb-doc-title" className="font-display text-3xl font-semibold tracking-tight sm:text-[2.125rem] sm:leading-tight">
               {doc.title}
             </h1>
             {tags.length > 0 || doc.updatedAt ? (
-              <p className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
+              <p data-kb-reader-meta className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
                 {tags.length > 0 ? (
                   <span>
                     <span className="sr-only">Tags: </span>
@@ -330,7 +330,7 @@ function ReaderArticle({
             ) : null}
           </header>
           {doc.citationAuthorized ? (
-            <div className="mt-4 flex flex-wrap items-start justify-between gap-3 rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-sm">
+            <div data-kb-reader-cited className="mt-4 flex flex-wrap items-start justify-between gap-3 rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-sm">
               <p className="flex min-w-0 items-start gap-2">
                 <TextQuote className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
                 <span>
@@ -743,16 +743,12 @@ const ReaderMarkdown = memo(function ReaderMarkdown({
         li: ({ children }) => <ReaderListItem>{children}</ReaderListItem>,
         table: ({ children, node }) => {
           const cited = citationAttributes(node);
-          return (
-            <div {...cited} className={cn("my-4 overflow-x-auto first:mt-0 last:mb-0", cited.className)}>
-              <table className="w-full border-collapse text-[15px] tabular-nums">{children}</table>
-            </div>
-          );
+          return <ReaderTable cited={cited}>{children}</ReaderTable>;
         },
         th: ({ children }) => (
-          <th className="border-b border-border px-3 py-2 text-left font-medium">{children}</th>
+          <th className="border-b border-border px-2 py-2 text-left font-medium sm:px-3">{children}</th>
         ),
-        td: ({ children }) => <td className="border-t border-border px-3 py-2 align-top">{children}</td>,
+        td: ({ children }) => <td className="border-t border-border px-2 py-2 align-top sm:px-3">{children}</td>,
         a: ({ href, children }) => (
           <a
             href={href}
@@ -795,6 +791,56 @@ const ReaderMarkdown = memo(function ReaderMarkdown({
     </ReactMarkdown>
   );
 });
+
+/**
+ * A document table that scrolls sideways when it is wider than the page.
+ * While part of it is out of view, readerBody.css fades the right edge and
+ * shows "Scroll for more" under it. The label is CSS generated content, so
+ * the document text that saved highlights are anchored to stays unchanged.
+ */
+function ReaderTable({
+  cited,
+  children
+}: {
+  cited: ReturnType<ReturnType<typeof useCitationAttributes>>;
+  children?: ReactNode;
+}): JSX.Element {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState({ wide: false, more: false });
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    function update(): void {
+      if (!el) return;
+      const hidden = el.scrollWidth - el.clientWidth;
+      const next = { wide: hidden > 1, more: hidden - el.scrollLeft > 1 };
+      setOverflow((prev) => (prev.wide === next.wide && prev.more === next.more ? prev : next));
+    }
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      observer?.disconnect();
+    };
+  }, []);
+
+  return (
+    <div
+      {...cited}
+      data-kb-table-wrap
+      data-wide={overflow.wide ? "" : undefined}
+      data-more={overflow.more ? "" : undefined}
+      className={cn("kb-table-wrap my-4 first:mt-0 last:mb-0", cited.className)}
+    >
+      <div ref={scrollRef} data-kb-table-scroll className="overflow-x-auto">
+        <table className="w-full border-collapse text-[15px] tabular-nums">{children}</table>
+      </div>
+    </div>
+  );
+}
 
 function ReaderListItem({ children }: { children?: ReactNode }): JSX.Element {
   const ordered = useContext(OrderedListContext);

@@ -92,12 +92,42 @@ interface DropTarget {
 const TargetContext = createContext<DropTarget | null>(null);
 
 /**
- * Pointer drags: the row under the pointer. Keyboard drags: the row whose
- * height band holds the dragged item's center, which is where
- * treeKeyboardCoordinates parks it.
+ * An open drop zone stays the target while the pointer is anywhere over its
+ * folder's row or the zone itself (and the gap between them). The zone pushes
+ * the folder's rows down when it opens, so without this the pointer moving
+ * into it would land on a row, close it, and the rows would jump back. For a
+ * folder being dragged, the top of the row still means "place before".
+ */
+function openZoneUnderPointer(args: Parameters<CollisionDetection>[0]): Collision | null {
+  const point = args.pointerCoordinates;
+  if (!point) return null;
+  const drag = args.active.data.current as DragData | undefined;
+  for (const container of args.droppableContainers) {
+    const drop = container.data.current as DropData | undefined;
+    if (drop?.type !== "category" || !drop.zone) continue;
+    const zone = args.droppableRects.get(container.id);
+    if (!zone) continue;
+    const row = args.droppableRects.get(`drop-cat:${drop.categoryId}`);
+    const top = row ? row.top + (drag?.type === "category" ? row.height * 0.3 : 0) : zone.top;
+    const left = Math.min(zone.left, row?.left ?? zone.left);
+    const right = Math.max(zone.right, row?.right ?? zone.right);
+    if (point.x >= left && point.x <= right && point.y >= top && point.y <= zone.bottom) {
+      return { id: container.id, data: { droppableContainer: container, value: 0 } };
+    }
+  }
+  return null;
+}
+
+/**
+ * Pointer drags: the open drop zone (see openZoneUnderPointer), else the row
+ * under the pointer. Keyboard drags: the row whose height band holds the
+ * dragged item's center, which is where treeKeyboardCoordinates parks it.
  */
 const collisionDetection: CollisionDetection = (args) => {
-  if (args.pointerCoordinates) return pointerWithin(args);
+  if (args.pointerCoordinates) {
+    const zone = openZoneUnderPointer(args);
+    return zone ? [zone] : pointerWithin(args);
+  }
   const y = args.collisionRect.top + args.collisionRect.height / 2;
   const hits: Collision[] = [];
   for (const container of args.droppableContainers) {
@@ -320,7 +350,7 @@ function DropIndicator({ dropId }: { dropId: string }): JSX.Element | null {
     // A move into a folder is shown by the big zone under that folder instead.
     if (target.zoneFor) return null;
     return (
-      <span aria-hidden data-kb-drop-slot className="pointer-events-none absolute inset-0 z-10">
+      <span aria-hidden data-kb-drop-slot className="pointer-events-none absolute inset-0 z-10 scroll-mb-20 scroll-mt-16">
         <DropLabel target={target} />
       </span>
     );
@@ -330,7 +360,7 @@ function DropIndicator({ dropId }: { dropId: string }): JSX.Element | null {
       aria-hidden
       data-kb-drop-line
       className={cn(
-        "pointer-events-none absolute inset-x-2 z-10 h-0.5 rounded-full",
+        "pointer-events-none absolute inset-x-2 z-10 h-0.5 scroll-mb-24 scroll-mt-16 rounded-full",
         target.valid ? "bg-primary" : "bg-destructive",
         target.place === "before" ? "-top-px" : "-bottom-px"
       )}
@@ -370,7 +400,7 @@ function DropZone({ categoryId, text }: { categoryId: string; text: string }): J
       ref={drop.setNodeRef}
       aria-hidden
       data-kb-drop-zone={categoryId}
-      className="mb-1 ml-10 mr-2 mt-1 flex min-h-[6rem] items-start justify-center rounded-lg border-2 border-dashed border-primary/60 bg-primary/5 px-4 pt-3 motion-safe:animate-in motion-safe:fade-in motion-safe:[animation-duration:120ms]"
+      className="mb-1 ml-10 mr-2 mt-1 flex min-h-[6rem] scroll-my-4 items-start justify-center rounded-lg border-2 border-dashed border-primary/60 bg-primary/5 px-4 pt-3 motion-safe:animate-in motion-safe:fade-in motion-safe:[animation-duration:120ms]"
     >
       <span data-kb-drop-zone-label className="text-sm font-medium text-primary">
         {text}
@@ -730,6 +760,9 @@ function OrganizeCategory({
                   <OrganizeDoc key={doc.documentId} doc={doc} categoryId={id} index={i} count={docs.length} />
                 ))}
               </ul>
+            ) : total > 0 ? (
+              // Its sources sit in the folders inside it.
+              <p className="px-3 py-1.5 text-xs text-muted-foreground">No sources directly in {node.category.name}.</p>
             ) : (
               <p className="px-3 py-1.5 text-xs text-muted-foreground">
                 No sources yet. Drag a source onto the name {node.category.name} to add it.
@@ -825,7 +858,14 @@ export function KbOrganizeTree({
   // after it mounts; one more render then places the preview clear of the wording.
   const [, setZoneRender] = useState(0);
   useLayoutEffect(() => {
-    if (target) setZoneRender((n) => n + 1);
+    if (!target) return;
+    // Keyboard drags: each arrow press brings the zone or line it reached on screen, with room for the preview.
+    if (keyboardDrag.current) {
+      document
+        .querySelector<HTMLElement>("[data-kb-drop-zone], [data-kb-drop-line], [data-kb-drop-slot]")
+        ?.scrollIntoView({ block: "nearest" });
+    }
+    setZoneRender((n) => n + 1);
   }, [target]);
   onKeyboardSpot.current = (a, spot) => updateTarget(computeTarget(a, spot.over, spotY(spot), lookup.tree));
 
@@ -1059,7 +1099,13 @@ const offsetFromPointer: Modifier = ({ activatorEvent, activeNodeRect: measured,
     const label = document.querySelector<HTMLElement>("[data-kb-drop-zone-label]");
     if (label) return { ...transform, y: label.getBoundingClientRect().bottom + 8 - activeNodeRect.top };
     // On a line or slot the preview stays at the row's left; when it would cover the label on the right, it moves below it.
-    const top = clearOfLabels(activeNodeRect.top + transform.y, activeNodeRect.left + transform.x, width, height);
+    // It is placed from the line or slot as drawn now, so a scroll after an arrow press cannot leave it behind.
+    const marker = document.querySelector<HTMLElement>("[data-kb-drop-line], [data-kb-drop-slot]");
+    const box = marker?.getBoundingClientRect();
+    const from = box
+      ? (marker?.hasAttribute("data-kb-drop-line") ? box.top : box.top + box.height / 2) - height / 2
+      : activeNodeRect.top + transform.y;
+    const top = clearOfLabels(from, activeNodeRect.left + transform.x, width, height);
     return { ...transform, y: top - activeNodeRect.top };
   }
   const point = activatorEvent ? getEventCoordinates(activatorEvent) : null;

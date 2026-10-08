@@ -14,11 +14,14 @@
   padding: 0;
 }
 
+/* The circle's center sits on the first text line's center: padding-top
+ * (1.3125rem) plus half the 1.625rem line equals the circle's top (0.75rem)
+ * plus half its 2.75rem height. One-line steps keep the 4.25rem row. */
 .kb-steps > li {
   counter-increment: kb-step;
   position: relative;
   min-height: 4.25rem;
-  padding: 0.875rem 0 0.875rem 3.75rem;
+  padding: 1.3125rem 0 0.875rem 3.75rem;
   border-top: 1px solid oklch(var(--border));
 }
 
@@ -102,12 +105,6 @@
   border: 0;
 }
 
-/* The "Select any passage to highlight it." line goes away once the
- * highlighter shows its saved-highlights button (one or more saved). */
-[data-kb-reader]:has(.kb-reader-highlights > div > div:first-child button) [data-kb-highlight-hint] {
-  display: none;
-}
-
 /* One filled primary per screen: the header's "Add to my shortcuts" stays
  * the page's main action, so the highlight toolbar's "Highlight" button
  * (portaled to body) reads as a whisper button with primary text while a
@@ -136,9 +133,90 @@ body:has([data-kb-reader]) [data-kb-highlight-toolbar] .btn-primary:active:not(:
     padding-left: 3rem;
   }
 
+  .kb-steps > li {
+    padding-top: 0.875rem;
+  }
+
   .kb-steps > li::before {
+    top: 0.5625rem;
     width: 2.25rem;
     height: 2.25rem;
     font-size: 1rem;
+  }
+}
+
+/* Wide tables scroll sideways. While columns are out of view the right
+ * edge fades and "Scroll for more" shows under the table; the line keeps
+ * its space once the end is reached, so scrolling never moves the page. */
+.kb-table-wrap {
+  position: relative;
+}
+
+.kb-table-wrap[data-more]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 1.5rem;
+  width: 2.5rem;
+  pointer-events: none;
+  background: linear-gradient(to right, oklch(var(--card) / 0), oklch(var(--card)));
+}
+
+.kb-table-wrap[data-wide]::after {
+  content: "Scroll for more \2192";
+  display: block;
+  height: 1.5rem;
+  padding-top: 0.25rem;
+  text-align: right;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  color: oklch(var(--muted-foreground));
+}
+
+.kb-table-wrap[data-wide]:not([data-more])::after {
+  visibility: hidden;
+}
+
+/* Saved highlights: the "1 highlight" button sits at the right end of the
+ * title's meta line ("Policy | Updated 5 days ago") instead of on a row of
+ * its own, so saving the first highlight does not push the document down.
+ * The meta line always keeps room for it. With a cited-passage receipt
+ * between the title and the document the button stays in its own row. */
+.kb-reader-doc:has(.kb-reader-highlights) [data-kb-reader-meta] {
+  padding-right: 8rem;
+}
+
+.kb-reader-doc:has([data-kb-reader-meta]):not(:has([data-kb-reader-cited])) .kb-reader-highlights > div {
+  position: relative;
+}
+
+.kb-reader-doc:has([data-kb-reader-meta]):not(:has([data-kb-reader-cited]))
+  .kb-reader-highlights
+  > div
+  > div:first-child:is(:has(button), :focus) {
+  position: absolute;
+  top: -0.625rem;
+  right: 0;
+  z-index: 1;
+  max-width: 100%;
+  margin: 0;
+  transform: translateY(-50%);
+  background: oklch(var(--card));
+}
+
+/* Phones: the meta line has no room beside it, so a short row under the
+ * meta line is kept free for the button instead. */
+@media (max-width: 639px) {
+  .kb-reader-doc:has(.kb-reader-highlights) [data-kb-reader-meta] {
+    padding-right: 0;
+    padding-bottom: 1.75rem;
+  }
+
+  .kb-reader-doc:has([data-kb-reader-meta]):not(:has([data-kb-reader-cited]))
+    .kb-reader-highlights
+    > div
+    > div:first-child:is(:has(button), :focus) {
+    top: -0.875rem;
   }
 }

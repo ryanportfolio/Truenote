@@ -51,14 +51,20 @@ type TabKey = "all" | "negative" | "refused";
 /** Elements the page marks as focus targets when the opener is gone. */
 const FALLBACK_FOCUS_IDS = ["person-focus-title", "source-usage-title"];
 
+/** Controls that take focus themselves when pressed. */
+const FOCUSABLE_SELECTOR = "a[href], button, input, select, textarea, summary, [tabindex]";
+
 /**
  * Focus return after the panel closes. The opener may have unmounted (a
  * By person link applies the person filter, which replaces the table), so
  * fall back to another opener for the same source, then to the page heading.
+ * Never scrolls: a jump between the press and the release that closed the
+ * drawer would send the click to whatever moved under the pointer.
  */
 function restoreFocus(opener: HTMLElement | null, documentIds: readonly string[]): void {
+  const options = { preventScroll: true };
   if (opener?.isConnected && !opener.closest("[data-usage-panel]")) {
-    opener.focus();
+    opener.focus(options);
     return;
   }
   for (const id of documentIds) {
@@ -66,14 +72,14 @@ function restoreFocus(opener: HTMLElement | null, documentIds: readonly string[]
       document.querySelectorAll<HTMLElement>(`[data-usage-source="${CSS.escape(id)}"]`)
     ).find((el) => el.isConnected && !el.closest("[data-usage-panel]"));
     if (match) {
-      match.focus();
+      match.focus(options);
       return;
     }
   }
   for (const id of FALLBACK_FOCUS_IDS) {
     const el = document.getElementById(id);
     if (el) {
-      el.focus();
+      el.focus(options);
       return;
     }
   }
@@ -119,6 +125,9 @@ export function SourceQuestionsPanel({
   const panelRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const currentSourceRef = useRef(source.documentId);
+  // Set when an outside press on a control closed the drawer: that control
+  // takes focus itself, so focus is not moved back to the opener.
+  const pressedOutsideRef = useRef(false);
   currentSourceRef.current = source.documentId;
   const restricted = source.title === null;
   const tabsId = useId();
@@ -130,6 +139,7 @@ export function SourceQuestionsPanel({
     const openerSource = opener?.dataset.usageSource ?? null;
     closeRef.current?.focus();
     return () => {
+      if (pressedOutsideRef.current) return;
       const ids = [openerSource, currentSourceRef.current].filter(
         (id): id is string => typeof id === "string"
       );
@@ -139,7 +149,11 @@ export function SourceQuestionsPanel({
 
   useEffect(() => {
     function onPointerDown(event: PointerEvent): void {
-      if (!panelRef.current?.contains(event.target as Node)) onClose();
+      const target = event.target;
+      if (target instanceof Node && panelRef.current?.contains(target)) return;
+      pressedOutsideRef.current =
+        target instanceof Element && target.closest(FOCUSABLE_SELECTOR) !== null;
+      onClose();
     }
     // On document, so Escape still closes after the focused control inside the
     // drawer unmounted (focus fell to the body). Keys meant for other open
@@ -485,7 +499,7 @@ function GroupItem({
         <div className="min-w-0 flex-1">
           <p className="whitespace-pre-wrap break-words text-sm font-medium">{group.question}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {times > 1 ? `Asked ${times} times · last ` : "Asked "}
+            {times > 1 ? `Asked ${times} times, most recently ` : "Asked "}
             <RelativeTime iso={group.latestAt} />
           </p>
         </div>

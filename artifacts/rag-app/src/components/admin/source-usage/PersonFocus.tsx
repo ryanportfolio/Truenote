@@ -1,17 +1,28 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "wouter";
-import { AlertCircle, ArrowLeft, BookOpen, Check, ClipboardCopy, MessageSquareText } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  BarChart3,
+  BookOpen,
+  Check,
+  ClipboardCopy,
+  MessageSquareText
+} from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
 import { fetchSourceUsage, fetchSourceUsageQuestions } from "@/lib/api";
 import {
   answeredRate,
   barWidth,
+  compareWithTeam,
   firstName,
+  formatAllCategoryPaths,
   formatCategoryPaths,
   formatPercent,
   plural,
-  roleLabel
+  roleLabel,
+  type TeamComparison
 } from "@/lib/sourceUsage";
 import { buildCoachingNotes, copyText, suggestionReasonText } from "@/lib/sourceUsageNotes";
 import type {
@@ -163,22 +174,44 @@ export function PersonFocus({
     };
   }, [userId, days, reloadKey, hasQuestions]);
 
+  // A refused question is listed once, under refused, even when it also got a
+  // thumbs down; the thumbs-down group holds answered questions only.
   const groups = useMemo(() => {
     const items = data?.items ?? [];
     return {
       refused: items.filter((item) => item.refused),
-      negative: items.filter((item) => item.feedback === -1)
+      negative: items.filter((item) => item.feedback === -1 && !item.refused)
     };
   }, [data]);
 
   const negativeCount = row?.negativeCount ?? 0;
+  const refusedWithNegative = groups.refused.filter((item) => item.feedback === -1).length;
+  const negativeOnlyTotal = Math.max(0, negativeCount - refusedWithNegative);
+  const comparison = compareWithTeam(
+    {
+      questions: totals.questions,
+      answered: totals.answered,
+      refused: totals.refused,
+      negative: negativeCount
+    },
+    team
+      ? {
+          questions: team.totals.questions,
+          answered: team.totals.answered,
+          refused: team.totals.refused,
+          negative: team.users.reduce((sum, user) => sum + user.negativeCount, 0)
+        }
+      : null
+  );
   const teamAverage =
     team && team.totals.activeUsers > 0
       ? Math.round(team.totals.questions / team.totals.activeUsers)
       : null;
-  const teamAnswered = team ? answeredRate(team.totals.answered, team.totals.questions) : null;
   const pathOf = (documentId: string): string | null =>
     formatCategoryPaths(categoryPaths.get(documentId));
+  // The copied notes have room for every folder path.
+  const allPathsOf = (documentId: string): string | null =>
+    formatAllCategoryPaths(categoryPaths.get(documentId));
   const topSource = sources.find((source) => source.title !== null) ?? null;
 
   const notes = (): string =>
@@ -188,13 +221,18 @@ export function PersonFocus({
       days,
       questions: totals.questions,
       answered: totals.answered,
-      teamAnsweredRate: teamAnswered,
-      topSource: topSource ? { source: topSource, path: pathOf(topSource.documentId) } : null,
+      negativeCount,
+      comparison,
+      topSource: topSource
+        ? { source: topSource, path: allPathsOf(topSource.documentId) }
+        : null,
       refused: groups.refused,
       negative: groups.negative,
       truncated: data?.truncated ?? false,
       suggestions,
-      suggestionPaths: new Map(suggestions.map((item) => [item.documentId, pathOf(item.documentId)]))
+      suggestionPaths: new Map(
+        suggestions.map((item) => [item.documentId, allPathsOf(item.documentId)])
+      )
     });
 
   return (
@@ -249,7 +287,8 @@ export function PersonFocus({
           >
             <GoingWell
               totals={totals}
-              teamAnswered={teamAnswered}
+              negative={negativeCount}
+              comparison={comparison}
               teamAverage={teamAverage}
               topSource={topSource}
               topPath={topSource ? pathOf(topSource.documentId) : null}
@@ -257,7 +296,7 @@ export function PersonFocus({
             />
             <TalkAbout
               refusedTotal={totals.refused}
-              negativeTotal={negativeCount}
+              negativeTotal={negativeOnlyTotal}
               refused={groups.refused}
               negative={groups.negative}
               loading={!data && !error}
@@ -370,44 +409,69 @@ function CardTitle({
 const CARD_CLASS =
   "flex min-w-0 flex-col gap-4 rounded-lg border border-border bg-card p-5 shadow-card";
 
+/**
+ * First card of the guide. Titled "Going well" only when the person is level
+ * with the team or better (compareWithTeam); otherwise "At a glance", with
+ * each comparison stated as plain numbers.
+ */
 function GoingWell({
   totals,
-  teamAnswered,
+  negative,
+  comparison,
   teamAverage,
   topSource,
   topPath,
   onOpenSource
 }: {
   totals: SourceUsageResponse["totals"];
-  teamAnswered: number | null;
+  negative: number;
+  comparison: TeamComparison;
   teamAverage: number | null;
   topSource: SourceUsageSource | null;
   topPath: string | null;
   onOpenSource: (documentId: string, title: string | null) => void;
 }): JSX.Element {
   const rate = formatPercent(answeredRate(totals.answered, totals.questions));
+  const { goingWell, teamAnswered, refused, teamRefused, teamNegative } = comparison;
   return (
     <section
       aria-labelledby="going-well-title"
       className={`${CARD_CLASS} lg:col-start-1 lg:row-start-1`}
-      data-coaching-card="going-well"
+      data-coaching-card={goingWell ? "going-well" : "at-a-glance"}
     >
       <CardTitle
         id="going-well-title"
         icon={
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-success/15 text-success">
-            <Check className="h-4 w-4" aria-hidden />
-          </span>
+          goingWell ? (
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-success/15 text-success">
+              <Check className="h-4 w-4" aria-hidden />
+            </span>
+          ) : (
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <BarChart3 className="h-4 w-4" aria-hidden />
+            </span>
+          )
         }
       >
-        Going well
+        {goingWell ? "Going well" : "At a glance"}
       </CardTitle>
       <div>
         <p className="text-4xl font-semibold tabular-nums tracking-tight">{rate}</p>
         <p className="mt-1 text-sm">
           Answered {rate} of questions
-          {teamAnswered !== null ? `; the team answered ${formatPercent(teamAnswered)}.` : "."}
+          {teamAnswered !== null ? `; the team answered ${teamAnswered}%.` : "."}
         </p>
+        {comparison.refusedAbove && !comparison.answeredBelow && teamRefused !== null ? (
+          <p className="mt-1 text-sm">
+            {refused}% of questions got no answer; for the team, {teamRefused}%.
+          </p>
+        ) : null}
+        {comparison.negativeAbove && teamNegative !== null ? (
+          <p className="mt-1 text-sm">
+            Thumbs down on {negative} of {totals.questions} questions ({comparison.negative}%); for
+            the team, {teamNegative}%.
+          </p>
+        ) : null}
         <p className="mt-1 text-sm text-muted-foreground">
           {totals.answered} of {totals.questions} got a cited answer.
           {teamAverage !== null
@@ -555,6 +619,11 @@ function TalkGroup({
         {visible.map((item) => (
           <li key={item.queryLogId} className="min-w-0">
             <q className="block break-words text-sm">{item.question}</q>
+            {id === "refused" && item.feedback === -1 ? (
+              <span className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                Thumbs down too
+              </span>
+            ) : null}
             {item.sources.length === 0 ? (
               <p className="mt-0.5 text-xs text-muted-foreground">No cited answer.</p>
             ) : (

@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useId, useRef, useState, type FocusEvent, type FormEvent, type KeyboardEvent } from "react";
 import { Bookmark, CircleSlash, Folder, Lock, NotebookPen, Palette, Pencil, Star } from "lucide-react";
 import {
   KB_LIBRARY_COLORS,
@@ -373,6 +373,15 @@ export function NoteForm({
   const fieldId = useId();
   const helpId = useId();
   const unchanged = value.trim() === (initialNote ?? "").trim();
+  // The first focus that is not a click puts the caret after the existing text, so typing adds to the note.
+  const caretPlaced = useRef(false);
+
+  function onFocus(event: FocusEvent<HTMLTextAreaElement>): void {
+    if (caretPlaced.current) return;
+    caretPlaced.current = true;
+    const end = event.currentTarget.value.length;
+    event.currentTarget.setSelectionRange(end, end);
+  }
 
   async function save(note: string, kind: "save" | "delete"): Promise<void> {
     setPending(kind);
@@ -411,6 +420,10 @@ export function NoteForm({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={onKeyDown}
+        onFocus={onFocus}
+        onPointerDown={() => {
+          caretPlaced.current = true;
+        }}
         maxLength={KB_NOTE_MAX}
         rows={6}
         aria-describedby={helpId}

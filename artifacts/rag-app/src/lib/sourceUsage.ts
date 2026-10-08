@@ -216,6 +216,61 @@ export function categoryPathsByDocument(
   return result;
 }
 
+/** Every path joined with "; ", for plain-text notes; null when the source is in no category. */
+export function formatAllCategoryPaths(paths: readonly string[] | undefined): string | null {
+  return paths && paths.length > 0 ? paths.join("; ") : null;
+}
+
+/**
+ * One person's numbers against the team's for the same window, as whole
+ * percents (the numbers the page shows). `goingWell` is true only when the
+ * team numbers are known and the person answers at most 1 point below the
+ * team, with no larger share of refused or thumbs-down questions.
+ */
+export interface TeamComparison {
+  answered: number;
+  teamAnswered: number | null;
+  refused: number;
+  teamRefused: number | null;
+  negative: number;
+  teamNegative: number | null;
+  answeredBelow: boolean;
+  refusedAbove: boolean;
+  negativeAbove: boolean;
+  goingWell: boolean;
+}
+
+const wholePercent = (count: number, total: number): number =>
+  total > 0 ? Math.round((count / total) * 100) : 0;
+
+export function compareWithTeam(
+  person: { questions: number; answered: number; refused: number; negative: number },
+  team: { questions: number; answered: number; refused: number; negative: number } | null
+): TeamComparison {
+  const answered = wholePercent(person.answered, person.questions);
+  const refused = wholePercent(person.refused, person.questions);
+  const negative = wholePercent(person.negative, person.questions);
+  const known = team !== null && team.questions > 0;
+  const teamAnswered = known ? wholePercent(team.answered, team.questions) : null;
+  const teamRefused = known ? wholePercent(team.refused, team.questions) : null;
+  const teamNegative = known ? wholePercent(team.negative, team.questions) : null;
+  const answeredBelow = teamAnswered !== null && teamAnswered - answered >= 2;
+  const refusedAbove = teamRefused !== null && refused > teamRefused;
+  const negativeAbove = teamNegative !== null && negative > teamNegative;
+  return {
+    answered,
+    teamAnswered,
+    refused,
+    teamRefused,
+    negative,
+    teamNegative,
+    answeredBelow,
+    refusedAbove,
+    negativeAbove,
+    goingWell: known && person.questions > 0 && !answeredBelow && !refusedAbove && !negativeAbove
+  };
+}
+
 /** "Billing / Refunds" or "Billing / Refunds +1 more"; null when the source is in no category. */
 export function formatCategoryPaths(paths: readonly string[] | undefined): string | null {
   if (!paths || paths.length === 0) return null;

@@ -7,6 +7,7 @@ import {
   KB_VIEWS,
   KB_VIEW_LABELS,
   buildLookup,
+  defaultSort,
   docMatchesQuery,
   docPassesFilters,
   filterSentence,
@@ -37,7 +38,7 @@ import { KbOrganize } from "./KbOrganize";
 import { AskTruenoteLink, KbSearch } from "./KbSearch";
 import { KbShortcutDock, KbShortcutShelf } from "./KbShelf";
 import { useKbLibrary } from "./useKbLibrary";
-import { KB_WIDE_QUERY, useMediaQuery } from "./useMediaQuery";
+import { KB_LABELS_QUERY, KB_WIDE_QUERY, useMediaQuery } from "./useMediaQuery";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -90,6 +91,7 @@ export function KbLibrary({
   const search = useSearch();
   const [shelfInView, setShelfInView] = useState(true);
   const wide = useMediaQuery(KB_WIDE_QUERY);
+  const labelsBeside = useMediaQuery(KB_LABELS_QUERY);
   const tabsId = useId();
 
   // Typing replaces the history entry (one entry per search, not per key);
@@ -145,7 +147,14 @@ export function KbLibrary({
     const known = new Set(data.items.map((d) => d.documentId));
     const kept = new Set(ids.filter((id) => known.has(id)));
     if (kept.size === 0) return null;
-    return { ids: kept, fromUsage: new URLSearchParams(search).get("from") === "usage" };
+    const params = new URLSearchParams(search);
+    // Source usage passes its time window (`&days=7`) with its never-used sources.
+    const days = Number(params.get("days"));
+    return {
+      ids: kept,
+      fromUsage: params.get("from") === "usage",
+      days: Number.isInteger(days) && days > 0 ? days : null
+    };
   }, [search, data.items]);
 
   const active = filtersActive(filters, query);
@@ -165,6 +174,8 @@ export function KbLibrary({
   const scope = prefs.tab === "all" && prefs.view === "folders" ? folderFromSearch(search, lookup.tree) : null;
   const shownCount = prefs.tab === "shortcuts" ? myPins(visible).length : visible.length;
   const sentence = filterSentence({ shown: shownCount, query, filters, tagsById: lookup.tagsById, labels: data.labels });
+  // A sort other than the view's own is named beside the filters, with Reset.
+  const sortChanged = prefs.tab === "all" && sort !== defaultSort(prefs.view);
   // A Source usage link (?ids=) narrows the list like a filter does.
   const narrowed = active || linked !== null;
 
@@ -189,12 +200,14 @@ export function KbLibrary({
     function onKeyDown(event: globalThis.KeyboardEvent): void {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (isTypingTarget(event.target) || organizing || dialog) return;
+      if (event.key !== "/" && !/^[1-9]$/.test(event.key)) return;
+      // An open menu or panel keeps the keys, so focus never leaves it behind.
+      if (document.querySelector('[role="menu"], [role="dialog"]')) return;
       if (event.key === "/") {
         event.preventDefault();
         searchRef.current?.focus();
         return;
       }
-      if (!/^[1-9]$/.test(event.key) || document.querySelector('[role="menu"], [role="dialog"]')) return;
       const shortcut = shelf[Number(event.key) - 1];
       if (!shortcut) return;
       event.preventDefault();
@@ -265,6 +278,7 @@ export function KbLibrary({
     if (linked) {
       params.delete("ids");
       params.delete("from");
+      params.delete("days");
       params.delete("folder");
     }
     setQuery("", params);
@@ -393,12 +407,20 @@ export function KbLibrary({
                   onFilters={setFilters}
                   sort={sort}
                   onSort={(next) => setPrefs((p) => ({ ...p, sortByView: { ...p.sortByView, [p.view]: next } }))}
+                  sortChanged={sortChanged}
                   tags={tags}
-                  showLabels={!wide}
+                  showLabels={!labelsBeside}
                 />
               }
             />
-            {sentence ? <KbFilterSentence sentence={sentence} onClear={clearFilters} /> : null}
+            {sentence || sortChanged ? (
+              <KbFilterSentence
+                sentence={sentence}
+                onClear={clearFilters}
+                sort={sortChanged ? sort : null}
+                onResetSort={() => setPrefs((p) => ({ ...p, sortByView: { ...p.sortByView, [p.view]: undefined } }))}
+              />
+            ) : null}
           </div>
 
           {linked ? (
@@ -410,7 +432,12 @@ export function KbLibrary({
               <Link2 className="h-4 w-4 shrink-0 text-primary" aria-hidden />
               <p className="min-w-0 flex-1">
                 Showing {linked.ids.size} {linked.ids.size === 1 ? "source" : "sources"}
-                {linked.fromUsage ? " from Source usage" : " from a shared link"}.
+                {linked.fromUsage && linked.days !== null
+                  ? ` no answer used in the last ${linked.days} ${linked.days === 1 ? "day" : "days"}`
+                  : linked.fromUsage
+                    ? " from Source usage"
+                    : " from a shared link"}
+                .
               </p>
               <button type="button" onClick={clearLinked} className="btn-whisper px-3 py-1 text-xs">
                 Show all sources
@@ -429,7 +456,7 @@ export function KbLibrary({
 
           {errorBanner}
 
-          <div className={cn("grid items-start gap-5", wide && "grid-cols-[minmax(0,1fr)_18rem]")}>
+          <div className={cn("grid items-start gap-5", labelsBeside && "grid-cols-[minmax(0,1fr)_18rem]")}>
             <section ref={listRef} aria-label="Sources list" className="flex min-w-0 scroll-mt-4 flex-col gap-4">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <div role="tablist" aria-label="Which sources" className="flex gap-2">
@@ -482,13 +509,16 @@ export function KbLibrary({
                       <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden />
                     </KbMenu>
                   ) : null}
-                  <p data-kb-count className="text-sm tabular-nums text-muted-foreground" aria-live="polite">
-                    {prefs.tab === "shortcuts"
-                      ? `${shownCount} ${shownCount === 1 ? "shortcut" : "shortcuts"}`
-                      : narrowed
-                        ? `${shownCount} of ${data.items.length} sources`
-                        : `${shownCount} ${shownCount === 1 ? "source" : "sources"}`}
-                  </p>
+                  {/* An open folder shows its own count in its header. */}
+                  {scope === null ? (
+                    <p data-kb-count className="text-sm tabular-nums text-muted-foreground" aria-live="polite">
+                      {prefs.tab === "shortcuts"
+                        ? `${shownCount} ${shownCount === 1 ? "shortcut" : "shortcuts"}`
+                        : narrowed
+                          ? `${shownCount} of ${data.items.length} sources`
+                          : `${shownCount} ${shownCount === 1 ? "source" : "sources"}`}
+                    </p>
+                  ) : null}
                   {canOrganize ? (
                     <button
                       ref={organizeButtonRef}
@@ -508,7 +538,7 @@ export function KbLibrary({
                 {browse}
               </div>
             </section>
-            {wide ? (
+            {labelsBeside ? (
               <aside aria-label="My labels" className="sticky top-4">
                 <KbLabels variant="card" selected={filters.colors} onToggle={toggleLabel} />
               </aside>

@@ -139,8 +139,8 @@ function ClampedNote({ note }: { note: string }): JSX.Element {
 
 /**
  * One quiet line telling readers below 1280px that passages can be
- * highlighted (at 1280 and up the empty note card says it). readerBody.css
- * hides it once the document has a saved highlight.
+ * highlighted (at 1280 and up the empty note card says it). It stays after
+ * the first highlight is saved, so saving never moves the document up.
  */
 export function ReaderHighlightHint(): JSX.Element {
   return (

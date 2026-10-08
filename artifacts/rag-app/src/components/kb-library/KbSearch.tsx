@@ -208,6 +208,8 @@ export function KbSearch({
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
+          // After Escape the field keeps focus; a click on it brings the results back.
+          onClick={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder={roomy ? "Search for a policy or procedure" : "Search sources"}
           title="Searches titles, folder names, tags and your notes. Press / to search from anywhere on this page."
