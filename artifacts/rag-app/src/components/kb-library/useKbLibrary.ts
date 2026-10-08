@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createKbCategory,
   createKbTag,
@@ -16,6 +16,7 @@ import {
   setKbNote,
   setKbPin,
   setKbSourceColor,
+  setKbTeamShortcuts,
   updateKbCategory,
   updateKbTag
 } from "@/lib/api";
@@ -33,6 +34,7 @@ import {
   applyPin,
   applySourceColor,
   applyTagDelete,
+  applyTeamShortcuts,
   applyTagUpsert,
   applyUserFields,
   buildCategoryTree,
@@ -41,10 +43,12 @@ import {
   moveItem,
   nestBlockReason,
   siblingIds,
+  supervisorPins,
   teamPins
 } from "@/lib/kbLibrary";
 import { updateKbLibraryCache, writeKbLibraryCache } from "@/lib/kbLibraryCache";
 import { kbColorLabel, kbLabelText } from "@/lib/kbLibraryColors";
+import { createSerialQueue, queuedListSaves } from "@/lib/serialQueue";
 import type {
   CreateKbCategoryRequest,
   CreateKbTagRequest,
@@ -105,7 +109,12 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
     async (
       apply: (d: Data) => Data,
       call: () => Promise<((d: Data) => Data) | void>,
-      options: { report?: boolean; success?: string } = {}
+      options: {
+        report?: boolean;
+        success?: string;
+        /** Reloads after a failure in place of `refresh`, e.g. once queued saves have settled. */
+        resync?: () => void;
+      } = {}
     ): Promise<ActionResult> => {
       const before = dataRef.current;
       const version = ++versionRef.current;
@@ -119,7 +128,8 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
         return { ok: true };
       } catch (err) {
         if (versionRef.current === version) commit(before);
-        void refresh();
+        if (options.resync) options.resync();
+        else void refresh();
         const message = errorMessage(err);
         if (options.report !== false) setActionError(message);
         return { ok: false, message };
@@ -271,10 +281,10 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       const ids = currentTeamPinIds();
       if (ids.includes(documentId)) return;
       if (ids.length >= KB_MAX_TEAM_PINS) {
-        setActionError(`Team shortcuts hold at most ${KB_MAX_TEAM_PINS} sources. Remove one first.`);
+        setActionError(`You can recommend at most ${KB_MAX_TEAM_PINS} sources to everyone. Stop recommending one first.`);
         return;
       }
-      void setTeamPins([...ids, documentId], `Added ${find(documentId)?.title ?? "source"} to team shortcuts.`);
+      void setTeamPins([...ids, documentId], `Recommended ${find(documentId)?.title ?? "source"} to everyone.`);
     },
     [setTeamPins]
   );
@@ -283,7 +293,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
     (documentId: string) => {
       void setTeamPins(
         currentTeamPinIds().filter((id) => id !== documentId),
-        `Removed ${find(documentId)?.title ?? "source"} from team shortcuts.`
+        `Stopped recommending ${find(documentId)?.title ?? "source"} to everyone.`
       );
     },
     [setTeamPins]
@@ -298,6 +308,73 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       void setTeamPins(moveItem(ids, from, to), `Moved ${find(documentId)?.title ?? "source"} to position ${to + 1}.`);
     },
     [setTeamPins]
+  );
+
+  // A supervisor's recommendations to their own team ------------------------------
+
+  // Each save replaces the whole list, so saves go out one at a time in the
+  // order made: sent together, an older list could reach the server last and win.
+  // The page still updates at once; only the requests wait. The reload after a
+  // failure waits in the same queue, so it cannot read the list from before a
+  // save still waiting its turn. Sign-out and session expiry unmount the page
+  // without a reload; saves still waiting then are skipped, since they would
+  // go out with the next user's session and replace that user's list.
+  const myTeamQueueRef = useRef(createSerialQueue());
+  // True while mounted; set in an effect so StrictMode's second mount reopens it.
+  const openRef = useRef(true);
+  useEffect(() => {
+    openRef.current = true;
+    return () => {
+      openRef.current = false;
+    };
+  }, []);
+  const myTeamSaves = useMemo(
+    () => queuedListSaves(myTeamQueueRef.current, setKbTeamShortcuts, refresh, () => openRef.current),
+    [refresh]
+  );
+
+  const setMyTeamShortcuts = useCallback(
+    (documentIds: string[], success?: string) =>
+      mutate(
+        (d) => applyTeamShortcuts(d, documentIds),
+        async () => {
+          await myTeamSaves.save(documentIds);
+          // Puts this list back if a reload put an older one in place, unless a newer change came since.
+          return (d: Data) => applyTeamShortcuts(d, documentIds);
+        },
+        { success, resync: () => void myTeamSaves.resync() }
+      ),
+    [mutate, myTeamSaves]
+  );
+
+  const currentMyTeamIds = () => supervisorPins(dataRef.current.items).map((d) => d.documentId);
+
+  const addMyTeamPin = useCallback(
+    (documentId: string) => {
+      const ids = currentMyTeamIds();
+      if (ids.includes(documentId)) return;
+      if (ids.length >= KB_MAX_TEAM_PINS) {
+        setActionError(`You can recommend at most ${KB_MAX_TEAM_PINS} sources to your team. Stop recommending one first.`);
+        return;
+      }
+      void setMyTeamShortcuts(
+        [...ids, documentId],
+        `Recommended ${find(documentId)?.title ?? "source"} to your team.`
+      );
+    },
+    [setMyTeamShortcuts]
+  );
+
+  const removeMyTeamPin = useCallback(
+    (documentId: string) => {
+      const ids = currentMyTeamIds();
+      if (!ids.includes(documentId)) return;
+      void setMyTeamShortcuts(
+        ids.filter((id) => id !== documentId),
+        `Stopped recommending ${find(documentId)?.title ?? "source"} to your team.`
+      );
+    },
+    [setMyTeamShortcuts]
   );
 
   // Document membership and tags -----------------------------------------------
@@ -556,6 +633,8 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       addTeamPin,
       removeTeamPin,
       moveTeamPinBy,
+      addMyTeamPin,
+      removeMyTeamPin,
       setDocumentCategories,
       setDocumentTags,
       moveDocument,
@@ -582,6 +661,8 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       addTeamPin,
       removeTeamPin,
       moveTeamPinBy,
+      addMyTeamPin,
+      removeMyTeamPin,
       setDocumentCategories,
       setDocumentTags,
       moveDocument,

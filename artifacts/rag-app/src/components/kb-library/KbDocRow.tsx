@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Ellipsis, ExternalLink, FolderInput, Lock, NotebookPen, Star, Tags, Users } from "lucide-react";
-import { docCategoryPaths } from "@/lib/kbLibrary";
+import { docCategoryPaths, isRecommended } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
 import type { KbDocumentListItem } from "@/types/api";
 import { useKbLibraryContext } from "./KbContext";
@@ -9,7 +9,8 @@ import { LabelChip, NOTE_STICKY_STYLE, StarToggle, StatusPill, labelEntries } fr
 
 /**
  * Everything a row does besides open and star, in one menu: the private note,
- * the label, and for managers team shortcuts, folders and tags.
+ * the label, for supervisors recommending to their team, and for managers
+ * recommending to everyone, folders and tags.
  */
 export function useDocMenuEntries(doc: KbDocumentListItem): KbMenuEntry[] {
   const { data, actions, canOrganize, openDialog } = useKbLibraryContext();
@@ -33,17 +34,33 @@ export function useDocMenuEntries(doc: KbDocumentListItem): KbMenuEntry[] {
       () => openDialog({ kind: "label-create", documentId: doc.documentId })
     )
   ];
+  if (data.canPinForTeam) {
+    entries.push(
+      "separator",
+      doc.teamPinPosition !== null
+        ? {
+            label: "Stop recommending to my team",
+            icon: Users,
+            onSelect: () => actions.removeMyTeamPin(doc.documentId)
+          }
+        : {
+            label: "Recommend to my team",
+            icon: Users,
+            onSelect: () => actions.addMyTeamPin(doc.documentId)
+          }
+    );
+  }
   if (canOrganize) {
     entries.push(
       "separator",
       doc.featuredPosition !== null
         ? {
-            label: "Remove from team shortcuts",
+            label: "Stop recommending to everyone",
             icon: Users,
             onSelect: () => actions.removeTeamPin(doc.documentId)
           }
         : {
-            label: "Add to team shortcuts",
+            label: "Recommend to everyone",
             icon: Users,
             onSelect: () => actions.addTeamPin(doc.documentId)
           },
@@ -96,7 +113,7 @@ export function KbDocRow({
   const { data, lookup, actions, openDialog } = useKbLibraryContext();
   const menu = useDocMenuEntries(doc);
   const paths = docCategoryPaths(doc, lookup.tree);
-  const fromTeam = doc.featuredPosition !== null;
+  const recommended = isRecommended(doc);
 
   return (
     <li
@@ -135,7 +152,7 @@ export function KbDocRow({
         <p data-kb-path className="mt-0.5 text-sm text-muted-foreground">
           <span className="sr-only">In </span>
           {paths.length > 0 ? pathsLabel(paths) : "Not in a folder"}
-          {fromTeam ? <span data-kb-from-team> · From your team</span> : null}
+          {recommended ? <span data-kb-recommended> · Recommended</span> : null}
         </p>
       </div>
       {usedOften ? (

@@ -9,7 +9,7 @@
  * When the shape drifts on the backend, fix here too.
  */
 
-export type UserRole = "super_user" | "senior_manager" | "manager" | "csr";
+export type UserRole = "super_user" | "senior_manager" | "manager" | "supervisor" | "csr";
 
 export interface CurrentUser {
   id: string;
@@ -31,6 +31,7 @@ const ROLE_RANK: Record<UserRole, number> = {
   super_user: 100,
   senior_manager: 80,
   manager: 60,
+  supervisor: 40,
   csr: 20
 };
 
@@ -270,6 +271,11 @@ export interface KbDocumentListItem {
   myColor: KbLibraryColor | null;
   /** Team pin order (0-based) set by a manager; null when not team-pinned. */
   featuredPosition: number | null;
+  /**
+   * Order (0-based) in the viewer's team list: for a CSR their supervisor's
+   * list, for a supervisor their own; null when not on it or no list applies.
+   */
+  teamPinPosition: number | null;
   /** Every category the document belongs to. */
   categoryIds: string[];
   tagIds: string[];
@@ -320,6 +326,8 @@ export interface KbDocumentListResponse {
   labels: KbColorLabel[];
   /** True for manager+ non-demo accounts: may edit categories, tags and team pins. */
   canOrganize: boolean;
+  /** True for supervisors: may recommend sources to their own team. */
+  canPinForTeam: boolean;
   /** Same sentinel contract as DocumentListResponse. */
   noProgramSelected?: boolean;
 }
@@ -788,7 +796,7 @@ export interface DemoAccount {
   label: string;
   email: string;
   password: string;
-  role: "csr" | "manager";
+  role: "csr" | "supervisor" | "manager";
 }
 
 /**
@@ -868,6 +876,33 @@ export interface UpdateUserRequest {
 
 export interface ResetUserPasswordResponse {
   tempPassword: string;
+}
+
+/**
+ * Teams shapes. Mirror of the api-server's routes/admin/teams.ts.
+ * Active users only, sorted by name. A supervisor actor gets
+ * `supervisors: [themselves]`, only their own team's CSRs, and
+ * `canEdit: false`; manager and above get the whole program.
+ */
+export interface TeamsSupervisor {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface TeamsCsr {
+  id: string;
+  name: string;
+  email: string;
+  lastLoginAt: string | null;
+  /** Null when the CSR has no supervisor. */
+  supervisorId: string | null;
+}
+
+export interface TeamsResponse {
+  supervisors: TeamsSupervisor[];
+  csrs: TeamsCsr[];
+  canEdit: boolean;
 }
 
 /**

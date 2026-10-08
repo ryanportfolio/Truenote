@@ -9,7 +9,9 @@ import {
   groupQuestions,
   initials,
   plural,
-  type QuestionGroup
+  scopeCopy,
+  type QuestionGroup,
+  type UsageScope
 } from "@/lib/sourceUsage";
 import { cn } from "@/lib/utils";
 import type { SourceUsageQuestionsResponse, SourceUsageSource } from "@/types/api";
@@ -37,6 +39,8 @@ interface SourceQuestionsPanelProps {
   personName: string | null;
   /** Bumps when the super_user switches program. */
   reloadKey: number;
+  /** "Everyone" for the program, "your team" for a supervisor. */
+  scope: UsageScope;
   onClose: () => void;
   onSelectPerson: (userId: string | null) => void;
   onOpenSource: (documentId: string, title: string | null) => void;
@@ -101,10 +105,12 @@ export function SourceQuestionsPanel({
   userId,
   personName,
   reloadKey,
+  scope,
   onClose,
   onSelectPerson,
   onOpenSource
 }: SourceQuestionsPanelProps): JSX.Element {
+  const copy = scopeCopy(scope);
   const [data, setData] = useState<SourceUsageQuestionsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The drawer's own person filter: a cell's person, else the page's person.
@@ -336,7 +342,7 @@ export function SourceQuestionsPanel({
             <div className="flex flex-wrap items-center gap-2" data-panel-scope={widened ? "everyone" : "person"}>
               <span className="text-sm text-muted-foreground">
                 {widened
-                  ? "Everyone's questions."
+                  ? copy.everyonesQuestions
                   : `Only ${person.name ?? "this person"}'s questions.`}
               </span>
               <button
@@ -346,7 +352,7 @@ export function SourceQuestionsPanel({
               >
                 {widened
                   ? `Show only ${person.name ? firstName(person.name) : "this person"}'s`
-                  : "Show everyone's"}
+                  : copy.showEveryones}
               </button>
             </div>
           ) : null}
@@ -375,7 +381,7 @@ export function SourceQuestionsPanel({
             <EmptyState
               icon={MessageSquareText}
               title="No answer used this source in this period"
-              hint="Try a longer time period, or show everyone."
+              hint={copy.noQuestionsHint}
             />
           </div>
         ) : (

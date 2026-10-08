@@ -6,11 +6,13 @@ import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
-import type {
-  CurrentUser,
-  KbGapsResponse,
-  QueryLogFilter,
-  QueryLogItem
+import { TEAM_SCOPE_NOTE, usageScope } from "@/lib/sourceUsage";
+import {
+  hasAtLeastRole,
+  type CurrentUser,
+  type KbGapsResponse,
+  type QueryLogFilter,
+  type QueryLogItem
 } from "@/types/api";
 
 interface AdminGapsPageProps {
@@ -31,6 +33,11 @@ interface AdminGapsPageProps {
  * Both endpoints stay: they serve different shapes (aggregate vs rows) to
  * different sections of this one page.
  *
+ * Supervisors see Top gaps for their own team (the server filters kb-gaps
+ * to the team). The review queue's endpoint is manager+, and its "Fill this
+ * gap" action opens the manager-only upload page, so the queue renders and
+ * loads only for managers and above.
+ *
  * Wrapper + inner pattern matches AdminUsersPage: the role-gate
  * early-return must not sit above hooks.
  */
@@ -46,7 +53,7 @@ function Forbidden(): JSX.Element {
     <div className="mx-auto max-w-5xl px-6 py-8">
       <h1 className="font-display text-3xl font-semibold tracking-tight">Forbidden</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Gap review is restricted to managers and above.
+        Gap review is restricted to supervisors and above.
       </p>
     </div>
   );
@@ -80,7 +87,10 @@ const EMPTY_COPY: Record<QueryLogFilter, { title: string; hint: string }> = {
   }
 };
 
-function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
+function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
+  const teamOnly = usageScope(user.role) === "team";
+  const canReviewQueue = hasAtLeastRole(user, "manager");
+
   // Top gaps (aggregated) section state.
   const [windowDays, setWindowDays] = useState<number>(30);
   const [gaps, setGaps] = useState<KbGapsResponse | null>(null);
@@ -122,9 +132,10 @@ function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
   }, [refreshGaps]);
 
   useEffect(() => {
+    if (!canReviewQueue) return;
     setLoading(true);
     void refresh(filter);
-  }, [refresh, filter]);
+  }, [refresh, filter, canReviewQueue]);
 
   // Same listener pattern as the other admin pages: refetch when the
   // super_user changes program selection (same-tab custom event +
@@ -132,8 +143,9 @@ function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
   useEffect(() => {
     function reload(): void {
       setGapsLoading(true);
-      setLoading(true);
       void refreshGaps();
+      if (!canReviewQueue) return;
+      setLoading(true);
       void refresh(filter);
     }
     window.addEventListener(SELECTED_PROGRAM_CHANGED_EVENT, reload);
@@ -142,7 +154,7 @@ function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
       window.removeEventListener(SELECTED_PROGRAM_CHANGED_EVENT, reload);
       window.removeEventListener("storage", reload);
     };
-  }, [refreshGaps, refresh, filter]);
+  }, [refreshGaps, refresh, filter, canReviewQueue]);
 
   const totals = gaps?.totals;
   const noProgramSelected = gaps?.noProgramSelected === true;
@@ -151,6 +163,11 @@ function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
       {/* The sidebar already says where you are; the heading stays for screen readers. */}
       <h1 className="sr-only">Content gaps</h1>
+      {teamOnly ? (
+        <p className="text-sm text-muted-foreground" data-gaps-scope="team">
+          {TEAM_SCOPE_NOTE}
+        </p>
+      ) : null}
 
       {noProgramSelected ? (
         <div className="rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
@@ -227,8 +244,8 @@ function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
 
                 {gaps.items.length === 0 ? (
                   <p className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                    No repeated gaps in the last {gaps.windowDays} days. The queue below has each
-                    query.
+                    No repeated gaps in the last {gaps.windowDays} days.
+                    {canReviewQueue ? " The queue below has each query." : null}
                   </p>
                 ) : (
                   <div data-gaps-table className="overflow-clip rounded-lg border border-border bg-card shadow-card">
@@ -284,68 +301,70 @@ function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
             ) : null}
           </section>
 
-          {/* ---- Review queue: row-level, filterable, newest first ---- */}
-          <section className="flex flex-col gap-3" aria-label="Review queue">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Review queue
-            </h2>
-            <div
-              role="group"
-              aria-label="Filter queries"
-              className="flex flex-wrap items-center gap-2"
-            >
-              {FILTERS.map(({ value, label }) => (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={filter === value}
-                  onClick={() => setFilter(value)}
-                  className={
-                    filter === value
-                      ? "rounded-full border border-primary bg-primary/10 px-3 py-1 text-xs font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      : "rounded-full border border-input px-3 py-1 text-xs text-muted-foreground transition-colors duration-100 ease-out hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  }
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {error ? (
-              <p
-                role="alert"
-                className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-              >
-                {error}
-              </p>
-            ) : loading ? (
+          {/* ---- Review queue: row-level, filterable, newest first (manager+) ---- */}
+          {canReviewQueue ? (
+            <section className="flex flex-col gap-3" aria-label="Review queue">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Review queue
+              </h2>
               <div
-                role="status"
-                className="overflow-hidden rounded-lg border border-border bg-card shadow-card"
+                role="group"
+                aria-label="Filter queries"
+                className="flex flex-wrap items-center gap-2"
               >
-                {[0, 1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between gap-4 border-t border-border px-3 py-3 first:border-t-0"
+                {FILTERS.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={filter === value}
+                    onClick={() => setFilter(value)}
+                    className={
+                      filter === value
+                        ? "rounded-full border border-primary bg-primary/10 px-3 py-1 text-xs font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        : "rounded-full border border-input px-3 py-1 text-xs text-muted-foreground transition-colors duration-100 ease-out hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    }
                   >
-                    <div className="skeleton h-4 w-64" />
-                    <div className="skeleton h-4 w-32" />
-                    <div className="skeleton h-4 w-20 rounded-full" />
-                    <div className="skeleton h-4 w-12" />
-                  </div>
+                    {label}
+                  </button>
                 ))}
-                <span className="sr-only">Loading queries…</span>
               </div>
-            ) : items.length === 0 ? (
-              <EmptyState
-                icon={Flag}
-                title={EMPTY_COPY[filter].title}
-                hint={EMPTY_COPY[filter].hint}
-              />
-            ) : (
-              <QueryTable items={items} />
-            )}
-          </section>
+
+              {error ? (
+                <p
+                  role="alert"
+                  className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                >
+                  {error}
+                </p>
+              ) : loading ? (
+                <div
+                  role="status"
+                  className="overflow-hidden rounded-lg border border-border bg-card shadow-card"
+                >
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between gap-4 border-t border-border px-3 py-3 first:border-t-0"
+                    >
+                      <div className="skeleton h-4 w-64" />
+                      <div className="skeleton h-4 w-32" />
+                      <div className="skeleton h-4 w-20 rounded-full" />
+                      <div className="skeleton h-4 w-12" />
+                    </div>
+                  ))}
+                  <span className="sr-only">Loading queries…</span>
+                </div>
+              ) : items.length === 0 ? (
+                <EmptyState
+                  icon={Flag}
+                  title={EMPTY_COPY[filter].title}
+                  hint={EMPTY_COPY[filter].hint}
+                />
+              ) : (
+                <QueryTable items={items} />
+              )}
+            </section>
+          ) : null}
         </>
       )}
     </div>
@@ -353,8 +372,8 @@ function AdminGapsInner({ user: _user }: AdminGapsPageProps): JSX.Element {
 }
 
 function QueryTable({ items }: { items: QueryLogItem[] }): JSX.Element {
-  // Latency is operator data, safe to show unconditionally here — the
-  // whole page is manager+ (CSRs never reach this table).
+  // Latency is operator data, safe to show unconditionally here: the review
+  // queue renders for managers and above only.
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
     <table className="w-full text-sm tabular-nums">

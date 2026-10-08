@@ -8,6 +8,7 @@ import { z } from "zod";
  * DEMO_LOGIN_ACCOUNTS (service variable) is a JSON array:
  *
  *   [{"label":"Manager","email":"manager@demo.truenote","password":"...","role":"manager"},
+ *    {"label":"Supervisor","email":"supervisor@demo.truenote","password":"...","role":"supervisor"},
  *    {"label":"CSR","email":"csr@demo.truenote","password":"..."}]
  *
  * SECURITY: everything in this variable is PUBLISHED to anyone who can
@@ -22,7 +23,7 @@ const DemoAccountSchema = z.object({
   label: z.string().min(1).max(40),
   email: z.string().email(),
   password: z.string().min(1),
-  role: z.enum(["csr", "manager"]).default("csr"),
+  role: z.enum(["csr", "supervisor", "manager"]).default("csr"),
   /** Program the account is scoped to; created if missing. */
   program: z.string().min(1).default("Demo Program")
 });
@@ -41,7 +42,7 @@ export interface PublicDemoAccount {
   label: string;
   email: string;
   password: string;
-  role: "csr" | "manager";
+  role: DemoAccount["role"];
 }
 
 /**

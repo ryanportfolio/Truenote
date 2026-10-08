@@ -29,6 +29,20 @@
  *   personal  Shortcuts, private notes, source colors and color names for
  *             two demo accounts and three CSRs. Idempotent; never changes a
  *             source or color that already has personal state.
+ *   teams     Create the 2 showcase supervisors (Renee Alvarez, Priya
+ *             Natarajan) and complete their forced password change, rename
+ *             the demo supervisor login (supervisor@demo.truenote, from
+ *             DEMO_LOGIN_ACCOUNTS) to Elliot Brooks without touching its
+ *             password, and assign the showcase CSRs to teams through
+ *             PUT /api/admin/teams/assignments, leaving one unassigned.
+ *             Then Renee and Priya, each logged in as itself, recommend two
+ *             sources to their team (PUT /api/kb/library/team-shortcuts).
+ *             Elliot is a demo account, so blockDemoWrites refuses that call
+ *             for him; the step prints his two titles for the operator to
+ *             insert by SQL. Needs the users and upload steps and a server
+ *             with the teams and team shortcuts APIs. Idempotent: only CSRs
+ *             not already on their team are moved, and each recommendation
+ *             list is replaced.
  *   backdate  Spreads the created_at of the query_log rows, chat sessions,
  *             reader views and CSR accounts this seed created over the last
  *             90 days, in one transaction over `railway ssh` in the pgvector
@@ -39,7 +53,7 @@
  *
  * Needs:
  *   ~/.claude/secrets/truenote-agent.json      agent account (super_user); read only
- *   ~/.claude/secrets/truenote-demo-csrs.json  written by `users`; email -> password
+ *   ~/.claude/secrets/truenote-demo-csrs.json  written by `users` and `teams`; email -> password
  *   the Railway CLI logged in (backdate only)
  *   state file .tmp/showcase-seed-state.json (override with SHOWCASE_STATE):
  *     ids of everything the seed created; `backdate` cannot run without it.
@@ -153,6 +167,34 @@ const DEMO_CSR: ShowcaseUser = {
   key: "csr", name: "CSR", email: "csr@demo.truenote",
   asks: { answerable: 35, outOfScope: 2, nearMiss: 3 }, thumbsDownRate: 0.04, thumbsUpRate: 0.15, views: 18, activeDays: 90
 };
+
+/** An account the seed creates through POST /api/admin/users. */
+interface SeedAccount {
+  key: string;
+  name: string;
+  email: string;
+}
+
+// Not "Marcus": a showcase CSR already has that name.
+const NEW_SUPERVISORS: SeedAccount[] = [
+  { key: "renee", name: "Renee Alvarez", email: "renee.alvarez@larkspur.example" },
+  { key: "priya", name: "Priya Natarajan", email: "priya.natarajan@larkspur.example" }
+];
+
+/** Created by the server from DEMO_LOGIN_ACCOUNTS (name = label); `teams` only renames it. */
+const DEMO_SUPERVISOR = { email: "supervisor@demo.truenote", name: "Elliot Brooks" };
+
+/**
+ * Team layout for `teams`. The demo supervisor's team holds CSRs with
+ * question history (every asker but Devon), so its team Usage has data.
+ * Devon, the newest hire, stays unassigned so that state is visible.
+ */
+const TEAMS: Array<{ supervisorEmail: string | null; members: UserKey[] }> = [
+  { supervisorEmail: DEMO_SUPERVISOR.email, members: ["csr", "jordan", "marcus"] },
+  { supervisorEmail: "renee.alvarez@larkspur.example", members: ["aisha", "kim"] },
+  { supervisorEmail: "priya.natarajan@larkspur.example", members: ["tomas"] },
+  { supervisorEmail: null, members: ["devon"] }
+];
 
 // Answerable questions. Weight 2 marks the topics CSRs ask about most.
 const ANSWERABLE: Array<[string, number]> = [
@@ -538,6 +580,7 @@ interface SeedState {
   agentUserId?: string;
   documents?: Record<string, string>;
   users?: Partial<Record<UserKey, { id: string; email: string; name: string; created: boolean }>>;
+  supervisors?: Record<string, { id: string; email: string; name: string; created: boolean }>;
   askStep?: { start: string; end: string };
   asks?: AskRecord[];
   viewStep?: { start: string; end: string };
@@ -869,6 +912,79 @@ async function stepUpload(state: SeedState): Promise<void> {
     console.log(`upload: library lists ${list.items.length} sources for the agent`);
   });
   saveState(state);
+}
+
+interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  mustResetPassword: boolean;
+}
+
+async function programUsers(api: Api): Promise<AdminUser[]> {
+  return (await api.call<{ items: AdminUser[] }>("GET", "/api/admin/users")).json.items;
+}
+
+/**
+ * Used by `teams` only; `users` keeps its own loop unchanged.
+ * Creates each account the agent cannot find by email, in the demo program
+ * with `role`, and calls `record(account, id, created)` for every account.
+ * An account that already exists must have credentials in the CSR secrets
+ * file and the expected role.
+ */
+async function ensureAccounts(
+  api: Api,
+  step: string,
+  role: "csr" | "supervisor",
+  accounts: SeedAccount[],
+  record: (account: SeedAccount, id: string, created: boolean) => void
+): Promise<void> {
+  const secrets = csrSecrets();
+  const existing = await programUsers(api);
+  for (const u of accounts) {
+    const found = existing.find((e) => e.email.toLowerCase() === u.email);
+    if (found) {
+      if (!secrets[u.email] && !secrets[pendingKey(u.email)]) {
+        throw new Error(`${u.email} exists but has no credentials in ${CSR_SECRETS}`);
+      }
+      if (found.role !== role) throw new Error(`${u.email} exists with role ${found.role}, expected ${role}`);
+      record(u, found.id, false);
+      console.log(`${step}: ${u.email} exists`);
+      continue;
+    }
+    const temporary = strongPassword();
+    // Saved before the request, so a lost response never strands the account.
+    secrets[u.email] = temporary;
+    writeCsrSecrets(secrets);
+    const r = await api.call<{ item: { id: string } }>("POST", "/api/admin/users", {
+      body: { email: u.email, name: u.name, role, programId: PROGRAM_ID, password: temporary },
+      program: false
+    });
+    record(u, r.json.item.id, true);
+    console.log(`${step}: created ${u.name} <${u.email}>`);
+  }
+}
+
+/** Forced first-login password change, through the API. */
+async function completePasswordChange(step: string, accounts: SeedAccount[]): Promise<void> {
+  for (const u of accounts) {
+    const api = new Api(u.key);
+    const me = await loginWithJournal(api, u.email);
+    if (me.mustResetPassword) {
+      const latest = csrSecrets();
+      const current = latest[u.email]!;
+      const next = strongPassword();
+      latest[pendingKey(u.email)] = next;
+      writeCsrSecrets(latest);
+      await api.call("POST", "/api/auth/change-password", { body: { currentPassword: current, newPassword: next }, program: false });
+      latest[u.email] = next;
+      delete latest[pendingKey(u.email)];
+      writeCsrSecrets(latest);
+      console.log(`${step}: ${u.email} changed its temporary password`);
+    }
+    await api.logout();
+  }
 }
 
 async function stepUsers(state: SeedState): Promise<void> {
@@ -1234,6 +1350,128 @@ async function stepPersonal(): Promise<void> {
   }
 }
 
+interface TeamsResponse {
+  supervisors: Array<{ id: string; name: string; email: string }>;
+  csrs: Array<{ id: string; name: string; email: string; lastLoginAt: string | null; supervisorId: string | null }>;
+  canEdit: boolean;
+}
+
+const TEAMS_NOT_DEPLOYED = "the teams API is not deployed on this server (/api/admin/teams returned 404); deploy it first";
+
+async function fetchTeams(api: Api): Promise<TeamsResponse> {
+  const r = await api.call<TeamsResponse>("GET", "/api/admin/teams", { allow: [404] });
+  if (r.status === 404) throw new Error(TEAMS_NOT_DEPLOYED);
+  return r.json;
+}
+
+function teamMemberEmail(key: UserKey): string {
+  const user = [...NEW_CSRS, DEMO_CSR].find((u) => u.key === key);
+  if (!user) throw new Error(`no showcase user ${key}`);
+  return user.email;
+}
+
+async function stepTeams(state: SeedState): Promise<void> {
+  state.supervisors ??= {};
+  await asAgent(async (api) => {
+    // Fails before any write when the server predates the teams API.
+    await fetchTeams(api);
+    const demo = (await programUsers(api)).find((u) => u.email.toLowerCase() === DEMO_SUPERVISOR.email);
+    if (!demo) {
+      throw new Error(
+        `${DEMO_SUPERVISOR.email} does not exist; add the supervisor entry to DEMO_LOGIN_ACCOUNTS on web and worker and redeploy, then run teams again`
+      );
+    }
+    if (demo.role !== "supervisor") throw new Error(`${DEMO_SUPERVISOR.email} has role ${demo.role}, expected supervisor`);
+    if (demo.name !== DEMO_SUPERVISOR.name) {
+      // Name only: the password belongs to DEMO_LOGIN_ACCOUNTS.
+      await api.call("PATCH", `/api/admin/users/${demo.id}`, { body: { name: DEMO_SUPERVISOR.name } });
+      console.log(`teams: renamed ${DEMO_SUPERVISOR.email} to ${DEMO_SUPERVISOR.name}`);
+    }
+    await ensureAccounts(api, "teams", "supervisor", NEW_SUPERVISORS, (u, id, created) => {
+      state.supervisors![u.key] = { id, email: u.email, name: u.name, created: created || (state.supervisors![u.key]?.created ?? false) };
+      if (created) saveState(state);
+    });
+    saveState(state);
+  });
+  await completePasswordChange("teams", NEW_SUPERVISORS);
+  await asAgent(async (api) => {
+    const byEmail = new Map((await programUsers(api)).map((u) => [u.email.toLowerCase(), u]));
+    const userFor = (email: string, hint: string) => {
+      const user = byEmail.get(email);
+      if (!user) throw new Error(`${email} is not in the demo program; ${hint}`);
+      return user;
+    };
+    const current = new Map((await fetchTeams(api)).csrs.map((c) => [c.id, c.supervisorId]));
+    for (const team of TEAMS) {
+      const supervisor = team.supervisorEmail === null ? null : userFor(team.supervisorEmail, "run teams again");
+      const supervisorId = supervisor?.id ?? null;
+      const moving = team.members
+        .map((key) => userFor(teamMemberEmail(key), "run the users step first"))
+        .filter((u) => current.get(u.id) !== supervisorId);
+      if (moving.length === 0) continue;
+      const r = await api.call("PUT", "/api/admin/teams/assignments", {
+        body: { csrIds: moving.map((u) => u.id), supervisorId },
+        allow: [404]
+      });
+      if (r.status === 404) throw new Error(TEAMS_NOT_DEPLOYED);
+      console.log(`teams: ${moving.map((u) => u.name).join(", ")} -> ${supervisor?.name ?? "unassigned"}`);
+    }
+    const after = await fetchTeams(api);
+    for (const s of after.supervisors) {
+      const members = after.csrs.filter((c) => c.supervisorId === s.id).map((c) => c.name);
+      console.log(`teams: ${s.name}: ${members.join(", ") || "(none)"}`);
+    }
+    const unassigned = after.csrs.filter((c) => c.supervisorId === null).map((c) => c.name);
+    console.log(`teams: Unassigned: ${unassigned.join(", ") || "(none)"}`);
+  });
+  for (const u of NEW_SUPERVISORS) {
+    const api = new Api(u.key);
+    const me = await loginWithJournal(api, u.email);
+    try {
+      if (me.mustResetPassword) throw new Error(`${u.email} still has to change its password; run teams again`);
+      await recommendForTeam(api, u.name, u.email);
+    } finally {
+      await api.logout();
+    }
+  }
+  // blockDemoWrites refuses every non-GET request from a DEMO_LOGIN_ACCOUNTS
+  // login, so the operator sets Elliot's list in the database instead.
+  console.log(
+    `teams: ${DEMO_SUPERVISOR.name} is a demo account (writes blocked); set his recommendations by SQL: ${DEMO_SUPERVISOR_RECOMMENDATIONS.join(", ")}`
+  );
+  saveState(state);
+}
+
+/**
+ * Sources each supervisor recommends to their team (`teams`), by title, from
+ * the files `upload` adds. Different per team; none is a program-wide pin.
+ * Elliot's list is separate: the seed only prints it, and the operator
+ * inserts it by SQL.
+ */
+const DEMO_SUPERVISOR_RECOMMENDATIONS = [T.payment, T.upgrades];
+const TEAM_RECOMMENDATIONS: Record<string, string[]> = {
+  "renee.alvarez@larkspur.example": [T.retention, T.chargeback],
+  "priya.natarajan@larkspur.example": [T.twoFactor, T.recovery]
+};
+
+const TEAM_SHORTCUTS_NOT_DEPLOYED =
+  "team shortcuts API not deployed on this server (PUT /api/kb/library/team-shortcuts returned 404); deploy it first";
+
+/** Replaces the logged-in supervisor's team list, so a re-run restores it. */
+async function recommendForTeam(api: Api, name: string, email: string): Promise<void> {
+  const titles = TEAM_RECOMMENDATIONS[email];
+  if (!titles) throw new Error(`no team recommendations for ${email}`);
+  const ids = docIdsByTitle(await kbList(api));
+  const documentIds = titles.map((title) => {
+    const id = ids.get(title);
+    if (!id) throw new Error(`source "${title}" is not visible to ${email}; run the upload step first`);
+    return id;
+  });
+  const r = await api.call("PUT", "/api/kb/library/team-shortcuts", { body: { documentIds }, allow: [404] });
+  if (r.status === 404) throw new Error(`${TEAM_SHORTCUTS_NOT_DEPLOYED}: ${JSON.stringify(r.json).slice(0, 200)}`);
+  console.log(`teams: ${name} recommends ${titles.join(", ")}`);
+}
+
 // --- backdate ---------------------------------------------------------------
 
 const DAY_MS = 86_400_000;
@@ -1491,6 +1729,7 @@ const STEPS: Record<string, (state: SeedState) => Promise<void>> = {
   ask: stepAsk,
   views: stepViews,
   personal: () => stepPersonal(),
+  teams: stepTeams,
   backdate: stepBackdate,
   verify: stepVerify,
   plan: async () => {

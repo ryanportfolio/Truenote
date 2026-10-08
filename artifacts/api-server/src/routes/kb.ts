@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 import { db, poolHasWaitingClients } from "../lib/db-client.js";
 import { documents, documentVersions } from "@workspace/db/schema";
 import {
@@ -15,10 +15,11 @@ import {
   requireFreshPassword
 } from "../middleware/current-user.js";
 import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
-import { hasAtLeastRole } from "../lib/auth/current-user.js";
+import { hasAtLeastRole, type CurrentUser } from "../lib/auth/current-user.js";
 import { isDemoEmail } from "../lib/auth/demo-accounts.js";
 import {
   colorLabelSchema,
+  canPinForTeam,
   isoOrNull,
   libraryColorOrNull,
   normalizeLabelName,
@@ -158,6 +159,8 @@ export interface KbDocumentListItem {
   noteUpdatedAt: string | null;
   myColor: LibraryColor | null;
   featuredPosition: number | null;
+  /** Position in the viewer's team list (their supervisor's, or their own as a supervisor). */
+  teamPinPosition: number | null;
   categoryIds: string[];
   tagIds: string[];
 }
@@ -181,6 +184,7 @@ interface KbListRow {
   note_updated_at: Date | string | null;
   my_color: string | null;
   featured_position: number | null;
+  team_pin_position: number | null;
 }
 
 interface MembershipRow {
@@ -194,6 +198,7 @@ kbRouter.get("/documents", async (req, res, next) => {
     const maxClassification = await getUserMaxClassification(user.id);
     const programId = await resolveEffectiveProgramId(user, req);
     const canOrganize = hasAtLeastRole(user, "manager") && !isDemoEmail(user.email);
+    const canPinTeam = canPinForTeam(user.role) && !isDemoEmail(user.email);
     if (programId === null) {
       // Color names belong to the user, not a program, so they still load.
       res.json({
@@ -202,10 +207,12 @@ kbRouter.get("/documents", async (req, res, next) => {
         tags: [],
         labels: await loadColorLabels(user.id),
         canOrganize,
+        canPinForTeam: canPinTeam,
         noProgramSelected: true
       });
       return;
     }
+    const teamPin = teamPinSql(user, programId);
 
     // One row per visible document with its usage counts and the caller's
     // personal state, aggregated in SQL. Multiple active versions shouldn't
@@ -274,7 +281,8 @@ kbRouter.get("/documents", async (req, res, next) => {
         s.note,
         s.note_updated_at,
         s.color AS my_color,
-        f.position AS featured_position
+        f.position AS featured_position,
+        ${teamPin.column} AS team_pin_position
       FROM visible AS vis
       LEFT JOIN views ON views.document_id = vis.id
       LEFT JOIN my_views ON my_views.document_id = vis.id
@@ -283,6 +291,7 @@ kbRouter.get("/documents", async (req, res, next) => {
         ON s.user_id = ${user.id}::uuid AND s.document_id = vis.id
       LEFT JOIN kb_source_featured AS f
         ON f.document_id = vis.id AND f.program_id = ${programId}::uuid
+      ${teamPin.join}
       ORDER BY vis.title, vis.id
     `);
     const categoryQuery = db.execute(sql`
@@ -365,6 +374,7 @@ kbRouter.get("/documents", async (req, res, next) => {
       noteUpdatedAt: isoOrNull(r.note_updated_at),
       myColor: libraryColorOrNull(r.my_color),
       featuredPosition: r.featured_position === null ? null : Number(r.featured_position),
+      teamPinPosition: r.team_pin_position === null ? null : Number(r.team_pin_position),
       categoryIds: docCategories.get(r.document_id) ?? [],
       tagIds: (docTags.get(r.document_id) ?? []).sort(
         (a, b) => (tagOrder.get(a) ?? 0) - (tagOrder.get(b) ?? 0)
@@ -375,7 +385,8 @@ kbRouter.get("/documents", async (req, res, next) => {
       categories: categoryRows.map((c) => serializeCategory(c, categoryDocs.get(c.id) ?? [])),
       tags: tagRows.map(serializeTag),
       labels,
-      canOrganize
+      canOrganize,
+      canPinForTeam: canPinTeam
     });
   } catch (err) {
     next(err);
@@ -390,6 +401,35 @@ async function loadColorLabels(userId: string) {
     WHERE user_id = ${userId}::uuid
   `);
   return serializeColorLabels(result.rows as unknown as ColorLabelRow[]);
+}
+
+/**
+ * Column and join for the viewer's team list (kb_team_shortcuts). The owner
+ * comes from the authenticated user only: a supervisor reads their own list,
+ * a CSR reads the list of the supervisor team_members assigns them to in this
+ * program, and every other role has no team list, so the join is skipped.
+ */
+function teamPinSql(user: CurrentUser, programId: string): { column: SQL; join: SQL } {
+  let owner: SQL;
+  if (canPinForTeam(user.role)) {
+    owner = sql`${user.id}::uuid`;
+  } else if (user.role === "csr") {
+    owner = sql`(
+      SELECT tm.supervisor_user_id
+      FROM team_members AS tm
+      WHERE tm.csr_user_id = ${user.id}::uuid
+        AND tm.program_id = ${programId}::uuid
+    )`;
+  } else {
+    return { column: sql`NULL::int`, join: sql`` };
+  }
+  return {
+    column: sql`tp.position`,
+    join: sql`LEFT JOIN kb_team_shortcuts AS tp
+        ON tp.document_id = vis.id
+        AND tp.program_id = ${programId}::uuid
+        AND tp.supervisor_user_id = ${owner}`
+  };
 }
 
 function pushTo(map: Map<string, string[]>, key: string, value: string): void {

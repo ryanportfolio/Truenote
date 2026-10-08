@@ -8,7 +8,7 @@ import { pathsLabel, useDocMenuEntries } from "./KbDocRow";
 import { KbMenu } from "./KbMenu";
 import { ColorDot, LabelChip } from "./KbShared";
 
-/** Team shortcut: two people, the manager's pick for everyone. */
+/** Recommended: two people, picked by a manager or the viewer's supervisor. */
 function TeamGlyph(): JSX.Element {
   return (
     <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -41,7 +41,7 @@ function RecentGlyph(): JSX.Element {
 }
 
 const SHORTCUT_SOURCE = {
-  team: { label: "From your team", detail: "Your manager added this for everyone.", Glyph: TeamGlyph, tone: "bg-primary/10 text-primary" },
+  team: { label: "Recommended", detail: "Recommended for you by your manager or supervisor.", Glyph: TeamGlyph, tone: "bg-primary/10 text-primary" },
   mine: { label: "Added by you", detail: "You added this to your shortcuts.", Glyph: MineGlyph, tone: "bg-amber-100 text-amber-700" },
   recent: { label: "Recently opened", detail: "You opened this lately.", Glyph: RecentGlyph, tone: "bg-muted text-muted-foreground" }
 } as const;
@@ -118,7 +118,7 @@ function ShortcutTile({ shortcut, index, onEdit }: { shortcut: KbShortcut; index
 }
 
 /**
- * "Your shortcuts": one shelf of up to nine tiles, team shortcuts first, then
+ * "Your shortcuts": one shelf of up to nine tiles, Recommended first, then
  * the user's own, then sources they opened lately. The number keys 1 to 9
  * still open the tiles in order (no visible numbers). Every tile stays in
  * view: from 640px a wrapping grid of tiles at least 13rem wide, so titles

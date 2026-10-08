@@ -527,7 +527,7 @@ function OrganizeDoc({
     },
     doc.featuredPosition !== null
       ? {
-          label: "Remove from team shortcuts",
+          label: "Stop recommending to everyone",
           icon: Users,
           onSelect: () => {
             moved();
@@ -535,7 +535,7 @@ function OrganizeDoc({
           }
         }
       : {
-          label: "Add to team shortcuts",
+          label: "Recommend to everyone",
           icon: Users,
           onSelect: () => {
             moved();
@@ -575,7 +575,7 @@ function OrganizeDoc({
         {doc.featuredPosition !== null ? (
           <span className="inline-flex items-center gap-1 text-xs text-primary">
             <Users className="h-3 w-3" aria-hidden />
-            Team shortcut
+            Recommended
           </span>
         ) : null}
         <span className="hidden flex-wrap items-center gap-1 sm:inline-flex">
