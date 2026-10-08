@@ -544,8 +544,10 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
           />
         )
       ) : (
-        <header className="flex flex-col gap-4">
-          {/* The sidebar already says where you are; the heading stays for
+        <header className="sticky top-0 z-30 -my-3 flex flex-col gap-4 py-3 before:pointer-events-none before:absolute before:inset-y-0 before:-left-[100vw] before:-right-[100vw] before:-z-10 before:bg-background/80 before:backdrop-blur-md before:content-['']">
+          {/* The date and person filters stay in view while the page scrolls;
+              the blurred band runs the full width of the page (main clips it).
+              The sidebar already says where you are; the heading stays for
               screen readers. Focus handoffs go to the first control instead. */}
           <h1 id="source-usage-title" tabIndex={-1} className="sr-only">
             Source usage
@@ -595,7 +597,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
         </EmptyState>
       ) : (
         <div className="flex flex-col gap-8">
-          <AtAGlance totals={data.totals} days={days} />
+          <AtAGlance totals={data.totals} />
           <AttentionCards
             cards={attention}
             days={days}
