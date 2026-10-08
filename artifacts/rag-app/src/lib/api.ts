@@ -8,8 +8,17 @@ import type {
   CreateUserRequest,
   CreateUserResponse,
   CurrentUser,
+  CreateKbCategoryRequest,
   CreateKbHighlightRequest,
+  CreateKbTagRequest,
   DocumentListResponse,
+  KbCategory,
+  KbSourceUserState,
+  KbTag,
+  SourceUsageQuestionsResponse,
+  SourceUsageResponse,
+  UpdateKbCategoryRequest,
+  UpdateKbTagRequest,
   EvalQuestionItem,
   EvalQuestionListResponse,
   EvalRunDetailResponse,
@@ -469,6 +478,186 @@ export async function fetchKbGaps(windowDays: number): Promise<KbGapsResponse> {
     withDefaults()
   );
   return asJson<KbGapsResponse>(response);
+}
+
+function jsonRequest(method: string, body: unknown): RequestInit {
+  return withDefaults({
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+}
+
+/** Personal pin. Allowed for every role, demo accounts included. */
+export async function setKbPin(
+  documentId: string,
+  pinned: boolean
+): Promise<KbSourceUserState> {
+  const response = await fetch(
+    `/api/kb/documents/${encodeURIComponent(documentId)}/pin`,
+    jsonRequest("PUT", { pinned })
+  );
+  const json = await asJson<{ item: KbSourceUserState }>(response);
+  return json.item;
+}
+
+/** Private note. An empty or whitespace-only note deletes it. Max 4000 chars. */
+export async function setKbNote(
+  documentId: string,
+  note: string
+): Promise<KbSourceUserState> {
+  const response = await fetch(
+    `/api/kb/documents/${encodeURIComponent(documentId)}/note`,
+    jsonRequest("PUT", { note })
+  );
+  const json = await asJson<{ item: KbSourceUserState }>(response);
+  return json.item;
+}
+
+// Library organization (manager+, not demo). All scoped to the effective program.
+
+export async function createKbCategory(
+  payload: CreateKbCategoryRequest
+): Promise<KbCategory> {
+  const response = await fetch("/api/kb/library/categories", jsonRequest("POST", payload));
+  const json = await asJson<{ item: KbCategory }>(response);
+  return json.item;
+}
+
+export async function updateKbCategory(
+  categoryId: string,
+  payload: UpdateKbCategoryRequest
+): Promise<KbCategory> {
+  const response = await fetch(
+    `/api/kb/library/categories/${encodeURIComponent(categoryId)}`,
+    jsonRequest("PATCH", payload)
+  );
+  const json = await asJson<{ item: KbCategory }>(response);
+  return json.item;
+}
+
+/** Deletes the category. Its child categories move up to its parent; documents stay in the library. */
+export async function deleteKbCategory(categoryId: string): Promise<void> {
+  const response = await fetch(
+    `/api/kb/library/categories/${encodeURIComponent(categoryId)}`,
+    withDefaults({ method: "DELETE" })
+  );
+  await asJson<{ ok: true }>(response);
+}
+
+/** Reorder the children of one parent (null = top level). orderedIds must be exactly those siblings. */
+export async function reorderKbCategories(
+  parentId: string | null,
+  orderedIds: string[]
+): Promise<void> {
+  const response = await fetch(
+    "/api/kb/library/categories/order",
+    jsonRequest("PUT", { parentId, orderedIds })
+  );
+  await asJson<{ ok: true }>(response);
+}
+
+/** Replace a category's members with this ordered list (add, remove, and reorder in one call). */
+export async function setKbCategoryDocuments(
+  categoryId: string,
+  documentIds: string[]
+): Promise<KbCategory> {
+  const response = await fetch(
+    `/api/kb/library/categories/${encodeURIComponent(categoryId)}/documents`,
+    jsonRequest("PUT", { documentIds })
+  );
+  const json = await asJson<{ item: KbCategory }>(response);
+  return json.item;
+}
+
+/** Replace the set of categories one document belongs to. New memberships append at the end. */
+export async function setKbDocumentCategories(
+  documentId: string,
+  categoryIds: string[]
+): Promise<void> {
+  const response = await fetch(
+    `/api/kb/library/documents/${encodeURIComponent(documentId)}/categories`,
+    jsonRequest("PUT", { categoryIds })
+  );
+  await asJson<{ ok: true }>(response);
+}
+
+export async function createKbTag(payload: CreateKbTagRequest): Promise<KbTag> {
+  const response = await fetch("/api/kb/library/tags", jsonRequest("POST", payload));
+  const json = await asJson<{ item: KbTag }>(response);
+  return json.item;
+}
+
+export async function updateKbTag(
+  tagId: string,
+  payload: UpdateKbTagRequest
+): Promise<KbTag> {
+  const response = await fetch(
+    `/api/kb/library/tags/${encodeURIComponent(tagId)}`,
+    jsonRequest("PATCH", payload)
+  );
+  const json = await asJson<{ item: KbTag }>(response);
+  return json.item;
+}
+
+export async function deleteKbTag(tagId: string): Promise<void> {
+  const response = await fetch(
+    `/api/kb/library/tags/${encodeURIComponent(tagId)}`,
+    withDefaults({ method: "DELETE" })
+  );
+  await asJson<{ ok: true }>(response);
+}
+
+/** Replace the set of tags on one document. */
+export async function setKbDocumentTags(
+  documentId: string,
+  tagIds: string[]
+): Promise<void> {
+  const response = await fetch(
+    `/api/kb/library/documents/${encodeURIComponent(documentId)}/tags`,
+    jsonRequest("PUT", { tagIds })
+  );
+  await asJson<{ ok: true }>(response);
+}
+
+/** Replace the team-pinned list with this ordered list (empty array clears it). Max 12. */
+export async function setKbFeatured(documentIds: string[]): Promise<void> {
+  const response = await fetch(
+    "/api/kb/library/featured",
+    jsonRequest("PUT", { documentIds })
+  );
+  await asJson<{ ok: true }>(response);
+}
+
+export async function fetchSourceUsage(params: {
+  windowDays: number;
+  userId?: string | null;
+}): Promise<SourceUsageResponse> {
+  const search = new URLSearchParams({ days: String(params.windowDays) });
+  if (params.userId) search.set("userId", params.userId);
+  const response = await fetch(
+    `/api/admin/insights/source-usage?${search.toString()}`,
+    withDefaults()
+  );
+  return asJson<SourceUsageResponse>(response);
+}
+
+/** Questions behind the usage numbers, newest first. Filter by source, user, or both. Max 200. */
+export async function fetchSourceUsageQuestions(params: {
+  windowDays: number;
+  userId?: string | null;
+  documentId?: string | null;
+  limit?: number;
+}): Promise<SourceUsageQuestionsResponse> {
+  const search = new URLSearchParams({ days: String(params.windowDays) });
+  if (params.userId) search.set("userId", params.userId);
+  if (params.documentId) search.set("documentId", params.documentId);
+  if (params.limit !== undefined) search.set("limit", String(params.limit));
+  const response = await fetch(
+    `/api/admin/insights/source-usage/questions?${search.toString()}`,
+    withDefaults()
+  );
+  return asJson<SourceUsageQuestionsResponse>(response);
 }
 
 export async function uploadDocument(formData: FormData): Promise<UploadResponse> {

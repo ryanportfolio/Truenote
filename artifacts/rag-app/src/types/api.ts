@@ -251,12 +251,169 @@ export interface KbDocumentListItem {
   title: string;
   /** Active version's upload time (ISO), or null. */
   updatedAt: string | null;
+  /** When the document was first added (ISO), or null. */
+  createdAt: string | null;
+  /** True when the document was added or got a new version in the last 14 days. */
+  isNew: boolean;
+  /** Reader opens by anyone in the program over the last 30 days. */
+  viewCount: number;
+  /** Answers that cited this document over the last 30 days. */
+  citationCount: number;
+  /** The current user's last open of this document (ISO), or null. */
+  lastViewedByMeAt: string | null;
+  /** Personal pin time (ISO); null when not pinned by the current user. */
+  pinnedAt: string | null;
+  /** The current user's private note, or null. */
+  note: string | null;
+  noteUpdatedAt: string | null;
+  /** Team pin order (0-based) set by a manager; null when not team-pinned. */
+  featuredPosition: number | null;
+  /** Every category the document belongs to. */
+  categoryIds: string[];
+  tagIds: string[];
+}
+
+export type KbLibraryColor =
+  | "slate"
+  | "blue"
+  | "green"
+  | "amber"
+  | "red"
+  | "violet"
+  | "teal"
+  | "pink";
+
+/** A manager-made category. Categories nest through parentId (max 4 levels). */
+export interface KbCategory {
+  id: string;
+  parentId: string | null;
+  name: string;
+  color: KbLibraryColor;
+  /** Order among siblings (0-based). */
+  position: number;
+  /** Member document ids in the manager's order. */
+  documentIds: string[];
+}
+
+export interface KbTag {
+  id: string;
+  name: string;
+  color: KbLibraryColor;
 }
 
 export interface KbDocumentListResponse {
   items: KbDocumentListItem[];
+  categories: KbCategory[];
+  tags: KbTag[];
+  /** True for manager+ non-demo accounts: may edit categories, tags and team pins. */
+  canOrganize: boolean;
   /** Same sentinel contract as DocumentListResponse. */
   noProgramSelected?: boolean;
+}
+
+/** Personal pin and note state returned by the pin and note endpoints. */
+export interface KbSourceUserState {
+  documentId: string;
+  pinnedAt: string | null;
+  note: string | null;
+  noteUpdatedAt: string | null;
+}
+
+export interface CreateKbCategoryRequest {
+  name: string;
+  parentId?: string | null;
+  color?: KbLibraryColor;
+}
+
+export interface UpdateKbCategoryRequest {
+  name?: string;
+  color?: KbLibraryColor;
+  /** Move under another category (null = top level). Appends at the end of the new siblings. */
+  parentId?: string | null;
+}
+
+export interface CreateKbTagRequest {
+  name: string;
+  color?: KbLibraryColor;
+}
+
+export interface UpdateKbTagRequest {
+  name?: string;
+  color?: KbLibraryColor;
+}
+
+/** Source usage analytics (manager+). Window counts come from query_log citations. */
+export interface SourceUsageSource {
+  documentId: string;
+  /** Null when the viewer's clearance is below the document's classification. */
+  title: string | null;
+  /** False when the document is retired or has no active version now. */
+  isLive: boolean;
+  /** Answers that cited the document at least once. */
+  citationCount: number;
+  /** Distinct normalized questions among those answers. */
+  questionCount: number;
+  /** Distinct users whose answers cited it. */
+  userCount: number;
+  /** Reader opens in the window (all users, or the selected user). */
+  viewCount: number;
+  /** Answers citing it that got a thumbs-down. */
+  negativeCount: number;
+  lastCitedAt: string | null;
+}
+
+export interface SourceUsageUser {
+  userId: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  questionCount: number;
+  /** Answers with at least one citation (not refused). */
+  answeredCount: number;
+  refusedCount: number;
+  negativeCount: number;
+  /** Up to 3 most-cited sources for this user's questions. */
+  topSources: { documentId: string; title: string | null; count: number }[];
+  lastAskedAt: string | null;
+}
+
+export interface SourceUsageResponse {
+  windowDays: number;
+  /** Echo of the userId filter, or null for everyone. */
+  userId: string | null;
+  totals: {
+    questions: number;
+    answered: number;
+    refused: number;
+    /** Distinct documents cited at least once. */
+    sourcesCited: number;
+    /** Live documents in the program never cited in the window. */
+    sourcesNeverCited: number;
+    activeUsers: number;
+  };
+  /** Ranked by citationCount desc, then lastCitedAt desc. Max 100. */
+  sources: SourceUsageSource[];
+  /** Ranked by questionCount desc. Every program user with >= 1 question. */
+  users: SourceUsageUser[];
+  noProgramSelected?: boolean;
+}
+
+export interface SourceUsageQuestion {
+  queryLogId: string;
+  question: string;
+  askedAt: string;
+  userId: string | null;
+  userName: string | null;
+  refused: boolean;
+  /** 1, -1, or null. */
+  feedback: number | null;
+  sources: { documentId: string; title: string | null }[];
+}
+
+export interface SourceUsageQuestionsResponse {
+  items: SourceUsageQuestion[];
+  /** True when more rows matched than the limit returned. */
+  truncated: boolean;
 }
 
 export interface KbDocumentResponse {
