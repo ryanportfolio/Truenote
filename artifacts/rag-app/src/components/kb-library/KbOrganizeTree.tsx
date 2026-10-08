@@ -12,10 +12,13 @@ import {
   useSensor,
   useSensors,
   type Active,
+  type Collision,
   type CollisionDetection,
   type DragEndEvent,
   type DragMoveEvent,
   type DragStartEvent,
+  type DroppableContainer,
+  type KeyboardCoordinateGetter,
   type Modifier,
   type Over
 } from "@dnd-kit/core";
@@ -68,7 +71,7 @@ type DragData =
 
 type DropData =
   | { type: "category"; categoryId: string }
-  | { type: "document"; documentId: string; categoryId: string | null }
+  | { type: "document"; documentId: string; categoryId: string | null; title: string }
   | { type: "uncategorized" };
 
 interface DropTarget {
@@ -80,10 +83,118 @@ interface DropTarget {
 
 const TargetContext = createContext<DropTarget | null>(null);
 
-const collisionDetection: CollisionDetection = (args) =>
-  args.pointerCoordinates ? pointerWithin(args) : closestCenter(args);
+/**
+ * Pointer drags: the row under the pointer. Keyboard drags: the row whose
+ * height band holds the dragged item's center, which is where
+ * treeKeyboardCoordinates parks it.
+ */
+const collisionDetection: CollisionDetection = (args) => {
+  if (args.pointerCoordinates) return pointerWithin(args);
+  const y = args.collisionRect.top + args.collisionRect.height / 2;
+  const hits: Collision[] = [];
+  for (const container of args.droppableContainers) {
+    const rect = args.droppableRects.get(container.id);
+    if (rect && y >= rect.top && y < rect.bottom) {
+      hits.push({ id: container.id, data: { droppableContainer: container, value: rect.height } });
+    }
+  }
+  if (hits.length === 0) return closestCenter(args);
+  return hits.sort((a, b) => (a.data?.value as number) - (b.data?.value as number));
+};
+
+function isKeyboardEvent(event: Event | null): boolean {
+  return typeof KeyboardEvent !== "undefined" && event instanceof KeyboardEvent;
+}
+
+/** A keyboard drop spot: a row (as an `over`), the height in it, and a stable key. */
+interface KeyboardSpot {
+  key: string;
+  over: Over;
+  /** Height within the row, 0 (top) to 1; read against the row's live rect so scrolling never shifts it. */
+  ratio: number;
+}
+
+function spotY(spot: KeyboardSpot): number {
+  return spot.over.rect.top + spot.over.rect.height * spot.ratio;
+}
+
+/**
+ * Arrow keys step through the drop spots in the order the tree shows them,
+ * one spot per press. A source steps to "before" each source, "after" the
+ * last source of each list, and "into" each category; a category steps to
+ * before, inside and after each other category. The last spot is kept by key
+ * (not read back from the rendered position), so fast presses never skip or
+ * repeat one. The dragged item is drawn at the spot, and `onSpot` gets it at
+ * once, so the target label never waits for dnd-kit's next collision pass.
+ */
+function makeTreeKeyboardCoordinates(
+  last: { current: KeyboardSpot | null },
+  onSpot: (active: Active, spot: KeyboardSpot) => void
+): KeyboardCoordinateGetter {
+  return (event, { context }) => {
+    if (event.code !== "ArrowUp" && event.code !== "ArrowDown") return undefined;
+    event.preventDefault();
+    const { active, collisionRect, droppableRects, droppableContainers } = context;
+    const drag = active?.data.current as DragData | undefined;
+    if (!active || !collisionRect || !drag) return undefined;
+
+    const rows = droppableContainers
+      .getEnabled()
+      .map((container) => ({ container, rect: droppableRects.get(container.id) }))
+      .filter((row): row is { container: DroppableContainer; rect: NonNullable<typeof row.rect> } =>
+        Boolean(row.rect && row.container.data.current)
+      )
+      .sort((a, b) => a.rect.top - b.rect.top);
+
+    const spots: KeyboardSpot[] = [];
+    let self = -1;
+    rows.forEach(({ container, rect }, i) => {
+      const drop = container.data.current as DropData;
+      const over: Over = { id: container.id, rect, data: container.data, disabled: container.disabled };
+      const add = (ratio: number, isSelf = false): void => {
+        if (isSelf) self = spots.length;
+        spots.push({ key: `${String(container.id)}@${ratio}`, over, ratio });
+      };
+      if (drag.type === "category") {
+        if (drop.type !== "category") return;
+        if (drop.categoryId === drag.categoryId) add(0.5, true);
+        else [0.15, 0.5, 0.85].forEach((ratio) => add(ratio));
+        return;
+      }
+      if (drop.type !== "document") {
+        add(0.5);
+        return;
+      }
+      if (drop.documentId === drag.documentId && drop.categoryId === drag.fromCategoryId) {
+        add(0.5, true);
+        return;
+      }
+      add(0.25);
+      const next = rows[i + 1]?.container.data.current as DropData | undefined;
+      if (!(next?.type === "document" && next.categoryId === drop.categoryId)) add(0.75);
+    });
+
+    const from = last.current ? spots.findIndex((s) => s.key === last.current?.key) : self;
+    const target = spots[(from === -1 ? self : from) + (event.code === "ArrowDown" ? 1 : -1)];
+    if (!target) return undefined;
+    last.current = target;
+    onSpot(active, target);
+    return { x: collisionRect.left, y: spotY(target) - collisionRect.height / 2 };
+  };
+}
 
 /** Current pointer height; keyboard drags fall back to the dragged item's center. */
+/**
+ * The droppable under the dragged item now. `event.over` can trail a move by
+ * one render (a keyboard step moves once, so its label would lag); the
+ * event's collisions are computed for the current position.
+ */
+function freshOver(event: DragMoveEvent | DragEndEvent): Over | null {
+  const container = event.collisions?.[0]?.data?.droppableContainer as DroppableContainer | undefined;
+  if (!container?.rect.current) return event.over;
+  return { id: container.id, rect: container.rect.current, data: container.data, disabled: container.disabled };
+}
+
 function currentY(event: DragMoveEvent | DragEndEvent): number | null {
   const activator = event.activatorEvent as Partial<PointerEvent> | null;
   if (activator && typeof activator.clientY === "number") return activator.clientY + event.delta.y;
@@ -144,10 +255,11 @@ function computeTarget(
     dropId,
     place,
     valid: true,
+    // Name the neighbor, so the line's label (and the spoken announcement) says exactly where it lands.
     message:
       drop.categoryId === drag.fromCategoryId
-        ? `Reorder in ${name ?? "this category"}`
-        : `Move into ${name ?? "this category"}`
+        ? `Place ${place} ${drop.title}`
+        : `Move into ${name ?? "this category"}, ${place} ${drop.title}`
   };
 }
 
@@ -256,7 +368,7 @@ function OrganizeDoc({
   });
   const drop = useDroppable({
     id: dropId,
-    data: { type: "document", documentId: doc.documentId, categoryId } satisfies DropData
+    data: { type: "document", documentId: doc.documentId, categoryId, title: doc.title } satisfies DropData
   });
   const categoryName = categoryId ? lookup.tree.byId.get(categoryId)?.category.name : null;
 
@@ -581,13 +693,20 @@ export function KbOrganizeTree({
 }): JSX.Element {
   const { data, lookup, actions, openDialog } = useKbLibraryContext();
   const reducedMotion = useReducedMotion();
+  // Keyboard drags: the spot the arrow keys last moved to, and what to do with a new one.
+  const keyboardSpot = useRef<KeyboardSpot | null>(null);
+  const onKeyboardSpot = useRef<(active: Active, spot: KeyboardSpot) => void>(() => undefined);
+  const [keyboardCoordinates] = useState(() =>
+    makeTreeKeyboardCoordinates(keyboardSpot, (a, spot) => onKeyboardSpot.current(a, spot))
+  );
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor)
+    useSensor(KeyboardSensor, { coordinateGetter: keyboardCoordinates })
   );
   const [active, setActive] = useState<DragData | null>(null);
   const [target, setTarget] = useState<DropTarget | null>(null);
   const targetRef = useRef<DropTarget | null>(null);
+  onKeyboardSpot.current = (a, spot) => updateTarget(computeTarget(a, spot.over, spotY(spot), lookup.tree));
 
   const loose = data.items
     .filter((d) => !d.categoryIds.some((id) => lookup.tree.byId.has(id)))
@@ -607,23 +726,29 @@ export function KbOrganizeTree({
   }
 
   function onDragStart(event: DragStartEvent): void {
+    keyboardSpot.current = null;
     setActive((event.active.data.current as DragData | undefined) ?? null);
     updateTarget(null);
   }
 
+  // Pointer drags only: keyboard drags set their target from the spot they step to.
   function onDragMove(event: DragMoveEvent): void {
-    updateTarget(computeTarget(event.active, event.over, currentY(event), lookup.tree));
+    if (isKeyboardEvent(event.activatorEvent)) return;
+    updateTarget(computeTarget(event.active, freshOver(event), currentY(event), lookup.tree));
   }
 
   function reset(): void {
+    keyboardSpot.current = null;
     setActive(null);
     updateTarget(null);
   }
 
   function onDragEnd(event: DragEndEvent): void {
     const drag = event.active.data.current as DragData | undefined;
-    const drop = event.over?.data.current as DropData | undefined;
-    const final = computeTarget(event.active, event.over, currentY(event), lookup.tree);
+    const spot = isKeyboardEvent(event.activatorEvent) ? keyboardSpot.current : null;
+    const over = spot ? spot.over : isKeyboardEvent(event.activatorEvent) ? null : freshOver(event);
+    const drop = over?.data.current as DropData | undefined;
+    const final = computeTarget(event.active, over, spot ? spotY(spot) : currentY(event), lookup.tree);
     reset();
     if (!drag || !drop || !final) return;
     if (!final.valid) {
@@ -668,6 +793,8 @@ export function KbOrganizeTree({
       collisionDetection={collisionDetection}
       onDragStart={onDragStart}
       onDragMove={onDragMove}
+      // A new `over` can arrive one render after the move that caused it.
+      onDragOver={onDragMove}
       onDragEnd={onDragEnd}
       onDragCancel={reset}
       accessibility={{
@@ -717,7 +844,18 @@ export function KbOrganizeTree({
           </div>
         </div>
       </TargetContext.Provider>
-      <DragOverlay modifiers={[offsetFromPointer]} dropAnimation={reducedMotion ? null : KB_DRAG_MOTION}>
+      <DragOverlay
+        modifiers={[offsetFromPointer]}
+        dropAnimation={reducedMotion ? null : KB_DRAG_MOTION}
+        // Keyboard steps glide between spots (none under reduced motion); pointer drags follow the pointer.
+        transition={(activator) =>
+          isKeyboardEvent(activator)
+            ? reducedMotion
+              ? "none"
+              : `transform ${KB_DRAG_MOTION.duration}ms ${KB_DRAG_MOTION.easing}`
+            : undefined
+        }
+      >
         {active ? <DragPreview label={active.label} target={target} /> : null}
       </DragOverlay>
     </DndContext>
@@ -726,12 +864,14 @@ export function KbOrganizeTree({
 
 /**
  * Keep the drag preview below and right of the pointer so the row under it,
- * the drop target, stays readable. Keyboard drags shift it below the item.
+ * the drop target, stays readable. Keyboard drags are left alone: the
+ * preview sits on the spot it would land (its label names the target), and
+ * an offset here would also shift what the keyboard drag collides with.
  */
 const offsetFromPointer: Modifier = ({ activatorEvent, activeNodeRect, overlayNodeRect, transform }) => {
-  if (!activeNodeRect) return transform;
+  if (!activeNodeRect || isKeyboardEvent(activatorEvent)) return transform;
   const point = activatorEvent ? getEventCoordinates(activatorEvent) : null;
-  if (!point) return { ...transform, y: transform.y + activeNodeRect.height + 8 };
+  if (!point) return transform;
   const width = overlayNodeRect?.width ?? 0;
   const height = overlayNodeRect?.height ?? 0;
   // Pointer position now, in viewport coordinates.

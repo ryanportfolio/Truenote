@@ -1,6 +1,8 @@
 import { useRef, useState, type RefObject } from "react";
 import { Bookmark, Lock, NotebookPen, Palette, Pencil } from "lucide-react";
 import { setKbNote, setKbPin, setKbSourceColor } from "@/lib/api";
+import { applyUserState } from "@/lib/kbLibrary";
+import { patchKbLibraryCache } from "@/lib/kbLibraryCache";
 import { kbColorLabel } from "@/lib/kbLibraryColors";
 import { RelativeTime } from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
@@ -27,7 +29,9 @@ export interface KbDocPersonal {
  * Pin, private color and private note state for the document reader. The
  * reader response carries the user's state; changes write through the pin,
  * color and note endpoints. Each save merges only its own fields, so a pin,
- * color and note change in flight at once never undo each other.
+ * color and note change in flight at once never undo each other. Saved
+ * state also goes into the shared library cache, so Sources shows it on
+ * the way back.
  */
 export function useKbDocPersonal(documentId: string, initial: Personal): KbDocPersonal {
   const [item, setItem] = useState<Personal>(() => ({
@@ -50,6 +54,7 @@ export function useKbDocPersonal(documentId: string, initial: Personal): KbDocPe
     setItem((prev) => ({ ...prev, pinnedAt: next ? new Date().toISOString() : null }));
     try {
       const saved = await setKbPin(documentId, next);
+      patchKbLibraryCache((d) => applyUserState(d, saved));
       if (version === pinVersion.current) setItem((prev) => ({ ...prev, pinnedAt: saved.pinnedAt }));
     } catch (err) {
       if (version === pinVersion.current) setItem((prev) => ({ ...prev, pinnedAt: before }));
@@ -65,6 +70,7 @@ export function useKbDocPersonal(documentId: string, initial: Personal): KbDocPe
     setItem((prev) => ({ ...prev, myColor: color }));
     try {
       const saved = await setKbSourceColor(documentId, color);
+      patchKbLibraryCache((d) => applyUserState(d, saved));
       if (version === colorVersion.current) setItem((prev) => ({ ...prev, myColor: saved.color }));
     } catch (err) {
       if (version === colorVersion.current) setItem((prev) => ({ ...prev, myColor: before }));
@@ -80,6 +86,7 @@ export function useKbDocPersonal(documentId: string, initial: Personal): KbDocPe
   async function saveNote(note: string): Promise<ActionResult> {
     try {
       const saved = await setKbNote(documentId, note);
+      patchKbLibraryCache((d) => applyUserState(d, saved));
       // Take only the note: a pin or color change may still be in flight.
       setItem((prev) => ({ ...prev, note: saved.note, noteUpdatedAt: saved.noteUpdatedAt }));
       stopEditing();

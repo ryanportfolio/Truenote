@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { ArrowLeft, MessageSquareText } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
-import { fetchSourceUsageQuestions } from "@/lib/api";
+import { fetchSourceUsage, fetchSourceUsageQuestions } from "@/lib/api";
 import {
   answeredRate,
   barWidth,
@@ -140,10 +140,12 @@ export function PersonFocus({
             {name}
           </h2>
           {identity ? <RoleBadge>{roleLabel(identity.role)}</RoleBadge> : null}
+          {identity?.email ? (
+            <span className="min-w-0 break-all text-sm text-muted-foreground">{identity.email}</span>
+          ) : null}
         </div>
         <p className="text-sm text-muted-foreground">
           Review the questions and sources behind {shortName}'s answers in the last {days} days.
-          {identity?.email ? ` ${identity.email}.` : ""}
           {row?.lastAskedAt ? (
             <>
               {" Last asked "}
@@ -154,17 +156,14 @@ export function PersonFocus({
       </div>
 
       {!hasQuestions ? (
-        <EmptyState
-          icon={MessageSquareText}
-          title={`${name} asked no questions in the last ${days} days`}
-          hint={`Questions appear here after ${shortName} asks in Ask.`}
-        >
-          {onWiderWindow ? (
-            <button type="button" onClick={onWiderWindow} className="btn-whisper px-3 py-1 text-xs">
-              Show the last 90 days
-            </button>
-          ) : null}
-        </EmptyState>
+        <NoQuestions
+          userId={userId}
+          name={name}
+          shortName={shortName}
+          days={days}
+          reloadKey={reloadKey}
+          onWiderWindow={onWiderWindow}
+        />
       ) : (
         <>
           <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -262,6 +261,72 @@ export function PersonFocus({
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Empty person view. "Show the last 90 days" only helps when the person asked
+ * something in that window, so a shorter window checks the 90-day count first
+ * and offers the button with the number, or says they have asked nothing.
+ */
+function NoQuestions({
+  userId,
+  name,
+  shortName,
+  days,
+  reloadKey,
+  onWiderWindow
+}: {
+  userId: string;
+  name: string;
+  shortName: string;
+  days: number;
+  reloadKey: number;
+  onWiderWindow: (() => void) | null;
+}): JSX.Element {
+  // null while checking; -1 when the check failed (offer the button anyway).
+  const [widerCount, setWiderCount] = useState<number | null>(days >= 90 ? 0 : null);
+
+  useEffect(() => {
+    if (days >= 90) return;
+    let cancelled = false;
+    setWiderCount(null);
+    fetchSourceUsage({ windowDays: 90, userId })
+      .then((result) => {
+        if (!cancelled) setWiderCount(result.totals.questions);
+      })
+      .catch(() => {
+        if (!cancelled) setWiderCount(-1);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, days, reloadKey]);
+
+  const neverAsked = widerCount === 0;
+  const canWiden = onWiderWindow !== null && widerCount !== null && widerCount !== 0;
+  return (
+    <EmptyState
+      icon={MessageSquareText}
+      title={
+        neverAsked
+          ? `${name} has not asked any questions yet`
+          : `${name} asked no questions in the last ${days} days`
+      }
+      hint={
+        neverAsked
+          ? `Nothing in the last 90 days, the longest window this page shows. Questions appear after ${shortName} asks in Ask.`
+          : widerCount !== null && widerCount > 0
+            ? `${shortName} asked ${plural(widerCount, "question", "questions")} in the last 90 days.`
+            : `Questions appear here after ${shortName} asks in Ask.`
+      }
+    >
+      {canWiden && onWiderWindow ? (
+        <button type="button" onClick={onWiderWindow} className="btn-whisper px-3 py-1 text-xs">
+          Show the last 90 days
+        </button>
+      ) : null}
+    </EmptyState>
   );
 }
 

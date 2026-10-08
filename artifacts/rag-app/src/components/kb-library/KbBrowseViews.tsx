@@ -1,6 +1,7 @@
 import { useId, type ReactNode } from "react";
 import { ChevronRight, Palette, Undo2 } from "lucide-react";
 import {
+  KB_UNCATEGORIZED,
   libraryOrder,
   memberOrder,
   sortDocs,
@@ -16,7 +17,7 @@ import { KbDocRow } from "./KbDocRow";
 import { KbMenu } from "./KbMenu";
 import { ColorDot } from "./KbShared";
 
-export const UNCATEGORIZED_KEY = "__uncategorized";
+export const UNCATEGORIZED_KEY = KB_UNCATEGORIZED;
 
 interface BrowseProps {
   /** Sources that pass the current search and filters. */
@@ -83,8 +84,11 @@ function CategoryColorMenu({ category }: { category: KbCategory }): JSX.Element 
         {
           label: `Use team color (${kbColorLabel(category.color)})`,
           icon: Undo2,
-          disabled: category.myColor === null,
-          onSelect: () => actions.setCategoryColor(category.id, null)
+          radio: true,
+          checked: category.myColor === null,
+          onSelect: () => {
+            if (category.myColor !== null) actions.setCategoryColor(category.id, null);
+          }
         }
       ]}
     >
@@ -210,17 +214,130 @@ function FolderNode({
   );
 }
 
+/**
+ * Folders view scoped by the category rail: a titled section for one
+ * category (its subcategories as folders, then its own sources) or for the
+ * sources in no category.
+ */
+function ScopedFolder({
+  scope,
+  props,
+  collapsed,
+  onToggle,
+  onShowAll
+}: {
+  scope: string;
+  props: BrowseProps;
+  collapsed: Set<string>;
+  onToggle: (key: string) => void;
+  onShowAll: () => void;
+}): JSX.Element {
+  const { lookup } = useKbLibraryContext();
+  const headingId = useId();
+  const byId = new Map(props.visible.map((d) => [d.documentId, d]));
+  const node = scope === UNCATEGORIZED_KEY ? null : lookup.tree.byId.get(scope) ?? null;
+  const loose = node ? [] : sortInCategory(uncategorized(props.visible, lookup.tree.byId), props.sort, null);
+  let count = loose.length;
+  if (node) {
+    count = 0;
+    subtreeDocumentIds(node).forEach((id) => {
+      if (byId.has(id)) count += 1;
+    });
+  }
+  const docs = node ? sortInCategory(directDocs(node, byId), props.sort, node) : loose;
+  const parents = node ? node.path.slice(0, -1) : [];
+  return (
+    <section aria-labelledby={headingId} data-kb-scope={scope}>
+      <div className="mb-2 flex items-center gap-2 px-1">
+        {node ? (
+          <ColorDot color={kbEffectiveCategoryColor(node.category)} />
+        ) : (
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-dashed border-muted-foreground" aria-hidden />
+        )}
+        <h2 id={headingId} className="min-w-0 font-display text-xl font-semibold tracking-tight">
+          {parents.length > 0 ? (
+            <span className="font-sans text-sm font-normal text-muted-foreground">{parents.join(" / ")} / </span>
+          ) : null}
+          {node ? node.category.name : "Not in a category"}
+        </h2>
+        <CountLabel count={count} />
+        {node ? <CategoryColorMenu category={node.category} /> : null}
+      </div>
+      {count === 0 ? (
+        <div className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+          {props.filtering ? "No sources here match the current search or filters." : "No sources in this category yet."}{" "}
+          <button type="button" onClick={onShowAll} className="font-medium text-primary underline-offset-2 hover:underline">
+            Show all sources
+          </button>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border bg-card shadow-card">
+          {node && node.children.length > 0 ? (
+            <ul aria-label={`Categories in ${node.category.name}`} className="divide-y divide-border">
+              {node.children.map((child) => (
+                <FolderNode
+                  key={child.category.id}
+                  node={child}
+                  byId={byId}
+                  props={props}
+                  collapsed={collapsed}
+                  onToggle={onToggle}
+                />
+              ))}
+            </ul>
+          ) : null}
+          {docs.length > 0 ? (
+            <ul
+              aria-label={node ? `Sources in ${node.category.name}` : "Sources not in a category"}
+              className={cn("divide-y divide-border", node && node.children.length > 0 && "border-t border-border")}
+            >
+              {docs.map((doc) => (
+                <KbDocRow
+                  key={doc.documentId}
+                  doc={doc}
+                  inCategoryId={node?.category.id ?? null}
+                  showPath={props.searching}
+                  roundedEdges={!node || node.children.length === 0}
+                />
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
 /** Nested folders in the manager's order, ending with sources not in any category. */
 export function KbFoldersView({
   collapsed,
   onToggle,
+  scope = null,
+  onShowAll,
   ...props
-}: BrowseProps & { collapsed: Set<string>; onToggle: (key: string) => void }): JSX.Element {
+}: BrowseProps & {
+  collapsed: Set<string>;
+  onToggle: (key: string) => void;
+  /** Category picked in the rail (UNCATEGORIZED_KEY for no category); null shows every folder. */
+  scope?: string | null;
+  onShowAll?: () => void;
+}): JSX.Element {
   const { lookup } = useKbLibraryContext();
   const byId = new Map(props.visible.map((d) => [d.documentId, d]));
   const loose = sortInCategory(uncategorized(props.visible, lookup.tree.byId), props.sort, null);
 
   if (lookup.tree.roots.length === 0) return <KbPlainList docs={loose} />;
+  if (scope !== null) {
+    return (
+      <ScopedFolder
+        scope={scope}
+        props={props}
+        collapsed={collapsed}
+        onToggle={onToggle}
+        onShowAll={onShowAll ?? (() => undefined)}
+      />
+    );
+  }
 
   const looseOpen = props.filtering || !collapsed.has(UNCATEGORIZED_KEY);
   return (

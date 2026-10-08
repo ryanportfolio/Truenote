@@ -159,9 +159,14 @@ export function NoteIndicator({
  * Views and citations over the last 30 days, each with its word ("12 views",
  * "3 cited") so no number stands alone next to an icon.
  */
-export function DocCounts({ doc }: { doc: KbDocumentListItem }): JSX.Element {
+export function DocCounts({ doc, always = false }: { doc: KbDocumentListItem; always?: boolean }): JSX.Element {
   return (
-    <span className="hidden items-center gap-3 whitespace-nowrap tabular-nums text-xs text-muted-foreground sm:inline-flex">
+    <span
+      className={cn(
+        "items-center gap-3 whitespace-nowrap tabular-nums text-xs text-muted-foreground",
+        always ? "inline-flex" : "hidden sm:inline-flex"
+      )}
+    >
       <span title="Times anyone in the program opened it in the last 30 days">
         <span aria-hidden>
           {doc.viewCount} {doc.viewCount === 1 ? "view" : "views"}
@@ -271,8 +276,11 @@ export function myColorEntries(
     {
       label: "No color",
       icon: CircleSlash,
-      disabled: value === null,
-      onSelect: () => onSelect(null)
+      radio: true,
+      checked: value === null,
+      onSelect: () => {
+        if (value !== null) onSelect(null);
+      }
     }
   ];
 }

@@ -23,6 +23,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Ellipsis,
   GripVertical,
   Megaphone,
   NotebookPen,
@@ -41,6 +42,7 @@ import { cn } from "@/lib/utils";
 import type { KbDocumentListItem } from "@/types/api";
 import { useKbLibraryContext } from "./KbContext";
 import { pathsLabel } from "./KbDocRow";
+import { KbMenu } from "./KbMenu";
 import { ColorDot, NewBadge, PinToggle, SourceColorLabel } from "./KbShared";
 import { useReducedMotion } from "./useReducedMotion";
 
@@ -49,12 +51,18 @@ function usePathLabel(doc: KbDocumentListItem): string {
   return pathsLabel(docCategoryPaths(doc, lookup.tree));
 }
 
-/** "Press 1 to 6 to open a pin." */
+/**
+ * "Press 1 to 6 to open a pin." Only where a keyboard is likely: hidden on
+ * phone widths and on touch-first (coarse pointer) screens.
+ */
 export function PinKeyHint({ count, className }: { count: number; className?: string }): JSX.Element | null {
   const last = Math.min(count, KB_NUMBERED_PINS);
   if (last < 1) return null;
   return (
-    <p data-kb-pin-hint className={cn("text-xs text-muted-foreground", className)}>
+    <p
+      data-kb-pin-hint
+      className={cn("hidden text-xs text-muted-foreground sm:block [@media(pointer:coarse)]:hidden", className)}
+    >
       Press <kbd className="kbd">1</kbd>
       {last > 1 ? (
         <>
@@ -68,8 +76,9 @@ export function PinKeyHint({ count, className }: { count: number; className?: st
 }
 
 /**
- * One of my pins: number key, title (up to two lines), category path, and the
- * personal color as the left edge. The whole tile opens the source.
+ * One of my pins: number key, title (up to two lines) with its New badge and
+ * note mark, the category path on its own line, and the personal color as
+ * the left edge. The whole tile opens the source.
  */
 function MyPinTile({ doc, index }: { doc: KbDocumentListItem; index: number }): JSX.Element {
   const { actions } = useKbLibraryContext();
@@ -92,6 +101,7 @@ function MyPinTile({ doc, index }: { doc: KbDocumentListItem; index: number }): 
         </span>
       ) : null}
       <div className="min-w-0 flex-1">
+        {/* New and the note mark flow after the title's last word, so title and path both keep the tile's width. */}
         <Link
           href={`/kb/${doc.documentId}`}
           aria-keyshortcuts={number ? String(number) : undefined}
@@ -101,22 +111,23 @@ function MyPinTile({ doc, index }: { doc: KbDocumentListItem; index: number }): 
           <SourceColorLabel color={doc.myColor} />
           {number ? <span className="sr-only">Pin {number}: </span> : null}
           <span data-kb-title>{doc.title}</span>
+          {doc.isNew ? (
+            <>
+              {" "}
+              <NewBadge />
+            </>
+          ) : null}
+          {doc.note ? (
+            <span className="ml-1.5 inline-block align-[-2px] font-normal text-muted-foreground" title="Has my note">
+              <NotebookPen className="inline h-3.5 w-3.5" aria-hidden />
+              <span className="sr-only">Has my note.</span>
+            </span>
+          ) : null}
         </Link>
-        {path || doc.isNew || doc.note ? (
-          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            {path ? (
-              <span data-kb-path className="min-w-0 truncate" title={path}>
-                <span className="sr-only">In </span>
-                {path}
-              </span>
-            ) : null}
-            {doc.isNew ? <NewBadge /> : null}
-            {doc.note ? (
-              <span className="inline-flex shrink-0 items-center" title="Has my note">
-                <NotebookPen className="h-3.5 w-3.5" aria-hidden />
-                <span className="sr-only">Has my note.</span>
-              </span>
-            ) : null}
+        {path ? (
+          <p data-kb-path className="mt-0.5 truncate text-xs text-muted-foreground" title={path}>
+            <span className="sr-only">In </span>
+            {path}
           </p>
         ) : null}
       </div>
@@ -140,6 +151,7 @@ function TeamPinLink({ doc }: { doc: KbDocumentListItem }): JSX.Element {
       >
         <span className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
           <SourceColorLabel color={doc.myColor} />
+          {doc.myColor ? <ColorDot color={doc.myColor} /> : null}
           <span data-kb-title className="break-words">{doc.title}</span>
         </span>
         {path ? (
@@ -155,8 +167,9 @@ function TeamPinLink({ doc }: { doc: KbDocumentListItem }): JSX.Element {
 
 /**
  * The special place above the library: manager-chosen team pins, the user's
- * own numbered pins (newest pin first), then the sources they opened last.
- * Hidden while searching or filtering so results sit at the top.
+ * own numbered pins (oldest pin first, so a pin keeps its number), then the
+ * sources they opened last that sit in neither strip. Hidden while searching
+ * or filtering so results sit at the top.
  */
 export const KbPinStrips = forwardRef<
   HTMLElement,
@@ -169,6 +182,7 @@ export const KbPinStrips = forwardRef<
     onToggleCollapsed: () => void;
   }
 >(function KbPinStrips({ team, mine, recent, collapsed, onToggleCollapsed }, myPinsRef): JSX.Element {
+  const { canOrganize } = useKbLibraryContext();
   const panelId = useId();
   const toggle =
     mine.length > 0 || recent.length > 0 ? (
@@ -194,7 +208,7 @@ export const KbPinStrips = forwardRef<
           <h2 id="kb-team-pins" className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Megaphone className="h-3.5 w-3.5 text-primary" aria-hidden />
             <span className="font-medium uppercase tracking-wide text-primary">Team pins</span>
-            <span>from your manager</span>
+            <span>{canOrganize ? "Everyone in this program sees these first" : "from your manager"}</span>
           </h2>
           <ul className="mt-1 flex min-w-0 flex-wrap gap-x-5 gap-y-1.5">
             {team.map((doc) => (
@@ -245,29 +259,31 @@ export const KbPinStrips = forwardRef<
         </p>
       )}
       {recent.length > 0 && !(collapsed && mine.length > 0) ? (
+        // One line: the heading, then chips that scroll sideways instead of wrapping.
         <section
           data-kb-recent
           aria-labelledby="kb-recent"
-          className="px-1"
+          className="flex min-w-0 items-center gap-2 px-1"
         >
           <h2
             id="kb-recent"
-            className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+            className="flex shrink-0 items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground"
           >
             <Clock className="h-3.5 w-3.5" aria-hidden />
             Recently opened
           </h2>
-          <ol className="mt-1 flex min-w-0 flex-wrap gap-1.5">
+          {/* No scrollbar (it would add a line); the faded right edge shows there is more. */}
+          <ol className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto p-0.5 [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)] [scrollbar-width:none]">
             {recent.map((doc) => (
-              <li key={doc.documentId} className="min-w-0 max-w-full">
+              <li key={doc.documentId} className="shrink-0">
                 <Link
                   href={`/kb/${doc.documentId}`}
                   title={doc.title}
-                  className="btn-base max-w-full gap-1.5 rounded-lg border border-border bg-card px-3 py-1 text-left text-xs text-foreground hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:rounded-full"
+                  className="btn-base gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-left text-xs text-foreground hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   <SourceColorLabel color={doc.myColor} />
                   {doc.myColor ? <ColorDot color={doc.myColor} /> : null}
-                  <span data-kb-title className="min-w-0 break-words font-medium sm:max-w-[16rem] sm:truncate">
+                  <span data-kb-title className="max-w-[11rem] truncate font-medium sm:max-w-[16rem]">
                     {doc.title}
                   </span>
                   <span className="shrink-0 whitespace-nowrap text-muted-foreground">
@@ -312,7 +328,8 @@ export function KbPinsDock({ mine, shown }: { mine: KbDocumentListItem[]; shown:
         <span className="hidden sm:inline">My pins</span>
         <span className="rounded-full bg-muted px-1.5 tabular-nums normal-case tracking-normal">{mine.length}</span>
       </span>
-      <ul className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto py-0.5 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
+      {/* One row at every width: chips scroll sideways, so the dock stays one line tall. */}
+      <ul className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto py-0.5 [scrollbar-width:none]">
         {mine.map((doc, i) => (
           <li key={doc.documentId} className="shrink-0">
             <Link
@@ -381,39 +398,39 @@ function SortablePin({
           <span className="sr-only">Position {index + 1}: </span>
           {doc.title}
         </span>
-        <button
-          type="button"
-          onClick={() => actions.moveTeamPinBy(doc.documentId, -1)}
-          disabled={index === 0}
-          aria-label={`Move ${doc.title} earlier`}
-          title="Move earlier"
-          className="btn-icon h-8 w-8"
+        {/* Moves and remove live in one menu so the title keeps the slot's width. */}
+        <KbMenu
+          label={`Team pin ${index + 1}: ${doc.title}`}
+          title="Move or remove"
+          items={[
+            {
+              label: "Move earlier",
+              icon: ArrowLeft,
+              disabled: index === 0,
+              onSelect: () => actions.moveTeamPinBy(doc.documentId, -1)
+            },
+            {
+              label: "Move later",
+              icon: ArrowRight,
+              disabled: index === count - 1,
+              onSelect: () => actions.moveTeamPinBy(doc.documentId, 1)
+            },
+            "separator",
+            {
+              label: "Remove team pin",
+              icon: X,
+              onSelect: () => actions.removeTeamPin(doc.documentId)
+            }
+          ]}
         >
-          <ArrowLeft className="h-4 w-4" aria-hidden />
-        </button>
-        <button
-          type="button"
-          onClick={() => actions.moveTeamPinBy(doc.documentId, 1)}
-          disabled={index === count - 1}
-          aria-label={`Move ${doc.title} later`}
-          title="Move later"
-          className="btn-icon h-8 w-8"
-        >
-          <ArrowRight className="h-4 w-4" aria-hidden />
-        </button>
-        <button
-          type="button"
-          onClick={() => actions.removeTeamPin(doc.documentId)}
-          aria-label={`Remove team pin from ${doc.title}`}
-          title="Remove team pin"
-          className="btn-icon h-8 w-8"
-        >
-          <X className="h-4 w-4" aria-hidden />
-        </button>
+          <Ellipsis className="h-4 w-4" aria-hidden />
+        </KbMenu>
       </div>
     </li>
   );
 }
+
+const LANE_GRID = "grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(min(100%,24rem),1fr))]";
 
 /** Organize mode: team pins as a numbered, reorderable lane with its capacity. */
 export function KbTeamPinsEditor({ team }: { team: KbDocumentListItem[] }): JSX.Element {
@@ -472,7 +489,8 @@ export function KbTeamPinsEditor({ team }: { team: KbDocumentListItem[] }): JSX.
           }}
         >
           <SortableContext items={ids} strategy={rectSortingStrategy}>
-            <ol aria-label="Team pins in order" className="mt-2 grid gap-1.5 sm:grid-cols-2">
+            {/* Two columns only when each slot is still wide enough (24rem) for a full title. */}
+            <ol aria-label="Team pins in order" className={cn("mt-2", LANE_GRID)}>
               {team.map((doc, index) => (
                 <SortablePin key={doc.documentId} doc={doc} index={index} count={team.length} />
               ))}
@@ -481,16 +499,18 @@ export function KbTeamPinsEditor({ team }: { team: KbDocumentListItem[] }): JSX.
         </DndContext>
       )}
       {team.length < KB_MAX_TEAM_PINS ? (
-        <div className={cn("flex items-center gap-2", team.length > 0 ? "mt-1.5 sm:w-1/2 sm:pr-0.5" : "mt-2")}>
-          <span
-            aria-hidden
-            className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-dashed border-primary/30 text-xs tabular-nums text-muted-foreground"
-          >
-            {team.length + 1}
-          </span>
-          <p className="min-w-0 flex-1 rounded-md border border-dashed border-primary/30 px-3 py-1.5 text-xs text-muted-foreground">
-            Open slot. Choose "Pin for the team" in a source's menu.
-          </p>
+        <div className={cn(LANE_GRID, team.length > 0 ? "mt-1.5" : "mt-2")}>
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-dashed border-primary/30 text-xs tabular-nums text-muted-foreground"
+            >
+              {team.length + 1}
+            </span>
+            <p className="min-w-0 flex-1 rounded-md border border-dashed border-primary/30 px-3 py-1.5 text-xs text-muted-foreground">
+              Open slot. Choose "Pin for the team" in a source's menu.
+            </p>
+          </div>
         </div>
       ) : null}
     </section>

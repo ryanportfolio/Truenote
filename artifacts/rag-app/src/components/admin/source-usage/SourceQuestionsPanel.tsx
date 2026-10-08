@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { BookOpen, MessageSquareText, X } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { fetchSourceUsageQuestions } from "@/lib/api";
-import { plural } from "@/lib/sourceUsage";
+import { firstName, plural } from "@/lib/sourceUsage";
 import type { SourceUsageQuestionsResponse, SourceUsageSource } from "@/types/api";
 import { QuestionList } from "./QuestionList";
 import { CategoryPath, ErrorAlert, SourceName } from "./shared";
@@ -138,6 +138,15 @@ export function SourceQuestionsPanel({
   const canOpen = !restricted && source.isLive;
   const shown = data?.items.length ?? 0;
   const who = userId ? ` from ${personName ?? "this person"}` : "";
+  // Person mode counts only that person's reader opens; the sentence names them.
+  const viewer = userId ? (personName ? firstName(personName) : "This person") : null;
+  const views = stats
+    ? viewer
+      ? stats.viewCount > 0
+        ? `${viewer} opened it ${plural(stats.viewCount, "time", "times")} in the reader`
+        : `${viewer} has not opened it in the reader`
+      : `Asked by ${plural(stats.userCount, "person", "people")} · Opened ${plural(stats.viewCount, "time", "times")} in the reader`
+    : null;
   const summary = !data
     ? null
     : !data.truncated
@@ -192,11 +201,8 @@ export function SourceQuestionsPanel({
               This source was removed from the library.
             </span>
           )}
-          {stats && !restricted ? (
-            <span className="text-xs text-muted-foreground">
-              {userId ? "" : `Asked by ${plural(stats.userCount, "person", "people")} · `}
-              Opened {plural(stats.viewCount, "time", "times")} in the reader
-            </span>
+          {views && !restricted ? (
+            <span className="text-xs text-muted-foreground">{views}</span>
           ) : null}
         </div>
       </header>

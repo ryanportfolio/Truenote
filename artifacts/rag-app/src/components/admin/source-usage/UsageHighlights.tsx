@@ -1,4 +1,5 @@
-import { personLabel, percentOf, usageHighlights } from "@/lib/sourceUsage";
+import { Fragment } from "react";
+import { personLabel, percentOf, usageHighlights, type PersonStandout } from "@/lib/sourceUsage";
 import type { SourceUsageSource, SourceUsageUser } from "@/types/api";
 import { SourceOpener } from "./shared";
 
@@ -16,7 +17,8 @@ const LINK_CLASS =
 /**
  * One to three sentences built from the window's numbers: the source answers
  * lean on most, and who had the most refusals and thumbs-down answers, each
- * linking to the view that explains it.
+ * linking to the view that explains it. A tie names everyone in it; a count
+ * of 1 or a wide tie is not a standout and gets no sentence.
  */
 export function UsageHighlights({
   sources,
@@ -26,8 +28,12 @@ export function UsageHighlights({
   onSelectPerson
 }: UsageHighlightsProps): JSX.Element | null {
   const { topSource, mostRefused, mostNegative } = usageHighlights(sources, users, answered);
+  const single = (standout: PersonStandout | null): SourceUsageUser | null =>
+    standout && standout.people.length === 1 ? standout.people[0] ?? null : null;
+  const refusedPerson = single(mostRefused);
+  const negativePerson = single(mostNegative);
   const samePerson =
-    mostRefused !== null && mostNegative !== null && mostRefused.userId === mostNegative.userId;
+    refusedPerson !== null && negativePerson !== null && refusedPerson.userId === negativePerson.userId;
 
   const personButton = (person: SourceUsageUser): JSX.Element => {
     const name = personLabel(person);
@@ -42,6 +48,18 @@ export function UsageHighlights({
       </button>
     );
   };
+
+  /** "A", "A and B", "A, B and C" with each name a button. */
+  const names = (people: readonly SourceUsageUser[]): JSX.Element => (
+    <>
+      {people.map((person, i) => (
+        <Fragment key={person.userId}>
+          {i === 0 ? "" : i === people.length - 1 ? " and " : ", "}
+          {personButton(person)}
+        </Fragment>
+      ))}
+    </>
+  );
 
   const lines: JSX.Element[] = [];
   if (topSource) {
@@ -62,15 +80,15 @@ export function UsageHighlights({
     );
   }
   if (mostRefused) {
+    const share = refusedPerson ? percentOf(mostRefused.count, refusedPerson.questionCount) : null;
     lines.push(
       <li key="refused">
-        {personButton(mostRefused)} had the most refused questions: {mostRefused.refusedCount} of{" "}
-        {mostRefused.questionCount}
-        {percentOf(mostRefused.refusedCount, mostRefused.questionCount)
-          ? ` (${percentOf(mostRefused.refusedCount, mostRefused.questionCount)})`
-          : ""}
+        {names(mostRefused.people)} had the most refused questions:{" "}
+        {refusedPerson
+          ? `${mostRefused.count} of ${refusedPerson.questionCount}${share ? ` (${share})` : ""}`
+          : `${mostRefused.count} each`}
         {samePerson && mostNegative
-          ? `, and the most thumbs-down answers: ${mostNegative.negativeCount}.`
+          ? `, and the most thumbs-down answers: ${mostNegative.count}.`
           : "."}
       </li>
     );
@@ -78,8 +96,10 @@ export function UsageHighlights({
   if (mostNegative && !samePerson) {
     lines.push(
       <li key="negative">
-        {personButton(mostNegative)} got the most thumbs-down answers: {mostNegative.negativeCount}{" "}
-        of {mostNegative.questionCount} questions.
+        {names(mostNegative.people)} got the most thumbs-down answers:{" "}
+        {negativePerson
+          ? `${mostNegative.count} of ${negativePerson.questionCount} questions.`
+          : `${mostNegative.count} each.`}
       </li>
     );
   }

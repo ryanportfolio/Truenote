@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import { listKbDocuments } from "@/lib/api";
 import { KbLibrary } from "@/components/kb-library/KbLibrary";
 import {
+  adoptKbLibraryRequest,
+  kbLibraryCacheKey,
+  loadKbLibrary,
+  readKbLibraryCache
+} from "@/lib/kbLibraryCache";
+import {
   getSelectedProgramOwnerIdRaw,
   SELECTED_PROGRAM_CHANGED_EVENT
 } from "@/lib/selectedProgram";
@@ -40,21 +46,31 @@ export function preloadKnowledgeBaseDocuments(): void {
   void request.catch(() => undefined);
 }
 
-function takeInitialRequest(user: CurrentUser): Promise<KbDocumentListResponse> {
+/**
+ * The first library load: the speculative prefetch when it was made for this
+ * user, else the shared cache's request (lib/kbLibraryCache dedupes a request
+ * already in flight, such as the reader's or a StrictMode re-run's).
+ */
+function takeInitialRequest(user: CurrentUser, key: string): Promise<KbDocumentListResponse> {
   const prefetched = prefetchedList;
   prefetchedList = null;
-  if (!prefetched) return listKbDocuments();
+  if (!prefetched) return loadKbLibrary(key);
 
   // Non-super-users ignore X-Program-Id server-side. For super-users, only
   // consume a response requested with a selection owned by this exact user.
   if (user.role === "super_user" && prefetched.ownerUserId !== user.id) {
-    return listKbDocuments();
+    return loadKbLibrary(key);
   }
-  return prefetched.request;
+  return adoptKbLibraryRequest(key, prefetched.request);
 }
 
 export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element {
-  const [state, setState] = useState<ListState>({ status: "loading" });
+  // Coming back from a source within a minute reuses the library the reader
+  // or this page already loaded (lib/kbLibraryCache), so there is no skeleton.
+  const [state, setState] = useState<ListState>(() => {
+    const cached = readKbLibraryCache(kbLibraryCacheKey(user.id));
+    return cached ? { status: "ready", response: cached, loadId: 0 } : { status: "loading" };
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -63,11 +79,27 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
     async function load(): Promise<void> {
       loadId += 1;
       const thisLoad = loadId;
+      const key = kbLibraryCacheKey(user.id);
+      if (firstLoad) {
+        const cached = readKbLibraryCache(key);
+        if (cached) {
+          firstLoad = false;
+          // A speculative prefetch made before the cache was filled is stale now.
+          prefetchedList = null;
+          setState((prev) =>
+            prev.status === "ready" && prev.response === cached
+              ? prev
+              : { status: "ready", response: cached, loadId: thisLoad }
+          );
+          return;
+        }
+      }
       setState({ status: "loading" });
       try {
+        // A program switch always asks the server again.
         const response = firstLoad
-          ? await takeInitialRequest(user)
-          : await listKbDocuments();
+          ? await takeInitialRequest(user, key)
+          : await adoptKbLibraryRequest(key, listKbDocuments());
         firstLoad = false;
         if (cancelled || thisLoad !== loadId) return;
         if (response.noProgramSelected) {
@@ -94,7 +126,7 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
   }, [user]);
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-6">
+    <div className="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-6 xl:max-w-6xl">
       <header>
         <h1 className="font-display text-3xl font-semibold tracking-tight">Sources</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -145,7 +177,12 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
       ) : null}
 
       {state.status === "ready" ? (
-        <KbLibrary key={state.loadId} user={user} initial={state.response} />
+        <KbLibrary
+          key={state.loadId}
+          user={user}
+          initial={state.response}
+          cacheKey={kbLibraryCacheKey(user.id)}
+        />
       ) : null}
     </div>
   );

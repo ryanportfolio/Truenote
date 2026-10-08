@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { ArrowRight } from "lucide-react";
-import { formatCategoryPaths, neverCitedDocuments } from "@/lib/sourceUsage";
+import { cn } from "@/lib/utils";
+import { formatCategoryPaths, neverCitedDocuments, neverCitedHref } from "@/lib/sourceUsage";
 import type { KbDocumentListItem, SourceUsageSource } from "@/types/api";
 import { CategoryPath, ErrorAlert } from "./shared";
 
@@ -13,6 +14,8 @@ interface NeverCitedListProps {
   library: readonly KbDocumentListItem[] | null;
   libraryError: string | null;
   categoryPaths: ReadonlyMap<string, string[]>;
+  /** Full-width placement below the sources (wide table or heatmap): the list flows in columns. */
+  wide?: boolean;
 }
 
 const INITIAL_ITEMS = 8;
@@ -27,7 +30,8 @@ export function NeverCitedList({
   cited,
   library,
   libraryError,
-  categoryPaths
+  categoryPaths,
+  wide = false
 }: NeverCitedListProps): JSX.Element {
   const [showAll, setShowAll] = useState(false);
   const result = useMemo(
@@ -77,9 +81,14 @@ export function NeverCitedList({
               here.
             </p>
           ) : null}
-          <ul className="flex flex-col divide-y divide-border border-y border-border">
+          <ul
+            className={cn(
+              "border-t border-border",
+              wide ? "grid gap-x-6 sm:grid-cols-2 lg:grid-cols-3" : "flex flex-col"
+            )}
+          >
             {items.map((doc) => (
-              <li key={doc.documentId} className="min-w-0 py-2 text-sm">
+              <li key={doc.documentId} className="min-w-0 border-b border-border py-2 text-sm">
                 <Link
                   href={`/kb/${encodeURIComponent(doc.documentId)}`}
                   className="block rounded-sm underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -103,7 +112,7 @@ export function NeverCitedList({
         </>
       )}
       <Link
-        href="/kb"
+        href={neverCitedHref(result?.items.map((doc) => doc.documentId) ?? [])}
         className="inline-flex items-center gap-1 self-start rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         Review in Sources

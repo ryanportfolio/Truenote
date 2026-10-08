@@ -40,6 +40,7 @@ import {
   siblingIds,
   teamPins
 } from "@/lib/kbLibrary";
+import { updateKbLibraryCache, writeKbLibraryCache } from "@/lib/kbLibraryCache";
 import { kbColorLabel } from "@/lib/kbLibraryColors";
 import type {
   CreateKbCategoryRequest,
@@ -64,29 +65,36 @@ function errorMessage(err: unknown): string {
  * failure the previous state comes back when nothing else changed in the
  * meantime; otherwise the list reloads so it matches the server again.
  * Dialog flows pass `report: false` and show the returned message inline.
+ * Every change is written through to the shared library cache under
+ * `cacheKey`, so the reader and a return visit see it.
  */
-export function useKbLibrary(initial: Data) {
+export function useKbLibrary(initial: Data, cacheKey: string) {
   const [data, setData] = useState<Data>(initial);
   const dataRef = useRef<Data>(initial);
   const versionRef = useRef(0);
   const [actionError, setActionError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
 
-  const commit = useCallback((next: Data) => {
-    dataRef.current = next;
-    setData(next);
-  }, []);
+  const commit = useCallback(
+    (next: Data) => {
+      dataRef.current = next;
+      setData(next);
+      updateKbLibraryCache(cacheKey, next);
+    },
+    [cacheKey]
+  );
 
   const refresh = useCallback(async () => {
     const startedAt = versionRef.current;
     try {
       const response = await listKbDocuments();
       if (response.noProgramSelected || versionRef.current !== startedAt) return;
+      writeKbLibraryCache(cacheKey, response);
       commit(response);
     } catch {
       // The visible error from the failed mutation already explains the problem.
     }
-  }, [commit]);
+  }, [cacheKey, commit]);
 
   const mutate = useCallback(
     async (

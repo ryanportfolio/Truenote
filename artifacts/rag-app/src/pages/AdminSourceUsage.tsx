@@ -7,11 +7,13 @@ import { NeverCitedList } from "@/components/admin/source-usage/NeverCitedList";
 import { PeopleTable } from "@/components/admin/source-usage/PeopleTable";
 import { PersonFocus, type TeamNumbers } from "@/components/admin/source-usage/PersonFocus";
 import { PersonPicker } from "@/components/admin/source-usage/PersonPicker";
+import { SourceHeatmap } from "@/components/admin/source-usage/SourceHeatmap";
 import {
   SourceQuestionsPanel,
   type PanelSource
 } from "@/components/admin/source-usage/SourceQuestionsPanel";
 import { SourcesTable } from "@/components/admin/source-usage/SourcesTable";
+import { SourcesViewSwitch } from "@/components/admin/source-usage/SourcesViewSwitch";
 import { UsageHighlights } from "@/components/admin/source-usage/UsageHighlights";
 import { UsageKpis } from "@/components/admin/source-usage/UsageKpis";
 import { ErrorAlert } from "@/components/admin/source-usage/shared";
@@ -25,11 +27,16 @@ import {
   buildUsageHref,
   categoryPathsByDocument,
   formatCategoryPaths,
+  heatmapModel,
   loadSourceColumns,
+  loadSourceView,
   parseUsageQuery,
   personLabel,
+  plural,
   saveSourceColumns,
-  type SourceColumn
+  saveSourceView,
+  type SourceColumn,
+  type SourceView
 } from "@/lib/sourceUsage";
 import { cn } from "@/lib/utils";
 import type {
@@ -81,6 +88,31 @@ interface LibraryState {
 
 const NEVER_CITED_ID = "never-cited-sources";
 
+/** Why the usage request failed: a person outside the program, or anything else. */
+type FailureKind = "notFound" | "load";
+
+/** Where the everyone view was when a person was opened, for "Back to everyone". */
+interface ReturnPoint {
+  scrollTop: number;
+  /** The person was opened from a heatmap row header, not the By person table. */
+  fromHeatmap: boolean;
+}
+
+/** Nearest ancestor that scrolls vertically (the app shell's main region). */
+function scrollParent(el: HTMLElement | null): HTMLElement | null {
+  for (let node = el?.parentElement ?? null; node; node = node.parentElement) {
+    const { overflowY } = getComputedStyle(node);
+    if (overflowY === "auto" || overflowY === "scroll") return node;
+  }
+  return null;
+}
+
+/** True when keyboard focus went nowhere (its element unmounted), so moving it steals nothing. */
+function focusIsLost(): boolean {
+  const active = document.activeElement;
+  return !active || active === document.body || !active.isConnected;
+}
+
 function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element {
   const search = useSearch();
   const [, navigate] = useLocation();
@@ -91,18 +123,24 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
   // window or person change never shows the previous filter's numbers.
   const requestKey = `${days}:${userId ?? ""}:${reloadKey}`;
   const [loaded, setLoaded] = useState<{ key: string; result: SourceUsageResponse } | null>(null);
-  const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
+  const [failure, setFailure] = useState<{ key: string; kind: FailureKind } | null>(null);
   const data = loaded?.key === requestKey ? loaded.result : null;
-  const error = failure?.key === requestKey ? failure.message : null;
+  const failureKind = failure?.key === requestKey ? failure.kind : null;
   const [team, setTeam] = useState<TeamSnapshot | null>(null);
   const [panel, setPanel] = useState<PanelSource | null>(null);
   const [library, setLibrary] = useState<LibraryState | null>(null);
   const [libraryError, setLibraryError] = useState<{ key: number; message: string } | null>(null);
   const [columns, setColumns] = useState<SourceColumn[]>(() => loadSourceColumns(viewerId));
+  const [view, setView] = useState<SourceView>(() => loadSourceView(viewerId));
   // The roster from the last response, so the picker stays filled while the next one loads.
   const [roster, setRoster] = useState<SourceUsagePerson[]>([]);
+  const rosterRef = useRef<SourceUsagePerson[]>([]);
   // Names seen in any response, so a selected person keeps a label while loading.
   const knownNames = useRef(new Map<string, string>());
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Focus handoffs across the loading state between everyone and one person.
+  const returnPoint = useRef<ReturnPoint | null>(null);
+  const pendingFocus = useRef<"person" | "everyone" | null>(null);
 
   const go = useCallback(
     (next: { days?: number; userId?: string | null }, replace = false) => {
@@ -122,33 +160,41 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
   useEffect(() => {
     let cancelled = false;
     const needTeam = userId !== null && team?.key !== teamKey;
-    Promise.all([
+    void Promise.allSettled([
       fetchSourceUsage({ windowDays: days, userId }),
       needTeam ? fetchSourceUsage({ windowDays: days }) : Promise.resolve(null)
-    ])
-      .then(([result, everyone]) => {
-        if (cancelled) return;
-        for (const person of result.people ?? []) {
-          knownNames.current.set(person.userId, person.name);
-        }
-        if (result.person) {
-          knownNames.current.set(result.person.userId, personLabel(result.person));
-        }
-        setLoaded({ key: requestKey, result });
-        if (result.people) setRoster(result.people);
-        const snapshot = userId === null ? result : everyone;
-        if (snapshot && !snapshot.noProgramSelected) {
-          setTeam({ key: teamKey, users: snapshot.users, totals: snapshot.totals });
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setFailure({
-            key: requestKey,
-            message: err instanceof Error ? err.message : "Could not load source usage."
-          });
-        }
-      });
+    ]).then(([outcome, everyoneOutcome]) => {
+      if (cancelled) return;
+      const everyone = everyoneOutcome.status === "fulfilled" ? everyoneOutcome.value : null;
+      const keepRoster = (people: SourceUsagePerson[] | undefined): void => {
+        if (!people) return;
+        for (const person of people) knownNames.current.set(person.userId, person.name);
+        rosterRef.current = people;
+        setRoster(people);
+      };
+      keepRoster(everyone?.people);
+      if (everyone && !everyone.noProgramSelected) {
+        setTeam({ key: teamKey, users: everyone.users, totals: everyone.totals });
+      }
+      if (outcome.status === "rejected") {
+        // A person missing from the program's roster is a stale or foreign
+        // link, not an outage; the roster comes from the everyone request.
+        const people = rosterRef.current;
+        const missing =
+          userId !== null && people.length > 0 && !people.some((p) => p.userId === userId);
+        setFailure({ key: requestKey, kind: missing ? "notFound" : "load" });
+        return;
+      }
+      const result = outcome.value;
+      keepRoster(result.people);
+      if (result.person) {
+        knownNames.current.set(result.person.userId, personLabel(result.person));
+      }
+      setLoaded({ key: requestKey, result });
+      if (userId === null && !result.noProgramSelected) {
+        setTeam({ key: teamKey, users: result.users, totals: result.totals });
+      }
+    });
     return () => {
       cancelled = true;
     };
@@ -190,6 +236,8 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
       setPanel(null);
       setTeam(null);
       setRoster([]);
+      rosterRef.current = [];
+      returnPoint.current = null;
       knownNames.current.clear();
       setReloadKey((key) => key + 1);
       if (userId !== null) go({ userId: null }, true);
@@ -204,9 +252,70 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
 
   const selectPerson = useCallback(
     (id: string | null) => {
-      if (id !== userId) go({ userId: id });
+      if (id === userId) return;
+      if (id !== null && userId === null) {
+        const active = document.activeElement;
+        returnPoint.current = {
+          scrollTop: scrollParent(rootRef.current)?.scrollTop ?? 0,
+          fromHeatmap: active instanceof HTMLElement && active.dataset.hmPerson !== undefined
+        };
+      }
+      pendingFocus.current = id === null ? "everyone" : "person";
+      go({ userId: id });
     },
     [go, userId]
+  );
+
+  // The opener unmounts while the next view loads. Once it renders: a person
+  // view focuses its heading; the everyone view returns to where the manager
+  // left it and focuses that person's row. Focus that landed somewhere real
+  // (the picker trigger, an open panel) is left alone.
+  const lastPersonId = useRef<string | null>(null);
+  if (userId !== null) lastPersonId.current = userId;
+  useEffect(() => {
+    if (!data || pendingFocus.current === null) return;
+    const target = pendingFocus.current;
+    if ((target === "person") !== (userId !== null)) return;
+    pendingFocus.current = null;
+    if (target === "person") {
+      if (focusIsLost()) document.getElementById("person-focus-title")?.focus();
+      return;
+    }
+    const personId = lastPersonId.current;
+    const point = returnPoint.current;
+    returnPoint.current = null;
+    // One frame so the restored layout has its full height before scrolling.
+    // Not cancelled on cleanup: StrictMode's second effect pass finds no
+    // pending focus and must not undo the first.
+    requestAnimationFrame(() => {
+      const scroller = scrollParent(rootRef.current);
+      if (scroller && point) scroller.scrollTop = point.scrollTop;
+      if (!focusIsLost() || !personId) return;
+      const id = CSS.escape(personId);
+      const row =
+        (point?.fromHeatmap
+          ? document.querySelector<HTMLElement>(`[data-hm-person="${id}"]`)
+          : null) ?? document.querySelector<HTMLElement>(`[data-person-row="${id}"]`);
+      if (row) {
+        row.focus({ preventScroll: point !== null });
+        if (!point) row.scrollIntoView({ block: "center" });
+      } else {
+        document.getElementById("source-usage-title")?.focus({ preventScroll: true });
+      }
+    });
+  }, [data, userId]);
+
+  const retry = useCallback(() => {
+    document.getElementById("source-usage-title")?.focus({ preventScroll: true });
+    setReloadKey((current) => current + 1);
+  }, []);
+
+  const changeView = useCallback(
+    (next: SourceView) => {
+      setView(next);
+      saveSourceView(viewerId, next);
+    },
+    [viewerId]
   );
 
   const openSource = useCallback(
@@ -224,6 +333,16 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
   );
 
   const closePanel = useCallback(() => setPanel(null), []);
+
+  /** One person's questions that cited one source: their view plus the source panel. */
+  const openPersonSource = useCallback(
+    (id: string, documentId: string, title: string | null) => {
+      if (title === null) return;
+      selectPerson(id);
+      setPanel({ documentId, title, isLive: true });
+    },
+    [selectPerson]
+  );
 
   const changeColumns = useCallback(
     (next: SourceColumn[]) => {
@@ -245,7 +364,20 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
     () => categoryPathsByDocument(currentLibrary?.categories ?? []),
     [currentLibrary]
   );
+  const heatmap = useMemo(
+    () =>
+      data
+        ? heatmapModel(
+            data.matrix ?? { documentIds: [], rows: [] },
+            data.sources,
+            data.people ?? [],
+            data.users
+          )
+        : null,
+    [data]
+  );
 
+  const notFound = failureKind === "notFound";
   const pickerPeople = data?.people ?? roster;
   const selectedRow =
     userId === null ? null : data?.users.find((person) => person.userId === userId) ?? null;
@@ -254,15 +386,19 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
       ? null
       : data?.person
         ? personLabel(data.person)
-        : knownNames.current.get(userId) ?? "This person";
+        : knownNames.current.get(userId) ?? null;
   const noProgramSelected = data?.noProgramSelected === true;
   const panelStats = panel
     ? data?.sources.find((source) => source.documentId === panel.documentId) ?? null
     : null;
   const teamNumbers = team?.key === teamKey ? team : null;
+  // The heatmap and a table with several extra columns need the full width;
+  // the Never cited card then moves below them.
+  const wide = view === "heatmap" || columns.length > 1;
+  const heatmapEmpty = !heatmap || heatmap.columns.length === 0 || heatmap.rows.length === 0;
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
+    <div ref={rootRef} className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
       <header className="flex flex-col gap-4">
         <div>
           <h1
@@ -305,7 +441,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
             </div>
             <PersonPicker
               people={pickerPeople}
-              selectedId={userId}
+              selectedId={notFound ? null : userId}
               selectedLabel={selectedName}
               onSelect={selectPerson}
             />
@@ -317,17 +453,37 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
         <div className="rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           Choose a program to see how its sources are used.
         </div>
-      ) : error ? (
-        <ErrorAlert message={error}>
-          {userId !== null ? (
+      ) : notFound ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          <span>This person isn't in this program or no longer has an account.</span>
+          <button
+            type="button"
+            onClick={() => selectPerson(null)}
+            className="btn-whisper px-3 py-1 text-xs"
+          >
+            Show everyone
+          </button>
+        </div>
+      ) : failureKind === "load" ? (
+        <ErrorAlert message="Source usage didn't load.">
+          <span className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => selectPerson(null)}
-              className="btn-whisper px-3 py-1 text-xs"
+              onClick={retry}
+              className="rounded-full border border-destructive/40 px-3 py-1 text-xs font-medium text-destructive transition-colors duration-100 ease-out hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              Show everyone
+              Try again
             </button>
-          ) : null}
+            {userId !== null ? (
+              <button
+                type="button"
+                onClick={() => selectPerson(null)}
+                className="btn-whisper px-3 py-1 text-xs"
+              >
+                Show everyone
+              </button>
+            ) : null}
+          </span>
         </ErrorAlert>
       ) : !data ? (
         <LoadingSkeleton />
@@ -375,27 +531,50 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
             onSelectPerson={(id) => selectPerson(id)}
           />
 
-          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_17rem]">
+          <div
+            className={cn("grid items-start gap-6", !wide && "lg:grid-cols-[minmax(0,1fr)_17rem]")}
+          >
             <section aria-labelledby="most-cited-title" className="flex min-w-0 flex-col gap-3">
               <div>
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2
                     id="most-cited-title"
                     className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
                   >
-                    Most-cited sources
+                    {view === "heatmap" ? "Answers by person and source" : "Most-cited sources"}
                   </h2>
-                  <ColumnsMenu columns={columns} onChange={changeColumns} />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SourcesViewSwitch view={view} onChange={changeView} />
+                    {view === "table" ? (
+                      <ColumnsMenu columns={columns} onChange={changeColumns} />
+                    ) : null}
+                  </div>
                 </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  A citation is an answer that quoted the source. Select a source to read the
-                  questions behind it.
-                </p>
+                {view === "heatmap" ? (
+                  <p id="heatmap-help" className="mt-1 text-sm text-muted-foreground">
+                    Answers from each person that cited each of the{" "}
+                    {plural(heatmap?.columns.length ?? 0, "most-cited source", "most-cited sources")}.
+                    Select a name for their coaching view, a source for its questions, or a cell
+                    for that person's questions about that source.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    A citation is an answer that quoted the source. Select a source to read the
+                    questions behind it.
+                  </p>
+                )}
               </div>
-              {data.sources.length === 0 ? (
+              {data.sources.length === 0 || (view === "heatmap" && heatmapEmpty) ? (
                 <p className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
                   No answer cited a source in this window. Every question was refused.
                 </p>
+              ) : view === "heatmap" && heatmap ? (
+                <SourceHeatmap
+                  model={heatmap}
+                  onSelectPerson={(id) => selectPerson(id)}
+                  onOpenSource={openSource}
+                  onOpenCell={openPersonSource}
+                />
               ) : (
                 <SourcesTable
                   sources={data.sources}
@@ -413,6 +592,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
               library={currentLibrary?.items ?? null}
               libraryError={currentLibraryError}
               categoryPaths={categoryPaths}
+              wide={wide}
             />
           </div>
 
@@ -432,11 +612,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
             <PeopleTable
               users={data.users}
               onSelectPerson={(id) => selectPerson(id)}
-              onOpenPersonSource={(id, documentId, title) => {
-                if (title === null) return;
-                selectPerson(id);
-                setPanel({ documentId, title, isLive: true });
-              }}
+              onOpenPersonSource={openPersonSource}
             />
           </section>
         </div>

@@ -16,7 +16,7 @@ import { isKbLibraryColor } from "./kbLibraryColors";
  * optimistic state matches what a reload would return.
  */
 
-export type KbView = "folders" | "categories" | "list";
+export type KbView = "folders" | "categories" | "list" | "cards";
 export type KbSort = "manual" | "newest" | "updated" | "views" | "cited" | "title";
 
 export interface KbFilters {
@@ -37,7 +37,18 @@ export interface KbPrefs {
   collapsed: string[];
   /** My pins and Recently opened folded to one line above the library. */
   quickCollapsed: boolean;
+  /**
+   * Folders view category rail (wide screens): the category the list is
+   * scoped to, KB_UNCATEGORIZED for sources in no category, null for all.
+   */
+  railScope: string | null;
+  /** Cards view: the top-level category tab (null = All) and its subcategory chip. */
+  cardsTab: string | null;
+  cardsSub: string | null;
 }
+
+/** Scope key for "Not in a category" in the rail and the Cards tabs. */
+export const KB_UNCATEGORIZED = "__uncategorized";
 
 export const KB_MAX_CATEGORY_DEPTH = 4;
 export const KB_NOTE_MAX = 4000;
@@ -48,7 +59,7 @@ export const KB_TAG_NAME_MAX = 40;
 /** Drag settle and sortable shifts: DESIGN.md ease-out-quart, under the 250 ms bar. Off under reduced motion. */
 export const KB_DRAG_MOTION = { duration: 200, easing: "cubic-bezier(0.25, 1, 0.5, 1)" } as const;
 
-export const KB_VIEWS: readonly KbView[] = ["folders", "categories", "list"];
+export const KB_VIEWS: readonly KbView[] = ["folders", "categories", "list", "cards"];
 
 export const KB_SORT_LABELS: Record<KbSort, string> = {
   manual: "Manager's order",
@@ -72,7 +83,16 @@ export function defaultSort(view: KbView): KbSort {
 }
 
 export function defaultPrefs(): KbPrefs {
-  return { view: "folders", sortByView: {}, filters: EMPTY_FILTERS, collapsed: [], quickCollapsed: false };
+  return {
+    view: "folders",
+    sortByView: {},
+    filters: EMPTY_FILTERS,
+    collapsed: [],
+    quickCollapsed: false,
+    railScope: null,
+    cardsTab: null,
+    cardsSub: null
+  };
 }
 
 export function sortForView(prefs: KbPrefs, view: KbView): KbSort {
@@ -85,7 +105,11 @@ export function sortForView(prefs: KbPrefs, view: KbView): KbSort {
 const PREFS_PREFIX = "truenote:kb-library:v1:";
 
 function isView(value: unknown): value is KbView {
-  return value === "folders" || value === "categories" || value === "list";
+  return typeof value === "string" && (KB_VIEWS as readonly string[]).includes(value);
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value !== "" ? value : null;
 }
 
 function isSort(value: unknown): value is KbSort {
@@ -119,7 +143,10 @@ export function parsePrefs(raw: string | null): KbPrefs {
         colors: Array.isArray(rawFilters.colors) ? rawFilters.colors.filter(isKbLibraryColor) : []
       },
       collapsed: stringArray(parsed.collapsed),
-      quickCollapsed: parsed.quickCollapsed === true
+      quickCollapsed: parsed.quickCollapsed === true,
+      railScope: stringOrNull(parsed.railScope),
+      cardsTab: stringOrNull(parsed.cardsTab),
+      cardsSub: stringOrNull(parsed.cardsSub)
     };
   } catch {
     return fallback;
@@ -383,21 +410,59 @@ export function teamPins(items: KbDocumentListItem[]): KbDocumentListItem[] {
     .sort((a, b) => (a.featuredPosition ?? 0) - (b.featuredPosition ?? 0));
 }
 
+/**
+ * My pins, oldest pin first. A new pin goes to the end, so the number key a
+ * user has learned for a pin never changes when they pin something else.
+ */
 export function myPins(items: KbDocumentListItem[]): KbDocumentListItem[] {
   return items
     .filter((d) => d.pinnedAt !== null)
-    .sort((a, b) => time(b.pinnedAt) - time(a.pinnedAt) || byTitle(a, b));
+    .sort((a, b) => time(a.pinnedAt) - time(b.pinnedAt) || byTitle(a, b));
 }
 
 /** My pins that get a number key (1 to 9), in strip order. */
 export const KB_NUMBERED_PINS = 9;
 
-/** Sources this user opened, newest open first. */
-export function recentlyOpened(items: KbDocumentListItem[], limit = 5): KbDocumentListItem[] {
+/**
+ * Sources this user opened, newest open first. Sources in `exclude` (already
+ * in My pins or Team pins above) are left out so the strip adds new ones.
+ */
+export function recentlyOpened(
+  items: KbDocumentListItem[],
+  limit = 5,
+  exclude: ReadonlySet<string> = new Set()
+): KbDocumentListItem[] {
   return items
-    .filter((d) => d.lastViewedByMeAt !== null && time(d.lastViewedByMeAt) > 0)
+    .filter((d) => d.lastViewedByMeAt !== null && time(d.lastViewedByMeAt) > 0 && !exclude.has(d.documentId))
     .sort((a, b) => time(b.lastViewedByMeAt) - time(a.lastViewedByMeAt) || byTitle(a, b))
     .slice(0, limit);
+}
+
+/**
+ * Document ids from a `?ids=a,b,c` link (Source usage links its Never cited
+ * list this way). Returns null when the link has no ids.
+ */
+export function idsFromSearch(search: string): string[] | null {
+  const raw = new URLSearchParams(search).get("ids");
+  if (!raw) return null;
+  const ids = Array.from(new Set(raw.split(",").map((id) => id.trim()).filter(Boolean)));
+  return ids.length > 0 ? ids : null;
+}
+
+/** Sources in the category or any category nested under it, or in no category for KB_UNCATEGORIZED. */
+export function docsInScope(
+  docs: KbDocumentListItem[],
+  scope: string | null,
+  tree: KbTree
+): KbDocumentListItem[] {
+  if (scope === null) return docs;
+  if (scope === KB_UNCATEGORIZED) {
+    return docs.filter((d) => !d.categoryIds.some((id) => tree.byId.has(id)));
+  }
+  const node = tree.byId.get(scope);
+  if (!node) return docs;
+  const ids = subtreeDocumentIds(node);
+  return docs.filter((d) => ids.has(d.documentId));
 }
 
 /** Full paths ("Billing / Refunds") of every category the source is in, in library order. */
@@ -429,27 +494,51 @@ export function groupedRowCount(
 }
 
 /**
- * Sources that share a category or a tag with this one, most shared first,
- * then most cited. Never includes the source itself.
+ * How close two categories sit in the tree: the same category scores most,
+ * a parent, child or sibling (same parent) less, anything else 0. Deeper
+ * categories are narrower, so sharing one says more than sharing a broad
+ * top-level one: "Billing / Refunds" beside "Billing / Refunds / Annual
+ * plans" outranks two sources that only share "Retention".
+ */
+function categoryCloseness(a: KbCategoryNode, b: KbCategoryNode): number {
+  if (a.category.id === b.category.id) return 2 * a.depth;
+  const aParent = a.category.parentId ?? null;
+  const bParent = b.category.parentId ?? null;
+  const related =
+    aParent === b.category.id || bParent === a.category.id || (aParent !== null && aParent === bParent);
+  return related ? 2 * Math.min(a.depth, b.depth) - 1 : 0;
+}
+
+/**
+ * Sources related to this one, closest first: each shared or nearby
+ * category adds its closeness (categoryCloseness) and each shared tag adds
+ * 1. Ties go to the most cited. Never includes the source itself.
  */
 export function relatedSources(
   doc: Pick<KbDocumentListItem, "documentId" | "categoryIds" | "tagIds">,
   items: KbDocumentListItem[],
+  tree: KbTree,
   limit = 5
 ): KbDocumentListItem[] {
-  const categories = new Set(doc.categoryIds);
+  const mine = doc.categoryIds
+    .map((id) => tree.byId.get(id))
+    .filter((n): n is KbCategoryNode => Boolean(n));
   const tags = new Set(doc.tagIds);
-  if (categories.size === 0 && tags.size === 0) return [];
+  if (mine.length === 0 && tags.size === 0) return [];
+  const score = (d: KbDocumentListItem): number => {
+    let total = d.tagIds.filter((id) => tags.has(id)).length;
+    for (const id of d.categoryIds) {
+      const node = tree.byId.get(id);
+      if (!node) continue;
+      total += Math.max(0, ...mine.map((m) => categoryCloseness(m, node)));
+    }
+    return total;
+  };
   return items
     .filter((d) => d.documentId !== doc.documentId)
-    .map((d) => ({
-      d,
-      shared:
-        d.categoryIds.filter((id) => categories.has(id)).length * 2 +
-        d.tagIds.filter((id) => tags.has(id)).length
-    }))
-    .filter((x) => x.shared > 0)
-    .sort((a, b) => b.shared - a.shared || b.d.citationCount - a.d.citationCount || byTitle(a.d, b.d))
+    .map((d) => ({ d, score: score(d) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || b.d.citationCount - a.d.citationCount || byTitle(a.d, b.d))
     .slice(0, limit)
     .map((x) => x.d);
 }
@@ -498,6 +587,11 @@ export function applyUserState(data: Data, state: KbSourceUserState): Data {
     noteUpdatedAt: state.noteUpdatedAt,
     myColor: state.color
   }));
+}
+
+/** The user just opened this source in the reader. */
+export function applyOpened(data: Data, documentId: string, at: string): Data {
+  return mapItem(data, documentId, (d) => ({ ...d, lastViewedByMeAt: at }));
 }
 
 export function applySourceColor(data: Data, documentId: string, color: KbLibraryColor | null): Data {

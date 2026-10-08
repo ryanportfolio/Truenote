@@ -63,95 +63,104 @@ export function SourcesTable({
   const onSort = (key: SourceSortKey): void => setSort((current) => nextSort(current, key, TEXT_KEYS));
   const optional = SOURCE_COLUMN_OPTIONS.filter((option) => columns.includes(option.key));
   // Narrow screens fold optional columns into the title cell: People below
-  // sm, the rest below md.
+  // sm, the rest below md. Tighter padding lets every column fit at 1024px.
   const columnClass = (key: SourceColumn): string =>
-    key === "userCount" ? "hidden sm:table-cell" : "hidden md:table-cell";
+    cn("px-2", key === "userCount" ? "hidden sm:table-cell" : "hidden md:table-cell");
 
   return (
     <div className="flex flex-col gap-2">
       <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
-        <table className="w-full text-sm">
-          <caption className="sr-only">
-            Sources ranked by how often answers cited them. Select a source to see its questions.
-          </caption>
-          <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <SortHeader label="Source" sortKey="title" sort={sort} onSort={onSort} />
-              <SortHeader
-                label="Citations"
-                title="Answers that cited the source"
-                sortKey="citationCount"
-                sort={sort}
-                onSort={onSort}
-                align="right"
-              />
-              {optional.map((option) => (
+        {/* Every column on can outgrow a narrow card: scroll inside it, never clip. */}
+        <div data-usage-scroll="" className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <caption className="sr-only">
+              Sources ranked by how often answers cited them. Select a source to see its questions.
+            </caption>
+            <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
                 <SortHeader
-                  key={option.key}
-                  label={option.label}
-                  title={option.hint}
-                  sortKey={option.key}
+                  label="Source"
+                  sortKey="title"
+                  sort={sort}
+                  onSort={onSort}
+                  className="md:min-w-[9rem]"
+                />
+                <SortHeader
+                  label="Citations"
+                  title="Answers that cited the source"
+                  sortKey="citationCount"
                   sort={sort}
                   onSort={onSort}
                   align="right"
-                  className={columnClass(option.key)}
                 />
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((source) => {
-              const active = source.documentId === activeDocumentId;
-              return (
-                <tr
-                  key={source.documentId}
-                  data-source-row={source.documentId}
-                  className={cn(
-                    "border-t border-border align-top transition-colors duration-100 ease-out hover:bg-muted/40",
-                    active && "bg-primary/5"
-                  )}
-                >
-                  <td className="w-full max-w-md px-3 py-2">
-                    <SourceOpener
-                      documentId={source.documentId}
-                      title={source.title}
-                      isLive={source.isLive}
-                      onOpen={onOpen}
-                      className={cn("font-medium", active && "text-primary")}
-                    />
-                    <InlineBar width={barWidth(source.citationCount, maxCitations)} />
-                    {optional.length > 0 ? (
-                      <span className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground md:hidden">
-                        {optional.map((option) => (
-                          <span
-                            key={option.key}
-                            className={option.key === "userCount" ? "sm:hidden" : undefined}
-                          >
-                            {columnUnit(option.key, source[option.key])}
-                          </span>
-                        ))}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums">
-                    {source.citationCount}
-                  </td>
-                  {optional.map((option) => (
-                    <td
-                      key={option.key}
-                      className={cn(
-                        "whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground",
-                        columnClass(option.key)
-                      )}
-                    >
-                      {source[option.key]}
+                {optional.map((option) => (
+                  <SortHeader
+                    key={option.key}
+                    label={option.label}
+                    title={option.hint}
+                    sortKey={option.key}
+                    sort={sort}
+                    onSort={onSort}
+                    align="right"
+                    className={columnClass(option.key)}
+                  />
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((source) => {
+                const active = source.documentId === activeDocumentId;
+                return (
+                  <tr
+                    key={source.documentId}
+                    data-source-row={source.documentId}
+                    className={cn(
+                      "border-t border-border align-top transition-colors duration-100 ease-out hover:bg-muted/40",
+                      active && "bg-primary/5"
+                    )}
+                  >
+                    <td className="w-full max-w-md px-3 py-2 md:min-w-[9rem]">
+                      <SourceOpener
+                        documentId={source.documentId}
+                        title={source.title}
+                        isLive={source.isLive}
+                        onOpen={onOpen}
+                        className={cn("font-medium", active && "text-primary")}
+                      />
+                      <InlineBar width={barWidth(source.citationCount, maxCitations)} />
+                      {optional.length > 0 ? (
+                        <span className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground md:hidden">
+                          {optional.map((option) => (
+                            <span
+                              key={option.key}
+                              className={option.key === "userCount" ? "sm:hidden" : undefined}
+                            >
+                              {columnUnit(option.key, source[option.key])}
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
                     </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums">
+                      {source.citationCount}
+                    </td>
+                    {optional.map((option) => (
+                      <td
+                        key={option.key}
+                        className={cn(
+                          "whitespace-nowrap py-2 text-right tabular-nums text-muted-foreground",
+                          columnClass(option.key)
+                        )}
+                      >
+                        {source[option.key]}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
       {sorted.length > INITIAL_ROWS ? (
         <button

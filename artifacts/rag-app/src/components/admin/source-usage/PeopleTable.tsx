@@ -102,6 +102,7 @@ export function PeopleTable({
                   <button
                     type="button"
                     aria-label={`${name}, show their questions`}
+                    data-person-row={person.userId}
                     onClick={() => onSelectPerson(person.userId)}
                     className="group inline-flex items-center gap-1 rounded-sm text-left font-medium underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >

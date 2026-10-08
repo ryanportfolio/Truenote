@@ -3,8 +3,9 @@ import { Link } from "wouter";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArrowLeft, BookOpen, FileText, TextQuote } from "lucide-react";
-import { getKbDocument, listKbDocuments } from "@/lib/api";
-import { buildLookup, docCategoryPaths, relatedSources } from "@/lib/kbLibrary";
+import { fetchMe, getKbDocument } from "@/lib/api";
+import { applyOpened, buildLookup, docCategoryPaths, relatedSources } from "@/lib/kbLibrary";
+import { kbLibraryCacheKey, loadKbLibrary, patchKbLibraryCache } from "@/lib/kbLibraryCache";
 import { markdownNodeIsCited } from "@/lib/citationPassage";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/EmptyState";
@@ -41,6 +42,12 @@ export function KbDocumentPage({ documentId }: { documentId: string }): JSX.Elem
       setState({ status: "loading" });
       try {
         const doc = await getKbDocument(documentId, citationRequest ?? undefined);
+        // Opening the current version counts as a view, so Recently opened on
+        // Sources lists it without waiting for the cached library to expire.
+        if (doc.isCurrentVersion) {
+          const at = new Date().toISOString();
+          patchKbLibraryCache((d) => applyOpened(d, doc.documentId, at));
+        }
         if (!disposed && generation === loadGenerationRef.current) {
           setState({ status: "ready", doc });
         }
@@ -126,16 +133,20 @@ export function KbDocumentPage({ documentId }: { documentId: string }): JSX.Elem
 
 /**
  * Library context for the reader: category path, tags and related sources
- * come from the Sources list (one request, after the document itself). The
- * reader works without it; those parts simply stay hidden.
+ * come from the Sources library, shared with the Sources page through
+ * lib/kbLibraryCache, so moving between sources reuses one copy instead of
+ * re-running the library query. The cache is keyed by the signed-in user
+ * (from /api/me), so it never serves another user's library. The reader
+ * works without it; those parts simply stay hidden.
  */
 function useLibraryForReader(documentId: string): KbDocumentListResponse | null {
   const [library, setLibrary] = useState<KbDocumentListResponse | null>(null);
   useEffect(() => {
     let disposed = false;
-    listKbDocuments()
+    fetchMe()
+      .then((user) => (user ? loadKbLibrary(kbLibraryCacheKey(user.id)) : null))
       .then((response) => {
-        if (!disposed && !response.noProgramSelected) setLibrary(response);
+        if (!disposed && response && !response.noProgramSelected) setLibrary(response);
       })
       .catch(() => undefined);
     return () => {
@@ -161,7 +172,7 @@ function ReaderArticle({
     lookup && listItem
       ? listItem.tagIds.map((id) => lookup.tagsById.get(id)).filter((t): t is KbTag => Boolean(t))
       : [];
-  const related = library && listItem ? relatedSources(listItem, library.items) : [];
+  const related = lookup && library && listItem ? relatedSources(listItem, library.items, lookup.tree) : [];
 
   return (
     <article className="rounded-lg border border-border bg-card p-6 shadow-card">
@@ -264,7 +275,9 @@ function ReaderArticle({
           >
             Related sources
           </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">In the same category or with the same tag.</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Closest first: the same or a neighboring category, then shared tags.
+          </p>
           <ul className="mt-2 flex flex-col gap-2">
             {related.map((item) => {
               const itemPath = docCategoryPaths(item, lookup.tree)[0];

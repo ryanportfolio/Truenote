@@ -4,6 +4,7 @@ import {
   Check,
   FolderCog,
   FolderTree,
+  LayoutGrid,
   List,
   Palette,
   RotateCcw,
@@ -29,7 +30,8 @@ import { ColorDot } from "./KbShared";
 const VIEWS: Array<{ id: KbView; label: string; icon: typeof FolderTree; hint: string }> = [
   { id: "folders", label: "Folders", icon: FolderTree, hint: "Nested folders in your manager's order" },
   { id: "categories", label: "Categories", icon: Rows3, hint: "One section per category" },
-  { id: "list", label: "List", icon: List, hint: "Everything in one list" }
+  { id: "list", label: "List", icon: List, hint: "Everything in one list" },
+  { id: "cards", label: "Cards", icon: LayoutGrid, hint: "Cards with category tabs" }
 ];
 
 const SORTS: KbSort[] = ["manual", "newest", "updated", "views", "cited", "title"];
@@ -133,7 +135,19 @@ export function KbToolbar({
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-      <label className="relative block min-w-0 basis-full lg:min-w-[14rem] lg:flex-1 lg:basis-0">
+      {/*
+        The search shares its row with the view switch and sort from 1024px.
+        Managers also have Organize there, which needs 1280px; below that the
+        search takes its own row so view, sort and Organize stay together.
+      */}
+      <label
+        className={cn(
+          "relative block min-w-0 basis-full",
+          canOrganize
+            ? "xl:min-w-[12rem] xl:flex-1 xl:basis-0"
+            : "lg:min-w-[12rem] lg:flex-1 lg:basis-0"
+        )}
+      >
         <Search
           className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
           aria-hidden
@@ -150,7 +164,8 @@ export function KbToolbar({
               onQuery("");
             }
           }}
-          placeholder="Search titles, notes, tags and categories"
+          placeholder="Search sources"
+          title="Searches titles, your notes, tags and category names"
           className="w-full rounded-md border border-input bg-card py-2 pl-9 pr-10 text-sm shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         />
         {!query ? (
@@ -168,14 +183,15 @@ export function KbToolbar({
               title={hint}
               onClick={() => onView(id)}
               className={cn(
-                "btn-base gap-1.5 px-3 py-1 text-xs",
+                "btn-base gap-1.5 px-2 py-1 text-xs sm:px-3",
                 // Same selected recipe as the /admin/gaps time window.
                 view === id
                   ? "bg-primary/10 font-medium text-primary"
                   : "font-normal text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
-              <Icon className="h-3.5 w-3.5" aria-hidden />
+              {/* Icons only where four labeled views fit beside the search on one row. */}
+              <Icon className="hidden h-3.5 w-3.5 xl:block" aria-hidden />
               {label}
             </button>
           ))}

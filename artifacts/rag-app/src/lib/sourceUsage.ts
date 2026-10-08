@@ -278,16 +278,27 @@ export function saveSourceColumns(userId: string, columns: readonly SourceColumn
 // ---------------------------------------------------------------------------
 // Data-built highlights for the everyone view
 
+/** The people with the highest count: one person, or a tie of two or three. */
+export interface PersonStandout {
+  people: SourceUsageUser[];
+  count: number;
+}
+
 export interface UsageHighlights {
   topSource: { source: SourceUsageSource; share: number; next: SourceUsageSource | null } | null;
-  mostRefused: SourceUsageUser | null;
-  mostNegative: SourceUsageUser | null;
+  mostRefused: PersonStandout | null;
+  mostNegative: PersonStandout | null;
 }
+
+/** Ties larger than this are not a standout; the sentence is left out. */
+const MAX_NAMED_TIE = 3;
 
 /**
  * The few standouts a manager acts on: the most-cited source and its share of
  * answered questions, and who had the most refusals and thumbs-down answers.
- * Ties go to the person with more questions (the server's order).
+ * A top count of 1 is noise, not a standout, so it gets no sentence; a tie of
+ * two or three names everyone in it (server order: most questions first); a
+ * larger tie gets no sentence.
  */
 export function usageHighlights(
   sources: readonly SourceUsageSource[],
@@ -296,12 +307,11 @@ export function usageHighlights(
 ): UsageHighlights {
   const ranked = [...sources].sort((a, b) => b.citationCount - a.citationCount);
   const top = ranked[0] ?? null;
-  const pick = (key: "refusedCount" | "negativeCount"): SourceUsageUser | null => {
-    let best: SourceUsageUser | null = null;
-    for (const user of users) {
-      if (user[key] > 0 && (best === null || user[key] > best[key])) best = user;
-    }
-    return best;
+  const pick = (key: "refusedCount" | "negativeCount"): PersonStandout | null => {
+    const count = users.reduce((max, user) => Math.max(max, user[key]), 0);
+    if (count < 2) return null;
+    const people = users.filter((user) => user[key] === count);
+    return people.length > MAX_NAMED_TIE ? null : { people, count };
   };
   return {
     topSource:
@@ -311,6 +321,120 @@ export function usageHighlights(
     mostRefused: pick("refusedCount"),
     mostNegative: pick("negativeCount")
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sources section view (table or heatmap), saved per user like the columns
+
+export type SourceView = "table" | "heatmap";
+
+const VIEW_PREFIX = "truenote:source-usage:view:v1:";
+
+export function loadSourceView(userId: string): SourceView {
+  try {
+    return window.localStorage.getItem(VIEW_PREFIX + userId) === "heatmap" ? "heatmap" : "table";
+  } catch {
+    return "table";
+  }
+}
+
+export function saveSourceView(userId: string, view: SourceView): void {
+  try {
+    window.localStorage.setItem(VIEW_PREFIX + userId, view);
+  } catch {
+    // Private mode or a full quota: the choice lasts until reload.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// People x sources heatmap
+
+export interface HeatmapColumn {
+  documentId: string;
+  /** Null when the viewer may not see the source (or it is not in `sources`). */
+  title: string | null;
+  isLive: boolean;
+}
+
+export interface HeatmapRow {
+  userId: string;
+  name: string;
+  counts: number[];
+}
+
+export interface HeatmapModel {
+  columns: HeatmapColumn[];
+  rows: HeatmapRow[];
+  max: number;
+}
+
+/**
+ * Joins the response's `matrix` with names and titles. A column whose source
+ * is missing from `sources` or has a null title stays restricted: the page
+ * never guesses a title it was not given.
+ */
+export function heatmapModel(
+  matrix: { documentIds: readonly string[]; rows: readonly { userId: string; counts: readonly number[] }[] },
+  sources: readonly SourceUsageSource[],
+  people: readonly { userId: string; name: string }[],
+  users: readonly SourceUsageUser[]
+): HeatmapModel {
+  const byId = new Map(sources.map((source) => [source.documentId, source]));
+  const names = new Map<string, string>();
+  for (const user of users) names.set(user.userId, personLabel(user));
+  for (const person of people) names.set(person.userId, personLabel(person));
+  const columns = matrix.documentIds.map((documentId) => {
+    const source = byId.get(documentId);
+    return { documentId, title: source?.title ?? null, isLive: source?.isLive ?? true };
+  });
+  let max = 0;
+  const rows = matrix.rows.map((row) => {
+    const counts = columns.map((_, i) => Math.max(0, row.counts[i] ?? 0));
+    for (const count of counts) max = Math.max(max, count);
+    return { userId: row.userId, name: names.get(row.userId) ?? "Unknown person", counts };
+  });
+  return { columns, rows, max };
+}
+
+export interface HeatBin {
+  min: number;
+  max: number;
+  /** "0", "3" or "4-6". */
+  label: string;
+  /** 0 for the zero bin, 1..4 for the shades, darkest last. */
+  tone: number;
+}
+
+/**
+ * Legend bins for counts 0..max: a zero bin plus up to four equal-width
+ * ranges, so the printed ranges cover every count in view.
+ */
+export function heatBins(max: number): HeatBin[] {
+  const bins: HeatBin[] = [{ min: 0, max: 0, label: "0", tone: 0 }];
+  if (max <= 0) return bins;
+  const steps = Math.min(4, max);
+  let low = 1;
+  for (let i = 1; i <= steps; i++) {
+    const high = Math.round((max * i) / steps);
+    bins.push({
+      min: low,
+      max: high,
+      label: low === high ? String(low) : `${low}-${high}`,
+      tone: Math.round((i * 4) / steps)
+    });
+    low = high + 1;
+  }
+  return bins;
+}
+
+export function heatBin(value: number, bins: readonly HeatBin[]): HeatBin {
+  return bins.find((bin) => value >= bin.min && value <= bin.max) ?? bins[bins.length - 1]!;
+}
+
+/** Sources page filtered to the given documents, with a note that the list came from here. */
+export function neverCitedHref(documentIds: readonly string[]): string {
+  if (documentIds.length === 0) return "/kb";
+  return `/kb?ids=${documentIds.map(encodeURIComponent).join(",")}&from=usage`;
 }
 
 /** Share of `part` in `whole` as "12%", or null when there is nothing to divide. */

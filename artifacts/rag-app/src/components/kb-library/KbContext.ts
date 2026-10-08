@@ -13,12 +13,22 @@ export type KbDialogState =
   | { kind: "category-move"; categoryId: string }
   | { kind: "doc-move"; documentId: string; fromCategoryId: string | null };
 
+/** List view on wide screens: rows get a "Quick look" button that previews the source beside the list. */
+export interface KbQuickLook {
+  /** The source shown in the pane, or null when the pane shows its hint. */
+  documentId: string | null;
+  paneId: string;
+  toggle: (documentId: string) => void;
+}
+
 export interface KbLibraryContextValue {
   data: KbDocumentListResponse;
   lookup: KbLookup;
   actions: KbLibraryActions;
   canOrganize: boolean;
   openDialog: (dialog: KbDialogState) => void;
+  /** Null unless the quick-look pane is available (List view, 1440px and wider). */
+  quickLook: KbQuickLook | null;
 }
 
 export const KbLibraryContext = createContext<KbLibraryContextValue | null>(null);

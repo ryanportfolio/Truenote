@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Bookmark, Ellipsis, FolderInput, Megaphone, NotebookPen, Tags } from "lucide-react";
+import { Bookmark, Ellipsis, FolderInput, Megaphone, NotebookPen, PanelRightOpen, Tags } from "lucide-react";
 import { RelativeTime } from "@/components/RelativeTime";
 import { categoryPathLabel, docCategoryPaths } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
@@ -96,8 +96,9 @@ export function KbDocRow({
   /** Round the hover wash on the first and last row when the list is the whole card. */
   roundedEdges?: boolean;
 }): JSX.Element {
-  const { lookup, actions, openDialog } = useKbLibraryContext();
+  const { lookup, actions, openDialog, quickLook } = useKbLibraryContext();
   const menu = useDocMenuEntries(doc);
+  const previewing = quickLook?.documentId === doc.documentId;
   const paths = docCategoryPaths(doc, lookup.tree);
   const elsewhere =
     !showPath && inCategoryId
@@ -111,8 +112,10 @@ export function KbDocRow({
   return (
     <li
       data-kb-row={doc.documentId}
+      data-kb-previewing={previewing || undefined}
       className={cn(
         "relative px-4 py-2 transition-colors duration-100 ease-out focus-within:z-20 hover:z-20 hover:bg-muted/40",
+        previewing && "bg-primary/5 hover:bg-primary/5",
         roundedEdges && "first:rounded-t-lg last:rounded-b-lg"
       )}
     >
@@ -149,6 +152,20 @@ export function KbDocRow({
               <span className="sr-only">Updated </span>
               <RelativeTime iso={doc.updatedAt} />
             </span>
+          ) : null}
+          {quickLook ? (
+            <button
+              type="button"
+              data-kb-quicklook-trigger={doc.documentId}
+              onClick={() => quickLook.toggle(doc.documentId)}
+              aria-label={`Quick look: ${doc.title}`}
+              aria-expanded={previewing}
+              aria-controls={quickLook.paneId}
+              title={previewing ? "Close quick look" : "Quick look: preview beside the list"}
+              className={cn("btn-icon h-8 w-8", previewing && "text-primary hover:text-primary")}
+            >
+              <PanelRightOpen className="h-4 w-4" aria-hidden />
+            </button>
           ) : null}
           <PinToggle doc={doc} onToggle={() => actions.togglePin(doc.documentId)} />
           <SourceColorMenu

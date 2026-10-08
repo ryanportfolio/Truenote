@@ -21,6 +21,11 @@ export interface KbMenuItem {
   danger?: boolean;
   /** Set for checkbox items; toggling keeps the menu open. */
   checked?: boolean;
+  /**
+   * With `checked`: a radio item instead (one choice of several, such as
+   * "No color" beside the swatches). Picking it closes the menu.
+   */
+  radio?: boolean;
   /** Color dot shown after the checkbox or icon (color filters). */
   swatch?: KbLibraryColor;
 }
@@ -98,12 +103,16 @@ export function KbMenu({
     place();
   }, [open]);
 
-  // Focus moves into the menu once per opening, after it is positioned and visible.
+  // Focus moves into the menu once per opening, after it is positioned and
+  // visible: onto the current choice when the menu has one (a color picker
+  // opens on the checked color), else the first item.
   useEffect(() => {
     if (!open || !position || focusedRef.current) return;
     focusedRef.current = true;
     const list = menuItems();
-    (focusFirstRef.current === "last" ? list[list.length - 1] : list[0])?.focus({ preventScroll: true });
+    const checked = list.find((el) => el.getAttribute("role") === "menuitemradio" && el.getAttribute("aria-checked") === "true");
+    const target = focusFirstRef.current === "last" ? list[list.length - 1] : checked ?? list[0];
+    target?.focus({ preventScroll: true });
   }, [open, position]);
 
   useEffect(() => {
@@ -179,7 +188,7 @@ export function KbMenu({
 
   function select(item: KbMenuItem): void {
     if (item.disabled) return;
-    if (item.checked !== undefined) {
+    if (item.checked !== undefined && !item.radio) {
       item.onSelect();
       return;
     }
@@ -235,7 +244,9 @@ export function KbMenu({
                   <button
                     key={entry.label}
                     type="button"
-                    role={entry.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
+                    role={
+                      entry.checked === undefined ? "menuitem" : entry.radio ? "menuitemradio" : "menuitemcheckbox"
+                    }
                     aria-checked={entry.checked}
                     disabled={entry.disabled}
                     tabIndex={-1}
@@ -245,7 +256,15 @@ export function KbMenu({
                       entry.danger ? "text-destructive" : "text-foreground"
                     )}
                   >
-                    {entry.checked !== undefined ? (
+                    {entry.radio ? (
+                      <span className="grid h-4 w-4 shrink-0 place-items-center" aria-hidden>
+                        {entry.checked ? (
+                          <Check className="h-4 w-4 text-foreground" strokeWidth={3} />
+                        ) : entry.icon ? (
+                          <entry.icon className="h-4 w-4 text-muted-foreground" />
+                        ) : null}
+                      </span>
+                    ) : entry.checked !== undefined ? (
                       <span
                         className={cn(
                           "grid h-4 w-4 shrink-0 place-items-center rounded-sm border",
@@ -265,7 +284,9 @@ export function KbMenu({
                         style={kbColorDot(entry.swatch)}
                       />
                     ) : null}
-                    <span className="min-w-0 flex-1">{entry.label}</span>
+                    <span className={cn("min-w-0 flex-1", entry.radio && entry.checked && "font-medium")}>
+                      {entry.label}
+                    </span>
                   </button>
                 )
               )}
