@@ -89,6 +89,59 @@ export const personalColorSchema = z
   })
   .strict();
 
+export const MAX_LABEL_NAME_CHARS = 40;
+
+/**
+ * The caller's own name for one of their colors. `name: null` or a blank
+ * name removes it; the key itself is required so an empty body never reads
+ * as "remove".
+ */
+export const colorLabelSchema = z
+  .object({
+    name: z
+      .string({
+        required_error: "Enter a label name, or send null to remove it.",
+        invalid_type_error: "Enter a label name, or send null to remove it."
+      })
+      .transform((value) => value.trim())
+      .pipe(
+        z
+          .string()
+          .max(
+            MAX_LABEL_NAME_CHARS,
+            `Label names can be at most ${MAX_LABEL_NAME_CHARS} characters.`
+          )
+      )
+      .nullable()
+  })
+  .strict();
+
+/** Trimmed label name, or null when the user cleared it. */
+export function normalizeLabelName(name: string | null): string | null {
+  if (name === null) return null;
+  const trimmed = name.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+export interface ColorLabelRow {
+  color: string;
+  name: string;
+}
+
+/**
+ * The caller's color names in palette order (slate, blue, green, ...).
+ * Rows outside the palette are dropped.
+ */
+export function serializeColorLabels(rows: readonly ColorLabelRow[]) {
+  const order = (color: LibraryColor) => LIBRARY_COLORS.indexOf(color);
+  return rows
+    .flatMap((row) => {
+      const color = libraryColorOrNull(row.color);
+      return color ? [{ color, name: row.name }] : [];
+    })
+    .sort((a, b) => order(a.color) - order(b.color));
+}
+
 /** Trimmed note, or null when the user cleared it. */
 export function normalizeNote(note: string): string | null {
   const trimmed = note.trim();

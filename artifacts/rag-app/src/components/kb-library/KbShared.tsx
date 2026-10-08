@@ -1,9 +1,16 @@
 import { useId, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Bookmark, CircleSlash, Lock, NotebookPen, Palette, Pencil } from "lucide-react";
-import { KB_LIBRARY_COLORS, kbColorChip, kbColorDot, kbColorLabel } from "@/lib/kbLibraryColors";
-import { KB_NOTE_MAX } from "@/lib/kbLibrary";
+import { Bookmark, CircleSlash, Folder, Lock, NotebookPen, Palette, Pencil, Star } from "lucide-react";
+import {
+  KB_LIBRARY_COLORS,
+  kbColorChip,
+  kbColorDot,
+  kbColorFolder,
+  kbColorLabel,
+  kbLabelName
+} from "@/lib/kbLibraryColors";
+import { KB_NOTE_MAX, docStatus } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
-import type { KbDocumentListItem, KbLibraryColor, KbTag } from "@/types/api";
+import type { KbColorLabel, KbDocumentListItem, KbLibraryColor, KbTag } from "@/types/api";
 import { KbDialogActions, KbInlineError } from "./KbDialog";
 import { KbMenu, type KbMenuEntry } from "./KbMenu";
 import type { ActionResult } from "./useKbLibrary";
@@ -42,10 +49,22 @@ export function SourceColorStripe({ color }: { color: KbLibraryColor | null }): 
   );
 }
 
-/** Screen reader text for a source's private color. */
-export function SourceColorLabel({ color }: { color: KbLibraryColor | null }): JSX.Element | null {
+/** Screen reader text for a source's private label (its color, plus the user's name for it when given). */
+export function SourceColorLabel({
+  color,
+  labels
+}: {
+  color: KbLibraryColor | null;
+  labels?: readonly KbColorLabel[];
+}): JSX.Element | null {
   if (!color) return null;
-  return <span className="sr-only">My color: {kbColorLabel(color)}.</span>;
+  const name = kbLabelName(color, labels);
+  return (
+    <span className="sr-only">
+      Label: {kbColorLabel(color)}
+      {name ? `, ${name}` : ""}.
+    </span>
+  );
 }
 
 export function TagChip({ tag }: { tag: KbTag }): JSX.Element {
@@ -106,8 +125,8 @@ export function PinToggle({
     <button
       type="button"
       aria-pressed={pinned}
-      aria-label={`Pin ${doc.title}`}
-      title={pinned ? "Remove from My pins" : "Add to My pins"}
+      aria-label={`Add ${doc.title} to my shortcuts`}
+      title={pinned ? "In my shortcuts" : "Add to my shortcuts"}
       onClick={onToggle}
       className={cn("btn-icon h-8 w-8", pinned && "text-primary hover:text-primary", className)}
     >
@@ -431,4 +450,128 @@ export function NoteForm({
       </KbDialogActions>
     </form>
   );
+}
+
+// ---------------------------------------------------------------------------
+// v3 quiet-row pieces
+
+/** Star button: the source is in my shortcuts when filled. */
+export function StarToggle({
+  doc,
+  onToggle,
+  className
+}: {
+  doc: Pick<KbDocumentListItem, "title" | "pinnedAt">;
+  onToggle: () => void;
+  className?: string;
+}): JSX.Element {
+  const on = doc.pinnedAt !== null;
+  const label = on ? `Remove ${doc.title} from my shortcuts` : `Add ${doc.title} to my shortcuts`;
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      aria-label={label}
+      title={on ? "In my shortcuts" : "Add to my shortcuts"}
+      onClick={onToggle}
+      data-kb-star
+      className={cn("btn-icon h-9 w-9", on && "text-primary hover:text-primary", className)}
+    >
+      <Star className="h-[18px] w-[18px]" fill={on ? "currentColor" : "none"} aria-hidden />
+    </button>
+  );
+}
+
+/** At most one status: "Updated" beats "New". */
+export function StatusPill({ doc }: { doc: Pick<KbDocumentListItem, "isNew" | "createdAt"> }): JSX.Element | null {
+  const status = docStatus(doc);
+  if (!status) return null;
+  return (
+    <span
+      data-kb-status={status}
+      className="inline-flex shrink-0 items-center rounded-full border border-primary/25 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary"
+    >
+      {status === "updated" ? "Updated" : "New"}
+    </span>
+  );
+}
+
+/** Pale-yellow personal note tint (the reader's annotation yellow, never a status color). */
+export const NOTE_STICKY_STYLE = { backgroundColor: "oklch(var(--highlight-yellow) / 0.28)" } as const;
+
+/**
+ * A private note under a source title: one line on a pale-yellow sticky with a
+ * lock. The full text is in the reader and in the tooltip on hover or focus.
+ */
+export function NoteSticky({ note, className }: { note: string | null; className?: string }): JSX.Element | null {
+  if (!note) return null;
+  return (
+    <p
+      data-kb-note
+      title={note}
+      className={cn(
+        "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-2 py-0.5 text-sm text-foreground",
+        className
+      )}
+      style={NOTE_STICKY_STYLE}
+    >
+      <Lock className="h-3.5 w-3.5 shrink-0 text-foreground/70" aria-hidden />
+      <span className="sr-only">My private note: </span>
+      <span className="min-w-0 truncate">{note}</span>
+    </p>
+  );
+}
+
+/** A folder icon in the folder's color. */
+export function FolderGlyph({ color, className }: { color: KbLibraryColor | null; className?: string }): JSX.Element {
+  return (
+    <Folder
+      aria-hidden
+      className={cn("shrink-0", className)}
+      strokeWidth={1.5}
+      style={color ? kbColorFolder(color) : { color: "oklch(var(--muted-foreground))", fill: "oklch(var(--muted))" }}
+    />
+  );
+}
+
+/** Label colors in picker order: the ones the user named first, then the rest in palette order. */
+export function labelOrder(labels: readonly KbColorLabel[] | undefined): KbLibraryColor[] {
+  const named = KB_LIBRARY_COLORS.filter((c) => kbLabelName(c, labels));
+  return [...named, ...KB_LIBRARY_COLORS.filter((c) => !named.includes(c))];
+}
+
+/**
+ * The label picker: the user's names beside the swatches (the color name when
+ * a color has no name), a check on the current one, and "No label".
+ */
+export function labelEntries(
+  value: KbLibraryColor | null,
+  labels: readonly KbColorLabel[] | undefined,
+  onSelect: (color: KbLibraryColor | null) => void
+): KbMenuEntry[] {
+  return [
+    { kind: "heading", label: "Label", hint: "Only you see this." },
+    ...labelOrder(labels).map((color): KbMenuEntry => {
+      const name = kbLabelName(color, labels);
+      return {
+        label: name ?? kbColorLabel(color),
+        detail: name ? kbColorLabel(color) : undefined,
+        swatch: color,
+        radio: true,
+        checked: value === color,
+        onSelect: () => {
+          if (value !== color) onSelect(color);
+        }
+      };
+    }),
+    {
+      label: "No label",
+      icon: CircleSlash,
+      radio: true,
+      checked: value === null,
+      onSelect: () => {
+        if (value !== null) onSelect(null);
+      }
+    }
+  ];
 }

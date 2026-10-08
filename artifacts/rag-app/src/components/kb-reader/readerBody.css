@@ -1,0 +1,115 @@
+/*
+ * Reader-only styles for the source page (/kb/:id). Scoped under classes the
+ * reader owns, so the shared document renderer and the passage highlighter
+ * look the same everywhere else.
+ */
+
+/* Numbered steps: ordered lists in the document body. The number is CSS
+ * generated content, so the document text (and the text offsets saved
+ * highlights are anchored to) stays exactly as written. */
+.kb-steps {
+  list-style: none;
+  counter-reset: kb-step;
+  margin: 0.75rem 0;
+  padding: 0;
+}
+
+.kb-steps > li {
+  counter-increment: kb-step;
+  position: relative;
+  min-height: 4.25rem;
+  padding: 0.875rem 0 0.875rem 3.75rem;
+  border-top: 1px solid oklch(var(--border));
+}
+
+.kb-steps > li:first-child {
+  border-top: 0;
+}
+
+.kb-steps > li::before {
+  content: counter(kb-step);
+  position: absolute;
+  left: 0;
+  top: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 9999px;
+  background-color: oklch(var(--primary) / 0.08);
+  color: oklch(var(--primary));
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* First sentence of a step, bold on its own line so it reads aloud first. */
+.kb-steps > li .kb-step-lead {
+  display: block;
+  font-family: Georgia, Cambria, "Times New Roman", serif;
+  font-weight: 700;
+  color: oklch(var(--foreground));
+}
+
+.kb-steps .kb-steps > li {
+  min-height: 2.75rem;
+  padding: 0.5rem 0 0.5rem 2.5rem;
+}
+
+.kb-steps .kb-steps > li::before {
+  top: 0.5rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.875rem;
+}
+
+/* The summary line right under the document's own (hidden) title. */
+.kb-reader-doc [data-kb-doc-title] + p {
+  margin-top: 0.5rem;
+  font-size: 1.0625rem;
+  color: oklch(var(--foreground) / 0.86);
+}
+
+/* Passage highlights: the highlighter's hint bar no longer sits above the
+ * document. It shows only once there are saved highlights, as the list
+ * toggle without the hint text (the hint lives in the note card). With
+ * nothing saved it is visually hidden but stays in the DOM, and it shows
+ * again whenever it takes focus (focus lands there after the last
+ * highlight is removed). */
+.kb-reader-highlights > div > div:first-child {
+  margin-top: 0.25rem;
+  justify-content: flex-end;
+  background: transparent;
+  padding: 0;
+}
+
+.kb-reader-highlights > div > div:first-child:has(button) > p {
+  display: none;
+}
+
+.kb-reader-highlights > div > div:first-child:not(:has(button)):not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Phones: smaller circles leave the step text room to breathe. */
+@media (max-width: 639px) {
+  .kb-steps > li {
+    min-height: 3.25rem;
+    padding-left: 3rem;
+  }
+
+  .kb-steps > li::before {
+    width: 2.25rem;
+    height: 2.25rem;
+    font-size: 1rem;
+  }
+}

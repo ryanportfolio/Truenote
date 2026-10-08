@@ -9,7 +9,12 @@ import {
 } from "../../middleware/current-user.js";
 import { canAccessProgram, type UserRole } from "../../lib/auth/current-user.js";
 import { resolveEffectiveProgramId } from "../../lib/auth/effective-program.js";
-import { getUserMaxClassification } from "../../lib/security/classification.js";
+import {
+  classificationRank,
+  getUserMaxClassification,
+  parseClassification,
+  type Classification
+} from "../../lib/security/classification.js";
 import { isoOrNull } from "../../lib/kb-library.js";
 import {
   documentIsLiveSql,
@@ -19,6 +24,7 @@ import {
 } from "../../lib/kb-library-sql.js";
 import {
   MAX_MATRIX_SOURCES,
+  MAX_SOURCE_SUGGESTIONS,
   MAX_TOP_SOURCES_PER_USER,
   MAX_USAGE_SOURCES,
   gatedTitle,
@@ -26,8 +32,10 @@ import {
   parseOptionalUuid,
   parseQuestionLimit,
   parseUsageWindowDays,
+  selectSourceSuggestions,
   shapeUsageMatrix,
   takePage,
+  type SourceUsageSuggestion,
   type UsageMatrix
 } from "../../lib/source-usage.js";
 
@@ -222,8 +230,12 @@ export interface SourceUsagePerson {
 
 export type SourceUsageMatrix = UsageMatrix;
 
+export type { SourceUsageSuggestion };
+
 export interface SourceUsageResponse {
   windowDays: number;
+  /** Up to 3 suggestions for the selected person; empty when userId is null. */
+  suggestions: SourceUsageSuggestion[];
   userId: string | null;
   person: { userId: string; name: string; email: string; role: UserRole } | null;
   people: SourceUsagePerson[];
@@ -393,6 +405,116 @@ interface UsageTopSourceRow {
   count: number;
 }
 
+/**
+ * The selected person's clearance for suggestions. Unlike
+ * getUserMaxClassification this accepts inactive accounts, and a missing or
+ * invalid value falls back to the lowest level so nothing above it is named.
+ */
+async function personClearance(userId: string): Promise<Classification> {
+  const result = await db.execute(sql`
+    SELECT max_classification FROM users WHERE id = ${userId}::uuid LIMIT 1
+  `);
+  return parseClassification(result.rows[0]?.["max_classification"]) ?? "public";
+}
+
+interface UsageSuggestionRow {
+  document_id: string;
+  title: string;
+  team_citations: number;
+  last_cited_at: Date | string | null;
+  related: boolean;
+}
+
+/**
+ * Candidates for the selected person's "Suggest these sources" card, at most
+ * MAX_SOURCE_SUGGESTIONS rows. A candidate is a document other people's
+ * answers cited in the window that this person's answers never cited, and
+ * that can be opened now (program, live version, and `clearance`, which the
+ * caller sets to the lower of the viewer's and the person's). `related`
+ * marks candidates sharing a top-level category with any source cited by
+ * the person's refused or thumbs-down answers. Related rows sort first, so
+ * the LIMIT keeps them whenever any exist; selectSourceSuggestions then
+ * applies the related-or-fallback rule.
+ */
+function suggestionsQuery(input: {
+  programId: string;
+  windowDays: number;
+  userId: string;
+  clearance: Classification;
+}): SQL {
+  const { programId, windowDays, userId, clearance } = input;
+  return sql`
+    WITH RECURSIVE ${usageCtes({ programId, windowDays, userId: null })},
+    cat_root AS (
+      SELECT c.id, c.id AS root_id
+      FROM kb_categories AS c
+      WHERE c.program_id = ${programId}::uuid
+        AND c.parent_id IS NULL
+      UNION ALL
+      SELECT c.id, cr.root_id
+      FROM kb_categories AS c
+      INNER JOIN cat_root AS cr ON c.parent_id = cr.id
+      WHERE c.program_id = ${programId}::uuid
+    ),
+    doc_root AS (
+      SELECT DISTINCT cd.document_id, cr.root_id
+      FROM kb_category_documents AS cd
+      INNER JOIN cat_root AS cr ON cr.id = cd.category_id
+    ),
+    mine AS (
+      SELECT DISTINCT cited.document_id
+      FROM cited
+      INNER JOIN q ON q.id = cited.query_id
+      WHERE q.user_id = ${userId}
+    ),
+    trouble_root AS (
+      SELECT DISTINCT dr.root_id
+      FROM cited
+      INNER JOIN q ON q.id = cited.query_id
+      INNER JOIN doc_root AS dr ON dr.document_id = cited.document_id
+      WHERE q.user_id = ${userId}
+        AND (q.refused OR q.feedback = -1)
+    ),
+    team AS (
+      SELECT
+        cited.document_id,
+        count(*)::int AS team_citations,
+        max(q.created_at) AS last_cited_at
+      FROM cited
+      INNER JOIN q ON q.id = cited.query_id
+      WHERE q.user_id IS NOT NULL
+        AND q.user_id <> ${userId}
+      GROUP BY cited.document_id
+    ),
+    candidates AS (
+      SELECT
+        t.document_id,
+        t.team_citations,
+        t.last_cited_at,
+        EXISTS (
+          SELECT 1
+          FROM doc_root AS dr
+          INNER JOIN trouble_root AS tr ON tr.root_id = dr.root_id
+          WHERE dr.document_id = t.document_id
+        ) AS related
+      FROM team AS t
+      WHERE NOT EXISTS (SELECT 1 FROM mine WHERE mine.document_id = t.document_id)
+    )
+    SELECT
+      d.id::text AS document_id,
+      d.title,
+      c.team_citations,
+      c.last_cited_at,
+      c.related
+    FROM candidates AS c
+    INNER JOIN documents AS d ON d.id = c.document_id
+    WHERE ${documentIsLiveSql()}
+      AND ${documentVisibleSql(sql.raw("d.id"), programId, clearance)}
+    ORDER BY c.related DESC, c.team_citations DESC, c.last_cited_at DESC, d.id
+    LIMIT ${MAX_SOURCE_SUGGESTIONS}
+  `;
+}
+
 insightsRouter.get("/source-usage", async (req, res, next) => {
   try {
     const user = authedUser(req);
@@ -401,6 +523,7 @@ insightsRouter.get("/source-usage", async (req, res, next) => {
     if (programId === null) {
       const empty: SourceUsageResponse = {
         windowDays,
+        suggestions: [],
         userId: null,
         person: null,
         people: [],
@@ -625,21 +748,49 @@ insightsRouter.get("/source-usage", async (req, res, next) => {
           '[]'::json
         ) AS matrix_rows
     `);
+    // Coaching suggestions exist only for one selected person, and only name
+    // sources both the viewer and that person can open.
+    const suggestionsPromise = userId
+      ? personClearance(userId).then((personMax) =>
+          db.execute(
+            suggestionsQuery({
+              programId,
+              windowDays,
+              userId,
+              clearance:
+                classificationRank(personMax) < classificationRank(clearance)
+                  ? personMax
+                  : clearance
+            })
+          )
+        )
+      : Promise.resolve(null);
     const [
       totalsResult,
       sourcesResult,
       usersResult,
       topSourcesResult,
       peopleResult,
-      matrixResult
+      matrixResult,
+      suggestionsResult
     ] = await Promise.all([
       totalsQuery,
       sourcesQuery,
       usersQuery,
       topSourcesQuery,
       peopleQuery,
-      matrixQuery
+      matrixQuery,
+      suggestionsPromise
     ]);
+    const suggestions = selectSourceSuggestions(
+      ((suggestionsResult?.rows ?? []) as unknown as UsageSuggestionRow[]).map((r) => ({
+        documentId: r.document_id,
+        title: r.title,
+        teamCitations: Number(r.team_citations),
+        lastCitedAt: isoOrNull(r.last_cited_at),
+        related: r.related === true
+      }))
+    );
     const matrixRow = matrixResult.rows[0] as unknown as UsageMatrixRow | undefined;
 
     const totals = totalsResult.rows[0] as unknown as UsageTotalsRow | undefined;
@@ -656,6 +807,7 @@ insightsRouter.get("/source-usage", async (req, res, next) => {
 
     const payload: SourceUsageResponse = {
       windowDays,
+      suggestions,
       userId,
       person,
       people: (peopleResult.rows as unknown as UsagePeopleRow[]).map((r) => ({

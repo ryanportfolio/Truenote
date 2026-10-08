@@ -1,44 +1,42 @@
-import { Suspense, lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useLocation, useSearch } from "wouter";
-import { BookOpen, Eye, FolderCog, Info, Link2, PanelRightOpen, Plus, Search, Tags, X } from "lucide-react";
+import { BookOpen, ChevronDown, FolderCog, Link2, Search, X } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import {
   EMPTY_FILTERS,
-  KB_NUMBERED_PINS,
-  KB_UNCATEGORIZED,
+  KB_VIEWS,
+  KB_VIEW_LABELS,
   buildLookup,
   docMatchesQuery,
   docPassesFilters,
+  filterSentence,
   filtersActive,
-  groupedRowCount,
+  folderFromSearch,
   idsFromSearch,
   loadPrefs,
   myPins,
-  recentlyOpened,
   savePrefs,
+  searchLibrary,
+  shortcutShelf,
   sortForView,
   sortTags,
-  teamPins,
   type KbFilters,
-  type KbPrefs
+  type KbPrefs,
+  type KbTab
 } from "@/lib/kbLibrary";
-import { KB_LIBRARY_COLORS } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
-import type { CurrentUser, KbDocumentListResponse } from "@/types/api";
-import { KbCategoriesView, KbFoldersView, KbListView } from "./KbBrowseViews";
-import { KbCardsView } from "./KbCardsView";
-import { KbCategoryRail } from "./KbCategoryRail";
+import type { CurrentUser, KbDocumentListResponse, KbLibraryColor } from "@/types/api";
+import { KbFoldersView, KbListView, KbMyShortcuts, KbOutlineView, folderHref } from "./KbBrowseViews";
 import { KbLibraryContext, type KbDialogState, type KbLibraryContextValue } from "./KbContext";
-import { KbCsrPreview } from "./KbCsrPreview";
 import { KbDialogs } from "./KbDialogs";
-import { KbOrganizeTree } from "./KbOrganizeTree";
-import { KbPinStrips, KbPinsDock, KbTeamPinsEditor } from "./KbPinStrips";
-import { KbToolbar } from "./KbToolbar";
+import { KbFilterSentence, KbFiltersButton } from "./KbFilters";
+import { KbLabels } from "./KbLabels";
+import { KbMenu } from "./KbMenu";
+import { KbOrganize } from "./KbOrganize";
+import { KbSearch } from "./KbSearch";
+import { KbShortcutDock, KbShortcutShelf } from "./KbShelf";
 import { useKbLibrary } from "./useKbLibrary";
-import { KB_QUICK_LOOK_QUERY, KB_WIDE_QUERY, useMediaQuery } from "./useMediaQuery";
-
-// The quick-look pane renders source markdown; load that code only when a pane opens.
-const KbQuickLookDoc = lazy(() => import("./KbQuickLookDoc"));
+import { KB_WIDE_QUERY, useMediaQuery } from "./useMediaQuery";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -50,36 +48,19 @@ function isTypingTarget(target: EventTarget | null): boolean {
   );
 }
 
-/** The quick-look column before a source is chosen: says what the pane is and how to fill it. */
-function QuickLookHint({ paneId }: { paneId: string }): JSX.Element {
-  return (
-    <aside
-      id={paneId}
-      aria-label="Quick look"
-      data-kb-quicklook="empty"
-      className="sticky top-4 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground"
-    >
-      <p className="flex items-center gap-1.5 font-medium text-foreground">
-        <PanelRightOpen className="h-4 w-4" aria-hidden />
-        Quick look
-      </p>
-      <p className="mt-1 text-xs leading-relaxed">
-        Press the Quick look button (
-        <PanelRightOpen className="inline h-3.5 w-3.5 align-text-bottom" aria-hidden />) on a row to read a source here
-        and keep your place in the list. A title still opens the full page.
-      </p>
-    </aside>
-  );
-}
+const TABS: Array<{ id: KbTab; label: string }> = [
+  { id: "all", label: "All sources" },
+  { id: "shortcuts", label: "My shortcuts" }
+];
 
 /**
- * The Sources library: search, view and filter controls, the pinned strips,
- * and the browse views. Managers get an Organize mode that swaps the browse
- * controls for drag-and-drop arrangement, so arranging never mixes with
- * looking things up. View, sort, filters, collapsed folders and the rail or
- * card scope persist per user in localStorage. Personal colors live on the
- * server, not here. Wide screens add a category rail (Folders), a quick-look
- * pane (List) and a CSR preview beside the Organize editor.
+ * The Sources library: the shortcuts shelf, the search box with its results
+ * panel and Filters, the All sources / My shortcuts tabs with the View menu
+ * (Folders, Outline, List), and the browse views. Managers get Organize,
+ * which swaps all of that for a two-step editor so arranging never mixes
+ * with looking things up. View, tab, sort, filters and collapsed folders
+ * persist per user in localStorage; the open folder lives in the URL
+ * (`?folder=<id>`); labels, notes and shortcuts live on the server.
  */
 export function KbLibrary({
   user,
@@ -95,32 +76,30 @@ export function KbLibrary({
   const [prefs, setPrefs] = useState<KbPrefs>(() => loadPrefs(user.id));
   const [query, setQuery] = useState("");
   const [organizing, setOrganizing] = useState(false);
-  const [csrPreview, setCsrPreview] = useState(false);
   const [dialog, setDialog] = useState<KbDialogState | null>(null);
-  const [quickLookId, setQuickLookId] = useState<string | null>(null);
+  const [lastMoved, setLastMoved] = useState<{ key: string; at: number } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const organizeHeadingRef = useRef<HTMLHeadingElement>(null);
-  const myPinsRef = useRef<HTMLElement>(null);
+  const shelfRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLElement>(null);
+  const organizeButtonRef = useRef<HTMLButtonElement>(null);
   // The organizing value focus last followed; StrictMode's double effect run sees no change.
   const focusedForOrganizing = useRef(organizing);
   const [, navigate] = useLocation();
   const search = useSearch();
-  const [pinsInView, setPinsInView] = useState(true);
+  const [shelfInView, setShelfInView] = useState(true);
   const wide = useMediaQuery(KB_WIDE_QUERY);
-  const quickLookRoom = useMediaQuery(KB_QUICK_LOOK_QUERY);
-  const paneId = useId();
+  const tabsId = useId();
 
   useEffect(() => {
     savePrefs(user.id, prefs);
   }, [user.id, prefs]);
 
-  // Focus follows a switch into or out of Organize mode. Nothing is focused
-  // on load, so the number keys open pins right away.
+  // Leaving Organize puts focus back on its button. Nothing is focused on
+  // load, so the number keys open shortcuts right away.
   useEffect(() => {
     if (focusedForOrganizing.current === organizing) return;
     focusedForOrganizing.current = organizing;
-    if (organizing) organizeHeadingRef.current?.focus();
-    else searchRef.current?.focus();
+    if (!organizing) requestAnimationFrame(() => organizeButtonRef.current?.focus());
   }, [organizing]);
 
   const lookup = useMemo(
@@ -145,7 +124,7 @@ export function KbLibrary({
     return { ids: kept, fromUsage: new URLSearchParams(search).get("from") === "usage" };
   }, [search, data.items]);
 
-  const active = filtersActive(filters, query) || linked !== null;
+  const active = filtersActive(filters, query);
   const sort = sortForView(prefs, prefs.view);
   const visible = useMemo(
     () =>
@@ -156,28 +135,34 @@ export function KbLibrary({
     [data.items, filters, query, lookup, linked]
   );
   const collapsed = useMemo(() => new Set(prefs.collapsed), [prefs.collapsed]);
-  const team = useMemo(() => teamPins(data.items), [data.items]);
-  const mine = useMemo(() => myPins(data.items), [data.items]);
-  const recent = useMemo(() => {
-    const shown = new Set([...team, ...mine].map((d) => d.documentId));
-    return recentlyOpened(data.items, 5, shown);
-  }, [data.items, team, mine]);
-  const grouped = useMemo(() => groupedRowCount(visible, lookup.tree), [visible, lookup.tree]);
-  const showStrips = !organizing && !active && data.items.length > 0;
+  const shelf = useMemo(() => shortcutShelf(data.items), [data.items]);
+  const results = useMemo(() => searchLibrary(visible, query, lookup), [visible, query, lookup]);
+  const tags = useMemo(() => sortTags(data.tags), [data.tags]);
+  const scope = prefs.tab === "all" && prefs.view === "folders" ? folderFromSearch(search, lookup.tree) : null;
+  const shownCount = prefs.tab === "shortcuts" ? myPins(visible).length : visible.length;
+  const sentence = filterSentence({ shown: shownCount, query, filters, tagsById: lookup.tagsById, labels: data.labels });
+  // A Source usage link (?ids=) narrows the list like a filter does.
+  const narrowed = active || linked !== null;
 
-  // Rail scope only counts while the rail is on screen; a stale id means All.
-  const railScope =
-    prefs.railScope === KB_UNCATEGORIZED || (prefs.railScope && lookup.tree.byId.has(prefs.railScope))
-      ? prefs.railScope
-      : null;
-  const showRail = wide && !organizing && prefs.view === "folders" && lookup.tree.roots.length > 0;
-  const quickLookOn = quickLookRoom && !organizing && prefs.view === "list";
-  const quickLookDoc = quickLookOn && quickLookId ? data.items.find((d) => d.documentId === quickLookId) ?? null : null;
+  // Opening or leaving a folder moves focus to what replaced the link that was used.
+  const lastScope = useRef(scope);
+  useEffect(() => {
+    const before = lastScope.current;
+    lastScope.current = scope;
+    if (before === scope) return;
+    requestAnimationFrame(() => {
+      if (scope !== null) {
+        document.querySelector<HTMLElement>("[data-kb-folder-title]")?.focus({ preventScroll: false });
+      } else if (before !== null) {
+        document.querySelector<HTMLElement>(`[data-kb-folder-card="${CSS.escape(before)}"] a`)?.focus();
+      }
+    });
+  }, [scope]);
 
   // "/" jumps to search from anywhere on the page, the same shortcut as /chat.
-  // 1 to 9 open that numbered pin, unless focus is in a field or a menu is open.
+  // 1 to 9 open that shortcut, unless focus is in a field or a menu or dialog is open.
   useEffect(() => {
-    function onKeyDown(event: KeyboardEvent): void {
+    function onKeyDown(event: globalThis.KeyboardEvent): void {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (isTypingTarget(event.target) || organizing || dialog) return;
       if (event.key === "/") {
@@ -185,63 +170,34 @@ export function KbLibrary({
         searchRef.current?.focus();
         return;
       }
-      if (!/^[1-9]$/.test(event.key) || document.querySelector("[role=\"menu\"]")) return;
-      const pin = mine[Number(event.key) - 1];
-      if (!pin || Number(event.key) > KB_NUMBERED_PINS) return;
+      if (!/^[1-9]$/.test(event.key) || document.querySelector('[role="menu"], [role="dialog"]')) return;
+      const shortcut = shelf[Number(event.key) - 1];
+      if (!shortcut) return;
       event.preventDefault();
-      navigate(`/kb/${pin.documentId}`);
+      navigate(`/kb/${shortcut.doc.documentId}`);
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [organizing, dialog, mine, navigate]);
+  }, [organizing, dialog, shelf, navigate]);
 
-  // The pins dock appears once the My pins strip has scrolled out of view.
+  // The dock appears once the shelf has scrolled out of view.
+  const showShelf = !organizing && data.items.length > 0;
   useEffect(() => {
-    const el = myPinsRef.current;
-    if (!showStrips || !el) {
-      setPinsInView(false);
+    const el = shelfRef.current;
+    if (!showShelf || !el) {
+      setShelfInView(false);
       return;
     }
-    const observer = new IntersectionObserver(([entry]) => setPinsInView(Boolean(entry?.isIntersecting)));
+    const observer = new IntersectionObserver(([entry]) => setShelfInView(Boolean(entry?.isIntersecting)));
     observer.observe(el);
     return () => observer.disconnect();
-  }, [showStrips, mine.length > 0]);
-  const showDock = !organizing && mine.length > 0 && !pinsInView;
-  const tags = useMemo(() => sortTags(data.tags), [data.tags]);
-  // Offer only colors in use; a selected color stays listed so it can be cleared.
-  const colors = useMemo(
-    () =>
-      KB_LIBRARY_COLORS.filter(
-        (c) => filters.colors.includes(c) || data.items.some((d) => d.myColor === c)
-      ),
-    [data.items, filters.colors]
-  );
+  }, [showShelf]);
+  const showDock = showShelf && shelf.length > 0 && !shelfInView;
 
-  const closeQuickLook = useCallback(() => {
-    const id = quickLookId;
-    setQuickLookId(null);
-    if (!id) return;
-    // Back to the row that opened it (re-queried: the list may have re-rendered).
-    requestAnimationFrame(() =>
-      document.querySelector<HTMLElement>(`[data-kb-quicklook-trigger="${CSS.escape(id)}"]`)?.focus()
-    );
-  }, [quickLookId]);
-
-  const quickLook = useMemo(
-    () =>
-      quickLookOn
-        ? {
-            documentId: quickLookDoc?.documentId ?? null,
-            paneId,
-            toggle: (documentId: string) => setQuickLookId((cur) => (cur === documentId ? null : documentId))
-          }
-        : null,
-    [quickLookOn, quickLookDoc, paneId]
-  );
-
+  const markMoved = useCallback((key: string) => setLastMoved({ key, at: Date.now() }), []);
   const context = useMemo<KbLibraryContextValue>(
-    () => ({ data, lookup, actions, canOrganize, openDialog: setDialog, quickLook }),
-    [data, lookup, actions, canOrganize, quickLook]
+    () => ({ data, lookup, actions, canOrganize, openDialog: setDialog, markMoved }),
+    [data, lookup, actions, canOrganize, markMoved]
   );
 
   function toggleCollapsed(key: string): void {
@@ -251,63 +207,98 @@ export function KbLibrary({
     }));
   }
 
+  function setFilters(next: KbFilters): void {
+    setPrefs((p) => ({ ...p, filters: next }));
+  }
+
+  function toggleLabel(color: KbLibraryColor): void {
+    setFilters({
+      ...filters,
+      colors: filters.colors.includes(color) ? filters.colors.filter((c) => c !== color) : [...filters.colors, color]
+    });
+  }
+
   function clearLinked(): void {
     navigate("/kb", { replace: true });
   }
 
-  function reset(): void {
+  function clearFilters(): void {
     setQuery("");
     setPrefs((p) => ({ ...p, filters: EMPTY_FILTERS }));
+  }
+
+  function reset(): void {
+    clearFilters();
     if (linked) clearLinked();
   }
 
-  const searching = query.trim() !== "";
+  function setTab(tab: KbTab, focus = false): void {
+    setPrefs((p) => ({ ...p, tab }));
+    if (focus) requestAnimationFrame(() => document.getElementById(`${tabsId}-${tab}`)?.focus());
+  }
+
+  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>): void {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft" && event.key !== "Home" && event.key !== "End") return;
+    event.preventDefault();
+    const index = TABS.findIndex((t) => t.id === prefs.tab);
+    const next =
+      event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + TABS.length) % TABS.length;
+    setTab(TABS[next]!.id, true);
+  }
+
+  function openFolder(folderId: string): void {
+    setPrefs((p) => ({ ...p, tab: "all", view: "folders" }));
+    setQuery("");
+    navigate(folderHref(search, folderId));
+  }
+
+  function seeAll(): void {
+    setPrefs((p) => ({ ...p, tab: "all" }));
+    requestAnimationFrame(() => listRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
+  }
+
+  function editShortcuts(): void {
+    setTab("shortcuts", true);
+    requestAnimationFrame(() => listRef.current?.scrollIntoView({ block: "nearest" }));
+  }
+
   const browse =
-    visible.length === 0 ? (
+    prefs.tab === "shortcuts" ? (
+      <KbMyShortcuts visible={visible} filtering={narrowed} />
+    ) : visible.length === 0 ? (
       <EmptyState
         icon={Search}
         title="No sources match"
-        hint={
-          query.trim()
-            ? `Nothing matches "${query.trim()}" with the current filters.`
-            : "No sources match the current filters."
-        }
+        hint={query.trim() ? `Nothing matches "${query.trim()}" with the current filters.` : "No sources match the current filters."}
       >
         <button type="button" onClick={reset} className="btn-whisper px-3 py-1.5 text-sm">
           Clear search and filters
         </button>
       </EmptyState>
     ) : prefs.view === "folders" ? (
-      <KbFoldersView
-        visible={visible}
-        sort={sort}
-        filtering={active}
-        searching={searching}
-        collapsed={collapsed}
-        onToggle={toggleCollapsed}
-        scope={showRail ? railScope : null}
-        onShowAll={() => setPrefs((p) => ({ ...p, railScope: null }))}
-      />
-    ) : prefs.view === "categories" ? (
-      <KbCategoriesView visible={visible} sort={sort} filtering={active} searching={searching} />
-    ) : prefs.view === "cards" ? (
-      <KbCardsView
-        visible={visible}
-        sort={sort}
-        tab={prefs.cardsTab}
-        sub={prefs.cardsSub}
-        onScope={(cardsTab, cardsSub) => setPrefs((p) => ({ ...p, cardsTab, cardsSub }))}
-      />
+      <KbFoldersView visible={visible} sort={sort} filtering={narrowed} scope={scope} search={search} />
+    ) : prefs.view === "outline" ? (
+      <KbOutlineView visible={visible} sort={sort} filtering={narrowed} collapsed={collapsed} onToggle={toggleCollapsed} />
     ) : (
-      <KbListView visible={visible} sort={sort} filtering={active} searching={searching} />
+      <KbListView visible={visible} sort={sort} filtering={narrowed} />
     );
 
-  const editor = (
-    <div className="flex min-w-0 flex-col gap-5">
-      <KbTeamPinsEditor team={team} />
-      <KbOrganizeTree collapsed={collapsed} onToggle={toggleCollapsed} />
+  const errorBanner = actionError ? (
+    <div
+      role="alert"
+      className="flex items-start justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+    >
+      <span>{actionError}</span>
+      <button
+        type="button"
+        onClick={clearActionError}
+        aria-label="Dismiss"
+        className="btn-icon -my-0.5 h-6 w-6 shrink-0 text-destructive hover:text-destructive"
+      >
+        <X className="h-3.5 w-3.5" aria-hidden />
+      </button>
     </div>
-  );
+  ) : null;
 
   return (
     <KbLibraryContext.Provider value={context}>
@@ -316,145 +307,18 @@ export function KbLibrary({
       </p>
 
       {organizing ? (
-        <div data-kb-organize-bar className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2
-              ref={organizeHeadingRef}
-              tabIndex={-1}
-              className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/5 px-3 py-1 text-sm font-medium text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <FolderCog className="h-4 w-4" aria-hidden />
-              Organize mode
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setDialog({ kind: "category-create", parentId: null })}
-                className="btn-whisper gap-1.5 px-3 py-1.5 text-sm"
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                New category
-              </button>
-              <button
-                type="button"
-                onClick={() => setDialog({ kind: "manage-tags" })}
-                className="btn-whisper gap-1.5 px-3 py-1.5 text-sm"
-              >
-                <Tags className="h-4 w-4" aria-hidden />
-                Manage tags
-              </button>
-              <button
-                type="button"
-                aria-pressed={csrPreview}
-                data-kb-csr-preview-toggle
-                onClick={() => setCsrPreview((v) => !v)}
-                title="Preview the library as a CSR sees it, while you edit"
-                className={cn(
-                  "btn-whisper gap-1.5 px-3 py-1.5 text-sm",
-                  csrPreview && "border-primary/40 bg-primary/10 text-primary hover:text-primary"
-                )}
-              >
-                <Eye className="h-4 w-4" aria-hidden />
-                What CSRs will see
-              </button>
-              <button type="button" onClick={() => setOrganizing(false)} className="btn-primary px-4 py-1.5 text-sm">
-                Done organizing
-              </button>
-            </div>
-          </div>
-          <div className="flex items-start gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-sm">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
-            <p className="min-w-0">
-              <span className="font-medium text-foreground">Drag to move. Changes save automatically.</span>{" "}
-              <span className="text-muted-foreground">
-                Everyone in this program sees categories, sources and team pins in this order. Each item&apos;s menu
-                has the same moves. Search and filters are paused until you finish.
-              </span>
-            </p>
-          </div>
-        </div>
-      ) : data.items.length > 0 ? (
-        <KbToolbar
-          query={query}
-          onQuery={setQuery}
-          view={prefs.view}
-          onView={(view) => setPrefs((p) => ({ ...p, view }))}
-          sort={sort}
-          onSort={(next) => setPrefs((p) => ({ ...p, sortByView: { ...p.sortByView, [p.view]: next } }))}
-          filters={filters}
-          onFilters={(next) => setPrefs((p) => ({ ...p, filters: next }))}
-          tags={tags}
-          colors={colors}
-          shown={visible.length}
-          total={data.items.length}
-          repeated={
-            prefs.view === "list" || prefs.view === "cards" || lookup.tree.roots.length === 0 ? 0 : grouped.repeated
-          }
-          repeatedMax={grouped.maxRows}
-          active={active}
-          onReset={reset}
-          canOrganize={canOrganize}
-          onOrganize={() => setOrganizing(true)}
-          searchRef={searchRef}
-        />
-      ) : null}
-
-      {linked && !organizing ? (
-        <div
-          role="status"
-          data-kb-ids-banner
-          className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-sm"
-        >
-          <Link2 className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-          <p className="min-w-0 flex-1">
-            Showing {linked.ids.size} {linked.ids.size === 1 ? "source" : "sources"}
-            {linked.fromUsage ? " from Source usage" : " from a shared link"}.
-          </p>
-          <button type="button" onClick={clearLinked} className="btn-whisper px-3 py-1 text-xs">
-            Show all sources
-          </button>
-          <button
-            type="button"
-            onClick={clearLinked}
-            aria-label="Dismiss and show all sources"
-            title="Dismiss"
-            className="btn-icon -my-1 h-7 w-7"
-          >
-            <X className="h-4 w-4" aria-hidden />
-          </button>
-        </div>
-      ) : null}
-
-      {actionError ? (
-        <div
-          role="alert"
-          className="flex items-start justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
-          <span>{actionError}</span>
-          <button
-            type="button"
-            onClick={clearActionError}
-            aria-label="Dismiss"
-            className="btn-icon -my-0.5 h-6 w-6 shrink-0 text-destructive hover:text-destructive"
-          >
-            <X className="h-3.5 w-3.5" aria-hidden />
-          </button>
-        </div>
-      ) : null}
-
-      {organizing ? (
-        csrPreview ? (
-          wide ? (
-            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,22rem)] items-start gap-5">
-              {editor}
-              <KbCsrPreview />
-            </div>
-          ) : (
-            <KbCsrPreview onBack={() => setCsrPreview(false)} />
-          )
-        ) : (
-          editor
-        )
+        <>
+          {errorBanner}
+          <KbOrganize
+            step={prefs.organizeStep}
+            onStep={(organizeStep) => setPrefs((p) => ({ ...p, organizeStep }))}
+            onDone={() => setOrganizing(false)}
+            wide={wide}
+            collapsed={collapsed}
+            onToggle={toggleCollapsed}
+            lastMoved={lastMoved}
+          />
+        </>
       ) : data.items.length === 0 ? (
         <EmptyState
           icon={BookOpen}
@@ -467,48 +331,148 @@ export function KbLibrary({
         />
       ) : (
         <>
-          {showStrips ? (
-            <KbPinStrips
-              ref={myPinsRef}
-              team={team}
-              mine={mine}
-              recent={recent}
-              collapsed={prefs.quickCollapsed}
-              onToggleCollapsed={() => setPrefs((p) => ({ ...p, quickCollapsed: !p.quickCollapsed }))}
+          <KbShortcutShelf ref={shelfRef} shelf={shelf} onEdit={editShortcuts} />
+
+          <div className="flex flex-col gap-2">
+            <KbSearch
+              query={query}
+              onQuery={setQuery}
+              results={results}
+              searchRef={searchRef}
+              onOpenDoc={(id) => navigate(`/kb/${id}`)}
+              onOpenFolder={openFolder}
+              onSeeAll={seeAll}
+              trailing={
+                <KbFiltersButton
+                  filters={filters}
+                  onFilters={setFilters}
+                  sort={sort}
+                  onSort={(next) => setPrefs((p) => ({ ...p, sortByView: { ...p.sortByView, [p.view]: next } }))}
+                  tags={tags}
+                  showLabels={!wide}
+                />
+              }
             />
+            {sentence ? <KbFilterSentence sentence={sentence} onClear={clearFilters} /> : null}
+          </div>
+
+          {linked ? (
+            <div
+              role="status"
+              data-kb-ids-banner
+              className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-sm"
+            >
+              <Link2 className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+              <p className="min-w-0 flex-1">
+                Showing {linked.ids.size} {linked.ids.size === 1 ? "source" : "sources"}
+                {linked.fromUsage ? " from Source usage" : " from a shared link"}.
+              </p>
+              <button type="button" onClick={clearLinked} className="btn-whisper px-3 py-1 text-xs">
+                Show all sources
+              </button>
+              <button
+                type="button"
+                onClick={clearLinked}
+                aria-label="Dismiss and show all sources"
+                title="Dismiss"
+                className="btn-icon -my-1 h-7 w-7"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
           ) : null}
-          {showRail ? (
-            <div className="grid grid-cols-[13rem_minmax(0,1fr)] items-start gap-5">
-              <KbCategoryRail
-                visible={visible}
-                scope={railScope}
-                onScope={(scope) => setPrefs((p) => ({ ...p, railScope: scope }))}
-              />
-              <div className="min-w-0">{browse}</div>
-            </div>
-          ) : quickLookOn ? (
-            <div className="grid grid-cols-[minmax(0,1fr)_24rem] items-start gap-5">
-              <div className="min-w-0">{browse}</div>
-              {quickLookDoc ? (
-                <Suspense fallback={<QuickLookHint paneId={paneId} />}>
-                  <KbQuickLookDoc
-                    key={quickLookDoc.documentId}
-                    doc={quickLookDoc}
-                    paneId={paneId}
-                    onClose={closeQuickLook}
-                  />
-                </Suspense>
-              ) : (
-                <QuickLookHint paneId={paneId} />
-              )}
-            </div>
-          ) : (
-            browse
-          )}
+
+          {errorBanner}
+
+          <div className={cn("grid items-start gap-5", wide && "grid-cols-[minmax(0,1fr)_18rem]")}>
+            <section ref={listRef} aria-label="Sources list" className="flex min-w-0 scroll-mt-4 flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <div role="tablist" aria-label="Which sources" className="flex gap-2">
+                  {TABS.map((t) => {
+                    const selected = prefs.tab === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        id={`${tabsId}-${t.id}`}
+                        type="button"
+                        role="tab"
+                        aria-selected={selected}
+                        aria-controls={`${tabsId}-panel`}
+                        tabIndex={selected ? 0 : -1}
+                        data-kb-tab={t.id}
+                        onClick={() => setTab(t.id)}
+                        onKeyDown={onTabKeyDown}
+                        className={cn(
+                          "btn-base px-4 py-1.5 text-sm",
+                          selected
+                            ? "border border-primary bg-primary font-medium text-primary-foreground"
+                            : "border border-border bg-secondary text-foreground hover:border-foreground/20"
+                        )}
+                      >
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
+                  {prefs.tab === "all" ? (
+                    <KbMenu
+                      label={`View: ${KB_VIEW_LABELS[prefs.view]}. Change view`}
+                      title="Change how sources are shown"
+                      buttonClassName="btn-whisper gap-1.5 px-3 py-1.5 text-sm"
+                      items={KB_VIEWS.map((view) => ({
+                        label: KB_VIEW_LABELS[view],
+                        detail:
+                          view === "folders" ? "Folder cards" : view === "outline" ? "Nested folders" : "One list",
+                        radio: true,
+                        checked: prefs.view === view,
+                        onSelect: () => {
+                          if (view === prefs.view) return;
+                          setPrefs((p) => ({ ...p, view }));
+                          if (new URLSearchParams(search).has("folder")) navigate(folderHref(search, null), { replace: true });
+                        }
+                      }))}
+                    >
+                      <span data-kb-view={prefs.view}>{KB_VIEW_LABELS[prefs.view]}</span>
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden />
+                    </KbMenu>
+                  ) : null}
+                  <p data-kb-count className="text-sm tabular-nums text-muted-foreground" aria-live="polite">
+                    {prefs.tab === "shortcuts"
+                      ? `${shownCount} ${shownCount === 1 ? "shortcut" : "shortcuts"}`
+                      : narrowed
+                        ? `${shownCount} of ${data.items.length} sources`
+                        : `${shownCount} ${shownCount === 1 ? "source" : "sources"}`}
+                  </p>
+                  {canOrganize ? (
+                    <button
+                      ref={organizeButtonRef}
+                      type="button"
+                      data-kb-organize-button
+                      onClick={() => setOrganizing(true)}
+                      className="btn-whisper gap-1.5 px-3 py-1.5 text-sm"
+                      title="Arrange folders, tags and team shortcuts for everyone"
+                    >
+                      <FolderCog className="h-4 w-4" aria-hidden />
+                      Organize
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div id={`${tabsId}-panel`} role="tabpanel" aria-labelledby={`${tabsId}-${prefs.tab}`} className="min-w-0">
+                {browse}
+              </div>
+            </section>
+            {wide ? (
+              <aside aria-label="My labels" className="sticky top-4">
+                <KbLabels variant="card" selected={filters.colors} onToggle={toggleLabel} />
+              </aside>
+            ) : null}
+          </div>
+
+          {shelf.length > 0 ? <KbShortcutDock shelf={shelf} shown={showDock} /> : null}
         </>
       )}
-
-      {!organizing && mine.length > 0 ? <KbPinsDock mine={mine} shown={showDock} /> : null}
 
       <KbDialogs dialog={dialog} onClose={() => setDialog(null)} onReturn={setDialog} />
     </KbLibraryContext.Provider>

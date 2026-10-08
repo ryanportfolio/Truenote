@@ -1,56 +1,70 @@
-import { FileText, Megaphone } from "lucide-react";
-import { docCategoryPaths, sortDocs, teamPins, type KbCategoryNode } from "@/lib/kbLibrary";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, FileText, Search } from "lucide-react";
+import { docsWithoutFolder, sortDocs, teamPins, type KbCategoryNode } from "@/lib/kbLibrary";
+import { cn } from "@/lib/utils";
 import type { KbDocumentListItem } from "@/types/api";
-import { CountLabel } from "./KbBrowseViews";
 import { useKbLibraryContext } from "./KbContext";
-import { pathsLabel } from "./KbDocRow";
-import { ColorDot, NewBadge } from "./KbShared";
+import { FolderGlyph } from "./KbShared";
 
-function PreviewDoc({ doc }: { doc: KbDocumentListItem }): JSX.Element {
+/** How long the just-moved item stays highlighted. */
+const FLASH_MS = 2500;
+
+function PreviewDoc({ doc, flash }: { doc: KbDocumentListItem; flash: string | null }): JSX.Element {
+  const on = flash === `doc:${doc.documentId}`;
   return (
-    <li className="flex min-w-0 items-center gap-1.5 py-0.5 text-sm text-foreground">
-      <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+    <li
+      data-kb-preview-item={`doc:${doc.documentId}`}
+      data-kb-preview-moved={on || undefined}
+      className={cn(
+        "flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-sm text-foreground motion-safe:transition-colors motion-safe:duration-240",
+        on && "bg-primary/10 ring-1 ring-primary/30"
+      )}
+    >
+      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
       <span className="min-w-0 truncate" title={doc.title}>
         {doc.title}
       </span>
-      {doc.isNew ? <NewBadge /> : null}
+      {on ? <span className="sr-only">(just moved)</span> : null}
     </li>
   );
 }
 
 function PreviewNode({
   node,
-  byId
+  byId,
+  flash
 }: {
   node: KbCategoryNode;
   byId: Map<string, KbDocumentListItem>;
+  flash: string | null;
 }): JSX.Element {
   const docs = node.category.documentIds
     .map((id) => byId.get(id))
     .filter((d): d is KbDocumentListItem => Boolean(d));
-  let count = 0;
-  const walk = (n: KbCategoryNode): void => {
-    n.category.documentIds.forEach((id) => {
-      if (byId.has(id)) count += 1;
-    });
-    n.children.forEach(walk);
-  };
-  walk(node);
+  const on = flash === `cat:${node.category.id}`;
   return (
     <li>
-      <p className="flex min-w-0 items-center gap-2 py-0.5 text-sm font-medium">
-        {/* Team color only: a CSR sees the manager's color, not this manager's private one. */}
-        <ColorDot color={node.category.color} />
+      <p
+        data-kb-preview-item={`cat:${node.category.id}`}
+        data-kb-preview-moved={on || undefined}
+        className={cn(
+          "flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-sm font-medium motion-safe:transition-colors motion-safe:duration-240",
+          on && "bg-primary/10 ring-1 ring-primary/30"
+        )}
+      >
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        {/* Team color only: the team sees the manager's color, not this manager's private one. */}
+        <FolderGlyph color={node.category.color} className="h-4 w-4" />
         <span className="min-w-0 truncate">{node.category.name}</span>
-        <CountLabel count={count} />
+        {on ? <span className="sr-only">(just moved)</span> : null}
       </p>
       {node.children.length > 0 || docs.length > 0 ? (
-        <ul className="ml-1.5 border-l border-border pl-3">
+        <ul className="ml-4">
           {node.children.map((child) => (
-            <PreviewNode key={child.category.id} node={child} byId={byId} />
+            <PreviewNode key={child.category.id} node={child} byId={byId} flash={flash} />
           ))}
           {docs.map((doc) => (
-            <PreviewDoc key={doc.documentId} doc={doc} />
+            <PreviewDoc key={doc.documentId} doc={doc} flash={flash} />
           ))}
         </ul>
       ) : null}
@@ -59,87 +73,117 @@ function PreviewNode({
 }
 
 /**
- * Organize mode: the library as a CSR in this program first sees it, built
- * from the same state the editor changes, so it follows every move. Team pins
- * in order, then the folders in the manager's order with team colors. The
- * manager's own pins, notes and colors are left out.
+ * Organize: a small copy of the Sources page as the team sees it, built from
+ * the same state the editor changes, so it follows every move and points at
+ * the item just moved. Team shortcuts in order, then the folders in the
+ * manager's order with team colors. The manager's own shortcuts, notes and
+ * labels are left out.
  */
-export function KbCsrPreview({ onBack }: { onBack?: () => void }): JSX.Element {
+export function KbCsrPreview({
+  onBack,
+  lastMoved = null
+}: {
+  onBack?: () => void;
+  lastMoved?: { key: string; at: number } | null;
+}): JSX.Element {
   const { data, lookup } = useKbLibraryContext();
   const team = teamPins(data.items);
   const byId = new Map(data.items.map((d) => [d.documentId, d]));
-  const loose = sortDocs(
-    data.items.filter((d) => !d.categoryIds.some((id) => lookup.tree.byId.has(id))),
-    "title"
-  );
+  const loose = sortDocs(docsWithoutFolder(data.items, lookup.tree), "title");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!lastMoved) return;
+    setFlash(lastMoved.key);
+    const timer = window.setTimeout(() => setFlash(null), FLASH_MS);
+    return () => window.clearTimeout(timer);
+  }, [lastMoved]);
+
+  // Bring the moved item into view inside the preview only, never scrolling the page.
+  useEffect(() => {
+    const box = scrollRef.current;
+    if (!flash || !box) return;
+    const el = box.querySelector<HTMLElement>(`[data-kb-preview-item="${CSS.escape(flash)}"]`);
+    if (!el) return;
+    const boxRect = box.getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
+    if (rect.top < boxRect.top || rect.bottom > boxRect.bottom) {
+      box.scrollTop += rect.top - boxRect.top - boxRect.height / 3;
+    }
+  }, [flash, data]);
+
   return (
     <section
       aria-labelledby="kb-csr-preview"
       data-kb-csr-preview
-      className="min-w-0 rounded-lg border border-border bg-card p-4 shadow-card xl:sticky xl:top-4 xl:max-h-[calc(100dvh-7rem)] xl:overflow-y-auto"
+      className="min-w-0 rounded-lg border border-border bg-card p-5 shadow-card xl:sticky xl:top-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="kb-csr-preview" className="font-display text-lg font-semibold tracking-tight">
-          What CSRs will see
-        </h2>
-        <span className="rounded-full border border-primary/25 bg-primary/5 px-2 py-0.5 text-xs font-medium text-primary">
+        <h3 id="kb-csr-preview" className="text-lg font-semibold tracking-tight">
+          What your team will see
+        </h3>
+        <span data-kb-live-preview className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+          <span aria-hidden className="h-2 w-2 rounded-full bg-primary" />
           Live preview
         </span>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Updates as you organize. Your own pins, notes and colors are left out; each CSR adds their own. A CSR only
-        sees sources their clearance allows, so some counts can be lower for them.
-      </p>
       {onBack ? (
-        <button type="button" onClick={onBack} className="btn-whisper mt-2 px-3 py-1 text-xs">
+        <button type="button" onClick={onBack} className="btn-whisper mt-2 px-3 py-1 text-sm">
           Back to organizing
         </button>
       ) : null}
 
-      <div className="mt-3 rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
-        <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-primary">
-          <Megaphone className="h-3.5 w-3.5" aria-hidden />
-          Team pins
-        </p>
+      <div
+        ref={scrollRef}
+        aria-label="Sources as your team sees them"
+        role="group"
+        className="mt-3 rounded-lg border border-border bg-background/40 p-4 xl:max-h-[calc(100dvh-12rem)] xl:overflow-y-auto"
+      >
+        <p className="font-display text-2xl font-semibold tracking-tight">Sources</p>
+        <div
+          aria-hidden
+          className="mt-2 flex items-center gap-2 rounded-md border border-input bg-card px-3 py-2 text-sm text-muted-foreground"
+        >
+          <Search className="h-4 w-4" />
+          Find a source
+        </div>
+
+        <p className="mt-4 text-sm font-medium">Team shortcuts</p>
         {team.length > 0 ? (
-          <ol aria-label="Team pins as CSRs see them" className="mt-1 flex flex-col gap-1">
-            {team.map((doc, i) => {
-              const path = pathsLabel(docCategoryPaths(doc, lookup.tree));
-              return (
-                <li key={doc.documentId} className="flex min-w-0 items-baseline gap-2 text-sm">
-                  <span className="shrink-0 tabular-nums text-xs text-muted-foreground">{i + 1}</span>
-                  <span className="min-w-0">
-                    <span className="font-medium text-primary">{doc.title}</span>
-                    {path ? <span className="block truncate text-xs text-muted-foreground">{path}</span> : null}
-                  </span>
-                </li>
-              );
-            })}
+          <ol aria-label="Team shortcuts as your team sees them" className="mt-1 flex flex-col">
+            {team.map((doc) => (
+              <PreviewDoc key={doc.documentId} doc={doc} flash={flash} />
+            ))}
           </ol>
         ) : (
-          <p className="mt-1 text-xs text-muted-foreground">No team pins. CSRs see their own pins first.</p>
+          <p className="mt-1 text-sm text-muted-foreground">None yet. Your team sees their own shortcuts first.</p>
         )}
-      </div>
 
-      <ul aria-label="Folders as CSRs see them" className="mt-3 flex flex-col gap-1">
-        {lookup.tree.roots.map((node) => (
-          <PreviewNode key={node.category.id} node={node} byId={byId} />
-        ))}
-        {loose.length > 0 ? (
-          <li>
-            <p className="flex min-w-0 items-center gap-2 py-0.5 text-sm font-medium text-muted-foreground">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-dashed border-muted-foreground" aria-hidden />
-              Not in a category
-              <CountLabel count={loose.length} />
-            </p>
-            <ul className="ml-1.5 border-l border-border pl-3">
-              {loose.map((doc) => (
-                <PreviewDoc key={doc.documentId} doc={doc} />
-              ))}
-            </ul>
-          </li>
-        ) : null}
-      </ul>
+        <ul aria-label="Folders as your team sees them" className="mt-3 flex flex-col border-t border-border pt-3">
+          {lookup.tree.roots.map((node) => (
+            <PreviewNode key={node.category.id} node={node} byId={byId} flash={flash} />
+          ))}
+          {loose.length > 0 ? (
+            <li>
+              <p className="flex min-w-0 items-center gap-2 px-2 py-1 text-sm font-medium text-muted-foreground">
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <FolderGlyph color={null} className="h-4 w-4" />
+                Not in a folder
+              </p>
+              <ul className="ml-4">
+                {loose.map((doc) => (
+                  <PreviewDoc key={doc.documentId} doc={doc} flash={flash} />
+                ))}
+              </ul>
+            </li>
+          ) : null}
+        </ul>
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Each person also sees their own shortcuts, notes and labels. Someone who can&apos;t open a source never sees it,
+        so their counts can be lower.
+      </p>
     </section>
   );
 }

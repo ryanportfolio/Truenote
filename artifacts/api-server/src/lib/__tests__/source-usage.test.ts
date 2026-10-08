@@ -5,6 +5,7 @@ import {
   parseOptionalUuid,
   parseQuestionLimit,
   parseUsageWindowDays,
+  selectSourceSuggestions,
   shapeUsageMatrix,
   takePage
 } from "../source-usage.js";
@@ -86,5 +87,65 @@ describe("source usage matrix", () => {
       documentIds: [],
       rows: [{ userId: "u1", counts: [] }]
     });
+  });
+});
+
+describe("source suggestions", () => {
+  const base = { lastCitedAt: "2026-10-01T00:00:00.000Z", related: false };
+
+  it("prefers related sources and ranks them by team citations", () => {
+    expect(
+      selectSourceSuggestions([
+        { ...base, documentId: "top", title: "Billing overview", teamCitations: 40 },
+        { ...base, documentId: "fees", title: "Fee schedule", teamCitations: 5, related: true },
+        { ...base, documentId: "refunds", title: "Refund rules", teamCitations: 9, related: true }
+      ])
+    ).toEqual([
+      { documentId: "refunds", title: "Refund rules", reason: "related", teamCitations: 9 },
+      { documentId: "fees", title: "Fee schedule", reason: "related", teamCitations: 5 }
+    ]);
+  });
+
+  it("falls back to the team's most cited sources when nothing is related", () => {
+    expect(
+      selectSourceSuggestions([
+        { ...base, documentId: "a", title: "A", teamCitations: 2 },
+        { ...base, documentId: "b", title: "B", teamCitations: 7 },
+        { ...base, documentId: "c", title: "C", teamCitations: 4 },
+        { ...base, documentId: "d", title: "D", teamCitations: 1 }
+      ]).map((s) => [s.documentId, s.reason])
+    ).toEqual([
+      ["b", "team_top"],
+      ["c", "team_top"],
+      ["a", "team_top"]
+    ]);
+  });
+
+  it("returns at most three, breaking ties by recency then id", () => {
+    const picked = selectSourceSuggestions([
+      { ...base, documentId: "z", title: "Z", teamCitations: 3, related: true },
+      { ...base, documentId: "y", title: "Y", teamCitations: 3, related: true },
+      {
+        documentId: "x",
+        title: "X",
+        teamCitations: 3,
+        related: true,
+        lastCitedAt: "2026-10-05T00:00:00.000Z"
+      },
+      { ...base, documentId: "w", title: "W", teamCitations: 3, related: true }
+    ]);
+    expect(picked.map((s) => s.documentId)).toEqual(["x", "w", "y"]);
+  });
+
+  it("never suggests hidden titles, uncited or repeated sources", () => {
+    expect(
+      selectSourceSuggestions([
+        { ...base, documentId: "hidden", title: null, teamCitations: 9, related: true },
+        { ...base, documentId: "zero", title: "Zero", teamCitations: 0 },
+        { ...base, documentId: "dup", title: "Dup", teamCitations: 2 },
+        { ...base, documentId: "dup", title: "Dup", teamCitations: 2 }
+      ])
+    ).toEqual([{ documentId: "dup", title: "Dup", reason: "team_top", teamCitations: 2 }]);
+    expect(selectSourceSuggestions([])).toEqual([]);
   });
 });

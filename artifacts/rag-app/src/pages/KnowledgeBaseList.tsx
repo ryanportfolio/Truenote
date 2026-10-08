@@ -16,9 +16,9 @@ import type { CurrentUser, KbDocumentListResponse } from "@/types/api";
 /**
  * CSR-facing knowledge base. The list is every live (active + parsed)
  * document in the CSR's program; each opens as a full rendered read.
- * This is the same corpus answers are grounded in — a citation's
- * "read the full document" link lands here. The library UI (pins, notes,
- * views, manager organization) lives in components/kb-library.
+ * This is the same corpus answers are grounded in: a citation's
+ * "read the full document" link lands here. The library UI (shortcuts,
+ * notes, labels, views, manager organization) lives in components/kb-library.
  */
 
 type ListState =
@@ -117,7 +117,7 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
       }
     }
     void load();
-    // Super_user program switch changes the corpus — reload in place.
+    // A super_user program switch changes the corpus, so reload in place.
     window.addEventListener(SELECTED_PROGRAM_CHANGED_EVENT, load as EventListener);
     return () => {
       cancelled = true;
@@ -126,22 +126,22 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
   }, [user]);
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-6 xl:max-w-6xl">
+    <div className="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-6 xl:max-w-7xl">
       <header>
         <h1 className="font-display text-3xl font-semibold tracking-tight">Sources</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Documents used to answer questions. Pin the ones you use most, or open one to read it in full.
-        </p>
+        <p className="mt-1 text-base text-muted-foreground">Find the policy you need.</p>
       </header>
 
       {state.status === "loading" ? (
         <div role="status">
           <div className="flex flex-col gap-5" aria-hidden>
-            <div className="skeleton h-[38px] w-full rounded-md" />
+            <div className="skeleton h-6 w-40 rounded-md" />
             <div className="flex gap-2">
-              <div className="skeleton h-7 w-56 rounded-full" />
-              <div className="skeleton h-7 w-36 rounded-full" />
+              <div className="skeleton h-24 flex-1 rounded-lg" />
+              <div className="skeleton h-24 flex-1 rounded-lg" />
+              <div className="skeleton h-24 flex-1 rounded-lg" />
             </div>
+            <div className="skeleton h-12 w-full rounded-lg" />
             <div className="rounded-lg border border-border bg-card shadow-card">
               <div className="border-b border-border px-4 py-3">
                 <div className="skeleton h-4 w-2/3" />
@@ -172,7 +172,7 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
           role="status"
           className="rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
         >
-          Choose a program to browse its documents.
+          Choose a program to browse its sources.
         </div>
       ) : null}
 

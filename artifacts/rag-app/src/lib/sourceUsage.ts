@@ -1,6 +1,7 @@
 import type {
   KbCategory,
   KbDocumentListItem,
+  SourceUsageQuestion,
   SourceUsageSource,
   SourceUsageUser
 } from "@/types/api";
@@ -440,4 +441,159 @@ export function neverCitedHref(documentIds: readonly string[]): string {
 /** Share of `part` in `whole` as "12%", or null when there is nothing to divide. */
 export function percentOf(part: number, whole: number): string | null {
   return whole > 0 ? `${Math.round((part / whole) * 100)}%` : null;
+}
+
+// ---------------------------------------------------------------------------
+// "More detail" section on the everyone view: collapsed by default, saved per user
+
+const MORE_DETAIL_PREFIX = "truenote:source-usage:more-detail:v1:";
+
+export function loadMoreDetailOpen(userId: string): boolean {
+  try {
+    return window.localStorage.getItem(MORE_DETAIL_PREFIX + userId) === "open";
+  } catch {
+    return false;
+  }
+}
+
+export function saveMoreDetailOpen(userId: string, open: boolean): void {
+  try {
+    window.localStorage.setItem(MORE_DETAIL_PREFIX + userId, open ? "open" : "closed");
+  } catch {
+    // Private mode or a full quota: the choice lasts until reload.
+  }
+}
+
+/** "Last 30 days", for headings and the time dropdown. */
+export function windowLabel(days: number): string {
+  return `Last ${days} days`;
+}
+
+// ---------------------------------------------------------------------------
+// "Needs your attention" cards on the everyone view
+
+export type AttentionCard =
+  | { kind: "neverUsed"; count: number; documentIds: string[] }
+  | { kind: "refused"; people: SourceUsageUser[]; count: number }
+  | { kind: "negative"; people: SourceUsageUser[]; count: number }
+  | { kind: "topSource"; source: SourceUsageSource; share: number };
+
+/**
+ * Up to three cards, each built from a fact that is true in this window and
+ * hidden otherwise:
+ * - sources nobody's answers used (count from the library the manager can
+ *   see when it loaded, else the server's count);
+ * - the person with the most refused questions, or the most thumbs-down
+ *   answers when that standout is larger (same tie rules as
+ *   `usageHighlights`: a count of 1 or a tie of four or more is skipped);
+ * - the top source when it carries more answers than the next one and has at
+ *   least 2, so a manager checks the source the team leans on most. A
+ *   restricted or removed source is skipped: there is nothing to open.
+ */
+export function attentionCards(input: {
+  sources: readonly SourceUsageSource[];
+  users: readonly SourceUsageUser[];
+  answered: number;
+  neverUsed: { count: number; documentIds: string[] } | null;
+}): AttentionCard[] {
+  const cards: AttentionCard[] = [];
+  if (input.neverUsed && input.neverUsed.count > 0) {
+    cards.push({ kind: "neverUsed", ...input.neverUsed });
+  }
+  const { topSource, mostRefused, mostNegative } = usageHighlights(
+    input.sources,
+    input.users,
+    input.answered
+  );
+  const negativeIsStronger =
+    mostNegative !== null && (mostRefused === null || mostNegative.count > mostRefused.count);
+  if (negativeIsStronger && mostNegative) {
+    cards.push({ kind: "negative", ...mostNegative });
+  } else if (mostRefused) {
+    cards.push({ kind: "refused", ...mostRefused });
+  }
+  if (
+    topSource &&
+    topSource.source.title !== null &&
+    topSource.source.isLive &&
+    topSource.source.citationCount >= 2 &&
+    (topSource.next === null || topSource.source.citationCount > topSource.next.citationCount)
+  ) {
+    cards.push({ kind: "topSource", source: topSource.source, share: topSource.share });
+  }
+  return cards.slice(0, 3);
+}
+
+/** "Aisha Bello", "Aisha Bello and Marcus Webb", "A, B and C". */
+export function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+// ---------------------------------------------------------------------------
+// Source drawer: identical questions grouped
+
+/** Lowercase, punctuation removed, spaces collapsed: "What's the fee?" and "whats the fee" match. */
+export function normalizeQuestion(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[\p{P}\p{S}]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export interface QuestionAsker {
+  userId: string | null;
+  name: string;
+}
+
+export interface QuestionGroup {
+  key: string;
+  /** The newest wording, as typed. */
+  question: string;
+  /** Every ask, newest first. */
+  items: SourceUsageQuestion[];
+  /** Distinct people who asked it, in order of their newest ask. */
+  askers: QuestionAsker[];
+  latestAt: string;
+  refusedCount: number;
+  negativeCount: number;
+}
+
+/** Groups asks by normalized text, keeping the newest-first order of the input. */
+export function groupQuestions(items: readonly SourceUsageQuestion[]): QuestionGroup[] {
+  const groups = new Map<string, QuestionGroup>();
+  for (const item of items) {
+    const key = normalizeQuestion(item.question) || item.queryLogId;
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        key,
+        question: item.question,
+        items: [],
+        askers: [],
+        latestAt: item.askedAt,
+        refusedCount: 0,
+        negativeCount: 0
+      };
+      groups.set(key, group);
+    }
+    group.items.push(item);
+    if (item.refused) group.refusedCount += 1;
+    if (item.feedback === -1) group.negativeCount += 1;
+    const askerKey = item.userId ?? `name:${item.userName ?? ""}`;
+    if (!group.askers.some((asker) => (asker.userId ?? `name:${asker.name}`) === askerKey)) {
+      group.askers.push({ userId: item.userId, name: personLabel({ name: item.userName }) });
+    }
+  }
+  return [...groups.values()];
+}
+
+/** "JR" for "Jordan Reyes", "K" for "Kim", "?" when there is no name. */
+export function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  const first = words[0]?.[0] ?? "";
+  const last = words.length > 1 ? (words[words.length - 1]?.[0] ?? "") : "";
+  return (first + last).toUpperCase() || "?";
 }

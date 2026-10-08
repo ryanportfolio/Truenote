@@ -1,12 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
-import { BookOpen, MessageSquareText, X } from "lucide-react";
+import { BookOpen, ChevronDown, MessageSquareText, ThumbsDown, X } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
+import { RelativeTime } from "@/components/RelativeTime";
 import { fetchSourceUsageQuestions } from "@/lib/api";
-import { firstName, plural } from "@/lib/sourceUsage";
+import {
+  firstName,
+  groupQuestions,
+  initials,
+  plural,
+  type QuestionGroup
+} from "@/lib/sourceUsage";
+import { cn } from "@/lib/utils";
 import type { SourceUsageQuestionsResponse, SourceUsageSource } from "@/types/api";
-import { QuestionList } from "./QuestionList";
-import { CategoryPath, ErrorAlert, SourceName } from "./shared";
+import { CategoryPath, ErrorAlert, QuestionSignals, SourceName, SourceOpener } from "./shared";
 
 export interface PanelSource {
   documentId: string;
@@ -18,7 +25,7 @@ interface SourceQuestionsPanelProps {
   source: PanelSource;
   /** Current numbers for this source, when it is in the ranked list. */
   stats: SourceUsageSource | null;
-  /** "Billing / Refunds", or null when the source is in no category. */
+  /** "Billing / Refunds", or null when the source is in no folder. */
   categoryPath: string | null;
   days: number;
   userId: string | null;
@@ -30,8 +37,11 @@ interface SourceQuestionsPanelProps {
   onOpenSource: (documentId: string, title: string | null) => void;
 }
 
-const FIRST_PAGE = 50;
-const MAX_PAGE = 200;
+/** One request covers a source's window for nearly every source; the server caps at 200. */
+const PAGE_LIMIT = 200;
+const GROUPS_PER_STEP = 10;
+
+type TabKey = "all" | "negative" | "refused";
 
 /** Elements the page marks as focus targets when the opener is gone. */
 const FALLBACK_FOCUS_IDS = ["person-focus-title", "source-usage-title"];
@@ -65,7 +75,9 @@ function restoreFocus(opener: HTMLElement | null, documentIds: readonly string[]
 }
 
 /**
- * Side panel: every question in the window whose answer cited one source.
+ * Side drawer for one source: its folder path, how often answers used it and
+ * by how many people, and the questions behind those answers. Identical
+ * questions (case and punctuation ignored) are one item with every asker.
  * Same keyboard contract as PreviewPanel: focus lands on Close, Escape or an
  * outside press closes, focus returns to the opener (or a stable stand-in).
  */
@@ -81,17 +93,23 @@ export function SourceQuestionsPanel({
   onSelectPerson,
   onOpenSource
 }: SourceQuestionsPanelProps): JSX.Element {
-  // "Load more" belongs to one source and filter; any change starts from the first page.
-  const pageKey = `${source.documentId}:${days}:${userId ?? ""}`;
-  const [page, setPage] = useState({ key: pageKey, limit: FIRST_PAGE });
-  const limit = page.key === pageKey ? page.limit : FIRST_PAGE;
   const [data, setData] = useState<SourceUsageQuestionsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Tab and "Show more" belong to one source and filter; any change starts over.
+  const viewKey = `${source.documentId}:${days}:${userId ?? ""}`;
+  const [view, setView] = useState<{ key: string; tab: TabKey; shown: number }>({
+    key: viewKey,
+    tab: "all",
+    shown: GROUPS_PER_STEP
+  });
+  const tab = view.key === viewKey ? view.tab : "all";
+  const shown = view.key === viewKey ? view.shown : GROUPS_PER_STEP;
   const panelRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const currentSourceRef = useRef(source.documentId);
   currentSourceRef.current = source.documentId;
   const restricted = source.title === null;
+  const tabsId = useId();
 
   useEffect(() => {
     // Body means the opener already unmounted in the same render that opened the panel.
@@ -120,8 +138,13 @@ export function SourceQuestionsPanel({
     if (restricted) return;
     let cancelled = false;
     setError(null);
-    setData((current) => (limit > FIRST_PAGE ? current : null));
-    fetchSourceUsageQuestions({ windowDays: days, userId, documentId: source.documentId, limit })
+    setData(null);
+    fetchSourceUsageQuestions({
+      windowDays: days,
+      userId,
+      documentId: source.documentId,
+      limit: PAGE_LIMIT
+    })
       .then((result) => {
         if (!cancelled) setData(result);
       })
@@ -133,27 +156,71 @@ export function SourceQuestionsPanel({
     return () => {
       cancelled = true;
     };
-  }, [restricted, source.documentId, days, userId, limit, reloadKey]);
+  }, [restricted, source.documentId, days, userId, reloadKey]);
+
+  const lists = useMemo(() => {
+    const items = data?.items ?? [];
+    const negative = items.filter((item) => item.feedback === -1);
+    const refused = items.filter((item) => item.refused);
+    return {
+      all: { count: items.length, groups: groupQuestions(items) },
+      negative: { count: negative.length, groups: groupQuestions(negative) },
+      refused: { count: refused.length, groups: groupQuestions(refused) },
+      people: new Set(items.map((item) => item.userId ?? `name:${item.userName ?? ""}`)).size
+    };
+  }, [data]);
 
   const canOpen = !restricted && source.isLive;
-  const shown = data?.items.length ?? 0;
-  const who = userId ? ` from ${personName ?? "this person"}` : "";
-  // Person mode counts only that person's reader opens; the sentence names them.
-  const viewer = userId ? (personName ? firstName(personName) : "This person") : null;
-  const views = stats
-    ? viewer
-      ? stats.viewCount > 0
-        ? `${viewer} opened it ${plural(stats.viewCount, "time", "times")} in the reader`
-        : `${viewer} has not opened it in the reader`
-      : `Asked by ${plural(stats.userCount, "person", "people")} · Opened ${plural(stats.viewCount, "time", "times")} in the reader`
-    : null;
+  const personFirst = userId ? (personName ? firstName(personName) : "this person") : null;
+  const tabs: { key: TabKey; label: string; count: number }[] = [
+    { key: "all", label: "All", count: lists.all.count },
+    { key: "negative", label: "Thumbs down", count: lists.negative.count },
+    ...(lists.refused.count > 0
+      ? [{ key: "refused" as const, label: "Refused", count: lists.refused.count }]
+      : [])
+  ];
+  const activeTab = tabs.some((item) => item.key === tab) ? tab : "all";
+  const active = lists[activeTab];
+  const visibleGroups = active.groups.slice(0, shown);
+
+  // One sentence; counts come from the listed items so they match the tabs.
+  // When the list stopped at the limit, the server's totals are used and the
+  // sentence says the list shows only the newest.
   const summary = !data
     ? null
-    : !data.truncated
-      ? `${plural(shown, "question", "questions")}${who} · Last ${days} days`
-      : stats
-        ? `${plural(stats.citationCount, "question", "questions")}${who} · Last ${days} days · showing the newest ${shown}`
-        : `Showing the newest ${shown} questions${who} · Last ${days} days`;
+    : (() => {
+        const answers = data.truncated && stats ? stats.citationCount : lists.all.count;
+        const people = data.truncated && stats ? stats.userCount : lists.people;
+        const negatives = data.truncated && stats ? stats.negativeCount : lists.negative.count;
+        const who = personFirst
+          ? ` by ${personFirst}`
+          : ` by ${plural(people, "person", "people")}`;
+        return (
+          `Used in ${plural(answers, "answer", "answers")}${who} in the last ${days} days` +
+          (negatives > 0 ? `; ${negatives} thumbs down` : "") +
+          (data.truncated ? `. The list shows the newest ${data.items.length}.` : "")
+        );
+      })();
+
+  function selectTab(next: TabKey): void {
+    setView({ key: viewKey, tab: next, shown: GROUPS_PER_STEP });
+  }
+
+  function onTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>): void {
+    const keys = tabs.map((item) => item.key);
+    const index = keys.indexOf(activeTab);
+    let next: number | null = null;
+    if (event.key === "ArrowRight") next = (index + 1) % keys.length;
+    else if (event.key === "ArrowLeft") next = (index - 1 + keys.length) % keys.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = keys.length - 1;
+    if (next === null) return;
+    event.preventDefault();
+    const key = keys[next];
+    if (!key) return;
+    selectTab(key);
+    document.getElementById(`${tabsId}-tab-${key}`)?.focus();
+  }
 
   return (
     <aside
@@ -164,34 +231,37 @@ export function SourceQuestionsPanel({
       onKeyDown={(event) => {
         if (event.key === "Escape") onClose();
       }}
-      className="fixed right-0 top-16 z-40 flex h-[calc(100vh-4rem)] w-[min(560px,90vw)] flex-col border-l border-border bg-card shadow-panel motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-right-4 motion-safe:duration-240 motion-safe:ease-out-quart"
+      className="fixed right-0 top-16 z-40 flex h-[calc(100vh-4rem)] w-[min(560px,92vw)] flex-col border-l border-border bg-card shadow-panel motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-right-4 motion-safe:duration-240 motion-safe:ease-out-quart"
     >
-      <header className="flex flex-col gap-3 border-b border-border px-5 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground">
-              Source details
-            </span>
-            <h2 id="source-questions-title" className="text-xl font-semibold tracking-tight">
-              <SourceName title={source.title} isLive={source.isLive} />
-            </h2>
-            <CategoryPath path={restricted ? null : categoryPath} />
+      <div className="flex-1 overflow-auto">
+        <header className="flex flex-col gap-3 px-5 pb-4 pt-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Source details
+              </span>
+              <h2
+                id="source-questions-title"
+                className="mt-1 break-words font-display text-2xl font-semibold tracking-tight"
+              >
+                <SourceName title={source.title} isLive={source.isLive} />
+              </h2>
+              <CategoryPath path={restricted ? null : categoryPath} />
+            </div>
+            <button
+              ref={closeRef}
+              type="button"
+              onClick={onClose}
+              aria-label="Close source details"
+              className="btn-icon shrink-0"
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </button>
           </div>
-          <button
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-            aria-label="Close source details"
-            className="btn-icon shrink-0"
-          >
-            <X className="h-4 w-4" aria-hidden />
-          </button>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
           {canOpen ? (
             <Link
               href={`/kb/${encodeURIComponent(source.documentId)}`}
-              className="btn-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-sm"
+              className="btn-primary inline-flex items-center gap-2 self-start px-5 py-2 text-base"
             >
               <BookOpen className="h-4 w-4" aria-hidden />
               Open source
@@ -201,95 +271,307 @@ export function SourceQuestionsPanel({
               This source was removed from the library.
             </span>
           )}
-          {views && !restricted ? (
-            <span className="text-xs text-muted-foreground">{views}</span>
+          {summary && !restricted ? (
+            <p
+              className="rounded-lg bg-muted px-4 py-3 text-sm text-foreground"
+              data-panel-summary=""
+            >
+              {summary}
+            </p>
           ) : null}
-        </div>
-      </header>
+          {userId ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                Only {personName ?? "this person"}'s questions.
+              </span>
+              <button
+                type="button"
+                onClick={() => onSelectPerson(null)}
+                className="btn-whisper px-3 py-1 text-xs"
+              >
+                Show everyone's
+              </button>
+            </div>
+          ) : null}
+        </header>
 
-      <div className="flex-1 overflow-auto">
         {restricted ? (
-          <p className="m-5 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+          <p className="mx-5 mb-5 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
             Your access level does not include this source or the questions that cited it.
           </p>
+        ) : error ? (
+          <div className="px-5 pb-5">
+            <ErrorAlert message={error} />
+          </div>
+        ) : !data ? (
+          <div role="status" className="flex flex-col gap-4 px-5 pb-5">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="flex flex-col gap-2">
+                <div className="skeleton h-4 w-5/6" />
+                <div className="skeleton h-3 w-1/3" />
+              </div>
+            ))}
+            <span className="sr-only">Loading questions…</span>
+          </div>
+        ) : data.items.length === 0 ? (
+          <div className="px-5 pb-5">
+            <EmptyState
+              icon={MessageSquareText}
+              title="No answer used this source in this period"
+              hint="Try a longer time period, or show everyone."
+            />
+          </div>
         ) : (
-          <section aria-labelledby="source-questions-list-title">
-            <div className="flex flex-col gap-1 px-5 pb-2 pt-4">
-              <h3 id="source-questions-list-title" className="text-base font-semibold">
-                Questions citing this source
-              </h3>
-              {summary ? (
-                <p className="text-xs text-muted-foreground" data-panel-summary="">
-                  {summary}
+          <div className="flex flex-col">
+            <div
+              role="tablist"
+              aria-label="Which questions to show"
+              className="mx-5 flex gap-1 border-b border-border"
+            >
+              {tabs.map((item) => {
+                const selected = item.key === activeTab;
+                return (
+                  <button
+                    key={item.key}
+                    id={`${tabsId}-tab-${item.key}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    aria-controls={`${tabsId}-panel`}
+                    tabIndex={selected ? 0 : -1}
+                    data-tab={item.key}
+                    onClick={() => selectTab(item.key)}
+                    onKeyDown={onTabKeyDown}
+                    className={cn(
+                      "-mb-px inline-flex items-center gap-2 rounded-t-md border-b-2 px-3 py-2 text-sm transition-colors duration-100 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      selected
+                        ? "border-primary font-medium text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {item.label}
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 text-xs tabular-nums",
+                        selected ? "bg-primary/10" : "bg-muted"
+                      )}
+                      data-tab-count=""
+                    >
+                      {item.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <section
+              id={`${tabsId}-panel`}
+              role="tabpanel"
+              aria-labelledby={`${tabsId}-tab-${activeTab}`}
+              className="flex flex-col"
+            >
+              <h3 className="px-5 pb-1 pt-4 text-base font-semibold">Questions</h3>
+              {active.groups.length === 0 ? (
+                <p className="px-5 pb-5 text-sm text-muted-foreground">
+                  {activeTab === "negative"
+                    ? "No answer that used this source was marked thumbs down."
+                    : "No questions here."}
                 </p>
-              ) : null}
-              <p className="text-xs text-muted-foreground">
-                Each item is one time someone asked and the answer cited this source.
-              </p>
-              {userId ? (
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-muted-foreground">
-                    Only {personName ?? "this person"}'s questions.
-                  </span>
+              ) : (
+                <ul className="divide-y divide-border border-y border-border" data-question-groups="">
+                  {visibleGroups.map((group) => (
+                    <GroupItem
+                      key={group.key}
+                      group={group}
+                      currentDocumentId={source.documentId}
+                      onSelectPerson={(id) => onSelectPerson(id)}
+                      onOpenSource={onOpenSource}
+                    />
+                  ))}
+                </ul>
+              )}
+              {active.groups.length > shown ? (
+                <div className="flex justify-center px-5 py-3">
                   <button
                     type="button"
-                    onClick={() => onSelectPerson(null)}
-                    className="btn-whisper px-3 py-1 text-xs"
+                    onClick={() =>
+                      setView({ key: viewKey, tab: activeTab, shown: shown + GROUPS_PER_STEP })
+                    }
+                    className="btn-whisper inline-flex items-center gap-1.5 px-4 py-1.5 text-sm"
                   >
-                    Show everyone's
+                    Show more questions
+                    <ChevronDown className="h-4 w-4" aria-hidden />
                   </button>
                 </div>
               ) : null}
-            </div>
-            {error ? (
-              <div className="p-5">
-                <ErrorAlert message={error} />
-              </div>
-            ) : !data ? (
-              <div role="status" className="flex flex-col gap-4 p-5">
-                {[0, 1, 2, 3].map((i) => (
-                  <div key={i} className="flex flex-col gap-2">
-                    <div className="skeleton h-4 w-5/6" />
-                    <div className="skeleton h-3 w-1/3" />
-                  </div>
-                ))}
-                <span className="sr-only">Loading questions…</span>
-              </div>
-            ) : data.items.length === 0 ? (
-              <div className="p-5">
-                <EmptyState
-                  icon={MessageSquareText}
-                  title="No questions cited this source in this window"
-                  hint="Try a longer time window, or show everyone."
-                />
-              </div>
-            ) : (
-              <div className="border-t border-border">
-                <QuestionList
-                  items={data.items}
-                  currentDocumentId={source.documentId}
-                  onSelectPerson={(id) => onSelectPerson(id)}
-                  onOpenSource={onOpenSource}
-                />
-                {data.truncated ? (
-                  <div className="flex flex-wrap items-center gap-2 border-t border-border px-5 py-3 text-xs text-muted-foreground">
-                    <span>Showing the newest {data.items.length}.</span>
-                    {limit < MAX_PAGE ? (
-                      <button
-                        type="button"
-                        onClick={() => setPage({ key: pageKey, limit: MAX_PAGE })}
-                        className="btn-whisper px-3 py-1 text-xs"
-                      >
-                        Load up to {MAX_PAGE}
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </section>
+            </section>
+          </div>
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * One question as worded (identical asks merged): how many times, who asked
+ * (initials chip and name, each a button to that person's coaching guide),
+ * and when. The other sources the answers used stay hidden until expanded.
+ */
+function GroupItem({
+  group,
+  currentDocumentId,
+  onSelectPerson,
+  onOpenSource
+}: {
+  group: QuestionGroup;
+  currentDocumentId: string;
+  onSelectPerson: (userId: string) => void;
+  onOpenSource: (documentId: string, title: string | null) => void;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const detailsId = useId();
+  const times = group.items.length;
+  return (
+    <li className="flex flex-col gap-2 px-5 py-3" data-question-group="" data-asked={times}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="whitespace-pre-wrap break-words text-sm font-medium">{group.question}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {times > 1 ? `Asked ${times} times · last ` : "Asked "}
+            <RelativeTime iso={group.latestAt} />
+          </p>
+        </div>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={detailsId}
+          aria-label={`${open ? "Hide" : "Show"} details for "${group.question}"`}
+          onClick={() => setOpen((value) => !value)}
+          className="btn-icon shrink-0"
+        >
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 transition-transform duration-100 ease-out motion-reduce:transition-none",
+              open && "rotate-180"
+            )}
+            aria-hidden
+          />
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {group.askers.map((asker) => (
+          <AskerChip
+            key={asker.userId ?? asker.name}
+            name={asker.name}
+            userId={asker.userId}
+            onSelectPerson={onSelectPerson}
+          />
+        ))}
+        {group.negativeCount > 0 ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
+            <ThumbsDown className="h-3 w-3" aria-hidden />
+            Thumbs down{group.negativeCount > 1 ? ` ${group.negativeCount}` : ""}
+          </span>
+        ) : null}
+        {group.refusedCount > 0 ? (
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            Refused
+          </span>
+        ) : null}
+      </div>
+      <div id={detailsId} hidden={!open}>
+        {open ? (
+          <GroupDetails
+            group={group}
+            currentDocumentId={currentDocumentId}
+            onOpenSource={onOpenSource}
+          />
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+function AskerChip({
+  name,
+  userId,
+  onSelectPerson
+}: {
+  name: string;
+  userId: string | null;
+  onSelectPerson: (userId: string) => void;
+}): JSX.Element {
+  const content = (
+    <>
+      <span
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-card text-xs font-semibold text-foreground ring-1 ring-border"
+        aria-hidden
+      >
+        {initials(name)}
+      </span>
+      <span className="truncate">{name}</span>
+    </>
+  );
+  const chipClass =
+    "inline-flex max-w-full items-center gap-1.5 rounded-full bg-muted py-0.5 pl-0.5 pr-2.5 text-xs font-medium text-foreground";
+  if (!userId) return <span className={chipClass}>{content}</span>;
+  return (
+    <button
+      type="button"
+      onClick={() => onSelectPerson(userId)}
+      title={`Open ${name}'s coaching guide`}
+      className={cn(
+        chipClass,
+        "transition-colors duration-100 ease-out hover:bg-muted/60 hover:ring-1 hover:ring-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      )}
+    >
+      {content}
+    </button>
+  );
+}
+
+/** Each ask (who, when, outcome) and the other sources its answer used. */
+function GroupDetails({
+  group,
+  currentDocumentId,
+  onOpenSource
+}: {
+  group: QuestionGroup;
+  currentDocumentId: string;
+  onOpenSource: (documentId: string, title: string | null) => void;
+}): JSX.Element {
+  const others = new Map<string, string | null>();
+  for (const item of group.items) {
+    for (const cited of item.sources) {
+      if (cited.documentId !== currentDocumentId) others.set(cited.documentId, cited.title);
+    }
+  }
+  return (
+    <div className="flex flex-col gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs">
+      <ul className="flex flex-col gap-1">
+        {group.items.map((item) => (
+          <li key={item.queryLogId} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="font-medium text-foreground">{item.userName ?? "Unknown person"}</span>
+            <RelativeTime iso={item.askedAt} />
+            <QuestionSignals refused={item.refused} feedback={item.feedback} />
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-muted-foreground">Also cited:</span>
+        {others.size === 0 ? (
+          <span className="text-muted-foreground">No other source.</span>
+        ) : (
+          [...others.entries()].map(([documentId, title]) => (
+            <SourceOpener
+              key={documentId}
+              documentId={documentId}
+              title={title}
+              onOpen={onOpenSource}
+              className="max-w-full truncate rounded-full border border-border bg-card px-2 py-0.5 transition-colors duration-100 ease-out hover:border-foreground/30 hover:no-underline"
+            />
+          ))
+        )}
+      </div>
+    </div>
   );
 }

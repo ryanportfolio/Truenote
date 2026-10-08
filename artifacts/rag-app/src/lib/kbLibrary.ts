@@ -1,65 +1,77 @@
 import type {
   KbCategory,
+  KbColorLabel,
   KbDocumentListItem,
   KbDocumentListResponse,
   KbLibraryColor,
   KbSourceUserState,
   KbTag
 } from "@/types/api";
-import { isKbLibraryColor } from "./kbLibraryColors";
+import { KB_LIBRARY_COLORS as KB_LABEL_ORDER, isKbLibraryColor, kbLabelText } from "./kbLibraryColors";
 
 /**
- * Pure helpers for the Sources page: category tree building, search, filter
- * and sort, per-user view preferences, and the optimistic state transforms
- * the page applies before the server confirms a change. Every transform
- * mirrors the server rule it anticipates (routes/kb-library.ts) so the
- * optimistic state matches what a reload would return.
+ * Pure helpers for the Sources page: folder tree building (folders are
+ * "categories" in the API), search, filter and sort, the shortcuts shelf,
+ * per-user view preferences, and the optimistic state transforms the page
+ * applies before the server confirms a change. Every transform mirrors the
+ * server rule it anticipates (routes/kb-library.ts) so the optimistic state
+ * matches what a reload would return.
  */
 
-export type KbView = "folders" | "categories" | "list" | "cards";
+/** Folders: a cabinet of folder cards. Outline: the nested tree. List: one flat list. */
+export type KbView = "folders" | "outline" | "list";
 export type KbSort = "manual" | "newest" | "updated" | "views" | "cited" | "title";
+/** All sources, or only the ones the user starred (My shortcuts). */
+export type KbTab = "all" | "shortcuts";
+export type KbOrganizeStep = "shortcuts" | "folders";
 
 export interface KbFilters {
+  /** Added or changed in the last 14 days (isNew). */
   newOnly: boolean;
-  myPins: boolean;
+  /** Changed in the last 14 days, but added earlier than that. */
+  updatedOnly: boolean;
   hasNote: boolean;
   tagIds: string[];
-  /** The user's own source colors; a source matches any of them. */
+  /** The user's own labels (colors); a source matches any of them. */
   colors: KbLibraryColor[];
 }
 
 export interface KbPrefs {
   view: KbView;
+  tab: KbTab;
   /** Sort chosen per view; a view without an entry uses defaultSort(view). */
   sortByView: Partial<Record<KbView, KbSort>>;
   filters: KbFilters;
-  /** Folder-view categories the user collapsed. */
+  /** Outline-view folders the user collapsed. */
   collapsed: string[];
-  /** My pins and Recently opened folded to one line above the library. */
-  quickCollapsed: boolean;
-  /**
-   * Folders view category rail (wide screens): the category the list is
-   * scoped to, KB_UNCATEGORIZED for sources in no category, null for all.
-   */
-  railScope: string | null;
-  /** Cards view: the top-level category tab (null = All) and its subcategory chip. */
-  cardsTab: string | null;
-  cardsSub: string | null;
+  /** Last Organize step a manager used. */
+  organizeStep: KbOrganizeStep;
 }
 
-/** Scope key for "Not in a category" in the rail and the Cards tabs. */
+/** Key for "Not in a folder" (sources in no folder), in the cabinet, the outline and the URL. */
 export const KB_UNCATEGORIZED = "__uncategorized";
+/** `?folder=` value for "Not in a folder". */
+export const KB_NO_FOLDER_PARAM = "none";
 
 export const KB_MAX_CATEGORY_DEPTH = 4;
 export const KB_NOTE_MAX = 4000;
 export const KB_MAX_TEAM_PINS = 12;
 export const KB_CATEGORY_NAME_MAX = 80;
 export const KB_TAG_NAME_MAX = 40;
+export const KB_LABEL_NAME_MAX = 40;
+/** isNew covers this window on the server (routes/kb-library.ts). */
+export const KB_NEW_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
 /** Drag settle and sortable shifts: DESIGN.md ease-out-quart, under the 250 ms bar. Off under reduced motion. */
 export const KB_DRAG_MOTION = { duration: 200, easing: "cubic-bezier(0.25, 1, 0.5, 1)" } as const;
 
-export const KB_VIEWS: readonly KbView[] = ["folders", "categories", "list", "cards"];
+export const KB_VIEWS: readonly KbView[] = ["folders", "outline", "list"];
+
+export const KB_VIEW_LABELS: Record<KbView, string> = {
+  folders: "Folders",
+  outline: "Outline",
+  list: "List"
+};
 
 export const KB_SORT_LABELS: Record<KbSort, string> = {
   manual: "Manager's order",
@@ -72,7 +84,7 @@ export const KB_SORT_LABELS: Record<KbSort, string> = {
 
 export const EMPTY_FILTERS: KbFilters = {
   newOnly: false,
-  myPins: false,
+  updatedOnly: false,
   hasNote: false,
   tagIds: [],
   colors: []
@@ -85,13 +97,11 @@ export function defaultSort(view: KbView): KbSort {
 export function defaultPrefs(): KbPrefs {
   return {
     view: "folders",
+    tab: "all",
     sortByView: {},
     filters: EMPTY_FILTERS,
     collapsed: [],
-    quickCollapsed: false,
-    railScope: null,
-    cardsTab: null,
-    cardsSub: null
+    organizeStep: "shortcuts"
   };
 }
 
@@ -104,12 +114,12 @@ export function sortForView(prefs: KbPrefs, view: KbView): KbSort {
 
 const PREFS_PREFIX = "truenote:kb-library:v1:";
 
-function isView(value: unknown): value is KbView {
-  return typeof value === "string" && (KB_VIEWS as readonly string[]).includes(value);
-}
-
-function stringOrNull(value: unknown): string | null {
-  return typeof value === "string" && value !== "" ? value : null;
+/** Views from earlier builds map onto today's: Categories and Cards became the folder cabinet. */
+function parseView(value: unknown): KbView | null {
+  if (typeof value !== "string") return null;
+  if ((KB_VIEWS as readonly string[]).includes(value)) return value as KbView;
+  if (value === "categories" || value === "cards") return "folders";
+  return null;
 }
 
 function isSort(value: unknown): value is KbSort {
@@ -132,21 +142,22 @@ export function parsePrefs(raw: string | null): KbPrefs {
       if (isSort(rawSorts[view])) sortByView[view] = rawSorts[view] as KbSort;
     }
     const rawFilters = (parsed.filters ?? {}) as Record<string, unknown>;
+    // The old "My pins" filter is the My shortcuts tab now.
+    const tab: KbTab =
+      parsed.tab === "shortcuts" || (parsed.tab === undefined && rawFilters.myPins === true) ? "shortcuts" : "all";
     return {
-      view: isView(parsed.view) ? parsed.view : fallback.view,
+      view: parseView(parsed.view) ?? fallback.view,
+      tab,
       sortByView,
       filters: {
         newOnly: rawFilters.newOnly === true,
-        myPins: rawFilters.myPins === true,
+        updatedOnly: rawFilters.updatedOnly === true,
         hasNote: rawFilters.hasNote === true,
         tagIds: stringArray(rawFilters.tagIds),
         colors: Array.isArray(rawFilters.colors) ? rawFilters.colors.filter(isKbLibraryColor) : []
       },
       collapsed: stringArray(parsed.collapsed),
-      quickCollapsed: parsed.quickCollapsed === true,
-      railScope: stringOrNull(parsed.railScope),
-      cardsTab: stringOrNull(parsed.cardsTab),
-      cardsSub: stringOrNull(parsed.cardsSub)
+      organizeStep: parsed.organizeStep === "folders" ? "folders" : "shortcuts"
     };
   } catch {
     return fallback;
@@ -271,10 +282,10 @@ export function nestBlockReason(
   const target = tree.byId.get(targetParentId);
   if (!target) return null;
   if (subtreeIds(moving).has(targetParentId)) {
-    return "A category can't be moved inside itself.";
+    return "A folder can't be moved inside itself.";
   }
   if (target.depth + subtreeHeight(moving) > KB_MAX_CATEGORY_DEPTH) {
-    return `Categories can nest at most ${KB_MAX_CATEGORY_DEPTH} levels.`;
+    return `Folders can nest at most ${KB_MAX_CATEGORY_DEPTH} levels.`;
   }
   return null;
 }
@@ -320,9 +331,9 @@ export function docMatchesQuery(doc: KbDocumentListItem, query: string, lookup: 
   return false;
 }
 
-export function docPassesFilters(doc: KbDocumentListItem, filters: KbFilters): boolean {
+export function docPassesFilters(doc: KbDocumentListItem, filters: KbFilters, now = Date.now()): boolean {
   if (filters.newOnly && !doc.isNew) return false;
-  if (filters.myPins && !doc.pinnedAt) return false;
+  if (filters.updatedOnly && docStatus(doc, now) !== "updated") return false;
   if (filters.hasNote && !doc.note) return false;
   // Tags narrow with OR inside the tag set: "Billing or Refunds".
   if (filters.tagIds.length > 0 && !filters.tagIds.some((id) => doc.tagIds.includes(id))) {
@@ -338,7 +349,7 @@ export function filtersActive(filters: KbFilters, query: string): boolean {
   return (
     query.trim() !== "" ||
     filters.newOnly ||
-    filters.myPins ||
+    filters.updatedOnly ||
     filters.hasNote ||
     filters.tagIds.length > 0 ||
     filters.colors.length > 0
@@ -447,6 +458,194 @@ export function idsFromSearch(search: string): string[] | null {
   if (!raw) return null;
   const ids = Array.from(new Set(raw.split(",").map((id) => id.trim()).filter(Boolean)));
   return ids.length > 0 ? ids : null;
+}
+
+// ---------------------------------------------------------------------------
+// Status, shortcuts shelf, "Used often", search panel, filter sentence
+
+/**
+ * The one status a row shows: "updated" when the source changed in the last
+ * 14 days but was added before that, "new" when it was added in that window,
+ * else null. Mirrors the server's isNew window.
+ */
+export function docStatus(
+  doc: Pick<KbDocumentListItem, "isNew" | "createdAt">,
+  now = Date.now()
+): "new" | "updated" | null {
+  if (!doc.isNew) return null;
+  const created = time(doc.createdAt);
+  return created > 0 && now - created > KB_NEW_WINDOW_MS ? "updated" : "new";
+}
+
+export type KbShortcutSource = "team" | "mine" | "recent";
+
+export interface KbShortcut {
+  doc: KbDocumentListItem;
+  /** Why it is on the shelf: a team shortcut, starred by this user, or opened recently. */
+  source: KbShortcutSource;
+}
+
+/**
+ * The "Your shortcuts" shelf: team shortcuts in the manager's order, then the
+ * user's own (oldest first, so a number never changes when they star
+ * another), then recently opened sources that are in neither. No source
+ * twice; at most `limit` (the 1 to 9 number keys follow this order).
+ */
+export function shortcutShelf(items: KbDocumentListItem[], limit = KB_NUMBERED_PINS): KbShortcut[] {
+  const shelf: KbShortcut[] = [];
+  const seen = new Set<string>();
+  const add = (doc: KbDocumentListItem, source: KbShortcutSource): void => {
+    if (shelf.length >= limit || seen.has(doc.documentId)) return;
+    seen.add(doc.documentId);
+    shelf.push({ doc, source });
+  };
+  teamPins(items).forEach((doc) => add(doc, "team"));
+  myPins(items).forEach((doc) => add(doc, "mine"));
+  recentlyOpened(items, limit, seen).forEach((doc) => add(doc, "recent"));
+  return shelf;
+}
+
+/** The (at most) three most opened sources of a list, by views; sources nobody opened never count. */
+export function usedOftenIds(docs: KbDocumentListItem[], count = 3): Set<string> {
+  return new Set(
+    docs
+      .filter((d) => d.viewCount > 0)
+      .sort((a, b) => b.viewCount - a.viewCount || byTitle(a, b))
+      .slice(0, count)
+      .map((d) => d.documentId)
+  );
+}
+
+/** Most opened first; ties by citations, then title. */
+export function mostUsed(docs: KbDocumentListItem[], limit: number): KbDocumentListItem[] {
+  return docs
+    .slice()
+    .sort((a, b) => b.viewCount - a.viewCount || b.citationCount - a.citationCount || byTitle(a, b))
+    .slice(0, limit);
+}
+
+/** Sources in the folder or any folder inside it, from `docs`. */
+export function docsInFolder(docs: KbDocumentListItem[], node: KbCategoryNode): KbDocumentListItem[] {
+  const ids = subtreeDocumentIds(node);
+  return docs.filter((d) => ids.has(d.documentId));
+}
+
+/** Sources in no folder the user can see. */
+export function docsWithoutFolder(docs: KbDocumentListItem[], tree: KbTree): KbDocumentListItem[] {
+  return docs.filter((d) => !d.categoryIds.some((id) => tree.byId.has(id)));
+}
+
+/** `?folder=` value for a folder id (KB_UNCATEGORIZED becomes "none"). */
+export function folderParam(scope: string): string {
+  return scope === KB_UNCATEGORIZED ? KB_NO_FOLDER_PARAM : scope;
+}
+
+/** The open folder from `?folder=`: a folder id, KB_UNCATEGORIZED, or null for the cabinet. */
+export function folderFromSearch(search: string, tree: KbTree): string | null {
+  const raw = new URLSearchParams(search).get("folder");
+  if (!raw) return null;
+  if (raw === KB_NO_FOLDER_PARAM) return KB_UNCATEGORIZED;
+  return tree.byId.has(raw) ? raw : null;
+}
+
+export interface KbFolderMatch {
+  node: KbCategoryNode;
+  /** Sources in it (and the folders inside it) among the searched set. */
+  count: number;
+}
+
+export interface KbSearchResults {
+  best: KbDocumentListItem | null;
+  others: KbDocumentListItem[];
+  folders: KbFolderMatch[];
+  /** Every source that matches (the list below shows them all). */
+  total: number;
+}
+
+function wordStart(text: string, q: string): boolean {
+  return text.split(/[^a-z0-9]+/).some((word) => word.startsWith(q));
+}
+
+/** How well a source matches: title beats folder name, which beats tag and note. 0 = no match. */
+function matchScore(doc: KbDocumentListItem, q: string, lookup: KbLookup): number {
+  const title = doc.title.toLowerCase();
+  if (title === q) return 100;
+  if (title.startsWith(q)) return 80;
+  if (wordStart(title, q)) return 60;
+  if (title.includes(q)) return 50;
+  for (const id of doc.categoryIds) {
+    if (lookup.tree.byId.get(id)?.category.name.toLowerCase().includes(q)) return 30;
+  }
+  for (const id of doc.tagIds) {
+    if (lookup.tagsById.get(id)?.name.toLowerCase().includes(q)) return 25;
+  }
+  return doc.note?.toLowerCase().includes(q) ? 20 : 0;
+}
+
+/**
+ * The grouped search panel: the best match, up to `limit` other sources,
+ * and folders whose name matches. Searches only `docs` (already filtered),
+ * so the panel agrees with the list below. Ties go to the most opened.
+ */
+export function searchLibrary(
+  docs: KbDocumentListItem[],
+  query: string,
+  lookup: KbLookup,
+  limit = 5
+): KbSearchResults {
+  const q = query.trim().toLowerCase();
+  if (!q) return { best: null, others: [], folders: [], total: 0 };
+  const ranked = docs
+    .map((doc) => ({ doc, score: matchScore(doc, q, lookup) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || b.doc.viewCount - a.doc.viewCount || byTitle(a.doc, b.doc))
+    .map((x) => x.doc);
+  const folders = lookup.tree.order
+    .filter((node) => node.category.name.toLowerCase().includes(q))
+    .map((node) => ({ node, count: docsInFolder(docs, node).length }))
+    .filter((match) => match.count > 0)
+    .slice(0, 3);
+  return { best: ranked[0] ?? null, others: ranked.slice(1, 1 + limit), folders, total: ranked.length };
+}
+
+function joinOr(items: string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
+}
+
+function joinAnd(items: string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/**
+ * The active filters as one plain sentence, for example "Showing 4 sources
+ * labeled Red: Read before quoting fees." Null when nothing narrows the list.
+ */
+export function filterSentence({
+  shown,
+  query,
+  filters,
+  tagsById,
+  labels
+}: {
+  shown: number;
+  query: string;
+  filters: KbFilters;
+  tagsById: Map<string, KbTag>;
+  labels: KbColorLabel[];
+}): string | null {
+  const parts: string[] = [];
+  if (filters.colors.length > 0) parts.push(`labeled ${joinOr(filters.colors.map((c) => kbLabelText(c, labels)))}`);
+  if (filters.newOnly) parts.push("that are new or changed");
+  if (filters.updatedOnly) parts.push("updated recently");
+  if (filters.hasNote) parts.push("with your notes");
+  const tags = filters.tagIds.map((id) => tagsById.get(id)?.name).filter((n): n is string => Boolean(n));
+  if (tags.length > 0) parts.push(`tagged ${joinOr(tags)}`);
+  const q = query.trim();
+  if (q) parts.push(`matching "${q}"`);
+  if (parts.length === 0) return null;
+  return `Showing ${shown} ${shown === 1 ? "source" : "sources"} ${joinAnd(parts)}.`;
 }
 
 /** Sources in the category or any category nested under it, or in no category for KB_UNCATEGORIZED. */
@@ -604,6 +803,14 @@ export function applyCategoryMyColor(data: Data, categoryId: string, color: KbLi
     ...data,
     categories: data.categories.map((c) => (c.id === categoryId ? { ...c, myColor: color } : c))
   };
+}
+
+/** The user's name for one of their label colors; null removes the name. Kept in palette order. */
+export function applyColorLabel(data: Data, color: KbLibraryColor, name: string | null): Data {
+  const rest = (data.labels ?? []).filter((l) => l.color !== color);
+  const next = name ? [...rest, { color, name }] : rest;
+  const order = (c: KbLibraryColor): number => KB_LABEL_ORDER.indexOf(c);
+  return { ...data, labels: next.sort((a, b) => order(a.color) - order(b.color)) };
 }
 
 export function applyPin(data: Data, documentId: string, pinned: boolean): Data {

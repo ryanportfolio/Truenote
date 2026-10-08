@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { KbLibraryColor } from "@/types/api";
+import type { KbColorLabel, KbLibraryColor } from "@/types/api";
 
 /**
  * Colors for source categories and tags (team colors a manager chooses) and
@@ -36,10 +36,27 @@ export function kbColorLabel(color: KbLibraryColor): string {
   return HUES[color]?.label ?? "Slate";
 }
 
+/** The name this user gave a label color ("Read before quoting fees"), or null. */
+export function kbLabelName(color: KbLibraryColor, labels: readonly KbColorLabel[] | undefined): string | null {
+  return labels?.find((l) => l.color === color)?.name ?? null;
+}
+
+/** "Red: Read before quoting fees" when the user named the color, else "Red". */
+export function kbLabelText(color: KbLibraryColor, labels: readonly KbColorLabel[] | undefined): string {
+  const name = kbLabelName(color, labels);
+  return name ? `${kbColorLabel(color)}: ${name}` : kbColorLabel(color);
+}
+
 /** Solid swatch for category dots, row stripes and color pickers. */
 export function kbColorDot(color: KbLibraryColor): CSSProperties {
   const { hue, chroma } = HUES[color] ?? HUES.slate;
   return { backgroundColor: `oklch(68% ${chroma} ${hue})` };
+}
+
+/** A folder icon tinted with a color: soft fill, deeper outline. Decorative; the folder name carries meaning. */
+export function kbColorFolder(color: KbLibraryColor): CSSProperties {
+  const { hue, chroma } = HUES[color] ?? HUES.slate;
+  return { color: `oklch(52% ${chroma} ${hue})`, fill: `oklch(84% ${Math.min(chroma, 0.07)} ${hue})` };
 }
 
 /** Pale tint plus hairline for tag chips. Text stays in the inherited ink. */

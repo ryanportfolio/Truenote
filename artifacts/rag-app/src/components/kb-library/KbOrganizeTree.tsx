@@ -1,9 +1,10 @@
-import { createContext, useContext, useId, useRef, useState } from "react";
+import { createContext, useContext, useId, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
+  MeasuringStrategy,
   PointerSensor,
   closestCenter,
   pointerWithin,
@@ -33,11 +34,11 @@ import {
   FolderOutput,
   FolderPlus,
   GripVertical,
-  Megaphone,
   Pencil,
   Plus,
   Tags,
-  Trash2
+  Trash2,
+  Users
 } from "lucide-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import {
@@ -51,17 +52,19 @@ import {
 import { kbColorLabel } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
 import type { KbDocumentListItem, KbLibraryColor } from "@/types/api";
-import { CountLabel, UNCATEGORIZED_KEY } from "./KbBrowseViews";
+import { UNCATEGORIZED_KEY } from "./KbBrowseViews";
 import { useKbLibraryContext } from "./KbContext";
 import { KbMenu, type KbMenuEntry } from "./KbMenu";
-import { ColorDot, NewBadge, TagChips } from "./KbShared";
+import { FolderGlyph, NewBadge, TagChips } from "./KbShared";
 import { useReducedMotion } from "./useReducedMotion";
 
 /**
- * Organize mode: the folder tree with drag handles. Drag a category onto the
- * top or bottom edge of another to place it beside that one, or onto its
- * middle to nest it inside. Drag a source onto a category name to move it
- * there, or between sources to reorder. Every move also exists in each
+ * Organize, step 2: the folder tree with drag handles (folders are
+ * "categories" in the API). Drag a folder onto the top or bottom edge of
+ * another to place it beside that one, or onto its middle to nest it
+ * inside. Drag a source onto a folder name to move it there, or between
+ * sources to reorder. A move into a folder opens a large dashed zone under
+ * it, "Drop here to move into <folder>". Every move also exists in each
  * item's menu for keyboard and screen reader users.
  */
 
@@ -70,7 +73,8 @@ type DragData =
   | { type: "document"; documentId: string; fromCategoryId: string | null; label: string };
 
 type DropData =
-  | { type: "category"; categoryId: string }
+  /** `zone`: the large drop zone shown under a folder while something can move into it. */
+  | { type: "category"; categoryId: string; zone?: boolean }
   | { type: "document"; documentId: string; categoryId: string | null; title: string }
   | { type: "uncategorized" };
 
@@ -79,6 +83,10 @@ interface DropTarget {
   place: "before" | "after" | "inside";
   valid: boolean;
   message: string;
+  /** The folder that shows the big drop zone (valid moves into a folder). */
+  zoneFor?: string;
+  /** The zone's own wording: "Drop here to move into Refunds". */
+  zoneText?: string;
 }
 
 const TargetContext = createContext<DropTarget | null>(null);
@@ -150,6 +158,8 @@ function makeTreeKeyboardCoordinates(
     let self = -1;
     rows.forEach(({ container, rect }, i) => {
       const drop = container.data.current as DropData;
+      // The drop zone is part of its folder's spot, not a stop of its own.
+      if (drop.type === "category" && drop.zone) return;
       const over: Over = { id: container.id, rect, data: container.data, disabled: container.disabled };
       const add = (ratio: number, isSelf = false): void => {
         if (isSelf) self = spots.length;
@@ -219,9 +229,18 @@ function computeTarget(
     const target = tree.byId.get(drop.categoryId);
     if (!target) return null;
     const name = target.category.name;
-    if (ratio > 0.3 && ratio < 0.7) {
+    if (drop.zone || (ratio > 0.3 && ratio < 0.7)) {
       const reason = nestBlockReason(tree, drag.categoryId, drop.categoryId);
-      return { dropId, place: "inside", valid: !reason, message: reason ?? `Nest inside ${name}` };
+      return reason
+        ? { dropId, place: "inside", valid: false, message: reason }
+        : {
+            dropId,
+            place: "inside",
+            valid: true,
+            message: `Move into ${name}`,
+            zoneFor: drop.categoryId,
+            zoneText: `Drop here to move into ${name}`
+          };
     }
     const place = ratio <= 0.3 ? "before" : "after";
     const reason = nestBlockReason(tree, drag.categoryId, target.category.parentId ?? null);
@@ -235,17 +254,20 @@ function computeTarget(
 
   const fromName = drag.fromCategoryId ? tree.byId.get(drag.fromCategoryId)?.category.name : null;
   if (drop.type === "uncategorized" || (drop.type === "document" && drop.categoryId === null)) {
-    // A source that is already outside every category has nowhere to go here.
+    // A source that is already outside every folder has nowhere to go here.
     if (!drag.fromCategoryId) return null;
-    return { dropId, place: "inside", valid: true, message: `Remove from ${fromName ?? "this category"}` };
+    return { dropId, place: "inside", valid: true, message: `Remove from ${fromName ?? "this folder"}` };
   }
   if (drop.type === "category") {
-    const name = tree.byId.get(drop.categoryId)?.category.name ?? "category";
+    const name = tree.byId.get(drop.categoryId)?.category.name ?? "folder";
+    const same = drop.categoryId === drag.fromCategoryId;
     return {
       dropId,
       place: "inside",
       valid: true,
-      message: drop.categoryId === drag.fromCategoryId ? `Move to the end of ${name}` : `Move into ${name}`
+      message: same ? `Move to the end of ${name}` : `Move into ${name}`,
+      zoneFor: drop.categoryId,
+      zoneText: same ? `Drop here to move to the end of ${name}` : `Drop here to move into ${name}`
     };
   }
   if (drop.documentId === drag.documentId && drop.categoryId === drag.fromCategoryId) return null;
@@ -259,7 +281,7 @@ function computeTarget(
     message:
       drop.categoryId === drag.fromCategoryId
         ? `Place ${place} ${drop.title}`
-        : `Move into ${name ?? "this category"}, ${place} ${drop.title}`
+        : `Move into ${name ?? "this folder"}, ${place} ${drop.title}`
   };
 }
 
@@ -284,6 +306,8 @@ function DropIndicator({ dropId }: { dropId: string }): JSX.Element | null {
   const target = useContext(TargetContext);
   if (!target || target.dropId !== dropId) return null;
   if (target.place === "inside") {
+    // A move into a folder is shown by the big zone under that folder instead.
+    if (target.zoneFor) return null;
     return (
       <span aria-hidden data-kb-drop-slot className="pointer-events-none absolute inset-0 z-10">
         <DropLabel target={target} />
@@ -311,11 +335,44 @@ function DropIndicator({ dropId }: { dropId: string }): JSX.Element | null {
   );
 }
 
+/** "10 sources" as a quiet pill. */
+function CountPill({ count }: { count: number }): JSX.Element {
+  return (
+    <span className="ml-auto hidden shrink-0 whitespace-nowrap rounded-full bg-muted px-2.5 py-0.5 text-xs font-normal tabular-nums text-muted-foreground sm:inline">
+      {count} {count === 1 ? "source" : "sources"}
+    </span>
+  );
+}
+
+/**
+ * The large dashed zone under a folder while a source or folder can move
+ * into it. It is a drop target too, so the pointer can rest anywhere in it.
+ * The wording sits at its top; the drag preview is kept below the wording.
+ */
+function DropZone({ categoryId, text }: { categoryId: string; text: string }): JSX.Element {
+  const drop = useDroppable({
+    id: `zone:${categoryId}`,
+    data: { type: "category", categoryId, zone: true } satisfies DropData
+  });
+  return (
+    <div
+      ref={drop.setNodeRef}
+      aria-hidden
+      data-kb-drop-zone={categoryId}
+      className="mb-1 ml-10 mr-2 mt-1 flex min-h-[6rem] items-start justify-center rounded-lg border-2 border-dashed border-primary/60 bg-primary/5 px-4 pt-3 motion-safe:animate-in motion-safe:fade-in motion-safe:[animation-duration:120ms]"
+    >
+      <span data-kb-drop-zone-label className="text-sm font-medium text-primary">
+        {text}
+      </span>
+    </div>
+  );
+}
+
 /** Where a dragged item came from stays in place as a faded, dashed ghost. */
 const GHOST = "rounded-md opacity-50 outline-dashed outline-1 -outline-offset-1 outline-primary/50";
 
 function insideClass(dropId: string, target: DropTarget | null): string | false {
-  if (!target || target.dropId !== dropId || target.place !== "inside") return false;
+  if (!target || target.dropId !== dropId || target.place !== "inside" || target.zoneFor) return false;
   return target.valid
     ? "rounded-md bg-primary/10 outline-dashed outline-2 -outline-offset-2 outline-primary/60"
     : "rounded-md bg-destructive/5 outline-dashed outline-2 -outline-offset-2 outline-destructive/60";
@@ -358,8 +415,9 @@ function OrganizeDoc({
   index: number;
   count: number;
 }): JSX.Element {
-  const { lookup, actions, openDialog } = useKbLibraryContext();
+  const { lookup, actions, openDialog, markMoved } = useKbLibraryContext();
   const target = useContext(TargetContext);
+  const moved = (): void => markMoved(`doc:${doc.documentId}`);
   const key = `doc:${categoryId ?? "none"}:${doc.documentId}`;
   const dropId = `drop-${key}`;
   const drag = useDraggable({
@@ -379,33 +437,42 @@ function OrganizeDoc({
         label: "Move up",
         icon: ArrowUp,
         disabled: index === 0,
-        onSelect: () => actions.moveDocumentBy(doc.documentId, categoryId, -1)
+        onSelect: () => {
+          moved();
+          actions.moveDocumentBy(doc.documentId, categoryId, -1);
+        }
       },
       {
         label: "Move down",
         icon: ArrowDown,
         disabled: index === count - 1,
-        onSelect: () => actions.moveDocumentBy(doc.documentId, categoryId, 1)
+        onSelect: () => {
+          moved();
+          actions.moveDocumentBy(doc.documentId, categoryId, 1);
+        }
       }
     );
   }
   menu.push({
-    label: categoryId ? "Move to another category…" : "Move to a category…",
+    label: categoryId ? "Move to another folder…" : "Move to a folder…",
     icon: FolderInput,
     disabled: lookup.tree.order.length === 0,
     onSelect: () => openDialog({ kind: "doc-move", documentId: doc.documentId, fromCategoryId: categoryId })
   });
   if (categoryId) {
     menu.push({
-      label: `Remove from ${categoryName ?? "this category"}`,
+      label: `Remove from ${categoryName ?? "this folder"}`,
       icon: FolderMinus,
-      onSelect: () => actions.moveDocument(doc.documentId, categoryId, null)
+      onSelect: () => {
+        moved();
+        actions.moveDocument(doc.documentId, categoryId, null);
+      }
     });
   }
   menu.push(
     "separator",
     {
-      label: "Categories…",
+      label: "Folders…",
       icon: FolderInput,
       onSelect: () => openDialog({ kind: "doc-categories", documentId: doc.documentId })
     },
@@ -415,8 +482,22 @@ function OrganizeDoc({
       onSelect: () => openDialog({ kind: "doc-tags", documentId: doc.documentId })
     },
     doc.featuredPosition !== null
-      ? { label: "Remove team pin", icon: Megaphone, onSelect: () => actions.removeTeamPin(doc.documentId) }
-      : { label: "Pin for the team", icon: Megaphone, onSelect: () => actions.addTeamPin(doc.documentId) }
+      ? {
+          label: "Remove from team shortcuts",
+          icon: Users,
+          onSelect: () => {
+            moved();
+            actions.removeTeamPin(doc.documentId);
+          }
+        }
+      : {
+          label: "Add to team shortcuts",
+          icon: Users,
+          onSelect: () => {
+            moved();
+            actions.addTeamPin(doc.documentId);
+          }
+        }
   );
 
   return (
@@ -441,18 +522,20 @@ function OrganizeDoc({
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
         <Link
           href={`/kb/${doc.documentId}`}
-          className="min-w-0 truncate rounded-sm text-sm text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="min-w-0 break-words rounded-sm text-sm text-foreground hover:underline sm:truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           {doc.title}
         </Link>
         {doc.isNew ? <NewBadge /> : null}
         {doc.featuredPosition !== null ? (
           <span className="inline-flex items-center gap-1 text-xs text-primary">
-            <Megaphone className="h-3 w-3" aria-hidden />
-            Team pin
+            <Users className="h-3 w-3" aria-hidden />
+            Team shortcut
           </span>
         ) : null}
-        <TagChips tagIds={doc.tagIds} tagsById={lookup.tagsById} />
+        <span className="hidden flex-wrap items-center gap-1 sm:inline-flex">
+          <TagChips tagIds={doc.tagIds} tagsById={lookup.tagsById} />
+        </span>
       </div>
       <KbMenu label={`Organize ${doc.title}`} items={menu}>
         <Ellipsis className="h-4 w-4" aria-hidden />
@@ -474,7 +557,7 @@ function OrganizeCategory({
   index: number;
   count: number;
 }): JSX.Element {
-  const { data, actions, openDialog } = useKbLibraryContext();
+  const { data, actions, openDialog, markMoved } = useKbLibraryContext();
   const confirm = useConfirm();
   const target = useContext(TargetContext);
   const panelId = useId();
@@ -498,12 +581,12 @@ function OrganizeCategory({
 
   async function onDelete(): Promise<void> {
     const ok = await confirm({
-      title: `Delete "${node.category.name}"?`,
+      title: `Delete the folder "${node.category.name}"?`,
       message:
         node.children.length > 0
-          ? "Its subcategories move up one level. The sources in it stay in the library; they are only removed from this category."
-          : "The sources in it stay in the library; they are only removed from this category.",
-      confirmLabel: "Delete category",
+          ? "The folders inside it move up one level. The sources in it stay in the library; they are only taken out of this folder."
+          : "The sources in it stay in the library; they are only taken out of this folder.",
+      confirmLabel: "Delete folder",
       tone: "danger"
     });
     if (ok) actions.deleteCategory(id);
@@ -530,18 +613,29 @@ function OrganizeCategory({
     },
     "separator",
     {
-      label: "Add a subcategory…",
+      label: "New folder inside…",
       icon: FolderPlus,
       disabled: node.depth >= KB_MAX_CATEGORY_DEPTH,
       onSelect: () => openDialog({ kind: "category-create", parentId: id })
     },
     "separator",
-    { label: "Move up", icon: ArrowUp, disabled: index === 0, onSelect: () => actions.moveCategoryBy(id, -1) },
+    {
+      label: "Move up",
+      icon: ArrowUp,
+      disabled: index === 0,
+      onSelect: () => {
+        markMoved(`cat:${id}`);
+        actions.moveCategoryBy(id, -1);
+      }
+    },
     {
       label: "Move down",
       icon: ArrowDown,
       disabled: index === count - 1,
-      onSelect: () => actions.moveCategoryBy(id, 1)
+      onSelect: () => {
+        markMoved(`cat:${id}`);
+        actions.moveCategoryBy(id, 1);
+      }
     },
     {
       label: "Move to…",
@@ -549,7 +643,7 @@ function OrganizeCategory({
       onSelect: () => openDialog({ kind: "category-move", categoryId: id })
     },
     "separator",
-    { label: "Delete category…", icon: Trash2, danger: true, onSelect: () => void onDelete() }
+    { label: "Delete folder…", icon: Trash2, danger: true, onSelect: () => void onDelete() }
   ];
 
   return (
@@ -560,13 +654,14 @@ function OrganizeCategory({
           drop.setNodeRef(el);
         }}
         className={cn(
-          "relative flex items-center gap-1 py-1 pl-1 pr-2 transition-colors duration-100 ease-out",
-          insideClass(dropId, target)
+          "relative flex items-center gap-1 py-1.5 pl-1 pr-2 transition-colors duration-100 ease-out",
+          insideClass(dropId, target),
+          target?.zoneFor === id && "rounded-md bg-primary/5"
         )}
       >
         <DropIndicator dropId={dropId} />
         <DragHandle
-          label={`Drag category ${node.category.name}`}
+          label={`Drag folder ${node.category.name}`}
           setRef={drag.setActivatorNodeRef}
           attributes={drag.attributes}
           listeners={drag.listeners}
@@ -585,20 +680,21 @@ function OrganizeCategory({
             )}
             aria-hidden
           />
-          <ColorDot color={node.category.color} />
-          <span className="min-w-0 truncate">{node.category.name}</span>
+          <FolderGlyph color={node.category.color} className="h-6 w-6" />
+          <span className="min-w-0 flex-1 truncate text-base">{node.category.name}</span>
           <span className="sr-only">Team color: {kbColorLabel(node.category.color)}.</span>
-          <CountLabel count={total} />
+          <CountPill count={total} />
         </button>
-        <KbMenu label={`Organize category ${node.category.name}`} items={menu}>
+        <KbMenu label={`Organize folder ${node.category.name}`} items={menu}>
           <Ellipsis className="h-4 w-4" aria-hidden />
         </KbMenu>
       </div>
-      <div id={panelId} hidden={!open} className="ml-5 border-l border-border pl-1">
+      {target?.zoneFor === id && target.zoneText ? <DropZone categoryId={id} text={target.zoneText} /> : null}
+      <div id={panelId} hidden={!open} className="ml-3 border-l border-border pl-0.5 sm:ml-5 sm:pl-1">
         {open ? (
           <>
             {node.children.length > 0 ? (
-              <ul aria-label={`Categories in ${node.category.name}`}>
+              <ul aria-label={`Folders in ${node.category.name}`}>
                 {node.children.map((child, i) => (
                   <OrganizeCategory
                     key={child.category.id}
@@ -663,20 +759,21 @@ function UncategorizedGroup({
             )}
             aria-hidden
           />
-          Not in a category
-          <CountLabel count={docs.length} />
+          <FolderGlyph color={null} className="h-6 w-6" />
+          <span className="min-w-0 flex-1 truncate text-base">Not in a folder</span>
+          <CountPill count={docs.length} />
         </button>
       </div>
-      <div id={panelId} hidden={!open} className="ml-5 border-l border-border pl-1">
+      <div id={panelId} hidden={!open} className="ml-3 border-l border-border pl-0.5 sm:ml-5 sm:pl-1">
         {open ? (
           docs.length > 0 ? (
-            <ul aria-label="Sources not in a category">
+            <ul aria-label="Sources not in a folder">
               {docs.map((doc, i) => (
                 <OrganizeDoc key={doc.documentId} doc={doc} categoryId={null} index={i} count={docs.length} />
               ))}
             </ul>
           ) : (
-            <p className="px-3 py-1.5 text-xs text-muted-foreground">Every source is in a category.</p>
+            <p className="px-3 py-1.5 text-sm text-muted-foreground">Every source is in a folder.</p>
           )
         ) : null}
       </div>
@@ -691,7 +788,7 @@ export function KbOrganizeTree({
   collapsed: Set<string>;
   onToggle: (key: string) => void;
 }): JSX.Element {
-  const { data, lookup, actions, openDialog } = useKbLibraryContext();
+  const { data, lookup, actions, openDialog, markMoved } = useKbLibraryContext();
   const reducedMotion = useReducedMotion();
   // Keyboard drags: the spot the arrow keys last moved to, and what to do with a new one.
   const keyboardSpot = useRef<KeyboardSpot | null>(null);
@@ -706,6 +803,12 @@ export function KbOrganizeTree({
   const [active, setActive] = useState<DragData | null>(null);
   const [target, setTarget] = useState<DropTarget | null>(null);
   const targetRef = useRef<DropTarget | null>(null);
+  // The drag preview reads the drop zone's position, which exists only after the
+  // zone mounts; one more render then places the preview under its wording.
+  const [, setZoneRender] = useState(0);
+  useLayoutEffect(() => {
+    if (target?.zoneFor) setZoneRender((n) => n + 1);
+  }, [target]);
   onKeyboardSpot.current = (a, spot) => updateTarget(computeTarget(a, spot.over, spotY(spot), lookup.tree));
 
   const loose = data.items
@@ -727,6 +830,7 @@ export function KbOrganizeTree({
 
   function onDragStart(event: DragStartEvent): void {
     keyboardSpot.current = null;
+    overlayOrigin = null;
     setActive((event.active.data.current as DragData | undefined) ?? null);
     updateTarget(null);
   }
@@ -755,6 +859,7 @@ export function KbOrganizeTree({
       actions.reportError(final.message.endsWith(".") ? final.message : `${final.message}.`);
       return;
     }
+    markMoved(drag.type === "category" ? `cat:${drag.categoryId}` : `doc:${drag.documentId}`);
     if (drag.type === "category" && drop.type === "category") {
       if (final.place === "inside") {
         actions.moveCategory(drag.categoryId, drop.categoryId);
@@ -791,6 +896,8 @@ export function KbOrganizeTree({
     <DndContext
       sensors={sensors}
       collisionDetection={collisionDetection}
+      // The drop zone opens under a folder mid-drag; rows below it move, so targets are measured live.
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       onDragStart={onDragStart}
       onDragMove={onDragMove}
       // A new `over` can arrive one render after the move that caused it.
@@ -815,7 +922,7 @@ export function KbOrganizeTree({
         <div className="rounded-lg border border-border bg-card py-1 shadow-card">
           {lookup.tree.roots.length === 0 ? (
             <p className="px-4 py-3 text-sm text-muted-foreground">
-              No categories yet. Use "New category" to create the first one.
+              No folders yet. Use "New folder" to create the first one.
             </p>
           ) : null}
           <ul aria-label="Library structure">
@@ -839,7 +946,7 @@ export function KbOrganizeTree({
               className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-left text-sm text-muted-foreground transition-colors duration-100 ease-out hover:border-primary/40 hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Plus className="h-4 w-4" aria-hidden />
-              New category
+              New folder
             </button>
           </div>
         </div>
@@ -862,31 +969,58 @@ export function KbOrganizeTree({
   );
 }
 
+/** Push a preview box down until it no longer covers the drop zone's wording. */
+function clearOfZoneLabel(top: number, left: number, width: number, height: number): number {
+  const label = document.querySelector<HTMLElement>("[data-kb-drop-zone-label]");
+  if (!label) return top;
+  const r = label.getBoundingClientRect();
+  const overlaps = left < r.right + 4 && left + width > r.left - 4 && top < r.bottom + 4 && top + height > r.top - 4;
+  return overlaps ? r.bottom + 8 : top;
+}
+
 /**
  * Keep the drag preview below and right of the pointer so the row under it,
- * the drop target, stays readable. Keyboard drags are left alone: the
- * preview sits on the spot it would land (its label names the target), and
- * an offset here would also shift what the keyboard drag collides with.
+ * the drop target, stays readable, and never over a drop zone's wording.
+ * Keyboard drags keep the preview on the spot it would land (its label
+ * names the target), or inside the zone under its wording for a move into
+ * a folder.
  */
-const offsetFromPointer: Modifier = ({ activatorEvent, activeNodeRect, overlayNodeRect, transform }) => {
-  if (!activeNodeRect || isKeyboardEvent(activatorEvent)) return transform;
+/**
+ * Where the drag preview is anchored: the dragged row's rect when the drag
+ * started (DragOverlay draws at that spot plus the transform). The row
+ * itself can move mid-drag when a drop zone opens above it.
+ */
+let overlayOrigin: { top: number; left: number } | null = null;
+
+const offsetFromPointer: Modifier = ({ activatorEvent, activeNodeRect: measured, overlayNodeRect, transform }) => {
+  if (!measured) return transform;
+  // The first measurement of a drag is where DragOverlay anchors the preview.
+  overlayOrigin ??= { top: measured.top, left: measured.left };
+  const activeNodeRect = overlayOrigin;
+  const width = overlayNodeRect?.width ?? measured.width;
+  const height = overlayNodeRect?.height ?? measured.height;
+  if (isKeyboardEvent(activatorEvent)) {
+    // Into a folder: the preview waits inside the zone, under its wording, so the folder name stays visible.
+    const label = document.querySelector<HTMLElement>("[data-kb-drop-zone-label]");
+    if (label) return { ...transform, y: label.getBoundingClientRect().bottom + 8 - activeNodeRect.top };
+    return transform;
+  }
   const point = activatorEvent ? getEventCoordinates(activatorEvent) : null;
   if (!point) return transform;
-  const width = overlayNodeRect?.width ?? 0;
-  const height = overlayNodeRect?.height ?? 0;
   // Pointer position now, in viewport coordinates.
   const x = point.x + transform.x;
   const y = point.y + transform.y;
   // Below and right of the pointer; flip above or left near the viewport edge.
   const left = x + 16 + width > window.innerWidth - 8 ? x - 16 - width : x + 16;
-  const top = y + 16 + height > window.innerHeight - 8 ? y - 16 - height : y + 16;
+  const below = y + 16 + height > window.innerHeight - 8 ? y - 16 - height : y + 16;
+  const top = clearOfZoneLabel(below, left, width, height);
   // The overlay renders at activeNodeRect plus the returned transform.
   return { ...transform, x: left - activeNodeRect.left, y: top - activeNodeRect.top };
 };
 
 function DragPreview({ label, target }: { label: string; target: DropTarget | null }): JSX.Element {
   return (
-    <div className="inline-flex max-w-xs flex-col rounded-md border border-border bg-card px-3 py-1.5 shadow-panel">
+    <div data-kb-drag-preview className="inline-flex max-w-xs flex-col rounded-md border border-border bg-card px-3 py-1.5 shadow-panel">
       <span className="flex items-center gap-1.5 truncate text-sm font-medium">
         <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         {label}

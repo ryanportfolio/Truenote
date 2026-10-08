@@ -96,3 +96,61 @@ export function takePage<T>(rows: T[], limit: number): { items: T[]; truncated: 
     ? { items: rows.slice(0, limit), truncated: true }
     : { items: rows, truncated: false };
 }
+
+export const MAX_SOURCE_SUGGESTIONS = 3;
+
+export interface SourceUsageSuggestion {
+  documentId: string;
+  title: string;
+  /** "related" = same top-level category as a refused/thumbs-down topic; "team_top" = fallback. */
+  reason: "related" | "team_top";
+  /** Answers by other people that cited it in the window. */
+  teamCitations: number;
+}
+
+/**
+ * One candidate from the suggestions query: a source teammates cited in the
+ * window that the person did not cite, already filtered to sources the
+ * viewer may open. `related` is true when it shares a top-level category
+ * with a source behind one of the person's refused or thumbs-down questions.
+ */
+export interface SuggestionCandidate {
+  documentId: string;
+  title: string | null;
+  teamCitations: number;
+  lastCitedAt: string | null;
+  related: boolean;
+}
+
+/**
+ * Pick up to `max` suggestions. Related candidates win; only when none are
+ * related does the fallback take the team's most-cited candidates. Within a
+ * rule: most team citations, then most recently cited, then id. Candidates
+ * without a visible title or with no team citations are never suggested.
+ */
+export function selectSourceSuggestions(
+  candidates: readonly SuggestionCandidate[],
+  max: number = MAX_SOURCE_SUGGESTIONS
+): SourceUsageSuggestion[] {
+  const seen = new Set<string>();
+  const usable: Array<SuggestionCandidate & { title: string }> = [];
+  for (const c of candidates) {
+    if (c.title === null || c.teamCitations <= 0 || seen.has(c.documentId)) continue;
+    seen.add(c.documentId);
+    usable.push({ ...c, title: c.title });
+  }
+  usable.sort(
+    (a, b) =>
+      b.teamCitations - a.teamCitations ||
+      (b.lastCitedAt ?? "").localeCompare(a.lastCitedAt ?? "") ||
+      a.documentId.localeCompare(b.documentId)
+  );
+  const related = usable.filter((c) => c.related);
+  const reason: SourceUsageSuggestion["reason"] = related.length > 0 ? "related" : "team_top";
+  return (related.length > 0 ? related : usable).slice(0, Math.max(0, max)).map((c) => ({
+    documentId: c.documentId,
+    title: c.title,
+    reason,
+    teamCitations: c.teamCitations
+  }));
+}

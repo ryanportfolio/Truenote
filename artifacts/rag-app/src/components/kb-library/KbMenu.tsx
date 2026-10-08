@@ -26,8 +26,17 @@ export interface KbMenuItem {
    * "No color" beside the swatches). Picking it closes the menu.
    */
   radio?: boolean;
-  /** Color dot shown after the checkbox or icon (color filters). */
+  /** Color dot shown after the checkbox or icon (color filters, labels). */
   swatch?: KbLibraryColor;
+  /** Quiet second text after the label, such as the color under a label's own name. */
+  detail?: string;
+}
+
+/** A non-interactive group heading with an optional hint line ("Label", "Only you see this."). */
+export interface KbMenuHeading {
+  kind: "heading";
+  label: string;
+  hint?: string;
 }
 
 /**
@@ -44,7 +53,7 @@ export interface KbMenuSwatches {
   onSelect: (color: KbLibraryColor) => void;
 }
 
-export type KbMenuEntry = KbMenuItem | KbMenuSwatches | "separator";
+export type KbMenuEntry = KbMenuItem | KbMenuSwatches | KbMenuHeading | "separator";
 
 /**
  * Small action menu (menu button pattern). Portaled with fixed positioning
@@ -233,16 +242,21 @@ export function KbMenu({
               // transition-duration (Tailwind's duration-* sets it) would tween
               // visibility from hidden, and focus() on the first item would miss.
               // The fade runs as an animation, which never touches visibility.
-              className="fixed z-40 min-w-[12rem] max-w-[18rem] rounded-lg border border-border bg-card py-1 text-sm shadow-panel transition-none motion-safe:animate-in motion-safe:fade-in motion-safe:[animation-duration:100ms]"
+              className="fixed z-40 max-h-[calc(100dvh-1rem)] min-w-[12rem] max-w-[18rem] overflow-y-auto rounded-lg border border-border bg-card py-1 text-sm shadow-panel transition-none motion-safe:animate-in motion-safe:fade-in motion-safe:[animation-duration:100ms]"
             >
               {items.map((entry, i) =>
                 entry === "separator" ? (
                   <div key={`sep-${i}`} role="separator" className="my-1 border-t border-border" />
+                ) : "kind" in entry && entry.kind === "heading" ? (
+                  <div key={`heading-${i}`} role="presentation" className="px-3 pb-1 pt-2">
+                    <p className="text-sm font-medium text-foreground">{entry.label}</p>
+                    {entry.hint ? <p className="text-xs text-muted-foreground">{entry.hint}</p> : null}
+                  </div>
                 ) : "kind" in entry ? (
                   <SwatchGroup key={`swatches-${i}`} group={entry} onPick={(color) => selectSwatch(entry, color)} />
                 ) : (
                   <button
-                    key={entry.label}
+                    key={`item-${i}`}
                     type="button"
                     role={
                       entry.checked === undefined ? "menuitem" : entry.radio ? "menuitemradio" : "menuitemcheckbox"
@@ -287,6 +301,9 @@ export function KbMenu({
                     <span className={cn("min-w-0 flex-1", entry.radio && entry.checked && "font-medium")}>
                       {entry.label}
                     </span>
+                    {entry.detail ? (
+                      <span className="shrink-0 text-xs text-muted-foreground">{entry.detail}</span>
+                    ) : null}
                   </button>
                 )
               )}

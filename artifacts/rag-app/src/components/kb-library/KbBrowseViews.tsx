@@ -1,13 +1,21 @@
 import { useId, type ReactNode } from "react";
+import { Link } from "wouter";
 import { ChevronRight, Palette, Undo2 } from "lucide-react";
 import {
   KB_UNCATEGORIZED,
+  docsInFolder,
+  docsWithoutFolder,
+  folderParam,
   libraryOrder,
   memberOrder,
+  mostUsed,
+  myPins,
   sortDocs,
   subtreeDocumentIds,
+  usedOftenIds,
   type KbCategoryNode,
-  type KbSort
+  type KbSort,
+  type KbTree
 } from "@/lib/kbLibrary";
 import { kbColorLabel, kbEffectiveCategoryColor } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
@@ -15,7 +23,7 @@ import type { KbCategory, KbDocumentListItem } from "@/types/api";
 import { useKbLibraryContext } from "./KbContext";
 import { KbDocRow } from "./KbDocRow";
 import { KbMenu } from "./KbMenu";
-import { ColorDot } from "./KbShared";
+import { FolderGlyph } from "./KbShared";
 
 export const UNCATEGORIZED_KEY = KB_UNCATEGORIZED;
 
@@ -25,8 +33,6 @@ interface BrowseProps {
   sort: KbSort;
   /** True while a search or filter narrows the list: every folder opens and empty ones hide. */
   filtering: boolean;
-  /** True while a search query is typed: rows name their category path, since results sit out of context. */
-  searching: boolean;
 }
 
 function sortInCategory(
@@ -35,7 +41,7 @@ function sortInCategory(
   node: KbCategoryNode | null
 ): KbDocumentListItem[] {
   if (sort !== "manual") return sortDocs(docs, sort);
-  // Sources outside any category have no manager order; A to Z reads best.
+  // Sources outside any folder have no manager order; A to Z reads best.
   return node ? sortDocs(docs, "manual", memberOrder(node.category)) : sortDocs(docs, "title");
 }
 
@@ -45,33 +51,40 @@ function directDocs(node: KbCategoryNode, byId: Map<string, KbDocumentListItem>)
     .filter((d): d is KbDocumentListItem => Boolean(d));
 }
 
-function uncategorized(visible: KbDocumentListItem[], known: Map<string, KbCategoryNode>): KbDocumentListItem[] {
-  return visible.filter((d) => !d.categoryIds.some((id) => known.has(id)));
-}
-
-/** "10 sources": every source in the category and the categories inside it (same meaning in Organize). */
-export function CountLabel({ count }: { count: number }): JSX.Element {
+/** "10 sources": every source in the folder and the folders inside it (same meaning in Organize). */
+export function CountLabel({ count, className }: { count: number; className?: string }): JSX.Element {
   return (
-    <span className="ml-auto shrink-0 whitespace-nowrap tabular-nums text-xs font-normal text-muted-foreground">
+    <span
+      className={cn("ml-auto shrink-0 whitespace-nowrap tabular-nums text-xs font-normal text-muted-foreground", className)}
+    >
       {count} {count === 1 ? "source" : "sources"}
     </span>
   );
 }
 
+/** `/kb` link that opens a folder (or the cabinet for null), keeping any other query parameters. */
+export function folderHref(search: string, scope: string | null): string {
+  const params = new URLSearchParams(search);
+  if (scope === null) params.delete("folder");
+  else params.set("folder", folderParam(scope));
+  const query = params.toString();
+  return query ? `/kb?${query}` : "/kb";
+}
+
 /**
- * Every user's private color for a category, kept apart from the team color
- * a manager sets in Organize mode. The button names both so it is clear
- * which one is showing.
+ * A folder's color for this user only, kept apart from the team color a
+ * manager sets in Organize. The button names both so it is clear which one
+ * is showing.
  */
-function CategoryColorMenu({ category }: { category: KbCategory }): JSX.Element {
+export function FolderColorMenu({ category }: { category: KbCategory }): JSX.Element {
   const { actions } = useKbLibraryContext();
   const showing = category.myColor
     ? `my color, ${kbColorLabel(category.myColor)}`
     : `team color, ${kbColorLabel(category.color)}`;
   return (
     <KbMenu
-      label={`Color for ${category.name}. Showing ${showing}.`}
-      title="Choose my color for this category"
+      label={`Color for the folder ${category.name}. Showing ${showing}.`}
+      title="Choose my color for this folder"
       buttonClassName="btn-icon h-8 w-8 shrink-0"
       items={[
         {
@@ -96,6 +109,240 @@ function CategoryColorMenu({ category }: { category: KbCategory }): JSX.Element 
     </KbMenu>
   );
 }
+
+/** Quiet rows in one card; "Used often" marks the three most opened of exactly these rows. */
+export function KbRows({ docs, label }: { docs: KbDocumentListItem[]; label: string }): JSX.Element {
+  const often = usedOftenIds(docs);
+  return (
+    <ul aria-label={label} className="divide-y divide-border rounded-lg border border-border bg-card shadow-card">
+      {docs.map((doc) => (
+        <KbDocRow key={doc.documentId} doc={doc} usedOften={often.has(doc.documentId)} roundedEdges />
+      ))}
+    </ul>
+  );
+}
+
+/** Rows of a list in the chosen sort; the manager's order follows the folder (or the whole library). */
+function listOrder(
+  docs: KbDocumentListItem[],
+  sort: KbSort,
+  node: KbCategoryNode | null,
+  tree: KbTree,
+  acrossFolders: boolean
+): KbDocumentListItem[] {
+  if (sort !== "manual") return sortDocs(docs, sort);
+  if (node && !acrossFolders) return sortInCategory(docs, sort, node);
+  return sortDocs(docs, "manual", libraryOrder(tree));
+}
+
+/** The folders above this one, top level first. */
+function ancestorsOf(node: KbCategoryNode, tree: KbTree): KbCategoryNode[] {
+  const chain: KbCategoryNode[] = [];
+  let parentId = node.category.parentId;
+  while (parentId) {
+    const parent = tree.byId.get(parentId);
+    if (!parent || chain.includes(parent)) break;
+    chain.unshift(parent);
+    parentId = parent.category.parentId;
+  }
+  return chain;
+}
+
+// ---------------------------------------------------------------------------
+// Folders view: the file cabinet
+
+function FolderCard({
+  node,
+  visible,
+  search
+}: {
+  node: KbCategoryNode | null;
+  visible: KbDocumentListItem[];
+  search: string;
+}): JSX.Element {
+  const { lookup } = useKbLibraryContext();
+  const docs = node ? docsInFolder(visible, node) : docsWithoutFolder(visible, lookup.tree);
+  const top = mostUsed(docs, 2);
+  const name = node ? node.category.name : "Not in a folder";
+  const scope = node ? node.category.id : KB_UNCATEGORIZED;
+  return (
+    <li
+      data-kb-folder-card={scope}
+      className="relative flex min-w-0 flex-col rounded-lg border border-border bg-card p-4 shadow-card transition-colors duration-100 ease-out focus-within:border-primary/50 hover:border-primary/40"
+    >
+      <div className="flex items-center gap-3">
+        <FolderGlyph color={node ? kbEffectiveCategoryColor(node.category) : null} className="h-10 w-10" />
+        <div className="min-w-0">
+          <Link
+            href={folderHref(search, scope)}
+            className="block rounded-sm text-base font-medium text-foreground after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <span className="sr-only">Open folder </span>
+            {name}
+          </Link>
+          <p className="text-sm text-muted-foreground">
+            {docs.length} {docs.length === 1 ? "source" : "sources"}
+          </p>
+        </div>
+      </div>
+      {top.length > 0 ? (
+        <ul aria-label={`Most used in ${name}`} className="relative z-10 mt-3 flex flex-col">
+          {top.map((doc) => (
+            <li key={doc.documentId}>
+              <Link
+                href={`/kb/${doc.documentId}`}
+                className="flex items-center justify-between gap-2 rounded-sm py-1 text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="min-w-0 truncate">{doc.title}</span>
+                <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">No sources yet.</p>
+      )}
+    </li>
+  );
+}
+
+/** Top-level folders as cards, "Not in a folder" last. */
+function Cabinet({ visible, search }: { visible: KbDocumentListItem[]; search: string }): JSX.Element {
+  const { lookup } = useKbLibraryContext();
+  const loose = docsWithoutFolder(visible, lookup.tree);
+  return (
+    <ul aria-label="Folders" data-kb-cabinet className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {lookup.tree.roots.map((node) => (
+        <FolderCard key={node.category.id} node={node} visible={visible} search={search} />
+      ))}
+      {loose.length > 0 ? <FolderCard node={null} visible={visible} search={search} /> : null}
+    </ul>
+  );
+}
+
+/** An open folder: breadcrumb, title and count, subfolder chips, then its sources (folders inside included). */
+function OpenFolder({
+  scope,
+  visible,
+  sort,
+  filtering,
+  search
+}: BrowseProps & { scope: string; search: string }): JSX.Element {
+  const { lookup } = useKbLibraryContext();
+  const headingId = useId();
+  const node = scope === KB_UNCATEGORIZED ? null : lookup.tree.byId.get(scope) ?? null;
+  const docs = node ? docsInFolder(visible, node) : docsWithoutFolder(visible, lookup.tree);
+  const rows = listOrder(docs, sort, node, lookup.tree, Boolean(node && node.children.length > 0));
+  const ancestors = node ? ancestorsOf(node, lookup.tree) : [];
+  const name = node ? node.category.name : "Not in a folder";
+
+  return (
+    <section aria-labelledby={headingId} data-kb-open-folder={scope} className="flex flex-col gap-3">
+      <nav aria-label="Breadcrumb">
+        <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <li>
+            <Link href={folderHref(search, null)} className="rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              All folders
+            </Link>
+          </li>
+          {ancestors.map((a) => (
+              <li key={a.category.id} className="flex items-center gap-2">
+                <span aria-hidden className="text-muted-foreground">/</span>
+                <Link
+                  href={folderHref(search, a.category.id)}
+                  className="rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {a.category.name}
+                </Link>
+              </li>
+          ))}
+          <li className="flex items-center gap-2">
+            <span aria-hidden className="text-muted-foreground">/</span>
+            <span aria-current="page" className="font-medium text-foreground">
+              {name}
+            </span>
+          </li>
+        </ol>
+      </nav>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <h2
+            id={headingId}
+            tabIndex={-1}
+            data-kb-folder-title
+            className="min-w-0 font-display text-3xl font-semibold tracking-tight focus:outline-none"
+          >
+            {name}
+          </h2>
+          {node ? <FolderColorMenu category={node.category} /> : null}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {filtering
+            ? `${docs.length} matching ${docs.length === 1 ? "source" : "sources"}`
+            : `${docs.length} ${docs.length === 1 ? "source" : "sources"}`}
+        </p>
+      </div>
+      {node && node.children.length > 0 ? (
+        <nav aria-label={`Folders in ${name}`}>
+          <ul className="flex flex-wrap gap-2">
+            <li>
+              <span
+                aria-current="page"
+                className="btn-base border border-primary bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground"
+              >
+                All
+              </span>
+            </li>
+            {node.children.map((child) => (
+              <li key={child.category.id}>
+                <Link
+                  href={folderHref(search, child.category.id)}
+                  data-kb-subfolder={child.category.id}
+                  className="btn-whisper px-4 py-1.5 text-sm"
+                >
+                  {child.category.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      ) : null}
+      {rows.length > 0 ? (
+        <KbRows docs={rows} label={`Sources in ${name}`} />
+      ) : (
+        <p className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+          {filtering ? "No sources in this folder match." : "No sources in this folder yet."}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Folders view (default): the cabinet of folder cards, or one open folder
+ * (`?folder=<id>`). While a search or filter narrows the list, the cabinet
+ * gives way to the matching rows so results are never hidden in a card.
+ */
+export function KbFoldersView({
+  scope,
+  search,
+  ...props
+}: BrowseProps & {
+  /** The open folder (KB_UNCATEGORIZED for no folder), or null for the cabinet. */
+  scope: string | null;
+  /** The page's query string, so folder links keep other parameters. */
+  search: string;
+}): JSX.Element {
+  const { lookup } = useKbLibraryContext();
+  if (scope !== null) return <OpenFolder scope={scope} search={search} {...props} />;
+  if (props.filtering || lookup.tree.roots.length === 0) {
+    return <KbRows docs={listOrder(props.visible, props.sort, null, lookup.tree, true)} label="Sources" />;
+  }
+  return <Cabinet visible={props.visible} search={search} />;
+}
+
+// ---------------------------------------------------------------------------
+// Outline view: the nested tree
 
 function Disclosure({
   label,
@@ -124,7 +371,7 @@ function Disclosure({
           aria-expanded={open}
           aria-controls={panelId}
           onClick={onToggle}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-4 py-2 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-base font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
           <ChevronRight
             className={cn(
@@ -135,7 +382,7 @@ function Disclosure({
           />
           {leading}
           <span className="min-w-0 truncate">{label}</span>
-          <CountLabel count={count} />
+          <CountLabel count={count} className="text-sm" />
         </button>
         {trailing ? <span className="shrink-0 pr-2">{trailing}</span> : null}
       </div>
@@ -146,16 +393,18 @@ function Disclosure({
   );
 }
 
-function FolderNode({
+function OutlineNode({
   node,
   byId,
   props,
+  often,
   collapsed,
   onToggle
 }: {
   node: KbCategoryNode;
   byId: Map<string, KbDocumentListItem>;
   props: BrowseProps;
+  often: Set<string>;
   collapsed: Set<string>;
   onToggle: (key: string) => void;
 }): JSX.Element | null {
@@ -173,18 +422,19 @@ function FolderNode({
         count={count}
         open={open}
         onToggle={() => onToggle(node.category.id)}
-        leading={<ColorDot color={kbEffectiveCategoryColor(node.category)} />}
-        trailing={<CategoryColorMenu category={node.category} />}
+        leading={<FolderGlyph color={kbEffectiveCategoryColor(node.category)} className="h-5 w-5" />}
+        trailing={<FolderColorMenu category={node.category} />}
       >
         <div className="ml-3 border-l border-border sm:ml-6">
           {node.children.length > 0 ? (
-            <ul aria-label={`Categories in ${node.category.name}`} className="divide-y divide-border">
+            <ul aria-label={`Folders in ${node.category.name}`} className="divide-y divide-border">
               {node.children.map((child) => (
-                <FolderNode
+                <OutlineNode
                   key={child.category.id}
                   node={child}
                   byId={byId}
                   props={props}
+                  often={often}
                   collapsed={collapsed}
                   onToggle={onToggle}
                 />
@@ -197,16 +447,11 @@ function FolderNode({
               className={cn("divide-y divide-border", node.children.length > 0 && "border-t border-border")}
             >
               {docs.map((doc) => (
-                <KbDocRow
-                  key={doc.documentId}
-                  doc={doc}
-                  inCategoryId={node.category.id}
-                  showPath={props.searching}
-                />
+                <KbDocRow key={doc.documentId} doc={doc} usedOften={often.has(doc.documentId)} />
               ))}
             </ul>
           ) : node.children.length === 0 ? (
-            <p className="px-4 py-2 text-xs text-muted-foreground">No sources in this category yet.</p>
+            <p className="px-4 py-2 text-sm text-muted-foreground">No sources in this folder yet.</p>
           ) : null}
         </div>
       </Disclosure>
@@ -214,141 +459,33 @@ function FolderNode({
   );
 }
 
-/**
- * Folders view scoped by the category rail: a titled section for one
- * category (its subcategories as folders, then its own sources) or for the
- * sources in no category.
- */
-function ScopedFolder({
-  scope,
-  props,
+/** Outline view: nested folders in the manager's order, ending with sources in no folder. */
+export function KbOutlineView({
   collapsed,
   onToggle,
-  onShowAll
-}: {
-  scope: string;
-  props: BrowseProps;
-  collapsed: Set<string>;
-  onToggle: (key: string) => void;
-  onShowAll: () => void;
-}): JSX.Element {
-  const { lookup } = useKbLibraryContext();
-  const headingId = useId();
-  const byId = new Map(props.visible.map((d) => [d.documentId, d]));
-  const node = scope === UNCATEGORIZED_KEY ? null : lookup.tree.byId.get(scope) ?? null;
-  const loose = node ? [] : sortInCategory(uncategorized(props.visible, lookup.tree.byId), props.sort, null);
-  let count = loose.length;
-  if (node) {
-    count = 0;
-    subtreeDocumentIds(node).forEach((id) => {
-      if (byId.has(id)) count += 1;
-    });
-  }
-  const docs = node ? sortInCategory(directDocs(node, byId), props.sort, node) : loose;
-  const parents = node ? node.path.slice(0, -1) : [];
-  return (
-    <section aria-labelledby={headingId} data-kb-scope={scope}>
-      <div className="mb-2 flex items-center gap-2 px-1">
-        {node ? (
-          <ColorDot color={kbEffectiveCategoryColor(node.category)} />
-        ) : (
-          <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-dashed border-muted-foreground" aria-hidden />
-        )}
-        <h2 id={headingId} className="min-w-0 font-display text-xl font-semibold tracking-tight">
-          {parents.length > 0 ? (
-            <span className="font-sans text-sm font-normal text-muted-foreground">{parents.join(" / ")} / </span>
-          ) : null}
-          {node ? node.category.name : "Not in a category"}
-        </h2>
-        <CountLabel count={count} />
-        {node ? <CategoryColorMenu category={node.category} /> : null}
-      </div>
-      {count === 0 ? (
-        <div className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
-          {props.filtering ? "No sources here match the current search or filters." : "No sources in this category yet."}{" "}
-          <button type="button" onClick={onShowAll} className="font-medium text-primary underline-offset-2 hover:underline">
-            Show all sources
-          </button>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-border bg-card shadow-card">
-          {node && node.children.length > 0 ? (
-            <ul aria-label={`Categories in ${node.category.name}`} className="divide-y divide-border">
-              {node.children.map((child) => (
-                <FolderNode
-                  key={child.category.id}
-                  node={child}
-                  byId={byId}
-                  props={props}
-                  collapsed={collapsed}
-                  onToggle={onToggle}
-                />
-              ))}
-            </ul>
-          ) : null}
-          {docs.length > 0 ? (
-            <ul
-              aria-label={node ? `Sources in ${node.category.name}` : "Sources not in a category"}
-              className={cn("divide-y divide-border", node && node.children.length > 0 && "border-t border-border")}
-            >
-              {docs.map((doc) => (
-                <KbDocRow
-                  key={doc.documentId}
-                  doc={doc}
-                  inCategoryId={node?.category.id ?? null}
-                  showPath={props.searching}
-                  roundedEdges={!node || node.children.length === 0}
-                />
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      )}
-    </section>
-  );
-}
-
-/** Nested folders in the manager's order, ending with sources not in any category. */
-export function KbFoldersView({
-  collapsed,
-  onToggle,
-  scope = null,
-  onShowAll,
   ...props
 }: BrowseProps & {
   collapsed: Set<string>;
   onToggle: (key: string) => void;
-  /** Category picked in the rail (UNCATEGORIZED_KEY for no category); null shows every folder. */
-  scope?: string | null;
-  onShowAll?: () => void;
 }): JSX.Element {
   const { lookup } = useKbLibraryContext();
   const byId = new Map(props.visible.map((d) => [d.documentId, d]));
-  const loose = sortInCategory(uncategorized(props.visible, lookup.tree.byId), props.sort, null);
+  const loose = sortInCategory(docsWithoutFolder(props.visible, lookup.tree), props.sort, null);
+  const often = usedOftenIds(props.visible);
 
-  if (lookup.tree.roots.length === 0) return <KbPlainList docs={loose} />;
-  if (scope !== null) {
-    return (
-      <ScopedFolder
-        scope={scope}
-        props={props}
-        collapsed={collapsed}
-        onToggle={onToggle}
-        onShowAll={onShowAll ?? (() => undefined)}
-      />
-    );
-  }
+  if (lookup.tree.roots.length === 0) return <KbRows docs={loose} label="Sources" />;
 
   const looseOpen = props.filtering || !collapsed.has(UNCATEGORIZED_KEY);
   return (
     <div className="rounded-lg border border-border bg-card shadow-card">
-      <ul aria-label="Categories" className="divide-y divide-border">
+      <ul aria-label="Folders" className="divide-y divide-border">
         {lookup.tree.roots.map((node) => (
-          <FolderNode
+          <OutlineNode
             key={node.category.id}
             node={node}
             byId={byId}
             props={props}
+            often={often}
             collapsed={collapsed}
             onToggle={onToggle}
           />
@@ -356,15 +493,15 @@ export function KbFoldersView({
         {loose.length > 0 ? (
           <li>
             <Disclosure
-              label="Not in a category"
+              label="Not in a folder"
               count={loose.length}
               open={looseOpen}
               onToggle={() => onToggle(UNCATEGORIZED_KEY)}
-              leading={<span className="h-2.5 w-2.5 shrink-0 rounded-full border border-dashed border-muted-foreground" aria-hidden />}
+              leading={<FolderGlyph color={null} className="h-5 w-5" />}
             >
-              <ul aria-label="Sources not in a category" className="ml-3 divide-y divide-border border-l border-border sm:ml-6">
+              <ul aria-label="Sources not in a folder" className="ml-3 divide-y divide-border border-l border-border sm:ml-6">
                 {loose.map((doc) => (
-                  <KbDocRow key={doc.documentId} doc={doc} />
+                  <KbDocRow key={doc.documentId} doc={doc} usedOften={often.has(doc.documentId)} />
                 ))}
               </ul>
             </Disclosure>
@@ -375,114 +512,32 @@ export function KbFoldersView({
   );
 }
 
-function SectionCard({
-  heading,
-  action,
-  children
-}: {
-  heading: ReactNode;
-  /** Control beside the heading (not inside it). */
-  action?: ReactNode;
-  children: ReactNode;
-}): JSX.Element {
-  const headingId = useId();
-  return (
-    <section aria-labelledby={headingId}>
-      <div className="mb-1.5 flex items-center gap-1 px-1">
-        <h2 id={headingId} className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium">
-          {heading}
-        </h2>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
+// ---------------------------------------------------------------------------
+// List view and the My shortcuts tab
 
-/** One flat section per category (with its full path), then the uncategorized group. */
-export function KbCategoriesView(props: BrowseProps): JSX.Element {
-  const { lookup } = useKbLibraryContext();
-  const byId = new Map(props.visible.map((d) => [d.documentId, d]));
-  const loose = sortInCategory(uncategorized(props.visible, lookup.tree.byId), props.sort, null);
-
-  if (lookup.tree.roots.length === 0) return <KbPlainList docs={loose} />;
-
-  return (
-    <div className="flex flex-col gap-5">
-      {lookup.tree.order.map((node) => {
-        const docs = sortInCategory(directDocs(node, byId), props.sort, node);
-        if (docs.length === 0) return null;
-        const parents = node.path.slice(0, -1);
-        return (
-          <SectionCard
-            key={node.category.id}
-            heading={
-              <>
-                <ColorDot color={kbEffectiveCategoryColor(node.category)} />
-                <span className="min-w-0">
-                  {parents.length > 0 ? (
-                    <span className="font-normal text-muted-foreground">{parents.join(" / ")} / </span>
-                  ) : null}
-                  {node.category.name}
-                </span>
-                <CountLabel count={docs.length} />
-              </>
-            }
-            action={<CategoryColorMenu category={node.category} />}
-          >
-            <ul className="divide-y divide-border rounded-lg border border-border bg-card shadow-card">
-              {docs.map((doc) => (
-                <KbDocRow
-                  key={doc.documentId}
-                  doc={doc}
-                  inCategoryId={node.category.id}
-                  showPath={props.searching}
-                  roundedEdges
-                />
-              ))}
-            </ul>
-          </SectionCard>
-        );
-      })}
-      {loose.length > 0 ? (
-        <SectionCard
-          heading={
-            <>
-              <span className="text-muted-foreground">Not in a category</span>
-              <CountLabel count={loose.length} />
-            </>
-          }
-        >
-          <ul className="divide-y divide-border rounded-lg border border-border bg-card shadow-card">
-            {loose.map((doc) => (
-              <KbDocRow key={doc.documentId} doc={doc} roundedEdges />
-            ))}
-          </ul>
-        </SectionCard>
-      ) : null}
-    </div>
-  );
-}
-
-/** Everything in one sorted list, each row naming its category. */
+/** List view: every source in one sorted list. */
 export function KbListView({ visible, sort }: BrowseProps): JSX.Element {
   const { lookup } = useKbLibraryContext();
   const docs = sort === "manual" ? sortDocs(visible, "manual", libraryOrder(lookup.tree)) : sortDocs(visible, sort);
-  return <KbPlainList docs={docs} showPath={lookup.tree.roots.length > 0} />;
+  return <KbRows docs={docs} label="Sources" />;
 }
 
-function KbPlainList({
-  docs,
-  showPath = false
-}: {
-  docs: KbDocumentListItem[];
-  showPath?: boolean;
-}): JSX.Element {
+/** My shortcuts tab: the sources this user starred, in shelf order. Unstar to remove one. */
+export function KbMyShortcuts({ visible, filtering }: { visible: KbDocumentListItem[]; filtering: boolean }): JSX.Element {
+  const mine = myPins(visible);
   return (
-    <ul aria-label="Sources" className="divide-y divide-border rounded-lg border border-border bg-card shadow-card">
-      {docs.map((doc) => (
-        <KbDocRow key={doc.documentId} doc={doc} showPath={showPath} roundedEdges />
-      ))}
-    </ul>
+    <div className="flex flex-col gap-3" data-kb-my-shortcuts>
+      <p className="text-sm text-muted-foreground">
+        Star a source to add it here and to your shortcuts shelf. Press its star again to remove it. Shortcuts from your
+        team come first on the shelf; your manager chooses those.
+      </p>
+      {mine.length > 0 ? (
+        <KbRows docs={mine} label="My shortcuts" />
+      ) : (
+        <p className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+          {filtering ? "None of your shortcuts match." : "You have no shortcuts yet. Use the star on any source to add one."}
+        </p>
+      )}
+    </div>
   );
 }

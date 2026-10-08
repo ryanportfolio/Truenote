@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CATEGORY_CYCLE_MESSAGE,
+  colorLabelSchema,
   CATEGORY_DEPTH_MESSAGE,
   CATEGORY_NAME_TAKEN_MESSAGE,
   canNestAt,
@@ -12,6 +13,7 @@ import {
   featuredOverCap,
   featuredSchema,
   libraryColorOrNull,
+  normalizeLabelName,
   normalizeNote,
   noteSchema,
   personalColorSchema,
@@ -20,6 +22,7 @@ import {
   reorderCategoriesSchema,
   sameIdSet,
   serializeCategory,
+  serializeColorLabels,
   serializeUserState,
   updateCategorySchema,
   updateTagSchema,
@@ -207,5 +210,45 @@ describe("database error mapping", () => {
       categoryConflictMessage(wrap("23514", "kb_categories: a category cannot be inside itself"))
     ).toBe(CATEGORY_CYCLE_MESSAGE);
     expect(categoryConflictMessage(wrap("22P02", "invalid input"))).toBeNull();
+  });
+});
+
+describe("personal color labels", () => {
+  it("trims names, removes blank or null names, and caps them at 40 characters", () => {
+    const named = colorLabelSchema.safeParse({ name: "  Read before quoting fees  " });
+    expect(named.success && normalizeLabelName(named.data.name)).toBe("Read before quoting fees");
+    const blank = colorLabelSchema.safeParse({ name: "   " });
+    expect(blank.success && normalizeLabelName(blank.data.name)).toBeNull();
+    const cleared = colorLabelSchema.safeParse({ name: null });
+    expect(cleared.success && normalizeLabelName(cleared.data.name)).toBeNull();
+    expect(colorLabelSchema.safeParse({ name: "x".repeat(40) }).success).toBe(true);
+    const long = colorLabelSchema.safeParse({ name: "x".repeat(41) });
+    expect(long.success).toBe(false);
+    if (!long.success) {
+      expect(validationMessage(long.error, "fallback")).toBe(
+        "Label names can be at most 40 characters."
+      );
+    }
+  });
+
+  it("needs the name key and rejects other shapes", () => {
+    expect(colorLabelSchema.safeParse({}).success).toBe(false);
+    expect(colorLabelSchema.safeParse({ name: 3 }).success).toBe(false);
+    expect(colorLabelSchema.safeParse({ name: "Easy wins", color: "red" }).success).toBe(false);
+  });
+
+  it("lists labels in palette order and drops colors outside the palette", () => {
+    expect(
+      serializeColorLabels([
+        { color: "amber", name: "Changes often" },
+        { color: "orange", name: "Not a palette color" },
+        { color: "red", name: "Read before quoting fees" },
+        { color: "green", name: "Easy wins" }
+      ])
+    ).toEqual([
+      { color: "green", name: "Easy wins" },
+      { color: "amber", name: "Changes often" },
+      { color: "red", name: "Read before quoting fees" }
+    ]);
   });
 });

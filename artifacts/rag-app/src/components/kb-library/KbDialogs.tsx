@@ -105,7 +105,7 @@ function DocCategoriesDialog({
     event.preventDefault();
     if (!doc) return;
     if (selected.size > 50) {
-      setError("A source can be in at most 50 categories.");
+      setError("A source can be in at most 50 folders.");
       return;
     }
     setPending(true);
@@ -122,15 +122,15 @@ function DocCategoriesDialog({
 
   return (
     <KbDialog
-      title="Categories"
-      description={`Choose every category ${doc.title} belongs in. A source can sit in more than one.`}
+      title="Folders"
+      description={`Choose every folder ${doc.title} belongs in. A source can sit in more than one.`}
       onClose={onClose}
       wide
     >
       <form onSubmit={(e) => void onSubmit(e)} className="flex min-h-0 flex-col">
         {lookup.tree.order.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No categories yet.{" "}
+            No folders yet.{" "}
             <button
               type="button"
               className="cursor-pointer text-primary underline underline-offset-2"
@@ -144,7 +144,7 @@ function DocCategoriesDialog({
           </p>
         ) : (
           <fieldset className="min-h-0 overflow-y-auto rounded-md border border-border p-2">
-            <legend className="sr-only">Categories</legend>
+            <legend className="sr-only">Folders</legend>
             {lookup.tree.order.map((node) => (
               <label
                 key={node.category.id}
@@ -176,7 +176,7 @@ function DocCategoriesDialog({
             Cancel
           </button>
           <button type="submit" disabled={pending} className="btn-primary px-4 py-1.5 text-sm">
-            {pending ? "Saving…" : "Save categories"}
+            {pending ? "Saving…" : "Save folders"}
           </button>
         </KbDialogActions>
       </form>
@@ -464,7 +464,7 @@ function CategoryFormDialog({
     event.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("A category needs a name.");
+      setError("A folder needs a name.");
       return;
     }
     setPending(true);
@@ -481,11 +481,11 @@ function CategoryFormDialog({
 
   return (
     <KbDialog
-      title={existing ? "Edit category" : "New category"}
+      title={existing ? "Edit folder" : "New folder"}
       description={
         existing
           ? categoryPathLabel(lookup.tree.byId.get(existing.id))
-          : "Categories group sources the way your team thinks about them."
+          : "Folders group sources the way your team thinks about them."
       }
       onClose={onClose}
     >
@@ -542,7 +542,7 @@ function CategoryFormDialog({
             Cancel
           </button>
           <button type="submit" disabled={pending} className="btn-primary px-4 py-1.5 text-sm">
-            {pending ? "Saving…" : existing ? "Save category" : "Create category"}
+            {pending ? "Saving…" : existing ? "Save folder" : "Create folder"}
           </button>
         </KbDialogActions>
       </form>
@@ -622,7 +622,7 @@ function CategoryMoveDialog({ categoryId, onClose }: { categoryId: string; onClo
       note: n.category.id === currentParent ? "Current" : undefined,
       disabledReason:
         n.category.id === categoryId
-          ? "A category can't be moved inside itself."
+          ? "A folder can't be moved inside itself."
           : nestBlockReason(lookup.tree, categoryId, n.category.id)
     }))
   ];
@@ -653,7 +653,7 @@ function CategoryMoveDialog({ categoryId, onClose }: { categoryId: string; onClo
             disabled={choice === undefined || choice === currentParent}
             className="btn-primary px-4 py-1.5 text-sm"
           >
-            Move category
+            Move folder
           </button>
         </KbDialogActions>
       </form>
@@ -689,8 +689,8 @@ function DocMoveDialog({
       title={`Move "${doc.title}"`}
       description={
         fromName
-          ? `It leaves ${fromName} and goes to the end of the category you choose. Use Categories… to keep it in several.`
-          : "It goes to the end of the category you choose."
+          ? `It leaves ${fromName} and goes to the end of the folder you choose. Use Folders… to keep it in several.`
+          : "It goes to the end of the folder you choose."
       }
       onClose={onClose}
       wide
@@ -704,7 +704,7 @@ function DocMoveDialog({
           actions.moveDocument(documentId, fromCategoryId, choice);
         }}
       >
-        <RadioList legend="Destination category" options={options} value={choice} onChange={setChoice} />
+        <RadioList legend="Destination folder" options={options} value={choice} onChange={setChoice} />
         <KbDialogActions>
           <button type="button" onClick={onClose} className="btn-whisper px-4 py-1.5 text-sm">
             Cancel

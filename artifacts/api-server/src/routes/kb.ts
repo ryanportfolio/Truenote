@@ -18,8 +18,12 @@ import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
 import { hasAtLeastRole } from "../lib/auth/current-user.js";
 import { isDemoEmail } from "../lib/auth/demo-accounts.js";
 import {
+  colorLabelSchema,
   isoOrNull,
   libraryColorOrNull,
+  normalizeLabelName,
+  serializeColorLabels,
+  type ColorLabelRow,
   noteSchema,
   normalizeNote,
   personalColorSchema,
@@ -60,7 +64,7 @@ export const kbRouter = Router();
 
 kbRouter.use(requireAuth, requireFreshPassword, requireCsrOrAbove);
 // The mutations on this router are personal: highlights, source pins, notes
-// and colors, and category color overrides. They remain available to demo
+// and colors, category color overrides, and color names. They remain available to demo
 // accounts so visitors can experience the features; every row is still
 // owner- and program-scoped, with the normal caps.
 
@@ -179,10 +183,12 @@ kbRouter.get("/documents", async (req, res, next) => {
     const programId = await resolveEffectiveProgramId(user, req);
     const canOrganize = hasAtLeastRole(user, "manager") && !isDemoEmail(user.email);
     if (programId === null) {
+      // Color names belong to the user, not a program, so they still load.
       res.json({
         items: [],
         categories: [],
         tags: [],
+        labels: await loadColorLabels(user.id),
         canOrganize,
         noProgramSelected: true
       });
@@ -300,13 +306,14 @@ kbRouter.get("/documents", async (req, res, next) => {
       INNER JOIN kb_tags AS t ON t.id = dt.tag_id
       WHERE t.program_id = ${programId}::uuid
     `);
-    const [listResult, categoryResult, categoryMemberResult, tagResult, tagMemberResult] =
+    const [listResult, categoryResult, categoryMemberResult, tagResult, tagMemberResult, labels] =
       await Promise.all([
         listQuery,
         categoryQuery,
         categoryMemberQuery,
         tagQuery,
-        tagMemberQuery
+        tagMemberQuery,
+        loadColorLabels(user.id)
       ]);
 
     const listRows = listResult.rows as unknown as KbListRow[];
@@ -355,12 +362,23 @@ kbRouter.get("/documents", async (req, res, next) => {
       items,
       categories: categoryRows.map((c) => serializeCategory(c, categoryDocs.get(c.id) ?? [])),
       tags: tagRows.map(serializeTag),
+      labels,
       canOrganize
     });
   } catch (err) {
     next(err);
   }
 });
+
+/** The caller's color names (kb_user_color_labels), in palette order. */
+async function loadColorLabels(userId: string) {
+  const result = await db.execute(sql`
+    SELECT color, name
+    FROM kb_user_color_labels
+    WHERE user_id = ${userId}::uuid
+  `);
+  return serializeColorLabels(result.rows as unknown as ColorLabelRow[]);
+}
 
 function pushTo(map: Map<string, string[]>, key: string, value: string): void {
   const list = map.get(key);
@@ -1097,6 +1115,52 @@ kbRouter.put("/categories/:id/color", async (req, res, next) => {
       return;
     }
     res.json({ item: { categoryId, myColor: libraryColorOrNull(row.color) } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * The caller's own name for one of their colors ("Read before quoting
+ * fees"), private to them and shared across programs. Every role, demo
+ * included. `name: null` or a blank name removes it; the reply is
+ * `{ item: { color, name } }` or `{ item: null }` after a removal.
+ */
+kbRouter.put("/labels/:color", async (req, res, next) => {
+  try {
+    const user = authedUser(req);
+    const color = libraryColorOrNull(req.params.color);
+    if (color === null) {
+      res.status(400).json({ error: "Pick one of the listed colors." });
+      return;
+    }
+    const parsed = colorLabelSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: validationMessage(parsed.error, "Enter a label name, or send null to remove it.")
+      });
+      return;
+    }
+    const name = normalizeLabelName(parsed.data.name);
+    if (name === null) {
+      await db.execute(sql`
+        DELETE FROM kb_user_color_labels
+        WHERE user_id = ${user.id}::uuid
+          AND color = ${color}
+      `);
+      res.json({ item: null });
+      return;
+    }
+    const result = await db.execute(sql`
+      INSERT INTO kb_user_color_labels (user_id, color, name, updated_at)
+      VALUES (${user.id}::uuid, ${color}::text, ${name}::text, now())
+      ON CONFLICT (user_id, color) DO UPDATE
+      SET name = EXCLUDED.name,
+          updated_at = now()
+      RETURNING color, name
+    `);
+    const [item] = serializeColorLabels(result.rows as unknown as ColorLabelRow[]);
+    res.json({ item: item ?? null });
   } catch (err) {
     next(err);
   }

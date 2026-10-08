@@ -11,6 +11,8 @@ interface PersonPickerProps {
   /** Shown on the trigger when the selected person is not in `people` (no questions this window). */
   selectedLabel: string | null;
   onSelect: (userId: string | null) => void;
+  /** Visible trigger text instead of the selected name (the person view says "Change person"). */
+  triggerLabel?: string;
 }
 
 /**
@@ -23,7 +25,8 @@ export function PersonPicker({
   people,
   selectedId,
   selectedLabel,
-  onSelect
+  onSelect,
+  triggerLabel
 }: PersonPickerProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -109,8 +112,19 @@ export function PersonPicker({
         className="btn-whisper inline-flex max-w-[16rem] items-center gap-2 px-3 py-1.5 text-sm"
       >
         <Users className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="text-muted-foreground">Person:</span>
-        <span className="truncate font-medium" title={triggerText}>{triggerText}</span>
+        {triggerLabel ? (
+          <>
+            <span className="truncate font-medium">{triggerLabel}</span>
+            <span className="sr-only">, now showing {triggerText}</span>
+          </>
+        ) : (
+          <>
+            <span className="sr-only">Person: </span>
+            <span className="truncate font-medium" title={triggerText}>
+              {triggerText}
+            </span>
+          </>
+        )}
         <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
       </button>
 

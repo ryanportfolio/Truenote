@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, MessageSquareText } from "lucide-react";
+import { AlertCircle, ArrowLeft, BookOpen, Check, ClipboardCopy, MessageSquareText } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
 import { fetchSourceUsage, fetchSourceUsageQuestions } from "@/lib/api";
@@ -10,19 +10,19 @@ import {
   firstName,
   formatCategoryPaths,
   formatPercent,
-  percentOf,
   plural,
   roleLabel
 } from "@/lib/sourceUsage";
+import { buildCoachingNotes, copyText, suggestionReasonText } from "@/lib/sourceUsageNotes";
 import type {
   SourceUsageQuestion,
   SourceUsageQuestionsResponse,
   SourceUsageResponse,
   SourceUsageSource,
+  SourceUsageSuggestion,
   SourceUsageUser
 } from "@/types/api";
 import { QuestionList } from "./QuestionList";
-import { Kpi } from "./UsageKpis";
 import { CategoryPath, ErrorAlert, InlineBar, RoleBadge, SourceOpener } from "./shared";
 
 /** Everyone's numbers for the same window, for the team comparison. */
@@ -42,10 +42,14 @@ interface PersonFocusProps {
   totals: SourceUsageResponse["totals"];
   /** Sources this person's answers cited, ranked by citations. */
   sources: readonly SourceUsageSource[];
+  /** Sources to suggest, from the server (up to 3, never one this person cited). */
+  suggestions: readonly SourceUsageSuggestion[];
   team: TeamNumbers | null;
   categoryPaths: ReadonlyMap<string, string[]>;
   days: number;
   reloadKey: number;
+  /** Time period dropdown and person picker, rendered in the header. */
+  controls: ReactNode;
   onClear: () => void;
   onOpenSource: (documentId: string, title: string | null) => void;
   onWiderWindow: (() => void) | null;
@@ -54,14 +58,68 @@ interface PersonFocusProps {
 /** One request covers the whole window for nearly everyone; the server caps at 200. */
 const QUESTION_LIMIT = 200;
 const RELIES_ON_ROWS = 8;
-const GROUP_ROWS = 5;
+const TALK_ROWS = 2;
 const ALL_ROWS = 10;
 
+const LINK_CLASS =
+  "rounded-sm font-medium text-primary underline underline-offset-2 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+
 /**
- * Coaching profile for one person, summary first: who they are, their
- * numbers against the team, the sources their answers rely on, then the
- * questions to review grouped by problem (refused, thumbs down), then every
- * question they asked.
+ * Header of the person view: back link, the person's name as the page title,
+ * the page and view names, then the controls. Also used by the page while the
+ * person's numbers load, so the header does not jump.
+ */
+export function PersonHeader({
+  name,
+  role,
+  controls,
+  action,
+  onBack
+}: {
+  name: string;
+  role: string | null;
+  controls: ReactNode;
+  action?: ReactNode;
+  onBack: () => void;
+}): JSX.Element {
+  return (
+    <header className="flex flex-col gap-3">
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex items-center gap-1.5 self-start rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      >
+        <ArrowLeft className="h-4 w-4" aria-hidden />
+        Back to everyone
+      </button>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1
+              id="person-focus-title"
+              tabIndex={-1}
+              className="min-w-0 break-words rounded-sm font-display text-3xl font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              {name}
+            </h1>
+            {role ? <RoleBadge>{role}</RoleBadge> : null}
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">Source usage · Coaching guide</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {controls}
+          {action}
+        </div>
+      </div>
+    </header>
+  );
+}
+
+/**
+ * Coaching guide for one person: what is going well, what to talk about,
+ * which sources to suggest, then the sources they rely on and every question
+ * they asked. "Copy notes for 1:1" puts the same facts on the clipboard as
+ * plain text.
  */
 export function PersonFocus({
   userId,
@@ -70,10 +128,12 @@ export function PersonFocus({
   row,
   totals,
   sources,
+  suggestions,
   team,
   categoryPaths,
   days,
   reloadKey,
+  controls,
   onClear,
   onOpenSource,
   onWiderWindow
@@ -82,6 +142,7 @@ export function PersonFocus({
   const [error, setError] = useState<string | null>(null);
   const hasQuestions = totals.questions > 0;
   const shortName = firstName(name);
+  const role = identity ? roleLabel(identity.role) : null;
 
   useEffect(() => {
     if (!hasQuestions) return;
@@ -111,145 +172,105 @@ export function PersonFocus({
   }, [data]);
 
   const negativeCount = row?.negativeCount ?? 0;
-  const teamNegatives = team ? team.users.reduce((sum, user) => sum + user.negativeCount, 0) : 0;
   const teamAverage =
     team && team.totals.activeUsers > 0
       ? Math.round(team.totals.questions / team.totals.activeUsers)
       : null;
   const teamAnswered = team ? answeredRate(team.totals.answered, team.totals.questions) : null;
-  const teamRefused = team ? percentOf(team.totals.refused, team.totals.questions) : null;
-  const teamNegative = team ? percentOf(teamNegatives, team.totals.questions) : null;
+  const pathOf = (documentId: string): string | null =>
+    formatCategoryPaths(categoryPaths.get(documentId));
+  const topSource = sources.find((source) => source.title !== null) ?? null;
+
+  const notes = (): string =>
+    buildCoachingNotes({
+      name,
+      role,
+      days,
+      questions: totals.questions,
+      answered: totals.answered,
+      teamAnsweredRate: teamAnswered,
+      topSource: topSource ? { source: topSource, path: pathOf(topSource.documentId) } : null,
+      refused: groups.refused,
+      negative: groups.negative,
+      truncated: data?.truncated ?? false,
+      suggestions,
+      suggestionPaths: new Map(suggestions.map((item) => [item.documentId, pathOf(item.documentId)]))
+    });
 
   return (
     <section aria-labelledby="person-focus-title" className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={onClear}
-          className="inline-flex items-center gap-1.5 self-start rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden />
-          Back to everyone
-        </button>
-        <div className="flex flex-wrap items-center gap-3">
-          <h2
-            id="person-focus-title"
-            tabIndex={-1}
-            className="rounded-sm text-2xl font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            {name}
-          </h2>
-          {identity ? <RoleBadge>{roleLabel(identity.role)}</RoleBadge> : null}
-          {identity?.email ? (
-            <span className="min-w-0 break-all text-sm text-muted-foreground">{identity.email}</span>
-          ) : null}
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Review the questions and sources behind {shortName}'s answers in the last {days} days.
-          {row?.lastAskedAt ? (
-            <>
-              {" Last asked "}
-              <RelativeTime iso={row.lastAskedAt} />.
-            </>
-          ) : null}
-        </p>
-      </div>
+      <PersonHeader
+        name={name}
+        role={role}
+        controls={controls}
+        onBack={onClear}
+        action={hasQuestions ? <CopyNotesButton ready={data !== null} build={notes} /> : null}
+      />
 
       {!hasQuestions ? (
-        <NoQuestions
-          userId={userId}
-          name={name}
-          shortName={shortName}
-          days={days}
-          reloadKey={reloadKey}
-          onWiderWindow={onWiderWindow}
-        />
+        <>
+          <NoQuestions
+            userId={userId}
+            name={name}
+            shortName={shortName}
+            days={days}
+            reloadKey={reloadKey}
+            onWiderWindow={onWiderWindow}
+          />
+          {suggestions.length > 0 ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <SuggestSources name={name} suggestions={suggestions} pathOf={pathOf} />
+            </div>
+          ) : null}
+        </>
       ) : (
         <>
-          <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Kpi label="Questions" value={totals.questions}>
-              {teamAverage !== null ? `Team average ${teamAverage} per person.` : "Asked in this window."}
-            </Kpi>
-            <Kpi label="Answered" value={formatPercent(answeredRate(totals.answered, totals.questions))}>
-              {teamAnswered !== null ? `Team ${formatPercent(teamAnswered)}. ` : ""}
-              {totals.answered} of {totals.questions} got a cited answer.
-            </Kpi>
-            <Kpi label="Refused" value={totals.refused}>
-              {percentOf(totals.refused, totals.questions)} of questions
-              {teamRefused !== null ? `. Team ${teamRefused}.` : "."}
-            </Kpi>
-            <Kpi label="Thumbs down" value={negativeCount}>
-              {percentOf(negativeCount, totals.questions)} of questions
-              {teamNegative !== null ? `. Team ${teamNegative}.` : "."}
-            </Kpi>
-          </dl>
+          <p className="text-base" data-person-summary="">
+            {plural(totals.questions, "question", "questions")} in the last {days} days.
+            {row?.lastAskedAt ? (
+              <span className="text-muted-foreground">
+                {" Last asked "}
+                <RelativeTime iso={row.lastAskedAt} />.
+              </span>
+            ) : null}
+          </p>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <ReliesOn
-              shortName={shortName}
-              days={days}
-              sources={sources}
-              categoryPaths={categoryPaths}
+          <div
+            className={
+              suggestions.length > 0
+                ? "grid items-stretch gap-4 lg:grid-cols-3"
+                : "grid items-stretch gap-4 lg:grid-cols-2"
+            }
+          >
+            <GoingWell
+              totals={totals}
+              teamAnswered={teamAnswered}
+              teamAverage={teamAverage}
+              topSource={topSource}
+              topPath={topSource ? pathOf(topSource.documentId) : null}
               onOpenSource={onOpenSource}
             />
-
-            <section
-              aria-labelledby="questions-to-review-title"
-              className="flex min-w-0 flex-col gap-4 rounded-lg border border-border bg-card p-5 shadow-card"
-            >
-              <div>
-                <h3 id="questions-to-review-title" className="text-base font-semibold tracking-tight">
-                  Questions to review
-                </h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Exact questions from {shortName}'s conversations.
-                </p>
-              </div>
-              {error ? (
-                <ErrorAlert message={error} />
-              ) : !data ? (
-                <QuestionsSkeleton />
-              ) : (
-                <>
-                  <QuestionGroup
-                    id="refused"
-                    label="Refused"
-                    total={totals.refused}
-                    items={groups.refused}
-                    empty="No refused questions in this window."
-                    onOpenSource={onOpenSource}
-                    note={
-                      totals.refused > 0 ? (
-                        <>
-                          A missing topic belongs in{" "}
-                          <Link
-                            href="/admin/gaps"
-                            className="font-medium text-primary underline-offset-2 hover:underline"
-                          >
-                            Content gaps
-                          </Link>
-                          ; a question worded unlike the sources is a coaching point.
-                        </>
-                      ) : null
-                    }
-                  />
-                  <QuestionGroup
-                    id="negative"
-                    label="Thumbs down"
-                    total={negativeCount}
-                    items={groups.negative}
-                    empty="No thumbs-down answers in this window."
-                    onOpenSource={onOpenSource}
-                    note={
-                      negativeCount > 0
-                        ? "Open the cited source to check whether the source or the answer was wrong."
-                        : null
-                    }
-                  />
-                </>
-              )}
-            </section>
+            <TalkAbout
+              refusedTotal={totals.refused}
+              negativeTotal={negativeCount}
+              refused={groups.refused}
+              negative={groups.negative}
+              loading={!data && !error}
+              error={error}
+              onOpenSource={onOpenSource}
+            />
+            {suggestions.length > 0 ? (
+              <SuggestSources name={name} suggestions={suggestions} pathOf={pathOf} />
+            ) : null}
           </div>
+
+          <ReliesOn
+            shortName={shortName}
+            days={days}
+            sources={sources}
+            categoryPaths={categoryPaths}
+            onOpenSource={onOpenSource}
+          />
 
           <AllQuestions
             total={totals.questions}
@@ -260,6 +281,352 @@ export function PersonFocus({
           />
         </>
       )}
+    </section>
+  );
+}
+
+/**
+ * Primary action of the coaching guide. The result is announced in a polite
+ * live region ("Copied") and shown next to the button for a few seconds.
+ */
+function CopyNotesButton({
+  ready,
+  build
+}: {
+  ready: boolean;
+  build: () => string;
+}): JSX.Element {
+  const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const timer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    },
+    []
+  );
+
+  async function copy(): Promise<void> {
+    const ok = await copyText(build());
+    setStatus(ok ? "copied" : "failed");
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setStatus("idle"), ok ? 4000 : 8000);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => void copy()}
+        disabled={!ready}
+        className="btn-primary inline-flex items-center gap-2 px-5 py-2 text-base disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <ClipboardCopy className="h-4 w-4" aria-hidden />
+        Copy notes for 1:1
+      </button>
+      {/* A toast at the bottom of the screen, so the result never shifts the header. */}
+      <span
+        role="status"
+        aria-live="polite"
+        className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap text-sm"
+        data-copy-status={status}
+      >
+        {status === "copied" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-4 py-2 font-medium text-success shadow-panel motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-240 motion-safe:ease-out-quart">
+            <Check className="h-4 w-4" aria-hidden />
+            Copied
+          </span>
+        ) : status === "failed" ? (
+          <span className="inline-flex rounded-full border border-destructive/30 bg-card px-4 py-2 font-medium text-destructive shadow-panel">
+            Your browser blocked copying. Try again.
+          </span>
+        ) : null}
+      </span>
+    </>
+  );
+}
+
+function CardTitle({
+  id,
+  icon,
+  children
+}: {
+  id: string;
+  icon: ReactNode;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <h2 id={id} className="flex items-center gap-2.5 text-lg font-semibold tracking-tight">
+      {icon}
+      {children}
+    </h2>
+  );
+}
+
+const CARD_CLASS =
+  "flex min-w-0 flex-col gap-4 rounded-lg border border-border bg-card p-5 shadow-card";
+
+function GoingWell({
+  totals,
+  teamAnswered,
+  teamAverage,
+  topSource,
+  topPath,
+  onOpenSource
+}: {
+  totals: SourceUsageResponse["totals"];
+  teamAnswered: number | null;
+  teamAverage: number | null;
+  topSource: SourceUsageSource | null;
+  topPath: string | null;
+  onOpenSource: (documentId: string, title: string | null) => void;
+}): JSX.Element {
+  const rate = formatPercent(answeredRate(totals.answered, totals.questions));
+  return (
+    <section aria-labelledby="going-well-title" className={CARD_CLASS} data-coaching-card="going-well">
+      <CardTitle
+        id="going-well-title"
+        icon={
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-success/15 text-success">
+            <Check className="h-4 w-4" aria-hidden />
+          </span>
+        }
+      >
+        Going well
+      </CardTitle>
+      <div>
+        <p className="text-4xl font-semibold tabular-nums tracking-tight">{rate}</p>
+        <p className="mt-1 text-sm">
+          Answered {rate} of questions
+          {teamAnswered !== null ? `; the team answered ${formatPercent(teamAnswered)}.` : "."}
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {totals.answered} of {totals.questions} got a cited answer.
+        </p>
+      </div>
+      <div className="border-t border-border pt-4">
+        <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Most-used source
+        </h3>
+        {topSource ? (
+          <div className="mt-1.5">
+            <SourceOpener
+              documentId={topSource.documentId}
+              title={topSource.title}
+              isLive={topSource.isLive}
+              onOpen={onOpenSource}
+              className="text-base font-medium"
+            />
+            <CategoryPath path={topPath} />
+            <p className="mt-1 text-sm text-muted-foreground">
+              {plural(topSource.citationCount, "answer", "answers")}
+            </p>
+          </div>
+        ) : (
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            No answer used a source in this period.
+          </p>
+        )}
+      </div>
+      {teamAverage !== null ? (
+        <p className="mt-auto border-t border-border pt-3 text-sm text-muted-foreground">
+          Team average: {plural(teamAverage, "question", "questions")} per person.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function TalkAbout({
+  refusedTotal,
+  negativeTotal,
+  refused,
+  negative,
+  loading,
+  error,
+  onOpenSource
+}: {
+  /** Server counts for the window; the lists may stop at the question limit. */
+  refusedTotal: number;
+  negativeTotal: number;
+  refused: readonly SourceUsageQuestion[];
+  negative: readonly SourceUsageQuestion[];
+  loading: boolean;
+  error: string | null;
+  onOpenSource: (documentId: string, title: string | null) => void;
+}): JSX.Element {
+  const nothing = refusedTotal === 0 && negativeTotal === 0;
+  return (
+    <section aria-labelledby="talk-about-title" className={CARD_CLASS} data-coaching-card="talk-about">
+      <CardTitle
+        id="talk-about-title"
+        icon={
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-warning/25 text-warning-foreground">
+            <AlertCircle className="h-4 w-4" aria-hidden />
+          </span>
+        }
+      >
+        Talk about
+      </CardTitle>
+      {nothing ? (
+        <p className="text-sm text-muted-foreground">
+          Nothing to talk about in this period: every question got an answer and none was marked
+          thumbs down.
+        </p>
+      ) : error ? (
+        <ErrorAlert message={error} />
+      ) : loading ? (
+        <div role="status" className="flex flex-col gap-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="skeleton h-4 w-full" />
+          ))}
+          <span className="sr-only">Loading questions…</span>
+        </div>
+      ) : (
+        <>
+          {refusedTotal > 0 ? (
+            <TalkGroup
+              id="refused"
+              label={plural(refusedTotal, "refused question", "refused questions")}
+              items={refused}
+              onOpenSource={onOpenSource}
+            />
+          ) : null}
+          {negativeTotal > 0 ? (
+            <TalkGroup
+              id="negative"
+              label={plural(negativeTotal, "thumbs-down question", "thumbs-down questions")}
+              items={negative}
+              onOpenSource={onOpenSource}
+            />
+          ) : null}
+        </>
+      )}
+      <div className="mt-auto border-t border-border pt-3">
+        <a
+          href="#all-questions-title"
+          onClick={(event) => {
+            event.preventDefault();
+            const heading = document.getElementById("all-questions-title");
+            heading?.scrollIntoView({ block: "start" });
+            heading?.focus({ preventScroll: true });
+          }}
+          className="rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          Open questions
+        </a>
+      </div>
+    </section>
+  );
+}
+
+function TalkGroup({
+  id,
+  label,
+  items,
+  onOpenSource
+}: {
+  id: string;
+  label: string;
+  items: readonly SourceUsageQuestion[];
+  onOpenSource: (documentId: string, title: string | null) => void;
+}): JSX.Element {
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? items : items.slice(0, TALK_ROWS);
+  const titleId = `talk-group-${id}`;
+  return (
+    <div role="group" aria-labelledby={titleId} className="flex flex-col gap-2" data-talk-group={id}>
+      <h3 id={titleId} className="self-start">
+        <span className="inline-block rounded-full bg-warning/25 px-2.5 py-0.5 text-xs font-medium text-warning-foreground">
+          {label}
+        </span>
+      </h3>
+      <ul className="flex flex-col gap-3">
+        {visible.map((item) => (
+          <li key={item.queryLogId} className="min-w-0">
+            <q className="block break-words text-sm">{item.question}</q>
+            {item.sources.length === 0 ? (
+              <p className="mt-0.5 text-xs text-muted-foreground">No cited answer.</p>
+            ) : (
+              <p className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-sm">
+                {item.sources.map((source) => (
+                  <SourceOpener
+                    key={source.documentId}
+                    documentId={source.documentId}
+                    title={source.title}
+                    onOpen={onOpenSource}
+                    className={LINK_CLASS}
+                  />
+                ))}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+      {items.length > TALK_ROWS ? (
+        <button
+          type="button"
+          aria-expanded={showAll}
+          onClick={() => setShowAll((value) => !value)}
+          className="btn-whisper self-start px-3 py-1 text-xs"
+        >
+          {showAll ? `Show the first ${TALK_ROWS}` : `Show all ${items.length}`}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function SuggestSources({
+  name,
+  suggestions,
+  pathOf
+}: {
+  name: string;
+  suggestions: readonly SourceUsageSuggestion[];
+  pathOf: (documentId: string) => string | null;
+}): JSX.Element {
+  const groups = (["related", "team_top"] as const)
+    .map((reason) => ({ reason, items: suggestions.filter((item) => item.reason === reason) }))
+    .filter((group) => group.items.length > 0);
+  return (
+    <section aria-labelledby="suggest-title" className={CARD_CLASS} data-coaching-card="suggest">
+      <CardTitle
+        id="suggest-title"
+        icon={<BookOpen className="h-6 w-6 text-muted-foreground" aria-hidden />}
+      >
+        Suggest these sources
+      </CardTitle>
+      {groups.map((group) => (
+        <div key={group.reason} className="flex flex-col gap-2" data-suggest-reason={group.reason}>
+          <p className="text-sm text-muted-foreground">{suggestionReasonText(group.reason, name)}</p>
+          <ul className="divide-y divide-border">
+            {group.items.map((item) => (
+              <li key={item.documentId} className="flex min-w-0 items-start gap-3 py-2.5">
+                <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <div className="min-w-0">
+                  <Link
+                    href={`/kb/${encodeURIComponent(item.documentId)}`}
+                    className="rounded-sm text-sm font-medium underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    {item.title}
+                  </Link>
+                  <CategoryPath path={pathOf(item.documentId)} />
+                  <span className="block text-xs text-muted-foreground">
+                    Teammates used it {plural(item.teamCitations, "time", "times")}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      <Link
+        href="/kb"
+        className="btn-whisper mt-auto inline-flex justify-center px-4 py-2 text-sm font-medium"
+      >
+        Browse sources
+      </Link>
     </section>
   );
 }
@@ -315,7 +682,7 @@ function NoQuestions({
       }
       hint={
         neverAsked
-          ? `Nothing in the last 90 days, the longest window this page shows. Questions appear after ${shortName} asks in Ask.`
+          ? `Nothing in the last 90 days, the longest period this page shows. Questions appear after ${shortName} asks in Ask.`
           : widerCount !== null && widerCount > 0
             ? `${shortName} asked ${plural(widerCount, "question", "questions")} in the last 90 days.`
             : `Questions appear here after ${shortName} asks in Ask.`
@@ -352,19 +719,19 @@ function ReliesOn({
       className="flex min-w-0 flex-col gap-4 rounded-lg border border-border bg-card p-5 shadow-card"
     >
       <div>
-        <h3 id="relies-on-title" className="text-base font-semibold tracking-tight">
+        <h2 id="relies-on-title" className="text-lg font-semibold tracking-tight">
           Sources {shortName} relies on
-        </h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Answers that cited each source in the last {days} days.
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Answers that used each source in the last {days} days.
         </p>
       </div>
       {sources.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No answer cited a source in this window. Every question was refused.
+          No answer used a source in this period. Every question went without an answer.
         </p>
       ) : (
-        <ol className="flex flex-col gap-3">
+        <ol className="grid gap-x-8 gap-y-3 md:grid-cols-2">
           {rows.map((source) => (
             <li key={source.documentId} className="min-w-0">
               <div className="flex items-baseline justify-between gap-3">
@@ -407,66 +774,6 @@ function ReliesOn({
   );
 }
 
-function QuestionGroup({
-  id,
-  label,
-  total,
-  items,
-  empty,
-  note,
-  onOpenSource
-}: {
-  id: string;
-  label: string;
-  /** The server's count for the window (may exceed the loaded items). */
-  total: number;
-  items: readonly SourceUsageQuestion[];
-  empty: string;
-  note: ReactNode;
-  onOpenSource: (documentId: string, title: string | null) => void;
-}): JSX.Element {
-  const [showAll, setShowAll] = useState(false);
-  const visible = showAll ? items : items.slice(0, GROUP_ROWS);
-  const titleId = `review-group-${id}`;
-  return (
-    <div role="group" aria-labelledby={titleId} className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 id={titleId} className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide">
-          <span className="rounded-full bg-muted px-2.5 py-0.5 text-muted-foreground">{label}</span>
-          <span className="rounded-full bg-muted px-2 py-0.5 tabular-nums text-muted-foreground">
-            {total}
-          </span>
-        </h4>
-        {total > 0 && visible.length < total ? (
-          <span className="text-xs text-muted-foreground">
-            Showing {visible.length} of {total}
-          </span>
-        ) : null}
-      </div>
-      {total === 0 ? (
-        <p className="text-sm text-muted-foreground">{empty}</p>
-      ) : (
-        <>
-          {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
-          <div className="overflow-hidden rounded-lg border border-border">
-            <QuestionList items={visible} onOpenSource={onOpenSource} hideSignals />
-          </div>
-          {items.length > GROUP_ROWS ? (
-            <button
-              type="button"
-              aria-expanded={showAll}
-              onClick={() => setShowAll((value) => !value)}
-              className="btn-whisper self-start px-3 py-1 text-xs"
-            >
-              {showAll ? `Show the first ${GROUP_ROWS}` : `Show all ${items.length}`}
-            </button>
-          ) : null}
-        </>
-      )}
-    </div>
-  );
-}
-
 function AllQuestions({
   total,
   shortName,
@@ -486,14 +793,15 @@ function AllQuestions({
   return (
     <section aria-labelledby="all-questions-title" className="flex flex-col gap-3">
       <div>
-        <h3
+        <h2
           id="all-questions-title"
-          className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
+          tabIndex={-1}
+          className="scroll-mt-6 rounded-sm text-lg font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           All {shortName}'s questions ({total})
-        </h3>
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Newest first, with the sources each answer cited.
+          Newest first, with the sources each answer used.
         </p>
       </div>
       {error ? (

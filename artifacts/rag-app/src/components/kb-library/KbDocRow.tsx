@@ -1,60 +1,56 @@
-import { Link } from "wouter";
-import { Bookmark, Ellipsis, FolderInput, Megaphone, NotebookPen, PanelRightOpen, Tags } from "lucide-react";
-import { RelativeTime } from "@/components/RelativeTime";
-import { categoryPathLabel, docCategoryPaths } from "@/lib/kbLibrary";
+import { Link, useLocation } from "wouter";
+import { Ellipsis, ExternalLink, FolderInput, Lock, NotebookPen, Star, Tags, Users } from "lucide-react";
+import { docCategoryPaths } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
 import type { KbDocumentListItem } from "@/types/api";
 import { useKbLibraryContext } from "./KbContext";
 import { KbMenu, type KbMenuEntry } from "./KbMenu";
 import {
-  DocCounts,
-  NewBadge,
-  NoteCard,
-  myColorEntries,
-  PinToggle,
+  NOTE_STICKY_STYLE,
   SourceColorLabel,
-  SourceColorMenu,
   SourceColorStripe,
-  TagChips
+  StarToggle,
+  StatusPill,
+  labelEntries
 } from "./KbShared";
 
 /**
- * Personal actions (pin, note, my color) and, for managers, library actions
- * shared by every row menu. My color is here too because the row's own color
- * button hides on phones.
+ * Everything a row does besides open and star, in one menu: the private note,
+ * the label, and for managers team shortcuts, folders and tags.
  */
 export function useDocMenuEntries(doc: KbDocumentListItem): KbMenuEntry[] {
-  const { actions, canOrganize, openDialog } = useKbLibraryContext();
+  const { data, actions, canOrganize, openDialog } = useKbLibraryContext();
+  const [, navigate] = useLocation();
   const entries: KbMenuEntry[] = [
     {
-      label: doc.pinnedAt ? "Remove from My pins" : "Add to My pins",
-      icon: Bookmark,
-      onSelect: () => actions.togglePin(doc.documentId)
-    },
-    {
-      label: doc.note ? "Edit my note" : "Add a note",
+      label: doc.note ? "Edit my note" : "Write a private note",
       icon: NotebookPen,
       onSelect: () => openDialog({ kind: "note", documentId: doc.documentId })
     },
+    {
+      label: doc.pinnedAt ? "Remove from my shortcuts" : "Add to my shortcuts",
+      icon: Star,
+      onSelect: () => actions.togglePin(doc.documentId)
+    },
     "separator",
-    ...myColorEntries(doc.myColor, (color) => actions.setSourceColor(doc.documentId, color))
+    ...labelEntries(doc.myColor, data.labels, (color) => actions.setSourceColor(doc.documentId, color))
   ];
   if (canOrganize) {
     entries.push(
       "separator",
       doc.featuredPosition !== null
         ? {
-            label: "Remove team pin",
-            icon: Megaphone,
+            label: "Remove from team shortcuts",
+            icon: Users,
             onSelect: () => actions.removeTeamPin(doc.documentId)
           }
         : {
-            label: "Pin for the team",
-            icon: Megaphone,
+            label: "Add to team shortcuts",
+            icon: Users,
             onSelect: () => actions.addTeamPin(doc.documentId)
           },
       {
-        label: "Categories…",
+        label: "Folders…",
         icon: FolderInput,
         onSelect: () => openDialog({ kind: "doc-categories", documentId: doc.documentId })
       },
@@ -65,6 +61,11 @@ export function useDocMenuEntries(doc: KbDocumentListItem): KbMenuEntry[] {
       }
     );
   }
+  entries.push("separator", {
+    label: "Open",
+    icon: ExternalLink,
+    onSelect: () => navigate(`/kb/${doc.documentId}`)
+  });
   return entries;
 }
 
@@ -75,110 +76,89 @@ export function pathsLabel(paths: string[]): string {
 }
 
 /**
- * One source in a browse list. The title is a stretched link so the whole
- * row opens the reader; note, pin, color and menu sit above it on their own
- * layer.
- *
- * Under the title: the category path when the row stands outside its folder
- * (List view, search results), or "Also in ..." when a grouped view lists the
- * same source under another category too.
+ * One source in any browse view, kept quiet: an optional label stripe, the
+ * title (a stretched link, so the whole row opens the reader), one muted
+ * line with its folder path, the private note as a one-line sticky, and on
+ * the right at most one status pill, "Used often", the star and one menu.
  */
 export function KbDocRow({
   doc,
-  showPath = false,
-  inCategoryId = null,
+  usedOften = false,
   roundedEdges = false
 }: {
   doc: KbDocumentListItem;
-  showPath?: boolean;
-  /** The category this row is listed under in Folders or Categories view. */
-  inCategoryId?: string | null;
+  /** One of the three most opened sources in the list on screen. */
+  usedOften?: boolean;
   /** Round the hover wash on the first and last row when the list is the whole card. */
   roundedEdges?: boolean;
+  /** Kept for callers from earlier builds; every row names its folders now. */
+  showPath?: boolean;
+  inCategoryId?: string | null;
 }): JSX.Element {
-  const { lookup, actions, openDialog, quickLook } = useKbLibraryContext();
+  const { data, lookup, actions, openDialog } = useKbLibraryContext();
   const menu = useDocMenuEntries(doc);
-  const previewing = quickLook?.documentId === doc.documentId;
   const paths = docCategoryPaths(doc, lookup.tree);
-  const elsewhere =
-    !showPath && inCategoryId
-      ? doc.categoryIds
-          .filter((id) => id !== inCategoryId)
-          .map((id) => lookup.tree.byId.get(id))
-          .filter((node): node is NonNullable<typeof node> => Boolean(node))
-          .map((node) => categoryPathLabel(node))
-      : [];
+  const fromTeam = doc.featuredPosition !== null;
 
   return (
     <li
       data-kb-row={doc.documentId}
-      data-kb-previewing={previewing || undefined}
       className={cn(
-        "relative px-4 py-2 transition-colors duration-100 ease-out focus-within:z-20 hover:z-20 hover:bg-muted/40",
-        previewing && "bg-primary/5 hover:bg-primary/5",
+        // One grid so each part renders once: on phones the status drops under the title.
+        "relative grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-1 py-3 pl-5 pr-3 transition-colors duration-100 ease-out focus-within:z-20 hover:z-20 hover:bg-muted/40",
+        "sm:grid-cols-[minmax(0,1fr)_5rem_auto_auto] sm:gap-x-2 sm:pr-4 md:grid-cols-[minmax(0,1fr)_5rem_5rem_auto_auto]",
         roundedEdges && "first:rounded-t-lg last:rounded-b-lg"
       )}
     >
       <SourceColorStripe color={doc.myColor} />
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1 py-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Link
-              href={`/kb/${doc.documentId}`}
-              className="rounded-sm text-sm font-medium text-foreground after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              {doc.title}
-            </Link>
-            <SourceColorLabel color={doc.myColor} />
-            {doc.isNew ? <NewBadge /> : null}
-            <TagChips tagIds={doc.tagIds} tagsById={lookup.tagsById} />
-          </div>
-          {showPath && paths.length > 0 ? (
-            <p data-kb-path className="mt-0.5 text-xs text-muted-foreground" title={paths.join("; ")}>
-              <span className="sr-only">In </span>
-              {pathsLabel(paths)}
-            </p>
-          ) : null}
-          {elsewhere.length > 0 ? (
-            <p data-kb-also className="mt-0.5 text-xs text-muted-foreground" title={elsewhere.join("; ")}>
-              Also in {pathsLabel(elsewhere)}
-            </p>
-          ) : null}
-        </div>
-        <div className="relative z-10 flex shrink-0 items-center gap-1">
-          <DocCounts doc={doc} />
-          {doc.updatedAt ? (
-            <span className="ml-2 hidden w-28 text-right text-xs text-muted-foreground md:inline">
-              <span className="sr-only">Updated </span>
-              <RelativeTime iso={doc.updatedAt} />
-            </span>
-          ) : null}
-          {quickLook ? (
-            <button
-              type="button"
-              data-kb-quicklook-trigger={doc.documentId}
-              onClick={() => quickLook.toggle(doc.documentId)}
-              aria-label={`Quick look: ${doc.title}`}
-              aria-expanded={previewing}
-              aria-controls={quickLook.paneId}
-              title={previewing ? "Close quick look" : "Quick look: preview beside the list"}
-              className={cn("btn-icon h-8 w-8", previewing && "text-primary hover:text-primary")}
-            >
-              <PanelRightOpen className="h-4 w-4" aria-hidden />
-            </button>
-          ) : null}
-          <PinToggle doc={doc} onToggle={() => actions.togglePin(doc.documentId)} />
-          <SourceColorMenu
-            doc={doc}
-            className="hidden sm:inline-flex"
-            onSelect={(color) => actions.setSourceColor(doc.documentId, color)}
-          />
-          <KbMenu label={`More actions for ${doc.title}`} items={menu}>
-            <Ellipsis className="h-4 w-4" aria-hidden />
-          </KbMenu>
-        </div>
+      <div className="col-start-1 row-start-1 min-w-0">
+        <Link
+          href={`/kb/${doc.documentId}`}
+          data-kb-title
+          className="rounded-sm text-base font-medium leading-snug text-foreground after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          {doc.title}
+        </Link>
+        <SourceColorLabel color={doc.myColor} labels={data.labels} />
+        {doc.note ? (
+          <button
+            type="button"
+            data-kb-note
+            onClick={() => openDialog({ kind: "note", documentId: doc.documentId })}
+            title={doc.note}
+            aria-label={`My private note: ${doc.note}. Edit note`}
+            className="relative z-10 mt-1 flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-0.5 text-left text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:max-w-md"
+            style={NOTE_STICKY_STYLE}
+          >
+            <Lock className="h-3.5 w-3.5 shrink-0 text-foreground/70" aria-hidden />
+            <span className="min-w-0 truncate">{doc.note}</span>
+          </button>
+        ) : null}
+        <p data-kb-path className="mt-0.5 text-sm text-muted-foreground">
+          <span className="sr-only">In </span>
+          {paths.length > 0 ? pathsLabel(paths) : "Not in a folder"}
+          {fromTeam ? <span data-kb-from-team> · From your team</span> : null}
+        </p>
       </div>
-      <NoteCard doc={doc} onEdit={() => openDialog({ kind: "note", documentId: doc.documentId })} />
+      {usedOften ? (
+        <span
+          data-kb-used-often
+          className="hidden text-right text-sm text-muted-foreground md:col-start-2 md:row-start-1 md:block"
+        >
+          Used often
+        </span>
+      ) : null}
+      <span className="col-start-1 row-start-2 mt-1 flex empty:hidden sm:col-start-2 sm:row-start-1 sm:mt-0 sm:justify-center md:col-start-3">
+        <StatusPill doc={doc} />
+      </span>
+      <span className="relative z-10 col-start-2 row-start-1 sm:col-start-3 md:col-start-4">
+        <StarToggle doc={doc} onToggle={() => actions.togglePin(doc.documentId)} />
+      </span>
+      <span className="relative z-10 col-start-3 row-start-1 sm:col-start-4 md:col-start-5">
+        <KbMenu label={`More actions for ${doc.title}`} title="More actions" items={menu}>
+          <Ellipsis className="h-5 w-5" aria-hidden />
+        </KbMenu>
+      </span>
     </li>
   );
 }

@@ -1,5 +1,5 @@
 import { useRef, useState, type RefObject } from "react";
-import { Bookmark, Lock, NotebookPen, Palette, Pencil } from "lucide-react";
+import { Lock, NotebookPen, Pencil, Star, Tag } from "lucide-react";
 import { setKbNote, setKbPin, setKbSourceColor } from "@/lib/api";
 import { applyUserState } from "@/lib/kbLibrary";
 import { patchKbLibraryCache } from "@/lib/kbLibraryCache";
@@ -26,12 +26,12 @@ export interface KbDocPersonal {
 }
 
 /**
- * Pin, private color and private note state for the document reader. The
- * reader response carries the user's state; changes write through the pin,
- * color and note endpoints. Each save merges only its own fields, so a pin,
- * color and note change in flight at once never undo each other. Saved
- * state also goes into the shared library cache, so Sources shows it on
- * the way back.
+ * Shortcut, private label and private note state for the document reader.
+ * The reader response carries the user's state; changes write through the
+ * pin, color and note endpoints. Each save merges only its own fields, so a
+ * shortcut, label and note change in flight at once never undo each other.
+ * Saved state also goes into the shared library cache, so Sources shows it
+ * on the way back.
  */
 export function useKbDocPersonal(documentId: string, initial: Personal): KbDocPersonal {
   const [item, setItem] = useState<Personal>(() => ({
@@ -43,6 +43,8 @@ export function useKbDocPersonal(documentId: string, initial: Personal): KbDocPe
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const editButtonRef = useRef<HTMLButtonElement>(null);
+  /** Whatever opened the note editor gets focus back when it closes. */
+  const openerRef = useRef<HTMLElement | null>(null);
   const pinVersion = useRef(0);
   const colorVersion = useRef(0);
 
@@ -58,7 +60,7 @@ export function useKbDocPersonal(documentId: string, initial: Personal): KbDocPe
       if (version === pinVersion.current) setItem((prev) => ({ ...prev, pinnedAt: saved.pinnedAt }));
     } catch (err) {
       if (version === pinVersion.current) setItem((prev) => ({ ...prev, pinnedAt: before }));
-      setError(err instanceof Error ? err.message : "The pin didn't save. Try again.");
+      setError(err instanceof Error ? err.message : "The shortcut didn't save. Try again.");
     }
   }
 
@@ -74,20 +76,30 @@ export function useKbDocPersonal(documentId: string, initial: Personal): KbDocPe
       if (version === colorVersion.current) setItem((prev) => ({ ...prev, myColor: saved.color }));
     } catch (err) {
       if (version === colorVersion.current) setItem((prev) => ({ ...prev, myColor: before }));
-      setError(err instanceof Error ? err.message : "The color didn't save. Try again.");
+      setError(err instanceof Error ? err.message : "The label didn't save. Try again.");
     }
+  }
+
+  function startEditing(): void {
+    const active = typeof document === "undefined" ? null : document.activeElement;
+    openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
+    setEditing(true);
   }
 
   function stopEditing(): void {
     setEditing(false);
-    requestAnimationFrame(() => editButtonRef.current?.focus());
+    requestAnimationFrame(() => {
+      const opener = openerRef.current;
+      openerRef.current = null;
+      (opener?.isConnected ? opener : editButtonRef.current)?.focus();
+    });
   }
 
   async function saveNote(note: string): Promise<ActionResult> {
     try {
       const saved = await setKbNote(documentId, note);
       patchKbLibraryCache((d) => applyUserState(d, saved));
-      // Take only the note: a pin or color change may still be in flight.
+      // Take only the note: a shortcut or label change may still be in flight.
       setItem((prev) => ({ ...prev, note: saved.note, noteUpdatedAt: saved.noteUpdatedAt }));
       stopEditing();
       return { ok: true };
@@ -100,7 +112,7 @@ export function useKbDocPersonal(documentId: string, initial: Personal): KbDocPe
     item,
     error,
     editing,
-    startEditing: () => setEditing(true),
+    startEditing,
     stopEditing,
     editButtonRef,
     togglePin,
@@ -109,7 +121,10 @@ export function useKbDocPersonal(documentId: string, initial: Personal): KbDocPe
   };
 }
 
-/** Labeled Pin and Color buttons, plus "Add note" while the source has no note. */
+/**
+ * Compact shortcut and label buttons, plus "Write a private note" while the
+ * source has no note. The full reader uses components/kb-reader instead.
+ */
 export function KbDocPersonalActions({ personal }: { personal: KbDocPersonal }): JSX.Element {
   const { item } = personal;
   const pinned = item.pinnedAt !== null;
@@ -119,27 +134,27 @@ export function KbDocPersonalActions({ personal }: { personal: KbDocPersonal }):
         type="button"
         aria-pressed={pinned}
         onClick={() => void personal.togglePin()}
-        title={pinned ? "Remove from My pins on Sources" : "Keep it in My pins on Sources"}
+        title={pinned ? "Remove from my shortcuts" : "Keep it in your shortcuts on Sources"}
         className={cn("btn-whisper gap-1.5 px-3 py-1 text-xs", pinned && "text-primary")}
       >
-        <Bookmark className="h-3.5 w-3.5" fill={pinned ? "currentColor" : "none"} aria-hidden />
-        {pinned ? "Pinned" : "Pin"}
+        <Star className="h-3.5 w-3.5" fill={pinned ? "currentColor" : "none"} aria-hidden />
+        {pinned ? "In my shortcuts" : "Add to my shortcuts"}
       </button>
       <KbMenu
-        label={item.myColor ? `Color: ${kbColorLabel(item.myColor)}` : "Color"}
-        title="Mark this source with a color only you see"
+        label={item.myColor ? `Color label: ${kbColorLabel(item.myColor)}` : "Color label"}
+        title="Mark this source with a color label only you see"
         buttonClassName="btn-whisper gap-1.5 px-3 py-1 text-xs"
         items={myColorEntries(item.myColor, (color) => void personal.setColor(color))}
       >
         {item.myColor ? (
           <>
             <ColorDot color={item.myColor} />
-            Color: {kbColorLabel(item.myColor)}
+            {kbColorLabel(item.myColor)}
           </>
         ) : (
           <>
-            <Palette className="h-3.5 w-3.5" aria-hidden />
-            Color
+            <Tag className="h-3.5 w-3.5" aria-hidden />
+            Color label
           </>
         )}
       </KbMenu>
@@ -151,7 +166,7 @@ export function KbDocPersonalActions({ personal }: { personal: KbDocPersonal }):
           className="btn-whisper gap-1.5 px-3 py-1 text-xs"
         >
           <NotebookPen className="h-3.5 w-3.5" aria-hidden />
-          Add note
+          Write a private note
         </button>
       ) : null}
     </div>
@@ -171,20 +186,20 @@ export function KbDocPersonalError({ personal }: { personal: KbDocPersonal }): J
   );
 }
 
-/** The private note card at the top of the reading surface: view, or edit in place. */
+/** The private note card at the top of a compact reading surface: view, or edit in place. */
 export function KbDocNoteCard({ personal, className }: { personal: KbDocPersonal; className?: string }): JSX.Element | null {
   const { item, editing } = personal;
   if (!item.note && !editing) return null;
   return (
     <section
-      aria-label="My note"
+      aria-label="My private note"
       data-kb-note-card
       className={cn("rounded-lg border border-border bg-muted/40 px-4 py-3", className)}
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="inline-flex items-center gap-1.5 text-sm font-medium">
           <Lock className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-          My note
+          My private note
         </h2>
         {!editing ? (
           <button
@@ -194,7 +209,7 @@ export function KbDocNoteCard({ personal, className }: { personal: KbDocPersonal
             className="btn-icon gap-1 px-2 text-xs"
           >
             <Pencil className="h-3.5 w-3.5" aria-hidden />
-            Edit
+            Edit my note
           </button>
         ) : null}
       </div>
@@ -206,7 +221,7 @@ export function KbDocNoteCard({ personal, className }: { personal: KbDocPersonal
         <>
           <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed">{item.note}</p>
           <p className="mt-2 text-xs text-muted-foreground">
-            <span>Only you can see this note.</span>
+            <span>Only you can see this.</span>
             {item.noteUpdatedAt ? (
               <span>
                 {" "}

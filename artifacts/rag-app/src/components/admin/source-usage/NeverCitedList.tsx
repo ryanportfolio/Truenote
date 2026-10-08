@@ -47,13 +47,13 @@ export function NeverCitedList({
       className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5 shadow-card"
     >
       <div>
-        <h2
+        <h3
           id={`${id}-title`}
           tabIndex={-1}
           className="rounded-sm text-base font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           Never cited{result ? ` (${result.items.length})` : ""}
-        </h2>
+        </h3>
         <p className="mt-1 text-xs text-muted-foreground">
           Live sources no answer used in the last {days} days. They may be out of date, hard to
           match, or not needed.

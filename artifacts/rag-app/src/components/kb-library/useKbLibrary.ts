@@ -8,6 +8,7 @@ import {
   reorderKbCategories,
   setKbCategoryColor,
   setKbCategoryDocuments,
+  setKbColorLabel,
   setKbDocumentCategories,
   setKbDocumentTags,
   setKbFeatured,
@@ -20,6 +21,7 @@ import {
 import {
   applyCategoryDelete,
   applyCategoryMyColor,
+  applyColorLabel,
   applyCategoryMembers,
   applyCategoryOrder,
   applyCategoryParent,
@@ -41,7 +43,7 @@ import {
   teamPins
 } from "@/lib/kbLibrary";
 import { updateKbLibraryCache, writeKbLibraryCache } from "@/lib/kbLibraryCache";
-import { kbColorLabel } from "@/lib/kbLibraryColors";
+import { kbColorLabel, kbLabelText } from "@/lib/kbLibraryColors";
 import type {
   CreateKbCategoryRequest,
   CreateKbTagRequest,
@@ -140,7 +142,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
           const state = await setKbPin(documentId, pinned);
           return (d: Data) => applyUserState(d, state);
         },
-        { success: pinned ? `Pinned ${doc.title}.` : `Unpinned ${doc.title}.` }
+        { success: pinned ? `Added ${doc.title} to your shortcuts.` : `Removed ${doc.title} from your shortcuts.` }
       );
     },
     [mutate]
@@ -173,8 +175,8 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
         },
         {
           success: color
-            ? `Marked ${doc.title} ${kbColorLabel(color)}.`
-            : `Removed your color from ${doc.title}.`
+            ? `Labeled ${doc.title} ${kbLabelText(color, dataRef.current.labels)}.`
+            : `Removed your label from ${doc.title}.`
         }
       );
     },
@@ -202,6 +204,28 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
     [mutate]
   );
 
+  /** The user's own name for a label color; an empty name removes it. Personal, so demo accounts may too. */
+  const setLabelName = useCallback(
+    (color: KbLibraryColor, name: string): Promise<ActionResult> => {
+      const trimmed = name.trim();
+      const next = trimmed === "" ? null : trimmed;
+      const current = (dataRef.current.labels ?? []).find((l) => l.color === color)?.name ?? null;
+      if (current === next) return Promise.resolve<ActionResult>({ ok: true });
+      return mutate(
+        (d) => applyColorLabel(d, color, next),
+        async () => {
+          const item = await setKbColorLabel(color, next);
+          return (d: Data) => applyColorLabel(d, color, item?.name ?? null);
+        },
+        {
+          report: false,
+          success: next ? `Named ${kbColorLabel(color)} "${next}".` : `${kbColorLabel(color)} has no name now.`
+        }
+      );
+    },
+    [mutate]
+  );
+
   // Team pins -----------------------------------------------------------------
 
   const setTeamPins = useCallback(
@@ -221,10 +245,10 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       const ids = currentTeamPinIds();
       if (ids.includes(documentId)) return;
       if (ids.length >= KB_MAX_TEAM_PINS) {
-        setActionError(`Team pins hold at most ${KB_MAX_TEAM_PINS} sources. Remove one first.`);
+        setActionError(`Team shortcuts hold at most ${KB_MAX_TEAM_PINS} sources. Remove one first.`);
         return;
       }
-      void setTeamPins([...ids, documentId], `Pinned ${find(documentId)?.title ?? "source"} for the team.`);
+      void setTeamPins([...ids, documentId], `Added ${find(documentId)?.title ?? "source"} to team shortcuts.`);
     },
     [setTeamPins]
   );
@@ -233,7 +257,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
     (documentId: string) => {
       void setTeamPins(
         currentTeamPinIds().filter((id) => id !== documentId),
-        `Removed the team pin from ${find(documentId)?.title ?? "source"}.`
+        `Removed ${find(documentId)?.title ?? "source"} from team shortcuts.`
       );
     },
     [setTeamPins]
@@ -257,7 +281,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       mutate(
         (d) => applyDocumentCategories(d, documentId, categoryIds),
         () => setKbDocumentCategories(documentId, categoryIds),
-        { report: false, success: "Categories saved." }
+        { report: false, success: "Folders saved." }
       ),
     [mutate]
   );
@@ -349,7 +373,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
         const item = await createKbCategory(payload);
         versionRef.current += 1;
         commit(applyCategoryUpsert(dataRef.current, item));
-        setAnnouncement(`Created category ${item.name}.`);
+        setAnnouncement(`Created folder ${item.name}.`);
         return { ok: true };
       } catch (err) {
         return { ok: false, message: errorMessage(err) };
@@ -368,7 +392,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
           const item = await updateKbCategory(categoryId, payload);
           return (d: Data) => applyCategoryUpsert(d, item);
         },
-        { report: false, success: "Category saved." }
+        { report: false, success: "Folder saved." }
       );
     },
     [mutate]
@@ -381,7 +405,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       void mutate(
         (d) => applyCategoryDelete(d, categoryId),
         () => deleteKbCategory(categoryId),
-        { success: `Deleted category ${current.name}.` }
+        { success: `Deleted folder ${current.name}.` }
       );
     },
     [mutate]
@@ -500,6 +524,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       saveNote,
       setSourceColor,
       setCategoryColor,
+      setLabelName,
       setTeamPins,
       addTeamPin,
       removeTeamPin,
@@ -524,6 +549,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       saveNote,
       setSourceColor,
       setCategoryColor,
+      setLabelName,
       setTeamPins,
       addTeamPin,
       removeTeamPin,
