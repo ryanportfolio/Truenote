@@ -266,6 +266,8 @@ export interface KbDocumentListItem {
   /** The current user's private note, or null. */
   note: string | null;
   noteUpdatedAt: string | null;
+  /** The current user's private color label, or null. */
+  myColor: KbLibraryColor | null;
   /** Team pin order (0-based) set by a manager; null when not team-pinned. */
   featuredPosition: number | null;
   /** Every category the document belongs to. */
@@ -288,7 +290,10 @@ export interface KbCategory {
   id: string;
   parentId: string | null;
   name: string;
+  /** Team color set by a manager. */
   color: KbLibraryColor;
+  /** The current user's private override of the team color, or null. */
+  myColor: KbLibraryColor | null;
   /** Order among siblings (0-based). */
   position: number;
   /** Member document ids in the manager's order. */
@@ -311,12 +316,13 @@ export interface KbDocumentListResponse {
   noProgramSelected?: boolean;
 }
 
-/** Personal pin and note state returned by the pin and note endpoints. */
+/** Personal pin, note and color state returned by the pin, note and color endpoints. */
 export interface KbSourceUserState {
   documentId: string;
   pinnedAt: string | null;
   note: string | null;
   noteUpdatedAt: string | null;
+  color: KbLibraryColor | null;
 }
 
 export interface CreateKbCategoryRequest {
@@ -433,6 +439,11 @@ export interface KbDocumentResponse {
     sourceStart: number;
     sourceEnd: number;
   } | null;
+  /** The current user's personal state for this document (same as the list item). */
+  pinnedAt: string | null;
+  note: string | null;
+  noteUpdatedAt: string | null;
+  myColor: KbLibraryColor | null;
 }
 
 export type KbHighlightColor = "yellow" | "green" | "blue";

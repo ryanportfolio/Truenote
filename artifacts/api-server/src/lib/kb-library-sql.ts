@@ -42,29 +42,6 @@ export function documentVisibleSql(
   )`;
 }
 
-/**
- * True when the document is live in the program but its active version is
- * above the viewer's clearance. Replace-style writes keep rows for these
- * documents so a lower-clearance manager cannot silently drop them.
- */
-export function documentHiddenByClearanceSql(
-  documentIdSql: SQL,
-  programId: string,
-  clearance: Classification
-): SQL {
-  return sql`EXISTS (
-    SELECT 1
-    FROM documents AS hid_d
-    INNER JOIN document_versions AS hid_v ON hid_v.document_id = hid_d.id
-    WHERE hid_d.id = ${documentIdSql}
-      AND hid_d.program_id = ${programId}::uuid
-      AND hid_v.is_active = true
-      AND hid_v.parse_status = 'ready'
-      AND hid_v.lifecycle_state = 'active'
-      AND NOT (${classificationSqlPredicate(sql.raw("hid_v.classification"), clearance)})
-  )`;
-}
-
 const LIVE_VERSION = sql.raw(
   "v.is_active = true AND v.parse_status = 'ready' AND v.lifecycle_state = 'active'"
 );

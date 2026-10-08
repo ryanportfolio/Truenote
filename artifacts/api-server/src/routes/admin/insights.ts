@@ -598,10 +598,16 @@ insightsRouter.get("/source-usage/questions", async (req, res, next) => {
       res.status(404).json({ error: "Not found" });
       return;
     }
+    const clearance = await getUserMaxClassification(user.id);
     if (documentId !== null) {
+      // Same gate that nulls titles in the summaries: a source whose title
+      // this viewer can't see doesn't reveal its questions either.
       const doc = await db.execute(sql`
-        SELECT 1 FROM documents
-        WHERE id = ${documentId}::uuid AND program_id = ${programId}::uuid
+        SELECT 1
+        FROM documents AS d
+        WHERE d.id = ${documentId}::uuid
+          AND d.program_id = ${programId}::uuid
+          AND ${documentTitleVisibleSql(clearance)}
         LIMIT 1
       `);
       if (doc.rows.length === 0) {
@@ -609,9 +615,6 @@ insightsRouter.get("/source-usage/questions", async (req, res, next) => {
         return;
       }
     }
-    const clearance = await getUserMaxClassification(user.id);
-    // Containment on the stored snapshot array; doc ids are written lowercase.
-    const marker = documentId ? JSON.stringify([{ doc_id: documentId }]) : null;
 
     // limit + 1 rows tell us whether the page was truncated.
     const result = await db.execute(sql`
@@ -628,7 +631,15 @@ insightsRouter.get("/source-usage/questions", async (req, res, next) => {
         WHERE ql.program_id = ${programId}::uuid
           AND ql.created_at > now() - make_interval(days => ${windowDays})
           ${userId ? sql`AND ql.user_id = ${userId}` : sql``}
-          ${marker ? sql`AND ql.citation_snapshots @> ${marker}::jsonb` : sql``}
+          ${
+            documentId
+              ? sql`AND EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements(${snapshotsArraySql(sql.raw("ql.citation_snapshots"))}) AS e(elem)
+                  WHERE lower(e.elem ->> 'doc_id') = ${documentId}
+                )`
+              : sql``
+          }
         ORDER BY ql.created_at DESC, ql.id DESC
         LIMIT ${limit + 1}
       )

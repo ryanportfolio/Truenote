@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Palette, Undo2 } from "lucide-react";
 import {
   libraryOrder,
   memberOrder,
@@ -8,10 +8,12 @@ import {
   type KbCategoryNode,
   type KbSort
 } from "@/lib/kbLibrary";
+import { kbColorLabel, kbEffectiveCategoryColor } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
-import type { KbDocumentListItem } from "@/types/api";
+import type { KbCategory, KbDocumentListItem } from "@/types/api";
 import { useKbLibraryContext } from "./KbContext";
 import { KbDocRow } from "./KbDocRow";
+import { KbMenu } from "./KbMenu";
 import { ColorDot } from "./KbShared";
 
 export const UNCATEGORIZED_KEY = "__uncategorized";
@@ -53,13 +55,50 @@ function CountLabel({ count }: { count: number }): JSX.Element {
   );
 }
 
+/**
+ * Every user's private color for a category, kept apart from the team color
+ * a manager sets in Organize mode. The button names both so it is clear
+ * which one is showing.
+ */
+function CategoryColorMenu({ category }: { category: KbCategory }): JSX.Element {
+  const { actions } = useKbLibraryContext();
+  const showing = category.myColor
+    ? `my color, ${kbColorLabel(category.myColor)}`
+    : `team color, ${kbColorLabel(category.color)}`;
+  return (
+    <KbMenu
+      label={`Color for ${category.name}. Showing ${showing}.`}
+      title="Choose my color for this category"
+      buttonClassName="btn-icon h-8 w-8 shrink-0"
+      items={[
+        {
+          kind: "swatches",
+          label: "My color",
+          hint: "Only you see it. It replaces the team color for you.",
+          value: category.myColor,
+          onSelect: (color) => actions.setCategoryColor(category.id, color)
+        },
+        {
+          label: `Use team color (${kbColorLabel(category.color)})`,
+          icon: Undo2,
+          disabled: category.myColor === null,
+          onSelect: () => actions.setCategoryColor(category.id, null)
+        }
+      ]}
+    >
+      <Palette className="h-4 w-4" aria-hidden />
+    </KbMenu>
+  );
+}
+
 function Disclosure({
   label,
   count,
   open,
   onToggle,
   children,
-  leading
+  leading,
+  trailing
 }: {
   label: ReactNode;
   count: number;
@@ -67,28 +106,33 @@ function Disclosure({
   onToggle: () => void;
   children: ReactNode;
   leading?: ReactNode;
+  /** Controls beside the toggle (not inside it). */
+  trailing?: ReactNode;
 }): JSX.Element {
   const panelId = useId();
   return (
     <>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={onToggle}
-        className="flex w-full cursor-pointer items-center gap-2 px-4 py-2 text-left text-sm font-medium transition-colors duration-100 ease-out hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      >
-        <ChevronRight
-          className={cn(
-            "h-4 w-4 shrink-0 text-muted-foreground motion-safe:transition-transform motion-safe:duration-100",
-            open && "rotate-90"
-          )}
-          aria-hidden
-        />
-        {leading}
-        <span className="min-w-0 truncate">{label}</span>
-        <CountLabel count={count} />
-      </button>
+      <div className="flex items-center transition-colors duration-100 ease-out hover:bg-muted/40">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-4 py-2 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          <ChevronRight
+            className={cn(
+              "h-4 w-4 shrink-0 text-muted-foreground motion-safe:transition-transform motion-safe:duration-100",
+              open && "rotate-90"
+            )}
+            aria-hidden
+          />
+          {leading}
+          <span className="min-w-0 truncate">{label}</span>
+          <CountLabel count={count} />
+        </button>
+        {trailing ? <span className="shrink-0 pr-2">{trailing}</span> : null}
+      </div>
       <div id={panelId} hidden={!open}>
         {open ? children : null}
       </div>
@@ -123,7 +167,8 @@ function FolderNode({
         count={count}
         open={open}
         onToggle={() => onToggle(node.category.id)}
-        leading={<ColorDot color={node.category.color} />}
+        leading={<ColorDot color={kbEffectiveCategoryColor(node.category)} />}
+        trailing={<CategoryColorMenu category={node.category} />}
       >
         <div className="ml-6 border-l border-border">
           {node.children.length > 0 ? (
@@ -208,17 +253,23 @@ export function KbFoldersView({
 
 function SectionCard({
   heading,
+  action,
   children
 }: {
   heading: ReactNode;
+  /** Control beside the heading (not inside it). */
+  action?: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   const headingId = useId();
   return (
     <section aria-labelledby={headingId}>
-      <h2 id={headingId} className="mb-1.5 flex items-center gap-2 px-1 text-sm font-medium">
-        {heading}
-      </h2>
+      <div className="mb-1.5 flex items-center gap-1 px-1">
+        <h2 id={headingId} className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium">
+          {heading}
+        </h2>
+        {action}
+      </div>
       {children}
     </section>
   );
@@ -243,7 +294,7 @@ export function KbCategoriesView(props: BrowseProps): JSX.Element {
             key={node.category.id}
             heading={
               <>
-                <ColorDot color={node.category.color} />
+                <ColorDot color={kbEffectiveCategoryColor(node.category)} />
                 <span className="min-w-0">
                   {parents.length > 0 ? (
                     <span className="font-normal text-muted-foreground">{parents.join(" / ")} / </span>
@@ -253,6 +304,7 @@ export function KbCategoriesView(props: BrowseProps): JSX.Element {
                 <CountLabel count={docs.length} />
               </>
             }
+            action={<CategoryColorMenu category={node.category} />}
           >
             <ul className="divide-y divide-border rounded-lg border border-border bg-card shadow-card">
               {docs.map((doc) => (

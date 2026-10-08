@@ -2,9 +2,11 @@ import type {
   KbCategory,
   KbDocumentListItem,
   KbDocumentListResponse,
+  KbLibraryColor,
   KbSourceUserState,
   KbTag
 } from "@/types/api";
+import { isKbLibraryColor } from "./kbLibraryColors";
 
 /**
  * Pure helpers for the Sources page: category tree building, search, filter
@@ -22,6 +24,8 @@ export interface KbFilters {
   myPins: boolean;
   hasNote: boolean;
   tagIds: string[];
+  /** The user's own source colors; a source matches any of them. */
+  colors: KbLibraryColor[];
 }
 
 export interface KbPrefs {
@@ -54,7 +58,8 @@ export const EMPTY_FILTERS: KbFilters = {
   newOnly: false,
   myPins: false,
   hasNote: false,
-  tagIds: []
+  tagIds: [],
+  colors: []
 };
 
 export function defaultSort(view: KbView): KbSort {
@@ -105,7 +110,8 @@ export function parsePrefs(raw: string | null): KbPrefs {
         newOnly: rawFilters.newOnly === true,
         myPins: rawFilters.myPins === true,
         hasNote: rawFilters.hasNote === true,
-        tagIds: stringArray(rawFilters.tagIds)
+        tagIds: stringArray(rawFilters.tagIds),
+        colors: Array.isArray(rawFilters.colors) ? rawFilters.colors.filter(isKbLibraryColor) : []
       },
       collapsed: stringArray(parsed.collapsed)
     };
@@ -289,6 +295,9 @@ export function docPassesFilters(doc: KbDocumentListItem, filters: KbFilters): b
   if (filters.tagIds.length > 0 && !filters.tagIds.some((id) => doc.tagIds.includes(id))) {
     return false;
   }
+  if (filters.colors.length > 0 && !(doc.myColor && filters.colors.includes(doc.myColor))) {
+    return false;
+  }
   return true;
 }
 
@@ -298,7 +307,8 @@ export function filtersActive(filters: KbFilters, query: string): boolean {
     filters.newOnly ||
     filters.myPins ||
     filters.hasNote ||
-    filters.tagIds.length > 0
+    filters.tagIds.length > 0 ||
+    filters.colors.length > 0
   );
 }
 
@@ -414,8 +424,21 @@ export function applyUserState(data: Data, state: KbSourceUserState): Data {
     ...d,
     pinnedAt: state.pinnedAt,
     note: state.note,
-    noteUpdatedAt: state.noteUpdatedAt
+    noteUpdatedAt: state.noteUpdatedAt,
+    myColor: state.color
   }));
+}
+
+export function applySourceColor(data: Data, documentId: string, color: KbLibraryColor | null): Data {
+  return mapItem(data, documentId, (d) => ({ ...d, myColor: color }));
+}
+
+/** The user's private category color (null falls back to the team color). */
+export function applyCategoryMyColor(data: Data, categoryId: string, color: KbLibraryColor | null): Data {
+  return {
+    ...data,
+    categories: data.categories.map((c) => (c.id === categoryId ? { ...c, myColor: color } : c))
+  };
 }
 
 export function applyPin(data: Data, documentId: string, pinned: boolean): Data {

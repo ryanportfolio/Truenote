@@ -1,5 +1,6 @@
--- Source library: personal pins and notes, team pins (featured), nested
--- categories with many-to-many membership, tags, and document view events.
+-- Source library: personal pins, notes and colors, team pins (featured),
+-- nested categories with many-to-many membership, tags, and document view
+-- events.
 -- Read and written through raw SQL in routes/kb.ts and routes/kb-library.ts;
 -- none of these tables are bound in Drizzle.
 --
@@ -9,17 +10,20 @@
 -- cannot place a Program A document into a Program B category.
 
 -- Personal state: one row per (user, document). A row exists while the user
--- has a pin or a note; the API deletes it when both are cleared.
+-- has a pin, a note or a color; the API deletes it when all are cleared.
 CREATE TABLE IF NOT EXISTS kb_source_user_state (
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   document_id uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   pinned_at timestamptz,
   note text,
   note_updated_at timestamptz,
+  color text,
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, document_id),
   CONSTRAINT kb_source_user_state_note_size_check
-    CHECK (note IS NULL OR char_length(note) BETWEEN 1 AND 4000)
+    CHECK (note IS NULL OR char_length(note) BETWEEN 1 AND 4000),
+  CONSTRAINT kb_source_user_state_color_check
+    CHECK (color IS NULL OR color = ANY (ARRAY['slate', 'blue', 'green', 'amber', 'red', 'violet', 'teal', 'pink']))
 );
 
 CREATE INDEX IF NOT EXISTS kb_source_user_state_document_idx
@@ -82,6 +86,17 @@ CREATE TABLE IF NOT EXISTS kb_category_documents (
 CREATE INDEX IF NOT EXISTS kb_category_documents_document_idx
   ON kb_category_documents (document_id);
 
+-- Personal category color: overrides the team color in this user's view only.
+CREATE TABLE IF NOT EXISTS kb_category_user_prefs (
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category_id uuid NOT NULL REFERENCES kb_categories(id) ON DELETE CASCADE,
+  color text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, category_id),
+  CONSTRAINT kb_category_user_prefs_color_check
+    CHECK (color = ANY (ARRAY['slate', 'blue', 'green', 'amber', 'red', 'violet', 'teal', 'pink']))
+);
+
 CREATE TABLE IF NOT EXISTS kb_tags (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   program_id uuid NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
@@ -125,6 +140,12 @@ CREATE INDEX IF NOT EXISTS kb_document_views_program_time_idx
 
 CREATE INDEX IF NOT EXISTS kb_document_views_user_document_idx
   ON kb_document_views (user_id, document_id, viewed_at DESC);
+
+-- Citation counts on the Sources list and the source usage page read
+-- query_log by program over a trailing window; the baseline has no index
+-- for that.
+CREATE INDEX IF NOT EXISTS query_log_program_created_idx
+  ON query_log (program_id, created_at DESC);
 
 -- Program consistency guards.
 

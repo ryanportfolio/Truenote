@@ -13,6 +13,7 @@ import type {
   CreateKbTagRequest,
   DocumentListResponse,
   KbCategory,
+  KbLibraryColor,
   KbSourceUserState,
   KbTag,
   SourceUsageQuestionsResponse,
@@ -511,6 +512,34 @@ export async function setKbNote(
     jsonRequest("PUT", { note })
   );
   const json = await asJson<{ item: KbSourceUserState }>(response);
+  return json.item;
+}
+
+/** Private color label on a source (null clears it). Allowed for every role, demo included. */
+export async function setKbSourceColor(
+  documentId: string,
+  color: KbLibraryColor | null
+): Promise<KbSourceUserState> {
+  const response = await fetch(
+    `/api/kb/documents/${encodeURIComponent(documentId)}/color`,
+    jsonRequest("PUT", { color })
+  );
+  const json = await asJson<{ item: KbSourceUserState }>(response);
+  return json.item;
+}
+
+/** Private override of a category's team color (null resets to the team color). Every role, demo included. */
+export async function setKbCategoryColor(
+  categoryId: string,
+  color: KbLibraryColor | null
+): Promise<{ categoryId: string; myColor: KbLibraryColor | null }> {
+  const response = await fetch(
+    `/api/kb/categories/${encodeURIComponent(categoryId)}/color`,
+    jsonRequest("PUT", { color })
+  );
+  const json = await asJson<{ item: { categoryId: string; myColor: KbLibraryColor | null } }>(
+    response
+  );
   return json.item;
 }
 

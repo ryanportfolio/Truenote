@@ -6,17 +6,20 @@ import {
   deleteKbTag,
   listKbDocuments,
   reorderKbCategories,
+  setKbCategoryColor,
   setKbCategoryDocuments,
   setKbDocumentCategories,
   setKbDocumentTags,
   setKbFeatured,
   setKbNote,
   setKbPin,
+  setKbSourceColor,
   updateKbCategory,
   updateKbTag
 } from "@/lib/api";
 import {
   applyCategoryDelete,
+  applyCategoryMyColor,
   applyCategoryMembers,
   applyCategoryOrder,
   applyCategoryParent,
@@ -25,6 +28,7 @@ import {
   applyDocumentTags,
   applyFeatured,
   applyPin,
+  applySourceColor,
   applyTagDelete,
   applyTagUpsert,
   applyUserState,
@@ -36,10 +40,12 @@ import {
   siblingIds,
   teamPins
 } from "@/lib/kbLibrary";
+import { kbColorLabel } from "@/lib/kbLibraryColors";
 import type {
   CreateKbCategoryRequest,
   CreateKbTagRequest,
   KbDocumentListResponse,
+  KbLibraryColor,
   UpdateKbCategoryRequest,
   UpdateKbTagRequest
 } from "@/types/api";
@@ -144,6 +150,48 @@ export function useKbLibrary(initial: Data) {
       }
     },
     [commit]
+  );
+
+  /** Private color label on a source; null clears it. */
+  const setSourceColor = useCallback(
+    (documentId: string, color: KbLibraryColor | null) => {
+      const doc = dataRef.current.items.find((d) => d.documentId === documentId);
+      if (!doc || doc.myColor === color) return;
+      void mutate(
+        (d) => applySourceColor(d, documentId, color),
+        async () => {
+          const state = await setKbSourceColor(documentId, color);
+          return (d: Data) => applyUserState(d, state);
+        },
+        {
+          success: color
+            ? `Marked ${doc.title} ${kbColorLabel(color)}.`
+            : `Removed your color from ${doc.title}.`
+        }
+      );
+    },
+    [mutate]
+  );
+
+  /** Private override of a category's team color; null goes back to the team color. */
+  const setCategoryColor = useCallback(
+    (categoryId: string, color: KbLibraryColor | null) => {
+      const category = dataRef.current.categories.find((c) => c.id === categoryId);
+      if (!category || category.myColor === color) return;
+      void mutate(
+        (d) => applyCategoryMyColor(d, categoryId, color),
+        async () => {
+          const item = await setKbCategoryColor(categoryId, color);
+          return (d: Data) => applyCategoryMyColor(d, item.categoryId, item.myColor);
+        },
+        {
+          success: color
+            ? `You now see ${category.name} in ${kbColorLabel(color)}.`
+            : `${category.name} uses the team color again.`
+        }
+      );
+    },
+    [mutate]
   );
 
   // Team pins -----------------------------------------------------------------
@@ -442,6 +490,8 @@ export function useKbLibrary(initial: Data) {
     () => ({
       togglePin,
       saveNote,
+      setSourceColor,
+      setCategoryColor,
       setTeamPins,
       addTeamPin,
       removeTeamPin,
@@ -464,6 +514,8 @@ export function useKbLibrary(initial: Data) {
     [
       togglePin,
       saveNote,
+      setSourceColor,
+      setCategoryColor,
       setTeamPins,
       addTeamPin,
       removeTeamPin,

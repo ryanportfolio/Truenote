@@ -1,84 +1,68 @@
-import { useEffect, useRef, useState } from "react";
-import { Bookmark, Lock, Pencil, StickyNote } from "lucide-react";
-import { listKbDocuments, setKbNote, setKbPin } from "@/lib/api";
+import { useRef, useState } from "react";
+import { Bookmark, CircleSlash, Lock, Palette, Pencil, StickyNote } from "lucide-react";
+import { setKbNote, setKbPin, setKbSourceColor } from "@/lib/api";
+import { kbColorLabel } from "@/lib/kbLibraryColors";
 import { RelativeTime } from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
-import type { KbSourceUserState } from "@/types/api";
-import { NoteForm } from "./KbShared";
+import type { KbDocumentResponse, KbLibraryColor } from "@/types/api";
+import { KbMenu } from "./KbMenu";
+import { ColorDot, NoteForm } from "./KbShared";
 
-type LoadState =
-  | { status: "loading" }
-  | { status: "ready"; item: KbSourceUserState }
-  | { status: "unavailable" };
+type Personal = Pick<KbDocumentResponse, "pinnedAt" | "note" | "noteUpdatedAt" | "myColor">;
 
 /**
- * Pin toggle and private note for the document reader. The reader response
- * carries no personal state, so this reads the user's pin and note from the
- * library list (same program scope) and writes through the pin and note
- * endpoints. Renders nothing when the list does not include the document.
+ * Pin toggle, private color and private note for the document reader. The
+ * reader response carries the user's state; changes write through the pin,
+ * color and note endpoints. Each save merges only its own fields, so a pin,
+ * color and note change in flight at once never undo each other.
  */
-export function KbDocPersonalBar({ documentId }: { documentId: string }): JSX.Element | null {
-  const [state, setState] = useState<LoadState>({ status: "loading" });
+export function KbDocPersonalBar({
+  documentId,
+  initial
+}: {
+  documentId: string;
+  initial: Personal;
+}): JSX.Element {
+  const [item, setItem] = useState<Personal>(() => ({
+    pinnedAt: initial.pinnedAt ?? null,
+    note: initial.note ?? null,
+    noteUpdatedAt: initial.noteUpdatedAt ?? null,
+    myColor: initial.myColor ?? null
+  }));
   const [editing, setEditing] = useState(false);
-  const [pinError, setPinError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const editButtonRef = useRef<HTMLButtonElement>(null);
   const pinVersion = useRef(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    setState({ status: "loading" });
-    setEditing(false);
-    listKbDocuments()
-      .then((response) => {
-        if (cancelled) return;
-        const doc = response.items.find((d) => d.documentId === documentId);
-        setState(
-          doc
-            ? {
-                status: "ready",
-                item: {
-                  documentId,
-                  pinnedAt: doc.pinnedAt,
-                  note: doc.note,
-                  noteUpdatedAt: doc.noteUpdatedAt
-                }
-              }
-            : { status: "unavailable" }
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setState({ status: "unavailable" });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [documentId]);
-
-  if (state.status === "unavailable") return null;
-  if (state.status === "loading") {
-    return (
-      <div className="mt-3 flex gap-2" aria-hidden>
-        <div className="skeleton h-7 w-20 rounded-full" />
-        <div className="skeleton h-7 w-40 rounded-full" />
-      </div>
-    );
-  }
-
-  const item = state.item;
+  const colorVersion = useRef(0);
   const pinned = item.pinnedAt !== null;
 
   async function togglePin(): Promise<void> {
-    const before = item;
+    const before = item.pinnedAt;
     const version = ++pinVersion.current;
     const next = !pinned;
-    setPinError(null);
-    setState({ status: "ready", item: { ...before, pinnedAt: next ? new Date().toISOString() : null } });
+    setError(null);
+    setItem((prev) => ({ ...prev, pinnedAt: next ? new Date().toISOString() : null }));
     try {
       const saved = await setKbPin(documentId, next);
-      if (version === pinVersion.current) setState({ status: "ready", item: saved });
+      if (version === pinVersion.current) setItem((prev) => ({ ...prev, pinnedAt: saved.pinnedAt }));
     } catch (err) {
-      if (version === pinVersion.current) setState({ status: "ready", item: before });
-      setPinError(err instanceof Error ? err.message : "The pin didn't save. Try again.");
+      if (version === pinVersion.current) setItem((prev) => ({ ...prev, pinnedAt: before }));
+      setError(err instanceof Error ? err.message : "The pin didn't save. Try again.");
+    }
+  }
+
+  async function setColor(color: KbLibraryColor | null): Promise<void> {
+    if (color === item.myColor) return;
+    const before = item.myColor;
+    const version = ++colorVersion.current;
+    setError(null);
+    setItem((prev) => ({ ...prev, myColor: color }));
+    try {
+      const saved = await setKbSourceColor(documentId, color);
+      if (version === colorVersion.current) setItem((prev) => ({ ...prev, myColor: saved.color }));
+    } catch (err) {
+      if (version === colorVersion.current) setItem((prev) => ({ ...prev, myColor: before }));
+      setError(err instanceof Error ? err.message : "The color didn't save. Try again.");
     }
   }
 
@@ -102,6 +86,38 @@ export function KbDocPersonalBar({ documentId }: { documentId: string }): JSX.El
           <Bookmark className="h-3.5 w-3.5" fill={pinned ? "currentColor" : "none"} aria-hidden />
           {pinned ? "Pinned" : "Pin"}
         </button>
+        <KbMenu
+          label={item.myColor ? `My color: ${kbColorLabel(item.myColor)}` : "My color"}
+          title="Mark this source with a color only you see"
+          buttonClassName="btn-whisper gap-1.5 px-3 py-1 text-xs"
+          items={[
+            {
+              kind: "swatches",
+              label: "My color",
+              hint: "Only you see it, here and on Sources.",
+              value: item.myColor,
+              onSelect: (color) => void setColor(color)
+            },
+            {
+              label: "No color",
+              icon: CircleSlash,
+              disabled: item.myColor === null,
+              onSelect: () => void setColor(null)
+            }
+          ]}
+        >
+          {item.myColor ? (
+            <>
+              <ColorDot color={item.myColor} />
+              {kbColorLabel(item.myColor)}
+            </>
+          ) : (
+            <>
+              <Palette className="h-3.5 w-3.5" aria-hidden />
+              My color
+            </>
+          )}
+        </KbMenu>
         {!item.note && !editing ? (
           <button
             ref={editButtonRef}
@@ -114,12 +130,12 @@ export function KbDocPersonalBar({ documentId }: { documentId: string }): JSX.El
           </button>
         ) : null}
       </div>
-      {pinError ? (
+      {error ? (
         <p
           role="alert"
           className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
-          {pinError}
+          {error}
         </p>
       ) : null}
       {item.note || editing ? (
@@ -153,12 +169,8 @@ export function KbDocPersonalBar({ documentId }: { documentId: string }): JSX.El
                 onSave={async (note) => {
                   try {
                     const saved = await setKbNote(documentId, note);
-                    // Keep the local pin: a pin toggle may still be in flight.
-                    setState((prev) =>
-                      prev.status === "ready"
-                        ? { status: "ready", item: { ...saved, pinnedAt: prev.item.pinnedAt } }
-                        : prev
-                    );
+                    // Take only the note: a pin or color change may still be in flight.
+                    setItem((prev) => ({ ...prev, note: saved.note, noteUpdatedAt: saved.noteUpdatedAt }));
                     stopEditing();
                     return { ok: true };
                   } catch (err) {

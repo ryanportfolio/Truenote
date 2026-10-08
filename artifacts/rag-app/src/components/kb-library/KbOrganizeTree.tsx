@@ -40,8 +40,9 @@ import {
   type KbCategoryNode,
   type KbTree
 } from "@/lib/kbLibrary";
+import { kbColorLabel } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
-import type { KbDocumentListItem } from "@/types/api";
+import type { KbDocumentListItem, KbLibraryColor } from "@/types/api";
 import { UNCATEGORIZED_KEY } from "./KbBrowseViews";
 import { useKbLibraryContext } from "./KbContext";
 import { KbMenu, type KbMenuEntry } from "./KbMenu";
@@ -350,12 +351,26 @@ function OrganizeCategory({
     if (ok) actions.deleteCategory(id);
   }
 
+  async function setTeamColor(color: KbLibraryColor): Promise<void> {
+    if (color === node.category.color) return;
+    const result = await actions.updateCategory(id, { color });
+    if (!result.ok) actions.reportError(result.message);
+  }
+
   const menu: KbMenuEntry[] = [
     {
-      label: "Rename or change color…",
+      label: "Rename…",
       icon: Pencil,
       onSelect: () => openDialog({ kind: "category-edit", categoryId: id })
     },
+    {
+      kind: "swatches",
+      label: "Team color",
+      hint: "Everyone in this program sees it, unless they pick their own.",
+      value: node.category.color,
+      onSelect: (color) => void setTeamColor(color)
+    },
+    "separator",
     {
       label: "Add a subcategory…",
       icon: FolderPlus,
@@ -414,6 +429,7 @@ function OrganizeCategory({
           />
           <ColorDot color={node.category.color} />
           <span className="min-w-0 truncate">{node.category.name}</span>
+          <span className="sr-only">Team color: {kbColorLabel(node.category.color)}.</span>
           <span className="ml-auto shrink-0 tabular-nums text-xs font-normal text-muted-foreground">
             {docs.length}
             <span className="sr-only">{docs.length === 1 ? " source" : " sources"}</span>

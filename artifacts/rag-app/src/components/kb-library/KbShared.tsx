@@ -25,6 +25,28 @@ export function ColorDot({ color, className }: { color: KbLibraryColor; classNam
   );
 }
 
+/**
+ * The user's private color on a source: a 4px stripe on the row's left edge
+ * plus a spoken label, so the color is never the only cue. The parent must be
+ * positioned.
+ */
+export function SourceColorStripe({ color }: { color: KbLibraryColor | null }): JSX.Element | null {
+  if (!color) return null;
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute inset-y-1 left-0 w-1 rounded-r-full"
+      style={kbColorDot(color)}
+    />
+  );
+}
+
+/** Screen reader text for a source's private color. */
+export function SourceColorLabel({ color }: { color: KbLibraryColor | null }): JSX.Element | null {
+  if (!color) return null;
+  return <span className="sr-only">My color: {kbColorLabel(color)}.</span>;
+}
+
 export function TagChip({ tag }: { tag: KbTag }): JSX.Element {
   return (
     <span
@@ -156,16 +178,25 @@ export function DocCounts({ doc }: { doc: KbDocumentListItem }): JSX.Element {
 export function ColorPicker({
   value,
   onChange,
-  legend
+  legend,
+  hint
 }: {
   value: KbLibraryColor;
   onChange: (color: KbLibraryColor) => void;
   legend: string;
+  /** One line under the legend, such as who sees the color. */
+  hint?: string;
 }): JSX.Element {
   const name = useId();
+  const hintId = useId();
   return (
-    <fieldset>
+    <fieldset aria-describedby={hint ? hintId : undefined}>
       <legend className="text-sm font-medium">{legend}</legend>
+      {hint ? (
+        <p id={hintId} className="mt-0.5 text-xs text-muted-foreground">
+          {hint}
+        </p>
+      ) : null}
       <div className="mt-2 flex flex-wrap gap-2">
         {KB_LIBRARY_COLORS.map((color) => (
           <label key={color} className="cursor-pointer" title={kbColorLabel(color)}>

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { db } from "../lib/db-client.js";
+import { db, poolHasWaitingClients } from "../lib/db-client.js";
 import { documents, documentVersions } from "@workspace/db/schema";
 import {
   createHighlightSchema,
@@ -19,14 +19,18 @@ import { hasAtLeastRole } from "../lib/auth/current-user.js";
 import { isDemoEmail } from "../lib/auth/demo-accounts.js";
 import {
   isoOrNull,
+  libraryColorOrNull,
   noteSchema,
   normalizeNote,
+  personalColorSchema,
+  pgErrorCode,
   pinSchema,
   serializeCategory,
   serializeTag,
   serializeUserState,
   validationMessage,
   type CategoryRow,
+  type LibraryColor,
   type TagRow,
   type UserStateRow
 } from "../lib/kb-library.js";
@@ -55,9 +59,10 @@ import {
 export const kbRouter = Router();
 
 kbRouter.use(requireAuth, requireFreshPassword, requireCsrOrAbove);
-// Personal highlights are the only mutations on this router. They remain
-// available to demo accounts so visitors can experience the feature; every
-// row is still owner- and program-scoped, with the normal overlap/range caps.
+// The mutations on this router are personal: highlights, source pins, notes
+// and colors, and category color overrides. They remain available to demo
+// accounts so visitors can experience the features; every row is still
+// owner- and program-scoped, with the normal caps.
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -135,6 +140,7 @@ export interface KbDocumentListItem {
   pinnedAt: string | null;
   note: string | null;
   noteUpdatedAt: string | null;
+  myColor: LibraryColor | null;
   featuredPosition: number | null;
   categoryIds: string[];
   tagIds: string[];
@@ -157,6 +163,7 @@ interface KbListRow {
   pinned_at: Date | string | null;
   note: string | null;
   note_updated_at: Date | string | null;
+  my_color: string | null;
   featured_position: number | null;
 }
 
@@ -248,6 +255,7 @@ kbRouter.get("/documents", async (req, res, next) => {
         s.pinned_at,
         s.note,
         s.note_updated_at,
+        s.color AS my_color,
         f.position AS featured_position
       FROM visible AS vis
       LEFT JOIN views ON views.document_id = vis.id
@@ -260,10 +268,18 @@ kbRouter.get("/documents", async (req, res, next) => {
       ORDER BY vis.title, vis.id
     `);
     const categoryQuery = db.execute(sql`
-      SELECT id::text, parent_id::text, name, color, position
-      FROM kb_categories
-      WHERE program_id = ${programId}::uuid
-      ORDER BY parent_id NULLS FIRST, position, lower(name), id
+      SELECT
+        c.id::text,
+        c.parent_id::text,
+        c.name,
+        c.color,
+        p.color AS my_color,
+        c.position
+      FROM kb_categories AS c
+      LEFT JOIN kb_category_user_prefs AS p
+        ON p.category_id = c.id AND p.user_id = ${user.id}::uuid
+      WHERE c.program_id = ${programId}::uuid
+      ORDER BY c.parent_id NULLS FIRST, c.position, lower(c.name), c.id
     `);
     const categoryMemberQuery = db.execute(sql`
       SELECT cd.category_id::text AS owner_id, cd.document_id::text AS document_id
@@ -328,6 +344,7 @@ kbRouter.get("/documents", async (req, res, next) => {
       pinnedAt: isoOrNull(r.pinned_at),
       note: r.note,
       noteUpdatedAt: isoOrNull(r.note_updated_at),
+      myColor: libraryColorOrNull(r.my_color),
       featuredPosition: r.featured_position === null ? null : Number(r.featured_position),
       categoryIds: docCategories.get(r.document_id) ?? [],
       tagIds: (docTags.get(r.document_id) ?? []).sort(
@@ -355,6 +372,8 @@ function pushTo(map: Map<string, string[]>, key: string, value: string): void {
  * Best-effort reader-open event. Skips when the same user opened the same
  * document within VIEW_DEDUPE_MINUTES, so counts track reads, not reloads.
  * Two concurrent first opens can both insert; the counts tolerate that.
+ * Skipped while requests queue for a pool connection: a lost view is
+ * cheaper than delaying someone's read.
  */
 async function recordDocumentView(input: {
   documentId: string;
@@ -362,6 +381,7 @@ async function recordDocumentView(input: {
   userId: string;
   via: "browse" | "citation";
 }): Promise<void> {
+  if (poolHasWaitingClients()) return;
   await db.execute(sql`
     INSERT INTO kb_document_views (document_id, program_id, user_id, via)
     SELECT ${input.documentId}::uuid, ${input.programId}::uuid, ${input.userId}::uuid, ${input.via}
@@ -373,6 +393,17 @@ async function recordDocumentView(input: {
         AND viewed_at > now() - make_interval(mins => ${VIEW_DEDUPE_MINUTES})
     )
   `);
+}
+
+/** The caller's pin, note and color for one document (all null when unset). */
+async function loadPersonalState(userId: string, documentId: string) {
+  const result = await db.execute(sql`
+    SELECT document_id::text, pinned_at, note, note_updated_at, color
+    FROM kb_source_user_state
+    WHERE user_id = ${userId}::uuid
+      AND document_id = ${documentId}::uuid
+  `);
+  return serializeUserState(documentId, result.rows[0] as unknown as UserStateRow | undefined);
 }
 
 kbRouter.get("/documents/:id", async (req, res, next) => {
@@ -470,6 +501,9 @@ kbRouter.get("/documents/:id", async (req, res, next) => {
       res.status(404).json({ error: "Not found" });
       return;
     }
+    // Personal state belongs to the document, not the version, so a reader
+    // opened on an older version through a receipt shows it too.
+    const personal = await loadPersonalState(user.id, row.documentId);
     res.json({
       documentId: row.documentId,
       documentVersionId: row.documentVersionId,
@@ -479,7 +513,11 @@ kbRouter.get("/documents/:id", async (req, res, next) => {
       markdown: row.markdown,
       updatedAt: row.updatedAt ? row.updatedAt.toISOString() : null,
       citationAuthorized,
-      citationTarget
+      citationTarget,
+      pinnedAt: personal.pinnedAt,
+      note: personal.note,
+      noteUpdatedAt: personal.noteUpdatedAt,
+      myColor: personal.color
     });
     // Views count reads of the current version only; opening an older
     // version through a citation receipt is history, not library usage.
@@ -793,14 +831,15 @@ kbRouter.delete("/highlights/:id", async (req, res, next) => {
 });
 
 /**
- * Personal pin and private note. Same audience as highlights: every role,
- * demo accounts included, and the document must be one this user can read
- * right now (program + active version + clearance). The row is removed once
- * both the pin and the note are cleared.
+ * Personal pin, private note and color label. Same audience as highlights:
+ * every role, demo accounts included, and the document must be one this user
+ * can read right now (program + active version + clearance). The row is
+ * removed once the pin, the note and the color are all cleared.
  */
 type PersonalStateChange =
   | { kind: "pin"; pinned: boolean }
-  | { kind: "note"; note: string | null };
+  | { kind: "note"; note: string | null }
+  | { kind: "color"; color: LibraryColor | null };
 
 async function writePersonalState(input: {
   userId: string;
@@ -833,6 +872,14 @@ async function writePersonalState(input: {
             END,
             updated_at = now()
       `);
+    } else if (change.kind === "color") {
+      await tx.execute(sql`
+        INSERT INTO kb_source_user_state (user_id, document_id, color, updated_at)
+        VALUES (${userId}::uuid, ${documentId}::uuid, ${change.color}::text, now())
+        ON CONFLICT (user_id, document_id) DO UPDATE
+        SET color = EXCLUDED.color,
+            updated_at = now()
+      `);
     } else {
       await tx.execute(sql`
         INSERT INTO kb_source_user_state (user_id, document_id, note, note_updated_at, updated_at)
@@ -855,9 +902,10 @@ async function writePersonalState(input: {
         AND document_id = ${documentId}::uuid
         AND pinned_at IS NULL
         AND note IS NULL
+        AND color IS NULL
     `);
     const result = await tx.execute(sql`
-      SELECT document_id::text, pinned_at, note, note_updated_at
+      SELECT document_id::text, pinned_at, note, note_updated_at, color
       FROM kb_source_user_state
       WHERE user_id = ${userId}::uuid
         AND document_id = ${documentId}::uuid
@@ -935,6 +983,120 @@ kbRouter.put("/documents/:id/note", async (req, res, next) => {
       return;
     }
     res.json({ item: serializeUserState(documentId.toLowerCase(), outcome ?? undefined) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+kbRouter.put("/documents/:id/color", async (req, res, next) => {
+  try {
+    const user = authedUser(req);
+    const documentId = req.params.id;
+    if (!UUID_RE.test(documentId)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    const parsed = personalColorSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: validationMessage(parsed.error, "Pick a color, or send null to clear it.")
+      });
+      return;
+    }
+    const programId = await resolveEffectiveProgramId(user, req);
+    if (programId === null) {
+      res.status(400).json({ error: "No program selected." });
+      return;
+    }
+    const maxClassification = await getUserMaxClassification(user.id);
+    const outcome = await writePersonalState({
+      userId: user.id,
+      documentId: documentId.toLowerCase(),
+      programId,
+      maxClassification,
+      change: { kind: "color", color: parsed.data.color }
+    });
+    if (outcome === "not_found") {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    res.json({ item: serializeUserState(documentId.toLowerCase(), outcome ?? undefined) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Personal override of a category's team color, private to the caller.
+ * Every role, demo included. Categories are listed to everyone in their
+ * program, so the only boundary is the effective program: a category from
+ * another program, or an unknown id, is a 404. `color: null` resets the
+ * caller's view to the team color.
+ */
+kbRouter.put("/categories/:id/color", async (req, res, next) => {
+  try {
+    const user = authedUser(req);
+    const rawId = req.params.id;
+    if (!UUID_RE.test(rawId)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    const categoryId = rawId.toLowerCase();
+    const parsed = personalColorSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: validationMessage(parsed.error, "Pick a color, or send null to use the team color.")
+      });
+      return;
+    }
+    const programId = await resolveEffectiveProgramId(user, req);
+    if (programId === null) {
+      res.status(400).json({ error: "No program selected." });
+      return;
+    }
+    const { color } = parsed.data;
+    // One statement each, so the program check and the write can't drift
+    // apart. The CTE reports whether the category exists in the program.
+    const result =
+      color === null
+        ? await db.execute(sql`
+            WITH cat AS (
+              SELECT id
+              FROM kb_categories
+              WHERE id = ${categoryId}::uuid
+                AND program_id = ${programId}::uuid
+            ),
+            cleared AS (
+              DELETE FROM kb_category_user_prefs AS p
+              USING cat
+              WHERE p.user_id = ${user.id}::uuid
+                AND p.category_id = cat.id
+            )
+            SELECT NULL::text AS color FROM cat
+          `)
+        : await db
+            .execute(sql`
+              INSERT INTO kb_category_user_prefs (user_id, category_id, color, updated_at)
+              SELECT ${user.id}::uuid, c.id, ${color}::text, now()
+              FROM kb_categories AS c
+              WHERE c.id = ${categoryId}::uuid
+                AND c.program_id = ${programId}::uuid
+              ON CONFLICT (user_id, category_id) DO UPDATE
+              SET color = EXCLUDED.color,
+                  updated_at = now()
+              RETURNING color
+            `)
+            .catch((err: unknown) => {
+              // The category was deleted between the read and the insert.
+              if (pgErrorCode(err) === "23503") return null;
+              throw err;
+            });
+    const row = result?.rows[0] as { color: string | null } | undefined;
+    if (!row) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    res.json({ item: { categoryId, myColor: libraryColorOrNull(row.color) } });
   } catch (err) {
     next(err);
   }

@@ -122,7 +122,11 @@ export function KbDocumentPage({ documentId }: { documentId: string }): JSX.Elem
                 <RelativeTime iso={state.doc.updatedAt} />
               </p>
             ) : null}
-            <KbDocPersonalBar key={state.doc.documentId} documentId={state.doc.documentId} />
+            <KbDocPersonalBar
+              key={state.doc.documentId}
+              documentId={state.doc.documentId}
+              initial={state.doc}
+            />
           </header>
           {state.doc.citationAuthorized ? (
             <div className="mt-4 flex flex-wrap items-start justify-between gap-3 rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-sm">

@@ -20,7 +20,7 @@ import { moveItem } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
 import type { KbDocumentListItem } from "@/types/api";
 import { useKbLibraryContext } from "./KbContext";
-import { NewBadge, NoteIndicator, PinToggle } from "./KbShared";
+import { ColorDot, NewBadge, NoteIndicator, PinToggle, SourceColorLabel } from "./KbShared";
 import { useReducedMotion } from "./useReducedMotion";
 
 /** Compact pinned source: title link plus the personal controls. */
@@ -28,12 +28,14 @@ function PinCard({ doc, personal }: { doc: KbDocumentListItem; personal: boolean
   const { actions, openDialog } = useKbLibraryContext();
   return (
     <li className="relative flex min-w-0 items-center gap-2 rounded-md border border-border bg-card py-1 pl-3 pr-1 shadow-card transition-colors duration-100 ease-out focus-within:z-20 hover:z-20 hover:bg-muted/40">
+      {doc.myColor ? <ColorDot color={doc.myColor} /> : null}
       <Link
         href={`/kb/${doc.documentId}`}
         className="min-w-0 flex-1 truncate rounded-sm py-1 text-sm font-medium text-foreground after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         title={doc.title}
       >
         {doc.title}
+        <SourceColorLabel color={doc.myColor} />
       </Link>
       <span className="relative z-10 flex shrink-0 items-center">
         {doc.isNew ? <NewBadge /> : null}

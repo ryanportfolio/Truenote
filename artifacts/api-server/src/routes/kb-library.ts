@@ -20,6 +20,7 @@ import {
 import {
   CATEGORY_CYCLE_MESSAGE,
   CATEGORY_DEPTH_MESSAGE,
+  FEATURED_LIMIT_MESSAGE,
   TAG_NAME_TAKEN_MESSAGE,
   canNestAt,
   categoryConflictMessage,
@@ -28,6 +29,7 @@ import {
   createTagSchema,
   documentCategoriesSchema,
   documentTagsSchema,
+  featuredOverCap,
   featuredSchema,
   pgErrorCode,
   reorderCategoriesSchema,
@@ -40,11 +42,7 @@ import {
   type CategoryRow,
   type TagRow
 } from "../lib/kb-library.js";
-import {
-  documentHiddenByClearanceSql,
-  documentVisibleSql,
-  uuidArray
-} from "../lib/kb-library-sql.js";
+import { documentVisibleSql, uuidArray } from "../lib/kb-library-sql.js";
 
 /**
  * Source library organization: categories (nested, many-to-many with
@@ -55,12 +53,13 @@ import {
  * effective program, unknown or cross-program ids return 404, and the 0003
  * triggers refuse any row that would link two programs. Documents must be
  * visible to the acting manager (active version within clearance) to be
- * placed anywhere. Replace-style writes keep rows for documents above the
- * manager's clearance so a lower-clearance manager can't drop them unseen.
+ * placed anywhere. Replace-style writes remove only documents the manager
+ * can see and left out; rows for documents the manager can't see right now
+ * (above clearance, or not live) are kept, so nothing is dropped unseen.
  *
  * Every mutation takes a per-program advisory lock (structure checks such as
  * sibling order and nesting depth stay consistent under concurrent edits) and
- * appends one security event in the same transaction.
+ * appends one security event as the last statement of the same transaction.
  */
 export const kbLibraryRouter = Router();
 
@@ -192,10 +191,18 @@ async function loadCategory(
   categoryId: string
 ) {
   const result = await tx.execute(sql`
-    SELECT id::text, parent_id::text, name, color, position
-    FROM kb_categories
-    WHERE id = ${categoryId}::uuid
-      AND program_id = ${ctx.programId}::uuid
+    SELECT
+      c.id::text,
+      c.parent_id::text,
+      c.name,
+      c.color,
+      p.color AS my_color,
+      c.position
+    FROM kb_categories AS c
+    LEFT JOIN kb_category_user_prefs AS p
+      ON p.category_id = c.id AND p.user_id = ${ctx.user.id}::uuid
+    WHERE c.id = ${categoryId}::uuid
+      AND c.program_id = ${ctx.programId}::uuid
   `);
   const row = result.rows[0] as unknown as CategoryRow | undefined;
   if (!row) throw notFound();
@@ -298,11 +305,12 @@ kbLibraryRouter.post(
       `);
       const id = (inserted.rows[0] as { id: string } | undefined)?.id;
       if (!id) throw new Error("Category insert returned no row");
+      const created = await loadCategory(tx, ctx, id);
       await audit(tx, ctx, res, "kb.library.category.create", "kb_category", id, {
         name: body.name,
         parentId
       });
-      return loadCategory(tx, ctx, id);
+      return created;
     });
     res.status(201).json({ item });
   }, categoryConflictMessage)
@@ -375,12 +383,13 @@ kbLibraryRouter.patch(
         WHERE id = ${categoryId}::uuid
           AND program_id = ${ctx.programId}::uuid
       `);
+      const updated = await loadCategory(tx, ctx, categoryId);
       await audit(tx, ctx, res, "kb.library.category.update", "kb_category", categoryId, {
         ...(body.name !== undefined ? { name: body.name, previousName: current.name } : {}),
         ...(body.color !== undefined ? { color: body.color } : {}),
         ...(move ? { parentId: newParent, previousParentId: current.parent_id } : {})
       });
-      return loadCategory(tx, ctx, categoryId);
+      return updated;
     });
     res.json({ item });
   }, categoryConflictMessage)
@@ -509,7 +518,7 @@ kbLibraryRouter.put(
         DELETE FROM kb_category_documents AS cd
         WHERE cd.category_id = ${categoryId}::uuid
           AND cd.document_id <> ALL(${ids})
-          AND NOT ${documentHiddenByClearanceSql(sql.raw("cd.document_id"), ctx.programId, ctx.clearance)}
+          AND ${documentVisibleSql(sql.raw("cd.document_id"), ctx.programId, ctx.clearance)}
       `);
       if (documentIds.length > 0) {
         await tx.execute(sql`
@@ -520,8 +529,8 @@ kbLibraryRouter.put(
           SET position = EXCLUDED.position
         `);
       }
-      // Members kept because they are above this manager's clearance go
-      // after the new list, in their previous order.
+      // Members kept because this manager can't see them (above clearance,
+      // or not live) go after the new list, in their previous order.
       await tx.execute(sql`
         UPDATE kb_category_documents AS cd
         SET position = ${documentIds.length} + kept.rn
@@ -535,10 +544,11 @@ kbLibraryRouter.put(
         WHERE cd.category_id = ${categoryId}::uuid
           AND cd.document_id = kept.document_id
       `);
+      const members = await loadCategory(tx, ctx, categoryId);
       await audit(tx, ctx, res, "kb.library.category.members", "kb_category", categoryId, {
         documentIds
       });
-      return loadCategory(tx, ctx, categoryId);
+      return members;
     });
     res.json({ item });
   })
@@ -734,7 +744,7 @@ kbLibraryRouter.put(
         DELETE FROM kb_source_featured AS f
         WHERE f.program_id = ${ctx.programId}::uuid
           AND f.document_id <> ALL(${ids})
-          AND NOT ${documentHiddenByClearanceSql(sql.raw("f.document_id"), ctx.programId, ctx.clearance)}
+          AND ${documentVisibleSql(sql.raw("f.document_id"), ctx.programId, ctx.clearance)}
       `);
       if (documentIds.length > 0) {
         await tx.execute(sql`
@@ -757,6 +767,16 @@ kbLibraryRouter.put(
         ) AS kept
         WHERE f.document_id = kept.document_id
       `);
+      // Kept rows for sources this manager can't see count toward the cap
+      // too. Throwing rolls the whole replace back.
+      const total = await tx.execute(sql`
+        SELECT count(*)::int AS count
+        FROM kb_source_featured
+        WHERE program_id = ${ctx.programId}::uuid
+      `);
+      if (featuredOverCap(Number((total.rows[0] as { count?: unknown } | undefined)?.count ?? 0))) {
+        throw new LibraryError(400, FEATURED_LIMIT_MESSAGE);
+      }
       await audit(tx, ctx, res, "kb.library.featured.set", "kb_featured", null, {
         documentIds
       });

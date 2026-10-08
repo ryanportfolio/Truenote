@@ -506,7 +506,12 @@ function CategoryFormDialog({
             className={cn(inputClass, "mt-1")}
           />
         </div>
-        <ColorPicker legend="Color" value={color} onChange={setColor} />
+        <ColorPicker
+          legend="Team color"
+          hint="Everyone in this program sees it, unless they pick their own."
+          value={color}
+          onChange={setColor}
+        />
         {!existing ? (
           <div>
             <label htmlFor={parentFieldId} className="text-sm font-medium">

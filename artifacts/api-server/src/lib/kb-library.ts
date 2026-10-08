@@ -2,7 +2,7 @@ import { z, type ZodError } from "zod";
 
 /**
  * Pure validation and serialization helpers for the source library
- * (personal pins and notes, categories, tags, team pins). The SQL lives in
+ * (personal pins, notes and colors, categories, tags, team pins). The SQL lives in
  * routes/kb.ts and routes/kb-library.ts; this module has no database import
  * so it can be unit-tested directly.
  */
@@ -75,6 +75,17 @@ export const noteSchema = z
       .string({ required_error: "Send the note text.", invalid_type_error: "Send the note text." })
       .transform((value) => value.trim())
       .pipe(z.string().max(MAX_NOTE_CHARS, `Notes can be at most ${MAX_NOTE_CHARS} characters.`))
+  })
+  .strict();
+
+/**
+ * Personal color label on a source or a personal override of a category's
+ * team color. `color: null` clears it; the key itself is required so an
+ * empty body never reads as "clear".
+ */
+export const personalColorSchema = z
+  .object({
+    color: color.nullable()
   })
   .strict();
 
@@ -158,6 +169,17 @@ export const featuredSchema = z
     documentIds: uniqueIdList(MAX_FEATURED, `You can pin at most ${MAX_FEATURED} sources for the team.`)
   })
   .strict();
+
+export const FEATURED_LIMIT_MESSAGE = `Team pins are limited to ${MAX_FEATURED}.`;
+
+/**
+ * True when the program's team pin rows exceed the cap. Replace-style writes
+ * keep rows for sources the manager can't see, so the request list alone
+ * can't prove the total stays within MAX_FEATURED.
+ */
+export function featuredOverCap(totalRows: number): boolean {
+  return totalRows > MAX_FEATURED;
+}
 
 /**
  * First human-readable issue, or the fallback when zod produced a generic
@@ -246,6 +268,8 @@ export interface CategoryRow {
   parent_id: string | null;
   name: string;
   color: string;
+  /** The viewer's personal override from kb_category_user_prefs. */
+  my_color: string | null;
   position: number;
 }
 
@@ -255,9 +279,17 @@ export function serializeCategory(row: CategoryRow, documentIds: string[]) {
     parentId: row.parent_id,
     name: row.name,
     color: row.color as LibraryColor,
+    myColor: libraryColorOrNull(row.my_color),
     position: Number(row.position),
     documentIds
   };
+}
+
+/** A stored palette value, or null for anything outside the palette. */
+export function libraryColorOrNull(value: unknown): LibraryColor | null {
+  return typeof value === "string" && (LIBRARY_COLORS as readonly string[]).includes(value)
+    ? (value as LibraryColor)
+    : null;
 }
 
 export interface TagRow {
@@ -281,6 +313,7 @@ export interface UserStateRow {
   pinned_at: Date | string | null;
   note: string | null;
   note_updated_at: Date | string | null;
+  color: string | null;
 }
 
 export function serializeUserState(documentId: string, row: UserStateRow | undefined) {
@@ -288,6 +321,7 @@ export function serializeUserState(documentId: string, row: UserStateRow | undef
     documentId,
     pinnedAt: isoOrNull(row?.pinned_at),
     note: row?.note ?? null,
-    noteUpdatedAt: isoOrNull(row?.note_updated_at)
+    noteUpdatedAt: isoOrNull(row?.note_updated_at),
+    color: libraryColorOrNull(row?.color)
   };
 }

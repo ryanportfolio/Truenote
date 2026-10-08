@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import {
   Bookmark,
+  CircleSlash,
   Ellipsis,
   FolderInput,
   Megaphone,
@@ -13,9 +14,17 @@ import { cn } from "@/lib/utils";
 import type { KbDocumentListItem } from "@/types/api";
 import { useKbLibraryContext } from "./KbContext";
 import { KbMenu, type KbMenuEntry } from "./KbMenu";
-import { DocCounts, NewBadge, NoteIndicator, PinToggle, TagChips } from "./KbShared";
+import {
+  DocCounts,
+  NewBadge,
+  NoteIndicator,
+  PinToggle,
+  SourceColorLabel,
+  SourceColorStripe,
+  TagChips
+} from "./KbShared";
 
-/** Personal and (for managers) library actions shared by every row menu. */
+/** Personal actions (pin, note, my color) and, for managers, library actions shared by every row menu. */
 export function useDocMenuEntries(doc: KbDocumentListItem): KbMenuEntry[] {
   const { actions, canOrganize, openDialog } = useKbLibraryContext();
   const entries: KbMenuEntry[] = [
@@ -28,6 +37,20 @@ export function useDocMenuEntries(doc: KbDocumentListItem): KbMenuEntry[] {
       label: doc.note ? "Edit my note" : "Add a note",
       icon: StickyNote,
       onSelect: () => openDialog({ kind: "note", documentId: doc.documentId })
+    },
+    "separator",
+    {
+      kind: "swatches",
+      label: "My color",
+      hint: "Only you see it.",
+      value: doc.myColor,
+      onSelect: (color) => actions.setSourceColor(doc.documentId, color)
+    },
+    {
+      label: "No color",
+      icon: CircleSlash,
+      disabled: doc.myColor === null,
+      onSelect: () => actions.setSourceColor(doc.documentId, null)
     }
   ];
   if (canOrganize) {
@@ -88,6 +111,7 @@ export function KbDocRow({
         roundedEdges && "first:rounded-t-lg last:rounded-b-lg"
       )}
     >
+      <SourceColorStripe color={doc.myColor} />
       <div className="min-w-0 flex-1 py-0.5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Link
@@ -96,6 +120,7 @@ export function KbDocRow({
           >
             {doc.title}
           </Link>
+          <SourceColorLabel color={doc.myColor} />
           {doc.isNew ? <NewBadge /> : null}
           <TagChips tagIds={doc.tagIds} tagsById={lookup.tagsById} />
         </div>

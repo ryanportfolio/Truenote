@@ -9,7 +9,9 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Check, type LucideIcon } from "lucide-react";
+import { KB_LIBRARY_COLORS, kbColorDot, kbColorLabel } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
+import type { KbLibraryColor } from "@/types/api";
 
 export interface KbMenuItem {
   label: string;
@@ -19,9 +21,25 @@ export interface KbMenuItem {
   danger?: boolean;
   /** Set for checkbox items; toggling keeps the menu open. */
   checked?: boolean;
+  /** Color dot shown after the checkbox or icon (color filters). */
+  swatch?: KbLibraryColor;
 }
 
-export type KbMenuEntry = KbMenuItem | "separator";
+/**
+ * A row of color swatches, one radio menu item each, named by color ("Blue")
+ * so the choice never depends on seeing the hue. Picking one closes the menu.
+ */
+export interface KbMenuSwatches {
+  kind: "swatches";
+  /** Visible group label, also the group's accessible name ("My color"). */
+  label: string;
+  /** Short line under the label, such as who sees the color. */
+  hint?: string;
+  value: KbLibraryColor | null;
+  onSelect: (color: KbLibraryColor) => void;
+}
+
+export type KbMenuEntry = KbMenuItem | KbMenuSwatches | "separator";
 
 /**
  * Small action menu (menu button pattern). Portaled with fixed positioning
@@ -118,10 +136,10 @@ export function KbMenu({
       close(true);
     } else if (event.key === "Tab") {
       close(false);
-    } else if (event.key === "ArrowDown") {
+    } else if (event.key === "ArrowDown" || event.key === "ArrowRight") {
       event.preventDefault();
       list[(index + 1) % list.length]?.focus();
-    } else if (event.key === "ArrowUp") {
+    } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
       event.preventDefault();
       list[(index - 1 + list.length) % list.length]?.focus();
     } else if (event.key === "Home") {
@@ -131,6 +149,11 @@ export function KbMenu({
       event.preventDefault();
       list[list.length - 1]?.focus();
     }
+  }
+
+  function selectSwatch(group: KbMenuSwatches, color: KbLibraryColor): void {
+    close(true);
+    group.onSelect(color);
   }
 
   function select(item: KbMenuItem): void {
@@ -181,6 +204,8 @@ export function KbMenu({
               {items.map((entry, i) =>
                 entry === "separator" ? (
                   <div key={`sep-${i}`} role="separator" className="my-1 border-t border-border" />
+                ) : "kind" in entry ? (
+                  <SwatchGroup key={`swatches-${i}`} group={entry} onPick={(color) => selectSwatch(entry, color)} />
                 ) : (
                   <button
                     key={entry.label}
@@ -208,6 +233,13 @@ export function KbMenu({
                     ) : entry.icon ? (
                       <entry.icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                     ) : null}
+                    {entry.swatch ? (
+                      <span
+                        aria-hidden
+                        className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={kbColorDot(entry.swatch)}
+                      />
+                    ) : null}
                     <span className="min-w-0 flex-1">{entry.label}</span>
                   </button>
                 )
@@ -217,5 +249,46 @@ export function KbMenu({
           )
         : null}
     </>
+  );
+}
+
+function SwatchGroup({
+  group,
+  onPick
+}: {
+  group: KbMenuSwatches;
+  onPick: (color: KbLibraryColor) => void;
+}): JSX.Element {
+  const labelId = useId();
+  return (
+    <div role="group" aria-labelledby={labelId} className="px-3 py-1.5">
+      <p id={labelId} className="text-xs font-medium text-muted-foreground">
+        {group.label}
+      </p>
+      {group.hint ? <p className="text-xs text-muted-foreground">{group.hint}</p> : null}
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {KB_LIBRARY_COLORS.map((color) => {
+          const checked = group.value === color;
+          return (
+            <button
+              key={color}
+              type="button"
+              role="menuitemradio"
+              aria-checked={checked}
+              aria-label={kbColorLabel(color)}
+              title={kbColorLabel(color)}
+              tabIndex={-1}
+              onClick={() => onPick(color)}
+              className={cn(
+                // The checked ring and the focus outline differ, so both read at once.
+                "h-6 w-6 shrink-0 cursor-pointer rounded-full border border-foreground/15 transition-shadow duration-100 ease-out focus:outline focus:outline-2 focus:outline-offset-4 focus:outline-ring",
+                checked && "ring-2 ring-foreground/70 ring-offset-2 ring-offset-card"
+              )}
+              style={kbColorDot(color)}
+            />
+          );
+        })}
+      </div>
+    </div>
   );
 }

@@ -8,6 +8,7 @@ const EXACT_TITLES: Readonly<Record<string, string>> = {
   "/kb": "Knowledge Base | Truenote",
   "/admin/documents": "Documents | Truenote",
   "/admin/gaps": "Knowledge Gaps | Truenote",
+  "/admin/sources": "Source Usage | Truenote",
   "/admin/insights": "Knowledge Gaps | Truenote",
   "/admin/programs": "Programs | Truenote",
   "/admin/model-routing": "Model Routing | Truenote",

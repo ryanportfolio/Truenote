@@ -8,13 +8,18 @@ import {
   categoryDocumentsSchema,
   createCategorySchema,
   createTagSchema,
+  FEATURED_LIMIT_MESSAGE,
+  featuredOverCap,
   featuredSchema,
+  libraryColorOrNull,
   normalizeNote,
   noteSchema,
+  personalColorSchema,
   pgErrorCode,
   pinSchema,
   reorderCategoriesSchema,
   sameIdSet,
+  serializeCategory,
   serializeUserState,
   updateCategorySchema,
   updateTagSchema,
@@ -52,8 +57,60 @@ describe("personal pin and note validation", () => {
       documentId: A,
       pinnedAt: null,
       note: null,
-      noteUpdatedAt: null
+      noteUpdatedAt: null,
+      color: null
     });
+    expect(
+      serializeUserState(A, {
+        document_id: A,
+        pinned_at: null,
+        note: null,
+        note_updated_at: null,
+        color: "violet"
+      }).color
+    ).toBe("violet");
+  });
+});
+
+describe("personal colors", () => {
+  it("accepts a palette color or null and requires the key", () => {
+    const parsed = personalColorSchema.safeParse({ color: "teal" });
+    expect(parsed.success && parsed.data.color).toBe("teal");
+    const cleared = personalColorSchema.safeParse({ color: null });
+    expect(cleared.success && cleared.data.color).toBeNull();
+    expect(personalColorSchema.safeParse({}).success).toBe(false);
+    expect(personalColorSchema.safeParse({ color: "#ff0000" }).success).toBe(false);
+    expect(personalColorSchema.safeParse({ color: "Blue" }).success).toBe(false);
+    expect(personalColorSchema.safeParse({ color: "blue", userId: A }).success).toBe(false);
+  });
+
+  it("explains an off-palette color in plain words", () => {
+    const bad = personalColorSchema.safeParse({ color: "orange" });
+    expect(bad.success).toBe(false);
+    if (!bad.success) {
+      expect(validationMessage(bad.error, "fallback")).toBe("Pick one of the listed colors.");
+    }
+  });
+
+  it("reads stored colors back only when they are in the palette", () => {
+    expect(libraryColorOrNull("amber")).toBe("amber");
+    expect(libraryColorOrNull("orange")).toBeNull();
+    expect(libraryColorOrNull(null)).toBeNull();
+    expect(libraryColorOrNull(undefined)).toBeNull();
+  });
+
+  it("returns the viewer's category override next to the team color", () => {
+    const row = { id: A, parent_id: null, name: "Billing", color: "blue", position: 2 };
+    expect(serializeCategory({ ...row, my_color: "red" }, [B])).toEqual({
+      id: A,
+      parentId: null,
+      name: "Billing",
+      color: "blue",
+      myColor: "red",
+      position: 2,
+      documentIds: [B]
+    });
+    expect(serializeCategory({ ...row, my_color: null }, []).myColor).toBeNull();
   });
 });
 
@@ -103,6 +160,12 @@ describe("category and tag validation", () => {
     );
     expect(featuredSchema.safeParse({ documentIds: many.slice(0, 12) }).success).toBe(true);
     expect(featuredSchema.safeParse({ documentIds: many }).success).toBe(false);
+  });
+
+  it("caps the program's team pins, counting rows kept for hidden sources", () => {
+    expect(featuredOverCap(12)).toBe(false);
+    expect(featuredOverCap(13)).toBe(true);
+    expect(FEATURED_LIMIT_MESSAGE).toBe("Team pins are limited to 12.");
   });
 });
 

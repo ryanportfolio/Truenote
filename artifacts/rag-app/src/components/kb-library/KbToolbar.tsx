@@ -5,6 +5,7 @@ import {
   FolderCog,
   FolderTree,
   List,
+  Palette,
   RotateCcw,
   Rows3,
   Search,
@@ -19,8 +20,9 @@ import {
   type KbSort,
   type KbView
 } from "@/lib/kbLibrary";
+import { kbColorLabel } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
-import type { KbTag } from "@/types/api";
+import type { KbLibraryColor, KbTag } from "@/types/api";
 import { KbMenu } from "./KbMenu";
 import { ColorDot } from "./KbShared";
 
@@ -71,6 +73,7 @@ export function KbToolbar({
   filters,
   onFilters,
   tags,
+  colors,
   shown,
   total,
   active,
@@ -88,6 +91,8 @@ export function KbToolbar({
   filters: KbFilters;
   onFilters: (filters: KbFilters) => void;
   tags: KbTag[];
+  /** Colors the user has put on at least one source (plus any still selected). */
+  colors: KbLibraryColor[];
   shown: number;
   total: number;
   active: boolean;
@@ -104,6 +109,13 @@ export function KbToolbar({
       ? filters.tagIds.filter((id) => id !== tagId)
       : [...filters.tagIds, tagId];
     onFilters({ ...filters, tagIds });
+  }
+
+  function toggleColor(color: KbLibraryColor): void {
+    const next = filters.colors.includes(color)
+      ? filters.colors.filter((c) => c !== color)
+      : [...filters.colors, color];
+    onFilters({ ...filters, colors: next });
   }
 
   return (
@@ -238,6 +250,40 @@ export function KbToolbar({
           >
             <ColorDot color={tag.color} />
             {tag.name}
+            <X className="h-3 w-3 text-muted-foreground" aria-hidden />
+          </button>
+        ))}
+        {colors.length > 0 ? (
+          <KbMenu
+            label="Filter by my color"
+            title="Filter by the colors you put on sources"
+            buttonClassName={cn(
+              "btn-base gap-1.5 border px-3 py-1 text-xs",
+              filters.colors.length > 0
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border bg-secondary text-secondary-foreground hover:border-foreground/20"
+            )}
+            items={colors.map((color) => ({
+              label: kbColorLabel(color),
+              swatch: color,
+              checked: filters.colors.includes(color),
+              onSelect: () => toggleColor(color)
+            }))}
+          >
+            <Palette className="h-3.5 w-3.5" aria-hidden />
+            Color{filters.colors.length > 0 ? ` (${filters.colors.length})` : ""}
+          </KbMenu>
+        ) : null}
+        {filters.colors.map((color) => (
+          <button
+            key={color}
+            type="button"
+            onClick={() => toggleColor(color)}
+            aria-label={`Remove color filter ${kbColorLabel(color)}`}
+            className="btn-base gap-1.5 border border-border bg-card px-2.5 py-1 text-xs text-foreground hover:border-foreground/20"
+          >
+            <ColorDot color={color} />
+            {kbColorLabel(color)}
             <X className="h-3 w-3 text-muted-foreground" aria-hidden />
           </button>
         ))}

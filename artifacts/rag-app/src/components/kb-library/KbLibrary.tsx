@@ -16,6 +16,7 @@ import {
   type KbFilters,
   type KbPrefs
 } from "@/lib/kbLibrary";
+import { KB_LIBRARY_COLORS } from "@/lib/kbLibraryColors";
 import type { CurrentUser, KbDocumentListResponse } from "@/types/api";
 import { KbCategoriesView, KbFoldersView, KbListView } from "./KbBrowseViews";
 import { KbLibraryContext, type KbDialogState, type KbLibraryContextValue } from "./KbContext";
@@ -40,7 +41,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
  * and the browse views. Managers get an Organize mode that swaps the browse
  * controls for drag-and-drop arrangement, so arranging never mixes with
  * looking things up. View, sort, filters and collapsed folders persist per
- * user in localStorage.
+ * user in localStorage. Personal colors live on the server, not here.
  */
 export function KbLibrary({
   user,
@@ -104,6 +105,14 @@ export function KbLibrary({
   const team = useMemo(() => teamPins(data.items), [data.items]);
   const mine = useMemo(() => myPins(data.items), [data.items]);
   const tags = useMemo(() => sortTags(data.tags), [data.tags]);
+  // Offer only colors in use; a selected color stays listed so it can be cleared.
+  const colors = useMemo(
+    () =>
+      KB_LIBRARY_COLORS.filter(
+        (c) => filters.colors.includes(c) || data.items.some((d) => d.myColor === c)
+      ),
+    [data.items, filters.colors]
+  );
 
   const context = useMemo<KbLibraryContextValue>(
     () => ({ data, lookup, actions, canOrganize, openDialog: setDialog }),
@@ -179,6 +188,7 @@ export function KbLibrary({
           filters={filters}
           onFilters={(next) => setPrefs((p) => ({ ...p, filters: next }))}
           tags={tags}
+          colors={colors}
           shown={visible.length}
           total={data.items.length}
           active={active}
