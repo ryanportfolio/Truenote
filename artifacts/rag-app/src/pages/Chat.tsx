@@ -7,10 +7,16 @@ import {
   type FormEvent,
   type KeyboardEvent
 } from "react";
-import { History, MessageSquare } from "lucide-react";
+import { History, Maximize2, MessageSquare, PictureInPicture2 } from "lucide-react";
 import { askQuestionStream, getSession, listSessions } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/EmptyState";
 import { AskExamples } from "@/components/chat/AskExamples";
+import {
+  MiniWindowPortal,
+  miniWindowStaysOnTop,
+  useMiniWindow
+} from "@/components/chat/MiniWindow";
 import { RelativeTime } from "@/components/RelativeTime";
 import {
   hasAtLeastRole,
@@ -126,25 +132,37 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Pop-out mini window. The conversation state stays here; while the window
+  // is open the transcript and composer render inside it instead of the page.
+  const mini = useMiniWindow();
+  const inMiniWindow = mini.container !== null;
+  const [miniError, setMiniError] = useState<string | null>(null);
 
   // Keep the newest exchange in view as the transcript grows.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "nearest" });
-  }, [exchanges, stage]);
+    // inMiniWindow: the transcript remounts in the other window, top-scrolled.
+  }, [exchanges, stage, inMiniWindow]);
 
   // Abort any in-flight request when the page unmounts.
   useEffect(() => () => abortRef.current?.abort(), []);
 
   // "/" focuses the ask box from anywhere on the page (unless the user is
   // already typing somewhere). CSRs are mid-call — reaching the composer
-  // must never require the mouse.
+  // must never require the mouse. Also listens in the mini window.
+  const miniWin = mini.win;
   useEffect(() => {
     function onSlash(event: globalThis.KeyboardEvent): void {
       if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) return;
-      const target = event.target;
+      // Not `instanceof HTMLElement`: mini-window nodes belong to another
+      // window's globals and would fail the check.
+      const target = event.target as Partial<HTMLElement> | null;
       if (
-        target instanceof HTMLElement &&
-        (target.tagName === "INPUT" ||
+        target &&
+        // An open citation panel keeps focus; in the mini window it covers
+        // the composer.
+        (target.closest?.("[role='dialog']") ||
+          target.tagName === "INPUT" ||
           target.tagName === "TEXTAREA" ||
           target.tagName === "SELECT" ||
           target.isContentEditable)
@@ -154,9 +172,12 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
       event.preventDefault();
       textareaRef.current?.focus();
     }
-    window.addEventListener("keydown", onSlash);
-    return () => window.removeEventListener("keydown", onSlash);
-  }, []);
+    const targets = miniWin ? [window, miniWin] : [window];
+    for (const target of targets) target.addEventListener("keydown", onSlash);
+    return () => {
+      for (const target of targets) target.removeEventListener("keydown", onSlash);
+    };
+  }, [miniWin]);
 
   async function ask(trimmed: string): Promise<void> {
     // Answer rendering carries the Markdown parser. Retrieval is much slower
@@ -230,6 +251,16 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
     setSessionTitle(null);
   }
 
+  async function openMiniWindow(): Promise<void> {
+    setMiniError(null);
+    const opened = await mini.open();
+    if (!opened) {
+      setMiniError(
+        "Your browser blocked the mini window. Allow pop-ups for this site, then try again."
+      );
+    }
+  }
+
   async function toggleHistory(): Promise<void> {
     const next = !historyOpen;
     setHistoryOpen(next);
@@ -285,6 +316,95 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
     }
   }
 
+  const transcript =
+    exchanges.length > 0 ? (
+      <ol className="flex flex-col gap-4" aria-label="Questions and answers">
+        {exchanges.map((exchange) => (
+          <li key={exchange.id} className="exchange-group">
+            <div className="question-row">
+              <span aria-hidden>Q</span>
+              <p>{exchange.question}</p>
+            </div>
+            {exchange.result ? (
+              <Suspense fallback={<RetrievalState stage={stage} />}>
+                <AnswerView
+                  result={exchange.result}
+                  question={exchange.question}
+                  showDebug={showDebug}
+                />
+              </Suspense>
+            ) : exchange.error ? (
+              <div className="flex items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                <span>{exchange.error}</span>
+                <button
+                  type="button"
+                  disabled={busy || !hasProgram}
+                  onClick={() => void ask(exchange.question)}
+                  className="rounded-full border border-destructive/40 px-2.5 py-0.5 text-xs font-medium hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <RetrievalState stage={stage} />
+            )}
+          </li>
+        ))}
+      </ol>
+    ) : null;
+
+  const composer = (
+    <form onSubmit={onSubmit} className="composer-frame">
+      <label htmlFor="truenote-question" className="composer-label">
+        Ask a question
+      </label>
+      <textarea
+        id="truenote-question"
+        ref={textareaRef}
+        autoFocus
+        value={question}
+        onChange={(e) => setQuestion(e.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder="How can I help?"
+        rows={inMiniWindow ? 2 : 3}
+        disabled={!hasProgram}
+        className="composer-input placeholder:opacity-90"
+      />
+      <div
+        className={cn(
+          "flex gap-3",
+          inMiniWindow
+            ? "items-center justify-between"
+            : "flex-col sm:flex-row sm:items-center sm:justify-between"
+        )}
+      >
+        <span
+          className={cn("text-xs text-muted-foreground", !inMiniWindow && "hidden sm:inline")}
+        >
+          <kbd className="kbd">Enter</kbd> to ask
+        </span>
+        <div className="flex items-center gap-2">
+          {busy ? (
+            <button
+              type="button"
+              onClick={() => abortRef.current?.abort()}
+              className="btn-whisper px-4 py-2"
+            >
+              Cancel
+            </button>
+          ) : null}
+          <button
+            type="submit"
+            disabled={busy || !hasProgram || question.trim().length === 0}
+            className="btn-csr-ask min-w-24 px-5 py-2 text-base"
+          >
+            {busy ? "Asking…" : "Ask"}
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+
   return (
     // CSR surface: tight density by design (DESIGN.md §Density) — narrower
     // column (~Cohere's 640px measure), smaller gaps than admin pages.
@@ -305,7 +425,7 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
             ) : null}
           </div>
           {hasProgram ? (
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
                 disabled={busy}
@@ -329,9 +449,34 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
                   New conversation
                 </button>
               ) : null}
+              {!inMiniWindow ? (
+                // Phones have no separate windows; the page is already small.
+                <button
+                  type="button"
+                  onClick={() => void openMiniWindow()}
+                  title={
+                    miniWindowStaysOnTop()
+                      ? "Ask from a small window that stays on top of your other apps"
+                      : "Ask from a small separate window"
+                  }
+                  className="btn-whisper hidden gap-1.5 px-3 py-1.5 md:inline-flex"
+                >
+                  <PictureInPicture2 className="h-4 w-4" aria-hidden />
+                  Mini window
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>
+
+        {miniError ? (
+          <p
+            role="alert"
+            className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {miniError}
+          </p>
+        ) : null}
 
         {historyOpen ? (
           <section
@@ -396,105 +541,101 @@ export function ChatPage({ user }: ChatPageProps): JSX.Element {
           </div>
         ) : null}
 
-        {exchanges.length === 0 && hasProgram ? (
-          <EmptyState icon={MessageSquare}>
-            <AskExamples
-              canEdit={hasAtLeastRole(user, "manager")}
-              onPick={(q) => {
-                setQuestion(q);
-                textareaRef.current?.focus();
-              }}
-            />
-          </EmptyState>
-        ) : null}
-
-        {exchanges.length > 0 ? (
-          <ol className="flex flex-col gap-4" aria-label="Questions and answers">
-            {exchanges.map((exchange) => (
-              <li key={exchange.id} className="exchange-group">
-                <div className="question-row">
-                  <span aria-hidden>Q</span>
-                  <p>{exchange.question}</p>
-                </div>
-                {exchange.result ? (
-                  <Suspense fallback={<RetrievalState stage={stage} />}>
-                    <AnswerView
-                      result={exchange.result}
-                      question={exchange.question}
-                      showDebug={showDebug}
-                    />
-                  </Suspense>
-                ) : exchange.error ? (
-                  <div className="flex items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-                    <span>{exchange.error}</span>
-                    <button
-                      type="button"
-                      disabled={busy || !hasProgram}
-                      onClick={() => void ask(exchange.question)}
-                      className="rounded-full border border-destructive/40 px-2.5 py-0.5 text-xs font-medium hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                ) : (
-                  <RetrievalState stage={stage} />
-                )}
-              </li>
-            ))}
-          </ol>
-        ) : null}
-        <div ref={bottomRef} />
-
-        {/* Sticky composer: mid-call, the ask box must stay one glance away
-          * no matter how long the transcript gets. Transcript scrolls
-          * behind; the gradient strip softens the cut edge. */}
-        <div className="composer-dock sticky bottom-0 -mx-4 px-4 pb-6 sm:-mx-6 sm:px-6">
+        {inMiniWindow ? (
           <div
-            aria-hidden
-            className="composer-fade pointer-events-none absolute inset-x-0 -top-8 h-8"
-          />
-        <form onSubmit={onSubmit} className="composer-frame">
-          <label htmlFor="truenote-question" className="composer-label">
-            Ask a question
-          </label>
-          <textarea
-            id="truenote-question"
-            ref={textareaRef}
-            autoFocus
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="How can I help?"
-            rows={3}
-            disabled={!hasProgram}
-            className="composer-input placeholder:opacity-90"
-          />
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <span className="hidden text-xs text-muted-foreground sm:inline">
-              <kbd className="kbd">Enter</kbd> to ask
+            role="status"
+            className="flex flex-col gap-3 rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between"
+          >
+            <span>
+              This conversation is open in a mini window. Leaving this page
+              closes it.
             </span>
-            <div className="flex items-center gap-2">
-              {busy ? (
+            <button
+              type="button"
+              onClick={mini.close}
+              className="btn-whisper shrink-0 px-3 py-1.5"
+            >
+              Bring it back here
+            </button>
+          </div>
+        ) : (
+          <>
+            {exchanges.length === 0 && hasProgram ? (
+              <EmptyState icon={MessageSquare}>
+                <AskExamples
+                  canEdit={hasAtLeastRole(user, "manager")}
+                  onPick={(q) => {
+                    setQuestion(q);
+                    textareaRef.current?.focus();
+                  }}
+                />
+              </EmptyState>
+            ) : null}
+
+            {transcript}
+            <div ref={bottomRef} />
+
+            {/* Sticky composer: mid-call, the ask box must stay one glance away
+              * no matter how long the transcript gets. Transcript scrolls
+              * behind; the gradient strip softens the cut edge. */}
+            <div className="composer-dock sticky bottom-0 -mx-4 px-4 pb-6 sm:-mx-6 sm:px-6">
+              <div
+                aria-hidden
+                className="composer-fade pointer-events-none absolute inset-x-0 -top-8 h-8"
+              />
+              {composer}
+            </div>
+          </>
+        )}
+      </div>
+
+      {mini.container ? (
+        <MiniWindowPortal container={mini.container}>
+          <div className="mini-window">
+            <header className="mini-window-bar">
+              <span className="font-display text-base font-semibold leading-none tracking-tight">
+                Truenote
+              </span>
+              <span className="flex items-center gap-1">
+                {exchanges.length > 0 ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={startNewConversation}
+                    className="btn-whisper px-3 py-1 text-xs"
+                  >
+                    New conversation
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  onClick={() => abortRef.current?.abort()}
-                  className="btn-whisper px-4 py-2"
+                  onClick={mini.close}
+                  aria-label="Back to the full page"
+                  title="Back to the full page"
+                  className="btn-icon"
                 >
-                  Cancel
+                  <Maximize2 className="h-4 w-4" aria-hidden />
                 </button>
+              </span>
+            </header>
+            <div className="mini-window-scroll">
+              {!hasProgram ? (
+                <p role="status" className="text-sm text-muted-foreground">
+                  Choose a program in the main Truenote tab to search its documents.
+                </p>
+              ) : exchanges.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Ask about any document in this program. Each answer links to the
+                  passage it came from.
+                </p>
               ) : null}
-              <button
-                type="submit"
-                disabled={busy || !hasProgram || question.trim().length === 0}
-                className="btn-csr-ask min-w-24 px-5 py-2 text-base"
-              >
-                {busy ? "Asking…" : "Ask"}
-              </button>
+              {transcript}
+              <div ref={bottomRef} />
             </div>
+            <div className="mini-window-composer">{composer}</div>
           </div>
-        </form>
-        </div>
-      </div>
+        </MiniWindowPortal>
+      ) : null}
     </div>
   );
 }

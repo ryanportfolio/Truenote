@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
-import { Link } from "wouter";
 import { BookOpen, X } from "lucide-react";
 import { citationDocumentHref, citationLinkKind } from "@/lib/citationLinks";
+import { cn } from "@/lib/utils";
 import type { Source } from "@/types/api";
+import { AppLink, useInMiniWindow } from "./MiniWindow";
 
 interface CitationPanelProps {
   source: Source;
@@ -15,18 +16,38 @@ interface CitationPanelProps {
 export function CitationPanel({ source, queryLogId, onClose, showDebug }: CitationPanelProps): JSX.Element {
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
+  const inMiniWindow = useInMiniWindow();
 
   // Move focus into the panel on open and hand it back on close, so a
   // keyboard CSR lands on Close (Esc also works) and returns to the chip.
+  // The panel's own document: the mini window has a separate one.
   useEffect(() => {
-    restoreRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const active = (closeRef.current?.ownerDocument ?? document).activeElement;
+    // Duck-typed: a node from the mini window fails `instanceof HTMLElement`.
+    restoreRef.current = active && "focus" in active ? (active as HTMLElement) : null;
     closeRef.current?.focus();
     return () => restoreRef.current?.focus();
   }, []);
 
-  function onKeyDown(event: React.KeyboardEvent): void {
+  function onKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
     if (event.key === "Escape") onClose();
+    // In the mini window the panel covers everything else, so Tab cycles
+    // inside it instead of reaching the hidden composer.
+    if (event.key === "Tab" && inMiniWindow) {
+      const focusable = Array.from(
+        event.currentTarget.querySelectorAll<HTMLElement>("a[href], button:not([disabled])")
+      );
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = event.currentTarget.ownerDocument.activeElement;
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
   }
 
   const documentHref = citationDocumentHref(source, queryLogId);
@@ -35,9 +56,17 @@ export function CitationPanel({ source, queryLogId, onClose, showDebug }: Citati
   return (
     <aside
       role="dialog"
+      aria-modal={inMiniWindow || undefined}
       aria-label={`Citation: ${source.doc_title}`}
       onKeyDown={onKeyDown}
-      className="fixed right-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-[min(560px,90vw)] flex-col border-l border-border bg-card shadow-panel motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-right-4 motion-safe:duration-240 motion-safe:ease-out-quart"
+      className={cn(
+        "fixed right-0 z-40 flex flex-col bg-card motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-right-4 motion-safe:duration-240 motion-safe:ease-out-quart",
+        // The mini window is too narrow for a side panel: the passage
+        // covers the whole window until Close or Esc.
+        inMiniWindow
+          ? "inset-y-0 w-full"
+          : "top-14 h-[calc(100vh-3.5rem)] w-[min(560px,90vw)] border-l border-border shadow-panel"
+      )}
     >
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
         <div className="flex flex-col">
@@ -87,7 +116,7 @@ export function CitationPanel({ source, queryLogId, onClose, showDebug }: Citati
         {documentHref ? (
           // The excerpt is the receipt; this is the full ledger. Navigating
           // unmounts the panel with the page, which is the right cleanup.
-          <Link
+          <AppLink
             href={documentHref}
             className="btn-whisper mt-3 inline-flex gap-1.5 px-3 py-1.5 text-sm"
           >
@@ -97,7 +126,7 @@ export function CitationPanel({ source, queryLogId, onClose, showDebug }: Citati
               : linkKind === "version"
                 ? "Open cited version"
                 : "Open current document"}
-          </Link>
+          </AppLink>
         ) : null}
         {documentHref && linkKind === "version" ? (
           <p className="mt-2 text-xs leading-relaxed text-muted-foreground">

@@ -184,6 +184,10 @@ Personal passage highlights are anchored to the active document version and save
 
 Every /chat conversation is a session, auto-named server-side (gpt-4o-mini) from its opening exchange; the title shows as a small `--primary` line under the chat intro. The header carries a **History** whisper button (with `New conversation` when a transcript exists) — it expands an inline card of recent sessions (title or "Untitled conversation" + relative time, newest first, active one tinted), not a floating dropdown: no z-index, no focus trap, dismisses by re-toggling. Opening a session reloads its exchanges into the transcript with citations intact and continues it. `New conversation` clears the transcript AND the session id so the next ask starts a fresh, separately-named conversation. History actions disable while an ask is in flight.
 
+## Mini window
+
+A **Mini window** whisper button in the /chat header (`md`+ only) pops the conversation into a 400×600 window (`components/chat/MiniWindow.tsx`). Chrome and Edge 116+ use Document Picture-in-Picture, so the window stays on top of other apps; other browsers get a same-origin popup. The conversation state stays in `ChatPage` and the compact view is portaled into the window, so cookies, program scope and in-flight asks carry over. The page shows a dashed status card with **Bring it back here** while the window is open. The mini view is a chrome bar (Georgia wordmark, `New conversation`, back-to-page icon), the transcript, and the composer pinned below. The citation panel fills the whole window. App links inside it open a new tab, because navigating the page would unmount the chat and close the window. Leaving /chat closes the window.
+
 ## Motion
 
 Easing **`cubic-bezier(0.25, 1, 0.5, 1)`** (ease-out-quart). Micro-interactions `100–120ms`, layout `240ms`. Named Tailwind tokens: `ease-out-quart`, `duration-240` (tailwindcss-animate maps both onto animation properties too). Honor `prefers-reduced-motion` everywhere — every animation below is `motion-safe:`. No bounce, no overshoot, no decorative motion.
