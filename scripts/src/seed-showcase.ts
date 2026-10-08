@@ -1212,7 +1212,9 @@ function buildBackdateSql(state: SeedState, now: number): { sql: string; expecte
   const users = [...NEW_CSRS, DEMO_CSR];
   const queryRows: Array<[string, string, number]> = [];
   const sessionRows = new Map<string, { userId: string; min: number; max: number }>();
-  const viewRows: Array<[string, string, number]> = [];
+  // [user id, document id, recorded open time, new time]: the open time tells
+  // repeat opens of one source apart (the server keeps one view per 30 minutes).
+  const viewRows: Array<[string, string, number, number]> = [];
   const userRows: Array<[string, number]> = [];
   const askTime = new Map<string, number>();
   for (const user of users) {
@@ -1261,11 +1263,11 @@ function buildBackdateSql(state: SeedState, now: number): { sql: string; expecte
     views.forEach((v, i) => {
       const cited = v.queryLogId ? askTime.get(v.queryLogId) : undefined;
       const t = cited !== undefined ? Math.min(cited + 30_000 + Math.floor(rand() * 210_000), now - 60_000) : browseTimes[i]!;
-      viewRows.push([v.userId, v.documentId, t]);
+      viewRows.push([v.userId, v.documentId, Date.parse(v.at), t]);
     });
     const seeded = state.users?.[user.key];
     if (seeded?.created && user.email.endsWith("@larkspur.example")) {
-      const earliest = Math.min(now - user.activeDays * DAY_MS, ...queryRows.filter((q) => q[1] === seeded.id).map((q) => q[2]), ...viewRows.filter((v) => v[0] === seeded.id).map((v) => v[2]));
+      const earliest = Math.min(now - user.activeDays * DAY_MS, ...queryRows.filter((q) => q[1] === seeded.id).map((q) => q[2]), ...viewRows.filter((v) => v[0] === seeded.id).map((v) => v[3]));
       userRows.push([seeded.id, Math.floor(earliest / DAY_MS) * DAY_MS - DAY_MS + 14 * 3_600_000]);
     }
   }
@@ -1292,11 +1294,11 @@ function buildBackdateSql(state: SeedState, now: number): { sql: string; expecte
   const sql = `
 CREATE TEMP TABLE bd_q (id uuid PRIMARY KEY, user_id text NOT NULL, ts timestamptz NOT NULL) ON COMMIT DROP;
 CREATE TEMP TABLE bd_s (id uuid PRIMARY KEY, user_id text NOT NULL, created timestamptz NOT NULL, updated timestamptz NOT NULL) ON COMMIT DROP;
-CREATE TEMP TABLE bd_v (user_id uuid NOT NULL, document_id uuid NOT NULL, ts timestamptz NOT NULL, PRIMARY KEY (user_id, document_id)) ON COMMIT DROP;
+CREATE TEMP TABLE bd_v (user_id uuid NOT NULL, document_id uuid NOT NULL, opened timestamptz NOT NULL, ts timestamptz NOT NULL, PRIMARY KEY (user_id, document_id, opened)) ON COMMIT DROP;
 CREATE TEMP TABLE bd_u (id uuid PRIMARY KEY, ts timestamptz NOT NULL) ON COMMIT DROP;
 ${queryRows.length ? `INSERT INTO bd_q VALUES\n${values(queryRows.map(([id, u, t]) => `('${id}','${u}',${iso(t)})`))};` : ""}
 ${sessionRows.size ? `INSERT INTO bd_s VALUES\n${values([...sessionRows].map(([id, s]) => `('${id}','${s.userId}',${iso(s.min)},${iso(s.max)})`))};` : ""}
-${viewRows.length ? `INSERT INTO bd_v VALUES\n${values(viewRows.map(([u, d, t]) => `('${u}','${d}',${iso(t)})`))};` : ""}
+${viewRows.length ? `INSERT INTO bd_v VALUES\n${values(viewRows.map(([u, d, o, t]) => `('${u}','${d}',${iso(o)},${iso(t)})`))};` : ""}
 ${userRows.length ? `INSERT INTO bd_u VALUES\n${values(userRows.map(([id, t]) => `('${id}',${iso(t)})`))};` : ""}
 DO $$
 DECLARE n integer;
@@ -1321,7 +1323,8 @@ BEGIN
   UPDATE kb_document_views AS v SET viewed_at = b.ts
     FROM bd_v AS b
    WHERE v.user_id = b.user_id AND v.document_id = b.document_id AND v.program_id = '${PROGRAM_ID}'::uuid
-     AND v.viewed_at >= '${step.start}'::timestamptz AND v.viewed_at <= '${step.end}'::timestamptz;
+     AND v.viewed_at >= '${step.start}'::timestamptz AND v.viewed_at <= '${step.end}'::timestamptz
+     AND v.viewed_at BETWEEN b.opened - interval '2 minutes' AND b.opened + interval '2 minutes';
   GET DIAGNOSTICS n = ROW_COUNT;
   IF n <> ${expected.kb_document_views} THEN RAISE EXCEPTION 'kb_document_views: % rows matched, expected ${expected.kb_document_views}', n; END IF;
   RAISE NOTICE 'kb_document_views rows backdated: %', n;
