@@ -1,0 +1,222 @@
+/*
+ * Reader-only styles for the source page (/kb/:id). Scoped under classes the
+ * reader owns, so the shared document renderer and the passage highlighter
+ * look the same everywhere else.
+ */
+
+/* Numbered steps: ordered lists in the document body. The number is CSS
+ * generated content, so the document text (and the text offsets saved
+ * highlights are anchored to) stays exactly as written. */
+.kb-steps {
+  list-style: none;
+  counter-reset: kb-step;
+  margin: 0.75rem 0;
+  padding: 0;
+}
+
+/* The circle's center sits on the first text line's center: padding-top
+ * (1.3125rem) plus half the 1.625rem line equals the circle's top (0.75rem)
+ * plus half its 2.75rem height. One-line steps keep the 4.25rem row. */
+.kb-steps > li {
+  counter-increment: kb-step;
+  position: relative;
+  min-height: 4.25rem;
+  padding: 1.3125rem 0 0.875rem 3.75rem;
+  border-top: 1px solid oklch(var(--border));
+}
+
+.kb-steps > li:first-child {
+  border-top: 0;
+}
+
+.kb-steps > li::before {
+  content: counter(kb-step);
+  position: absolute;
+  left: 0;
+  top: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 9999px;
+  background-color: oklch(var(--primary) / 0.08);
+  color: oklch(var(--primary));
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* First sentence of a step, semibold on its own line so it reads aloud
+ * first. Only steps with more text after it get a lead (see
+ * splitFirstSentence); one-sentence steps stay regular weight. */
+.kb-steps > li .kb-step-lead {
+  display: block;
+  font-family: Verdana, Geneva, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  color: oklch(var(--foreground));
+}
+
+.kb-steps .kb-steps > li {
+  min-height: 2.75rem;
+  padding: 0.5rem 0 0.5rem 2.5rem;
+}
+
+.kb-steps .kb-steps > li::before {
+  top: 0.5rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.875rem;
+}
+
+/* The summary line right under the document's own (hidden) title. */
+.kb-reader-doc [data-kb-doc-title] + p {
+  margin-top: 0.5rem;
+  font-size: 1.0625rem;
+  color: oklch(var(--foreground) / 0.86);
+}
+
+/* Passage highlights: the highlighter's hint bar no longer sits above the
+ * document. It shows only once there are saved highlights, as the list
+ * toggle without the hint text (the hint lives in the note card). With
+ * nothing saved it is visually hidden but stays in the DOM, and it shows
+ * again whenever it takes focus (focus lands there after the last
+ * highlight is removed). */
+.kb-reader-highlights > div > div:first-child {
+  margin-top: 0.25rem;
+  justify-content: flex-end;
+  background: transparent;
+  padding: 0;
+}
+
+.kb-reader-highlights > div > div:first-child:has(button) > p {
+  display: none;
+}
+
+.kb-reader-highlights > div > div:first-child:not(:has(button)):not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* One filled primary per screen: the header's "Add to my shortcuts" stays
+ * the page's main action, so the highlight toolbar's "Highlight" button
+ * (portaled to body) reads as a whisper button with primary text while a
+ * reader is mounted. */
+body:has([data-kb-reader]) [data-kb-highlight-toolbar] .btn-primary {
+  background-color: oklch(var(--secondary));
+  color: oklch(var(--primary));
+  box-shadow: inset 0 0 0 1px oklch(var(--border));
+  transform: none;
+}
+
+body:has([data-kb-reader]) [data-kb-highlight-toolbar] .btn-primary:hover:not(:disabled) {
+  background-color: oklch(var(--secondary));
+  box-shadow: inset 0 0 0 1px oklch(var(--foreground) / 0.18);
+  transform: none;
+}
+
+body:has([data-kb-reader]) [data-kb-highlight-toolbar] .btn-primary:active:not(:disabled) {
+  background-color: oklch(var(--muted));
+}
+
+/* Phones: smaller circles leave the step text room to breathe. */
+@media (max-width: 639px) {
+  .kb-steps > li {
+    min-height: 3.25rem;
+    padding-left: 3rem;
+  }
+
+  .kb-steps > li {
+    padding-top: 0.875rem;
+  }
+
+  .kb-steps > li::before {
+    top: 0.5625rem;
+    width: 2.25rem;
+    height: 2.25rem;
+    font-size: 1rem;
+  }
+}
+
+/* Wide tables scroll sideways. While columns are out of view the right
+ * edge fades and "Scroll for more" shows under the table; the line keeps
+ * its space once the end is reached, so scrolling never moves the page. */
+.kb-table-wrap {
+  position: relative;
+}
+
+.kb-table-wrap[data-more]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 1.5rem;
+  width: 2.5rem;
+  pointer-events: none;
+  background: linear-gradient(to right, oklch(var(--card) / 0), oklch(var(--card)));
+}
+
+.kb-table-wrap[data-wide]::after {
+  content: "Scroll for more \2192";
+  display: block;
+  height: 1.5rem;
+  padding-top: 0.25rem;
+  text-align: right;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  color: oklch(var(--muted-foreground));
+}
+
+.kb-table-wrap[data-wide]:not([data-more])::after {
+  visibility: hidden;
+}
+
+/* Saved highlights: the "1 highlight" button sits at the right end of the
+ * title's meta line ("Policy | Updated 5 days ago") instead of on a row of
+ * its own, so saving the first highlight does not push the document down.
+ * The meta line always keeps room for it. With a cited-passage receipt
+ * between the title and the document the button stays in its own row. */
+.kb-reader-doc:has(.kb-reader-highlights) [data-kb-reader-meta] {
+  padding-right: 8rem;
+}
+
+.kb-reader-doc:has([data-kb-reader-meta]):not(:has([data-kb-reader-cited])) .kb-reader-highlights > div {
+  position: relative;
+}
+
+.kb-reader-doc:has([data-kb-reader-meta]):not(:has([data-kb-reader-cited]))
+  .kb-reader-highlights
+  > div
+  > div:first-child:is(:has(button), :focus) {
+  position: absolute;
+  top: -0.625rem;
+  right: 0;
+  z-index: 1;
+  max-width: 100%;
+  margin: 0;
+  transform: translateY(-50%);
+  background: oklch(var(--card));
+}
+
+/* Phones: the meta line has no room beside it, so a short row under the
+ * meta line is kept free for the button instead. */
+@media (max-width: 639px) {
+  .kb-reader-doc:has(.kb-reader-highlights) [data-kb-reader-meta] {
+    padding-right: 0;
+    padding-bottom: 1.75rem;
+  }
+
+  .kb-reader-doc:has([data-kb-reader-meta]):not(:has([data-kb-reader-cited]))
+    .kb-reader-highlights
+    > div
+    > div:first-child:is(:has(button), :focus) {
+    top: -0.875rem;
+  }
+}

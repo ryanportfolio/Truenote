@@ -89,6 +89,11 @@ const loadAdminPage = once(() =>
 const loadAdminGapsPage = once(() =>
   import("@/pages/AdminGaps").then((module) => ({ default: module.AdminGapsPage }))
 );
+const loadAdminSourceUsagePage = once(() =>
+  import("@/pages/AdminSourceUsage").then((module) => ({
+    default: module.AdminSourceUsagePage
+  }))
+);
 const loadAdminProgramsPage = once(() =>
   import("@/pages/AdminPrograms").then((module) => ({
     default: module.AdminProgramsPage
@@ -146,6 +151,7 @@ const KnowledgeBasePage = preloadable(loadKnowledgeBasePage);
 const KbDocumentPage = preloadable(loadKbDocumentPage);
 const AdminPage = preloadable(loadAdminPage);
 const AdminGapsPage = preloadable(loadAdminGapsPage);
+const AdminSourceUsagePage = preloadable(loadAdminSourceUsagePage);
 const AdminProgramsPage = preloadable(loadAdminProgramsPage);
 const AdminModelRoutingPage = preloadable(loadAdminModelRoutingPage);
 const AdminObservabilityPage = preloadable(loadAdminObservabilityPage);
@@ -173,6 +179,7 @@ export function preloadRoute(path: string): Promise<unknown> {
   if (pathname === "/admin/gaps" || pathname === "/admin/insights") {
     return loadAdminGapsPage();
   }
+  if (pathname === "/admin/sources") return loadAdminSourceUsagePage();
   if (pathname === "/admin/programs") return loadAdminProgramsPage();
   if (pathname === "/admin/model-routing") return loadAdminModelRoutingPage();
   if (pathname === "/admin/observability") return loadAdminObservabilityPage();
@@ -468,6 +475,9 @@ export function App(): JSX.Element {
         {/* The short-lived parallel-built Insights page merged into Gaps
           * (2026-07); keep the URL working for anyone who bookmarked it. */}
         <Route path="/admin/insights" component={() => <Redirect to="/admin/gaps" />} />
+        <Route path="/admin/sources">
+          <AdminSourceUsagePage user={auth.user} />
+        </Route>
         <Route path="/admin/programs">
           <AdminProgramsPage user={auth.user} />
         </Route>

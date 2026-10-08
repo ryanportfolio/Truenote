@@ -1,31 +1,31 @@
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
-import { BookOpen, Search } from "lucide-react";
 import { listKbDocuments } from "@/lib/api";
-import { EmptyState } from "@/components/EmptyState";
-import { RelativeTime } from "@/components/RelativeTime";
+import { KbLibrary } from "@/components/kb-library/KbLibrary";
+import {
+  adoptKbLibraryRequest,
+  kbLibraryCacheKey,
+  loadKbLibrary,
+  readKbLibraryCache
+} from "@/lib/kbLibraryCache";
 import {
   getSelectedProgramOwnerIdRaw,
   SELECTED_PROGRAM_CHANGED_EVENT
 } from "@/lib/selectedProgram";
-import type {
-  CurrentUser,
-  KbDocumentListItem,
-  KbDocumentListResponse
-} from "@/types/api";
+import type { CurrentUser, KbDocumentListResponse } from "@/types/api";
 
 /**
  * CSR-facing knowledge base. The list is every live (active + parsed)
  * document in the CSR's program; each opens as a full rendered read.
- * This is the same corpus answers are grounded in — a citation's
- * "read the full document" link lands here.
+ * This is the same corpus answers are grounded in: a citation's
+ * "read the full document" link lands here. The library UI (shortcuts,
+ * notes, labels, views, manager organization) lives in components/kb-library.
  */
 
 type ListState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "no-program" }
-  | { status: "ready"; items: KbDocumentListItem[] };
+  | { status: "ready"; response: KbDocumentListResponse; loadId: number };
 
 interface PrefetchedList {
   ownerUserId: string | null;
@@ -46,41 +46,69 @@ export function preloadKnowledgeBaseDocuments(): void {
   void request.catch(() => undefined);
 }
 
-function takeInitialRequest(user: CurrentUser): Promise<KbDocumentListResponse> {
+/**
+ * The first library load: the speculative prefetch when it was made for this
+ * user, else the shared cache's request (lib/kbLibraryCache dedupes a request
+ * already in flight, such as the reader's or a StrictMode re-run's).
+ */
+function takeInitialRequest(user: CurrentUser, key: string): Promise<KbDocumentListResponse> {
   const prefetched = prefetchedList;
   prefetchedList = null;
-  if (!prefetched) return listKbDocuments();
+  if (!prefetched) return loadKbLibrary(key);
 
   // Non-super-users ignore X-Program-Id server-side. For super-users, only
   // consume a response requested with a selection owned by this exact user.
   if (user.role === "super_user" && prefetched.ownerUserId !== user.id) {
-    return listKbDocuments();
+    return loadKbLibrary(key);
   }
-  return prefetched.request;
+  return adoptKbLibraryRequest(key, prefetched.request);
 }
 
 export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element {
-  const [state, setState] = useState<ListState>({ status: "loading" });
-  const [query, setQuery] = useState("");
+  // Coming back from a source within a minute reuses the library the reader
+  // or this page already loaded (lib/kbLibraryCache), so there is no skeleton.
+  const [state, setState] = useState<ListState>(() => {
+    const cached = readKbLibraryCache(kbLibraryCacheKey(user.id));
+    return cached ? { status: "ready", response: cached, loadId: 0 } : { status: "loading" };
+  });
 
   useEffect(() => {
     let cancelled = false;
     let firstLoad = true;
+    let loadId = 0;
     async function load(): Promise<void> {
+      loadId += 1;
+      const thisLoad = loadId;
+      const key = kbLibraryCacheKey(user.id);
+      if (firstLoad) {
+        const cached = readKbLibraryCache(key);
+        if (cached) {
+          firstLoad = false;
+          // A speculative prefetch made before the cache was filled is stale now.
+          prefetchedList = null;
+          setState((prev) =>
+            prev.status === "ready" && prev.response === cached
+              ? prev
+              : { status: "ready", response: cached, loadId: thisLoad }
+          );
+          return;
+        }
+      }
       setState({ status: "loading" });
       try {
+        // A program switch always asks the server again.
         const response = firstLoad
-          ? await takeInitialRequest(user)
-          : await listKbDocuments();
+          ? await takeInitialRequest(user, key)
+          : await adoptKbLibraryRequest(key, listKbDocuments());
         firstLoad = false;
-        if (cancelled) return;
+        if (cancelled || thisLoad !== loadId) return;
         if (response.noProgramSelected) {
           setState({ status: "no-program" });
         } else {
-          setState({ status: "ready", items: response.items });
+          setState({ status: "ready", response, loadId: thisLoad });
         }
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && thisLoad === loadId) {
           setState({
             status: "error",
             message: err instanceof Error ? err.message : "Failed to load documents"
@@ -89,7 +117,7 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
       }
     }
     void load();
-    // Super_user program switch changes the corpus — reload in place.
+    // A super_user program switch changes the corpus, so reload in place.
     window.addEventListener(SELECTED_PROGRAM_CHANGED_EVENT, load as EventListener);
     return () => {
       cancelled = true;
@@ -97,32 +125,32 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
     };
   }, [user]);
 
-  const filtered =
-    state.status === "ready"
-      ? state.items.filter((d) =>
-          d.title.toLowerCase().includes(query.trim().toLowerCase())
-        )
-      : [];
-
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6">
+    <div className="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-6 xl:max-w-7xl">
       <header>
         <h1 className="font-display text-3xl font-semibold tracking-tight">Sources</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Documents used to answer questions. Open one to read it in full.
-        </p>
+        <p className="mt-1 text-base text-muted-foreground">Find the policy you need.</p>
       </header>
 
       {state.status === "loading" ? (
         <div role="status">
           <div className="flex flex-col gap-5" aria-hidden>
-            <div className="skeleton h-[38px] w-full rounded-md" />
-            <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
+            <div className="skeleton h-6 w-40 rounded-md" />
+            <div className="flex gap-2">
+              <div className="skeleton h-24 flex-1 rounded-lg" />
+              <div className="skeleton h-24 flex-1 rounded-lg" />
+              <div className="skeleton h-24 flex-1 rounded-lg" />
+            </div>
+            <div className="skeleton h-12 w-full rounded-lg" />
+            <div className="rounded-lg border border-border bg-card shadow-card">
               <div className="border-b border-border px-4 py-3">
                 <div className="skeleton h-4 w-2/3" />
               </div>
-              <div className="px-4 py-3">
+              <div className="border-b border-border px-4 py-3">
                 <div className="skeleton h-4 w-1/2" />
+              </div>
+              <div className="px-4 py-3">
+                <div className="skeleton h-4 w-3/5" />
               </div>
             </div>
           </div>
@@ -144,52 +172,17 @@ export function KnowledgeBasePage({ user }: { user: CurrentUser }): JSX.Element 
           role="status"
           className="rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
         >
-          Choose a program to browse its documents.
+          Choose a program to browse its sources.
         </div>
       ) : null}
 
-      {state.status === "ready" && state.items.length === 0 ? (
-        <EmptyState icon={BookOpen} title="No source documents yet" />
-      ) : null}
-
-      {state.status === "ready" && state.items.length > 0 ? (
-        <>
-          <label className="relative block">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden
-            />
-            <span className="sr-only">Filter documents by title</span>
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter by title…"
-              className="w-full rounded-md border border-input bg-card py-2 pl-9 pr-3 text-sm shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            />
-          </label>
-          {filtered.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No titles match “{query.trim()}”.
-            </p>
-          ) : (
-            <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-card shadow-card">
-              {filtered.map((doc) => (
-                <li key={doc.documentId}>
-                  <Link
-                    href={`/kb/${doc.documentId}`}
-                    className="flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-100 ease-out hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  >
-                    <span className="text-sm font-medium">{doc.title}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {doc.updatedAt ? <RelativeTime iso={doc.updatedAt} /> : null}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
+      {state.status === "ready" ? (
+        <KbLibrary
+          key={state.loadId}
+          user={user}
+          initial={state.response}
+          cacheKey={kbLibraryCacheKey(user.id)}
+        />
       ) : null}
     </div>
   );

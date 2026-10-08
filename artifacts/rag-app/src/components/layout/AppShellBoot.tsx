@@ -86,6 +86,7 @@ const ADMIN_TITLES: Record<string, string> = {
   "/admin/documents": "Documents",
   "/admin/gaps": "Content gaps",
   "/admin/insights": "Content gaps",
+  "/admin/sources": "Source usage",
   "/admin/model-routing": "Model routing",
   "/admin/evaluations": "Evaluation Center",
   "/admin/security": "Security",

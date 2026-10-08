@@ -1,0 +1,32 @@
+import { rateLimit, type RateLimitRequestHandler } from "express-rate-limit";
+
+/**
+ * Per-user request limits for the source library and Source usage routes.
+ * They run after requireAuth, so every request has a user and the counter is
+ * keyed by user id (IP checks don't apply). In-memory, like the auth
+ * limiter: production runs one `web` replica (.claude/reference/deployment.md).
+ * The limits sit well above what a person clicking through the UI produces;
+ * they stop a script or a stuck client from hammering the database.
+ */
+function perUserLimit(limit: number, windowMs: number): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs,
+    limit,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: (req) => req.user?.id ?? "anonymous",
+    validate: false,
+    handler: (_req, res) => {
+      res.status(429).json({ error: "Too many requests. Wait a minute and try again." });
+    }
+  });
+}
+
+/** Pins, notes, colors and label names: 120 a minute per user. */
+export const personalLibraryWriteLimit = perUserLimit(120, 60_000);
+
+/** Manager library edits (folders, tags, team shortcuts): 120 a minute per user. */
+export const libraryOrganizeLimit = perUserLimit(120, 60_000);
+
+/** Source usage analytics reads (heavier queries): 60 a minute per user. */
+export const sourceUsageReadLimit = perUserLimit(60, 60_000);

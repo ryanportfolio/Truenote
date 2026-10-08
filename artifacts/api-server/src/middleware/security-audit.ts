@@ -9,7 +9,12 @@ import { recordSecurityEventBestEffort } from "../lib/security/audit.js";
  * the routers below these paths: case-insensitive, absolute-form request
  * targets included. A string comparison on req.originalUrl missed both.
  */
-export const AUDITED_ROUTE_BASES = ["/api/admin", "/api/documents", "/api/auth"];
+export const AUDITED_ROUTE_BASES = [
+  "/api/admin",
+  "/api/documents",
+  "/api/auth",
+  "/api/kb/library"
+];
 
 /**
  * Path of the original request target, without the query string. An

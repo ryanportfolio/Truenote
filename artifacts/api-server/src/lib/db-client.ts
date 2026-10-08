@@ -29,6 +29,14 @@ function getPool(): Pool {
 export const db = drizzle(getPool(), { schema });
 
 /**
+ * True when requests are queued for a pool connection. Best-effort writes
+ * (reader view events) skip themselves then instead of adding to the queue.
+ */
+export function poolHasWaitingClients(): boolean {
+  return (globalThis.__ragPgPool?.waitingCount ?? 0) > 0;
+}
+
+/**
  * Drain and dispose the pg Pool. Call from worker shutdown handlers — without
  * this, Postgres holds onto idle connection slots until tcp_keepalives_idle
  * fires.
