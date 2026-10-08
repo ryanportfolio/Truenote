@@ -72,10 +72,10 @@ These are proposed targets for one maintainer. They are not measured. Replace "p
 |---|---|---|
 | Today: no volume backups; restore from the latest operator dump (path B) | Time since that dump: up to 7 days with the weekly dump below (proposed) | 8 hours (proposed) |
 | After the owner turns on daily volume backups (path A) | Up to 24 hours, because a daily backup runs every 24 hours. Restore points reach back 6 days with the daily schedule and 27 days with the weekly one (proposed) | 8 hours (proposed) |
-| Uploaded source files | Every file since the last copy to the second bucket (section 1). No copy exists today, so every file is at risk `[CONFIRM: copy schedule; proposed weekly]` | 2 business days to collect missing files from program owners and re-upload (proposed) |
+| Uploaded source files | Every file since the last copy to the second bucket (section 1). No copy exists today, so every file is at risk (weekly copy, owner decision 2026-10-07; the copy service is not built yet, section 1) | 2 business days to collect missing files from program owners and re-upload (proposed) |
 | Secrets | Not applicable (re-issue) | 4 hours to re-issue and set all variables (proposed) |
 
-Dump cadence until volume backups are on (proposed): one dump a week, and one immediately before each risky change: applying a `lib/db/sql/` file, a bulk user import, a re-ingest, a document purge, or a deploy that changes ingestion or data handling. Take every dump, including these, with section 4.1, step 5, so each gets its count record. Record each dump (UTC time, size, SHA-256, storage location) in the restricted evidence location, and store its count record next to it.
+Dump cadence until volume backups are on (proposed): one dump a week, and one immediately before each risky change: applying a `lib/db/sql/` file, a bulk user import, a re-ingest, a document purge, or a deploy that changes ingestion or data handling. Take every dump, including these, with section 4.1, step 5, so each gets its count record. Record each dump (UTC time, size, SHA-256, storage location) in the restricted evidence location (section 9), and store its count record next to it.
 
 Measure RPO as the gap between the chosen restore point and the last good write that the restore discarded. Measure RTO from the recorded decision time to the first passing smoke test against production after cutover.
 
@@ -163,7 +163,7 @@ Paths:
    sha256sum /var/lib/postgresql/truenote-dumps/truenote-prod-<UTC date>.dump
    ```
 
-   Copy the dump and its count record to your machine (section "Shells") and record the dump's SHA-256. Store both together, encrypted, in the restricted evidence location (section 9), then delete both from the volume. For a scheduled test, delete them only after section 4.2 has restored the dump: that restore reads the file on the volume. An incident restore uses an earlier dump taken before the damage; section 4.4 uploads that one back to the volume, and section 5.2 compares the restore with that dump's count record.
+   Copy the dump and its count record to your machine (section "Shells") and record the dump's SHA-256. A dump is a backup, and backups are kept on Railway (owner decision, 2026-10-07): store the dump and its count record together in the second bucket in the `truenote` project (section 1), then delete both from the volume `[CONFIRM: the second bucket and a way to upload to it are not built yet; until they exist, store both as an encrypted archive in the restricted evidence location, section 9]`. A dump taken only for a scheduled test is not kept: delete it from the volume and from your machine when the test ends (section 4.6). For a scheduled test, delete them only after section 4.2 has restored the dump: that restore reads the file on the volume. An incident restore uses an earlier dump taken before the damage; section 4.4 uploads that one back to the volume, and section 5.2 compares the restore with that dump's count record.
 
    What the dump leaves out: sessions and reset tokens, so everyone signs in again after a restore from it; and the `pgboss` job queue, which the first boot of `web` or `worker` recreates empty (deployment.md, "Data copy"). Ingestion or evaluation jobs queued at dump time are lost; a version that was waiting on one needs a new upload `[CONFIRM: which document version states such a version is left in]`.
 
@@ -644,13 +644,13 @@ The bucket has no backup or versioning (section 1). If files are lost:
 
 Add one row per restore test or real restore. Keep raw query output in the restricted evidence location; put only the summary here.
 
-**Restricted evidence location (owner decision, 2026-10-07):** `D:\CoreWise\_artifacts\truenote\restricted-evidence\` on the owner's Windows machine. It holds dumps, count records, exports, raw query output, and incident records. Drive D is a USB drive formatted exFAT with no disk encryption (`Get-Volume -DriveLetter D`, checked 2026-10-07), so each item is stored as a 7-Zip archive with AES-256 and encrypted file names, never as a plain file. 7-Zip is installed at `C:\Program Files\7-Zip\7z.exe`. In PowerShell, from the folder that holds the file:
+**Restricted evidence location (owner decision, 2026-10-07):** `D:\CoreWise\_artifacts\truenote\restricted-evidence\` on the owner's Windows machine. It holds the records of restore tests and incidents: exports, raw query output, and incident records. Database dumps are backups and belong on Railway (section 4.1, step 5); they are stored here only until the second bucket exists. Drive D is a USB drive formatted exFAT with no disk encryption (`Get-Volume -DriveLetter D`, checked 2026-10-07), so each item is stored as a 7-Zip archive with AES-256 and encrypted file names, never as a plain file. 7-Zip is installed at `C:\Program Files\7-Zip\7z.exe`. In PowerShell, from the folder that holds the file:
 
 ```
 & "C:\Program Files\7-Zip\7z.exe" a -t7z -mhe=on -p "D:\CoreWise\_artifacts\truenote\restricted-evidence\<name>.7z" <file>
 ```
 
-`-p` with no value asks for the password at the prompt, so it stays out of shell history; `-mhe=on` also encrypts the file names. Keep the password in the owner's password manager, record the archive's SHA-256 (`Get-FileHash <archive>`), and delete the plain file. The location is a single drive with no second copy: losing or wiping drive D loses every dump and every evidence item. `[CONFIRM: whether to keep a second, offsite copy of the encrypted archives]`
+`-p` with no value asks for the password at the prompt, so it stays out of shell history; `-mhe=on` also encrypts the file names. Keep the password in the owner's password manager, record the archive's SHA-256 (`Get-FileHash <archive>`), and delete the plain file. The location is a single drive with no second copy; losing or wiping drive D loses every item stored here. The owner keeps no second copy: backups belong on Railway (owner decision, 2026-10-07).
 
 | Date (UTC) | Operator | Reason (test / incident id) | Path (A / B) and target (temporary Railway service / scratch database / production after path A) | Restore point (UTC) | Measured RPO | Measured RTO | Checks passed (5.1 / 5.2 / 5.3 link / 5.3 recompute / 5.4) | Issues and follow-up |
 |---|---|---|---|---|---|---|---|---|
