@@ -137,24 +137,9 @@ export function assignmentChunks(ids: readonly string[], size: number = MAX_TEAM
   return chunks;
 }
 
-/** Runs tasks handed to it one at a time, in the order given. */
-export type SerialQueue = <T>(task: () => Promise<T>) => Promise<T>;
-
-/**
- * A queue for the page's moves: each task starts only after every earlier
- * task has settled, whether it resolved or rejected, so the server applies
- * moves in the order they were made and the last answer includes them all.
- * The returned promise settles with the task's own result.
- */
-export function createSerialQueue(): SerialQueue {
-  let tail: Promise<unknown> = Promise.resolve();
-  return <T>(task: () => Promise<T>): Promise<T> => {
-    const run = tail.then(task);
-    // A rejected task must not stop the ones queued behind it.
-    tail = run.catch(() => undefined);
-    return run;
-  };
-}
+// The page's moves run through this queue; it lives in its own module so the
+// Sources page can use it too.
+export { createSerialQueue, type SerialQueue } from "@/lib/serialQueue";
 
 /**
  * The drag keys to focus after a keyboard drop, in order: the dragged one,

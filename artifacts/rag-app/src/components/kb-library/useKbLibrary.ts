@@ -47,6 +47,7 @@ import {
 } from "@/lib/kbLibrary";
 import { updateKbLibraryCache, writeKbLibraryCache } from "@/lib/kbLibraryCache";
 import { kbColorLabel, kbLabelText } from "@/lib/kbLibraryColors";
+import { serialSaves } from "@/lib/serialQueue";
 import type {
   CreateKbCategoryRequest,
   CreateKbTagRequest,
@@ -282,11 +283,16 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
 
   // A supervisor's recommendations to their own team ------------------------------
 
+  // Each save replaces the whole list, so saves go out one at a time in the
+  // order made: sent together, an older list could reach the server last and win.
+  // The page still updates at once; only the requests wait.
+  const saveMyTeamShortcutsRef = useRef(serialSaves(setKbTeamShortcuts));
+
   const setMyTeamShortcuts = useCallback(
     (documentIds: string[], success?: string) =>
       mutate(
         (d) => applyTeamShortcuts(d, documentIds),
-        () => setKbTeamShortcuts(documentIds),
+        () => saveMyTeamShortcutsRef.current(documentIds),
         { success }
       ),
     [mutate]
