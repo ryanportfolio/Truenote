@@ -1,11 +1,13 @@
 import { useId, useState, type FormEvent } from "react";
-import { Check } from "lucide-react";
+import { Check, Plus, Trash2 } from "lucide-react";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { KB_LABEL_NAME_MAX } from "@/lib/kbLibrary";
-import { KB_LIBRARY_COLORS, kbColorDot, kbColorLabel, kbLabelName } from "@/lib/kbLibraryColors";
+import { KB_LIBRARY_COLORS, kbLabelName } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
 import type { KbLibraryColor } from "@/types/api";
 import { useKbLibraryContext } from "./KbContext";
 import { KbInlineError } from "./KbDialog";
+import { ColorDot } from "./KbShared";
 
 /** Colors worth listing: the ones on at least one source, named ones, and any still selected as a filter. */
 export function usedLabelColors(
@@ -18,21 +20,34 @@ export function usedLabelColors(
   );
 }
 
-/** Rename form: one field per color. Saving sends only the names that changed. */
-function LabelNamesForm({ onDone }: { onDone: () => void }): JSX.Element {
-  const { data, actions } = useKbLibraryContext();
-  const [names, setNames] = useState<Record<string, string>>(() =>
-    Object.fromEntries(KB_LIBRARY_COLORS.map((c) => [c, kbLabelName(c, data.labels) ?? ""]))
-  );
+function sourcesLabel(count: number): string {
+  return `${count} ${count === 1 ? "source" : "sources"}`;
+}
+
+/**
+ * Edit mode: one row per label (dot, name, how many sources, delete), plus
+ * "New label". Saving sends only the names that changed. Deleting takes the
+ * label off its sources and removes the name, right away.
+ */
+function LabelListForm({ colors, onDone }: { colors: KbLibraryColor[]; onDone: () => void }): JSX.Element {
+  const { data, actions, openDialog } = useKbLibraryContext();
+  const confirm = useConfirm();
+  // Edited names only; a label made while editing shows its saved name.
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [deleted, setDeleted] = useState<Set<KbLibraryColor>>(() => new Set());
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const baseId = useId();
+  const count = (color: KbLibraryColor): number => data.items.filter((d) => d.myColor === color).length;
+  const rows = colors.filter((c) => !deleted.has(c));
+  const nameOf = (color: KbLibraryColor): string => names[color] ?? kbLabelName(color, data.labels) ?? "";
 
   async function onSubmit(event: FormEvent): Promise<void> {
     event.preventDefault();
     setPending(true);
     setError(null);
-    for (const color of KB_LIBRARY_COLORS) {
+    for (const color of rows) {
+      if (!(color in names)) continue;
       const result = await actions.setLabelName(color, names[color] ?? "");
       if (!result.ok) {
         setError(result.message);
@@ -44,35 +59,75 @@ function LabelNamesForm({ onDone }: { onDone: () => void }): JSX.Element {
     onDone();
   }
 
+  async function remove(color: KbLibraryColor): Promise<void> {
+    const name = kbLabelName(color, data.labels);
+    const used = count(color);
+    const ok = await confirm({
+      title: name ? `Delete the label "${name}"?` : "Delete this label?",
+      message: used > 0 ? `It comes off ${sourcesLabel(used)}. The sources stay in the library.` : "No sources have it.",
+      confirmLabel: "Delete label",
+      tone: "danger"
+    });
+    if (!ok) return;
+    for (const doc of data.items) if (doc.myColor === color) actions.setSourceColor(doc.documentId, null);
+    const result = await actions.setLabelName(color, "");
+    if (!result.ok) setError(result.message);
+    setDeleted((prev) => new Set(prev).add(color));
+  }
+
   return (
-    <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-2" data-kb-label-form>
-      {KB_LIBRARY_COLORS.map((color, i) => (
-        <div key={color} className="flex items-center gap-2.5">
-          <span aria-hidden className="h-5 w-5 shrink-0 rounded-full border border-foreground/15" style={kbColorDot(color)} />
-          <label htmlFor={`${baseId}-${color}`} className="w-14 shrink-0 text-sm font-medium">
-            {kbColorLabel(color)}
-          </label>
-          <input
-            id={`${baseId}-${color}`}
-            data-autofocus={i === 0 ? true : undefined}
-            autoFocus={i === 0}
-            value={names[color] ?? ""}
-            maxLength={KB_LABEL_NAME_MAX}
-            onChange={(e) => setNames((prev) => ({ ...prev, [color]: e.target.value }))}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                e.stopPropagation();
-                onDone();
-              }
-            }}
-            placeholder="Add a name"
-            className="min-w-0 flex-1 rounded-md border border-input bg-card px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          />
-        </div>
-      ))}
+    <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-3" data-kb-label-form>
+      {rows.length > 0 ? (
+        <ul className="flex flex-col gap-3">
+          {rows.map((color, i) => (
+            <li key={color} className="flex items-start gap-2.5">
+              <ColorDot color={color} className="mt-3 h-3.5 w-3.5" />
+              <div className="min-w-0 flex-1">
+                <label htmlFor={`${baseId}-${color}`} className="sr-only">
+                  Label name
+                </label>
+                <input
+                  id={`${baseId}-${color}`}
+                  data-autofocus={i === 0 ? true : undefined}
+                  autoFocus={i === 0}
+                  value={nameOf(color)}
+                  maxLength={KB_LABEL_NAME_MAX}
+                  onChange={(e) => setNames((prev) => ({ ...prev, [color]: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onDone();
+                    }
+                  }}
+                  placeholder="Name this label"
+                  className="w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                />
+                <p className="mt-0.5 text-xs text-muted-foreground">{sourcesLabel(count(color))}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void remove(color)}
+                aria-label={`Delete label ${nameOf(color)}`.trim()}
+                title="Delete label"
+                className="btn-icon mt-0.5 h-8 w-8 shrink-0 hover:text-destructive"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => openDialog({ kind: "label-create", documentId: null })}
+        className="btn-whisper justify-center gap-1.5 border-dashed px-3 py-1.5 text-sm"
+      >
+        <Plus className="h-4 w-4" aria-hidden />
+        New label
+      </button>
       <KbInlineError message={error} />
-      <div className="mt-1 flex justify-end gap-2">
+      <div className="flex justify-end gap-2">
         <button type="button" onClick={onDone} className="btn-whisper px-3 py-1.5 text-sm">
           Cancel
         </button>
@@ -85,9 +140,9 @@ function LabelNamesForm({ onDone }: { onDone: () => void }): JSX.Element {
 }
 
 /**
- * "My labels": each label color the user uses, with the name they gave it.
- * Choosing one filters the list; Edit renames them. Shown as a card beside
- * the list from 1280px and inside Filters below that.
+ * "My labels": each label the user has, by name, with how many sources carry
+ * it. Choosing one filters the list; Edit renames or deletes them. Shown as a
+ * card beside the list from 1280px and inside Filters below that.
  */
 export function KbLabels({
   selected,
@@ -98,7 +153,7 @@ export function KbLabels({
   onToggle: (color: KbLibraryColor) => void;
   variant: "card" | "popover";
 }): JSX.Element {
-  const { data } = useKbLibraryContext();
+  const { data, openDialog } = useKbLibraryContext();
   const [editing, setEditing] = useState(false);
   const headingId = useId();
   const colors = usedLabelColors(data.items, data.labels, selected);
@@ -117,11 +172,11 @@ export function KbLabels({
         >
           My labels
         </Heading>
-        {!editing ? (
+        {!editing && colors.length > 0 ? (
           <button
             type="button"
             onClick={() => setEditing(true)}
-            aria-label="Edit label names"
+            aria-label="Edit labels"
             className="cursor-pointer rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             Edit
@@ -132,48 +187,57 @@ export function KbLabels({
 
       {editing ? (
         <div className="mt-3">
-          <LabelNamesForm onDone={() => setEditing(false)} />
+          <LabelListForm colors={colors} onDone={() => setEditing(false)} />
         </div>
-      ) : colors.length === 0 ? (
-        <p className="mt-3 text-sm text-muted-foreground">
-          Give a source a label from its menu (the three dots on its row). Your labels show here.
-        </p>
       ) : (
         <>
-          <ul className="mt-3 flex flex-col gap-1">
-            {colors.map((color) => {
-              const name = kbLabelName(color, data.labels);
-              const on = selected.includes(color);
-              return (
-                <li key={color}>
-                  <button
-                    type="button"
-                    aria-pressed={on}
-                    data-kb-label={color}
-                    onClick={() => onToggle(color)}
-                    className={cn(
-                      "flex w-full cursor-pointer items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors duration-100 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      on ? "bg-primary/10" : "hover:bg-muted"
-                    )}
-                  >
-                    <span
-                      aria-hidden
-                      className="h-6 w-6 shrink-0 rounded-full border border-foreground/15"
-                      style={kbColorDot(color)}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium text-foreground">{kbColorLabel(color)}</span>
-                      {name ? <span className="block break-words text-sm text-muted-foreground">{name}</span> : null}
-                    </span>
-                    {on ? <Check className="h-4 w-4 shrink-0 text-primary" strokeWidth={2.5} aria-hidden /> : null}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          <p className="mt-3 border-t border-border pt-3 text-sm text-muted-foreground">
-            Choose a label to filter sources.
-          </p>
+          {colors.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Label a source from its menu (the three dots on its row).
+            </p>
+          ) : (
+            <ul className="mt-3 flex flex-col gap-1.5">
+              {colors.map((color) => {
+                const name = kbLabelName(color, data.labels);
+                const on = selected.includes(color);
+                const count = data.items.filter((d) => d.myColor === color).length;
+                return (
+                  <li key={color}>
+                    <button
+                      type="button"
+                      aria-pressed={on}
+                      data-kb-label={color}
+                      onClick={() => onToggle(color)}
+                      title={on ? "Show all sources" : "Show only sources with this label"}
+                      className={cn(
+                        "flex w-full cursor-pointer items-center gap-2.5 rounded-full border px-3 py-1.5 text-left text-sm transition-colors duration-100 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        on ? "border-primary/40 bg-primary/10 font-medium" : "border-border bg-card hover:bg-muted"
+                      )}
+                    >
+                      <ColorDot color={color} />
+                      <span className={cn("min-w-0 flex-1 break-words", !name && "text-muted-foreground")}>
+                        {name ?? "No name yet"}
+                      </span>
+                      <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+                        <span className="sr-only">, </span>
+                        {count}
+                        <span className="sr-only"> {count === 1 ? "source" : "sources"}</span>
+                      </span>
+                      {on ? <Check className="h-4 w-4 shrink-0 text-primary" strokeWidth={2.5} aria-hidden /> : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <button
+            type="button"
+            onClick={() => openDialog({ kind: "label-create", documentId: null })}
+            className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+            New label
+          </button>
         </>
       )}
     </section>

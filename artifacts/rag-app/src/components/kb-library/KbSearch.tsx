@@ -8,7 +8,6 @@ import { useKbLibraryContext } from "./KbContext";
 import { useMediaQuery } from "./useMediaQuery";
 import { pathsLabel } from "./KbDocRow";
 import { FolderGlyph, StatusPill } from "./KbShared";
-import { kbEffectiveCategoryColor } from "@/lib/kbLibraryColors";
 
 /**
  * The way out of a search with no match: ask the question in chat, where
@@ -307,7 +306,7 @@ export function KbSearch({
                           active === i && "bg-muted"
                         )}
                       >
-                        <FolderGlyph color={kbEffectiveCategoryColor(node.category)} className="h-5 w-5" />
+                        <FolderGlyph className="h-5 w-5" />
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-medium text-foreground">{categoryPathLabel(node)}</span>
                           <span className="block text-sm text-muted-foreground">

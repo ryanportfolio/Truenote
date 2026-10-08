@@ -2,11 +2,10 @@ import { forwardRef, useEffect, useId, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Pencil, Star } from "lucide-react";
 import { KB_NUMBERED_PINS, docCategoryPaths, type KbShortcut } from "@/lib/kbLibrary";
-import { kbColorDot } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
 import { useKbLibraryContext } from "./KbContext";
 import { pathsLabel } from "./KbDocRow";
-import { ColorDot, SourceColorLabel } from "./KbShared";
+import { ColorDot, LabelChip } from "./KbShared";
 
 /** Team shortcut: two people, the manager's pick for everyone. */
 function TeamGlyph(): JSX.Element {
@@ -46,21 +45,7 @@ const SHORTCUT_SOURCE = {
   recent: { label: "Recently opened", detail: "You opened this lately.", Glyph: RecentGlyph, tone: "bg-muted text-muted-foreground" }
 } as const;
 
-/**
- * Which edge the hover card lines up with, so tiles near the right end open
- * it leftward and it never runs past the page: in the five-column grid
- * (1024 to 1279px) the last two columns, in the one-row shelf (1280px and
- * up) the right half.
- */
-function cardSide(index: number, count: number): string {
-  return cn(
-    "left-0",
-    index % 5 >= 3 ? "lg:left-auto lg:right-0" : "lg:left-0 lg:right-auto",
-    index >= Math.ceil(count / 2) ? "xl:left-auto xl:right-0" : "xl:left-0 xl:right-auto"
-  );
-}
-
-function ShortcutTile({ shortcut, index, count }: { shortcut: KbShortcut; index: number; count: number }): JSX.Element {
+function ShortcutTile({ shortcut, index }: { shortcut: KbShortcut; index: number }): JSX.Element {
   const { data, lookup } = useKbLibraryContext();
   const tipId = useId();
   const { doc } = shortcut;
@@ -72,30 +57,22 @@ function ShortcutTile({ shortcut, index, count }: { shortcut: KbShortcut; index:
     <li
       data-kb-shortcut={number}
       data-kb-shortcut-source={shortcut.source}
-      className="group/tile relative flex min-w-0 flex-col rounded-lg border border-border bg-card px-2.5 pb-3 pt-2 shadow-card transition-colors duration-100 ease-out focus-within:z-20 hover:z-20 hover:bg-muted/40 max-sm:w-40 max-sm:shrink-0 xl:px-2"
+      className="group/tile relative flex min-w-0 items-start gap-2.5 rounded-lg border border-border bg-card px-3 py-2.5 shadow-card transition-colors duration-100 ease-out focus-within:z-20 hover:z-20 hover:bg-muted/40 max-sm:w-52 max-sm:shrink-0"
     >
-      {doc.myColor ? (
-        <span aria-hidden className="absolute inset-y-2 left-0 w-1 rounded-r-full" style={kbColorDot(doc.myColor)} />
-      ) : null}
-      <span className="flex items-center text-muted-foreground">
-        {/* Above the tile link's click overlay so hovering the icon shows the card. */}
-        <span
-          aria-hidden
-          className={cn("relative z-10 inline-flex h-6 w-6 items-center justify-center rounded-md", source.tone)}
-          data-kb-shortcut-why={source.label}
-        >
-          <source.Glyph />
-        </span>
+      {/* Above the tile link's click overlay so hovering the icon shows the card. */}
+      <span
+        aria-hidden
+        className={cn("relative z-10 mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md", source.tone)}
+        data-kb-shortcut-why={source.label}
+      >
+        <source.Glyph />
       </span>
-      {/* The hover card: why the source is here and its folder. Shown on icon hover and on keyboard focus, below the tile so its title stays readable. */}
+      {/* The hover card: why the source is here and its folder. Shown on icon hover and on keyboard focus, below the tile (as wide as the tile, so it never runs past the page). */}
       <span
         id={tipId}
         role="tooltip"
         data-kb-shortcut-card
-        className={cn(
-          "pointer-events-none absolute top-full z-30 mt-1 hidden w-max max-w-[15rem] rounded-md border border-border bg-card px-2.5 py-1.5 text-xs leading-snug text-foreground shadow-panel group-has-[[data-kb-shortcut-why]:hover]/tile:block group-has-[a:focus-visible]/tile:block motion-safe:animate-in motion-safe:fade-in motion-safe:duration-100",
-          cardSide(index, count)
-        )}
+        className="pointer-events-none absolute inset-x-0 top-full z-30 mt-1 hidden rounded-md border border-border bg-card px-2.5 py-1.5 text-xs leading-snug text-foreground shadow-panel group-has-[[data-kb-shortcut-why]:hover]/tile:block group-has-[a:focus-visible]/tile:block motion-safe:animate-in motion-safe:fade-in motion-safe:duration-100"
       >
         <span className="block font-medium">{source.label}</span>
         <span className="block text-muted-foreground">{source.detail}</span>
@@ -103,18 +80,20 @@ function ShortcutTile({ shortcut, index, count }: { shortcut: KbShortcut; index:
           {where}
         </span>
       </span>
-      <Link
-        href={`/kb/${doc.documentId}`}
-        aria-keyshortcuts={number <= KB_NUMBERED_PINS ? String(number) : undefined}
-        aria-describedby={tipId}
-        title={`${doc.title}\n${where}`}
-        className="mt-1.5 line-clamp-3 break-words rounded-sm text-sm font-medium leading-snug text-foreground after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      >
-        <span className="sr-only">Shortcut {number}, {source.label.toLowerCase()}: </span>
-        <span data-kb-title>{doc.title}</span>
-        <span className="sr-only">, {where.charAt(0).toLowerCase() + where.slice(1)}.</span>
-        <SourceColorLabel color={doc.myColor} labels={data.labels} />
-      </Link>
+      <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+        <Link
+          href={`/kb/${doc.documentId}`}
+          aria-keyshortcuts={number <= KB_NUMBERED_PINS ? String(number) : undefined}
+          aria-describedby={tipId}
+          title={`${doc.title}\n${where}`}
+          className="line-clamp-2 break-words rounded-sm text-sm font-medium leading-snug text-foreground after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <span className="sr-only">Shortcut {number}, {source.label.toLowerCase()}: </span>
+          <span data-kb-title>{doc.title}</span>
+          <span className="sr-only">, {where.charAt(0).toLowerCase() + where.slice(1)}.</span>
+        </Link>
+        <LabelChip color={doc.myColor} labels={data.labels} />
+      </span>
     </li>
   );
 }
@@ -122,10 +101,9 @@ function ShortcutTile({ shortcut, index, count }: { shortcut: KbShortcut; index:
 /**
  * "Your shortcuts": one shelf of up to nine tiles, team shortcuts first, then
  * the user's own, then sources they opened lately. The number keys 1 to 9
- * still open the tiles in order (no visible numbers). Every tile stays in view: one row of equal
- * tiles from 1280px (titles clamp to three lines), a five-column grid from
- * 1024px (five, then four), a wrapping grid from 640px, and a sideways row on
- * phones.
+ * still open the tiles in order (no visible numbers). Every tile stays in
+ * view: from 640px a wrapping grid of tiles at least 13rem wide, so titles
+ * get two full lines beside the icon; on phones a sideways row.
  */
 export const KbShortcutShelf = forwardRef<
   HTMLElement,
@@ -153,16 +131,13 @@ export const KbShortcutShelf = forwardRef<
         <ol
           aria-label="Your shortcuts"
           className={cn(
-            // Phones: one sideways-scrolling row. 640 to 1023px: wraps. 1024 to 1279px: five columns.
-            // 1280px and up: one row of equal tiles that shrink to fit, never a sideways scrollbar.
+            // Phones: one sideways-scrolling row. 640px and up: a wrapping grid, never a sideways scrollbar.
             "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]",
-            "sm:grid sm:grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] sm:overflow-visible",
-            "lg:grid-cols-5",
-            "xl:grid-flow-col xl:grid-cols-none xl:auto-cols-[minmax(0,1fr)]"
+            "sm:grid sm:grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] sm:overflow-visible"
           )}
         >
           {shelf.map((shortcut, i) => (
-            <ShortcutTile key={shortcut.doc.documentId} shortcut={shortcut} index={i} count={shelf.length} />
+            <ShortcutTile key={shortcut.doc.documentId} shortcut={shortcut} index={i} />
           ))}
         </ol>
       ) : (

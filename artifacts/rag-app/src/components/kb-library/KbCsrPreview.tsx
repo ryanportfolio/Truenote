@@ -94,7 +94,7 @@ function PreviewNode({
       >
         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
         {/* Team color only: the team sees the manager's color, not this manager's private one. */}
-        <FolderGlyph color={node.category.color} className="h-4 w-4" />
+        <FolderGlyph className="h-4 w-4" />
         <span className="min-w-0 truncate">{node.category.name}</span>
         {on ? <span className="sr-only">(just moved)</span> : null}
       </p>
@@ -210,7 +210,7 @@ export function KbCsrPreview({
               <li>
                 <p className="flex min-w-0 items-center gap-2 px-2 py-1 text-sm font-medium text-muted-foreground">
                   <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                  <FolderGlyph color={null} className="h-4 w-4" />
+                  <FolderGlyph className="h-4 w-4" />
                   Not in a folder
                 </p>
                 <ul className="ml-4">

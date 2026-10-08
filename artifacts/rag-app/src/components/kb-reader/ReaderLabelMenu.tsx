@@ -8,8 +8,8 @@ import {
   type KeyboardEvent
 } from "react";
 import { createPortal } from "react-dom";
-import { Check, CircleSlash, Pencil, Tag } from "lucide-react";
-import { KB_LIBRARY_COLORS, kbColorDot, kbColorLabel } from "@/lib/kbLibraryColors";
+import { Check, CircleSlash, Pencil, Plus, Tag } from "lucide-react";
+import { KB_LIBRARY_COLORS, kbColorDot } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
 import type { KbColorLabel, KbLibraryColor } from "@/types/api";
 
@@ -33,11 +33,12 @@ function Swatch({ color, className }: { color: KbLibraryColor; className?: strin
 }
 
 /**
- * "Color label" button for the reader header. Opens a menu of the user's
- * labels: every color with the name the user gave it beside the swatch, a
- * check on the current one, and "No label". With a label chosen, the menu
- * can also rename it (names are private and shared with Sources). Arrow
- * keys, Home and End move between items; Escape closes and returns focus.
+ * "Label" button for the reader header. Opens a menu of the user's labels by
+ * name (the current color too if it has no name yet), "New label…" while a
+ * color is free, and "Remove label". With a label chosen, the menu can also
+ * rename it (names are private and shared with Sources). Bare color names
+ * never appear. Arrow keys, Home and End move between items; Escape closes
+ * and returns focus.
  */
 export function ReaderLabelMenu({
   value,
@@ -51,13 +52,17 @@ export function ReaderLabelMenu({
   onRename: SaveLabelName;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"pick" | "rename">("pick");
+  const [mode, setMode] = useState<"pick" | "rename" | "new">("pick");
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
   const titleId = useId();
   const currentName = value ? labelName(labels, value) : null;
+  const named = KB_LIBRARY_COLORS.filter((color) => labelName(labels, color));
+  const shown = value && !named.includes(value) ? [...named, value] : named;
+  // Gray last: it reads as no color at all.
+  const free = KB_LIBRARY_COLORS.filter((color) => !named.includes(color)).sort((x, y) => Number(x === "slate") - Number(y === "slate"));
 
   function close(returnFocus = true): void {
     setOpen(false);
@@ -157,8 +162,8 @@ export function ReaderLabelMenu({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         data-kb-reader-label
-        aria-label={value ? `Color label: ${currentName ?? kbColorLabel(value)}` : "Color label"}
-        title="A color label only you see"
+        aria-label={value ? `Label: ${currentName ?? "no name yet"}` : "Label"}
+        title="A label only you see"
         onClick={() => (open ? close() : setOpen(true))}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" && !open) {
@@ -174,14 +179,11 @@ export function ReaderLabelMenu({
         <span className="sm:hidden">Label</span>
         {value ? (
           <>
-            <span className="hidden shrink-0 sm:inline">Color label:</span>
             <Swatch color={value} />
-            <span className="hidden min-w-0 truncate sm:inline sm:max-w-[16rem]">
-              {currentName ?? kbColorLabel(value)}
-            </span>
+            <span className="hidden min-w-0 truncate sm:inline sm:max-w-[16rem]">{currentName ?? "Label"}</span>
           </>
         ) : (
-          <span className="hidden sm:inline">Color label</span>
+          <span className="hidden sm:inline">Label</span>
         )}
       </button>
       {open
@@ -196,11 +198,11 @@ export function ReaderLabelMenu({
                 <div id={menuId} role="menu" aria-labelledby={titleId} onKeyDown={onMenuKeyDown}>
                   <div className="px-2.5 pb-1.5 pt-1">
                     <p id={titleId} className="text-sm font-medium">
-                      Color label
+                      My labels
                     </p>
                     <p className="text-xs text-muted-foreground">Only you see your labels.</p>
                   </div>
-                  {KB_LIBRARY_COLORS.map((color) => {
+                  {shown.map((color) => {
                     const name = labelName(labels, color);
                     const checked = value === color;
                     return (
@@ -214,35 +216,38 @@ export function ReaderLabelMenu({
                         className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <Swatch color={color} />
-                        <span className="min-w-0 flex-1">
-                          {name ? (
-                            <>
-                              <span className="block truncate">{name}</span>
-                              <span className="block text-xs text-muted-foreground">{kbColorLabel(color)}</span>
-                            </>
-                          ) : (
-                            kbColorLabel(color)
-                          )}
+                        <span className={cn("min-w-0 flex-1 truncate", !name && "text-muted-foreground")}>
+                          {name ?? "No name yet"}
                         </span>
                         <Check className={cn("h-4 w-4 shrink-0 text-primary", !checked && "invisible")} aria-hidden />
                       </button>
                     );
                   })}
-                  <button
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={value === null}
-                    tabIndex={-1}
-                    onClick={() => choose(null)}
-                    className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <CircleSlash className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                    <span className="flex-1">No label</span>
-                    <Check className={cn("h-4 w-4 shrink-0 text-primary", value !== null && "invisible")} aria-hidden />
-                  </button>
+                  {shown.length > 0 ? <div role="separator" className="my-1 h-px bg-border" /> : null}
+                  {free.length > 0 ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      tabIndex={-1}
+                      onClick={() => setMode("new")}
+                      className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                      New label…
+                    </button>
+                  ) : null}
                   {value ? (
                     <>
-                      <div role="separator" className="my-1 h-px bg-border" />
+                      <button
+                        type="button"
+                        role="menuitem"
+                        tabIndex={-1}
+                        onClick={() => choose(null)}
+                        className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <CircleSlash className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                        Remove label
+                      </button>
                       <button
                         type="button"
                         role="menuitem"
@@ -251,14 +256,29 @@ export function ReaderLabelMenu({
                         className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <Pencil className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                        {currentName ? `Rename ${kbColorLabel(value)}` : `Name ${kbColorLabel(value)}`}
+                        {currentName ? "Rename label" : "Name this label"}
                       </button>
                     </>
                   ) : null}
                 </div>
+              ) : mode === "new" ? (
+                <RenameForm
+                  colors={free}
+                  initialName={null}
+                  onCancel={() => close()}
+                  onSave={async (name, color) => {
+                    if (!name) return "A label needs a name.";
+                    const error = await onRename(color, name);
+                    if (!error) {
+                      onSelect(color);
+                      close();
+                    }
+                    return error;
+                  }}
+                />
               ) : value ? (
                 <RenameForm
-                  color={value}
+                  colors={[value]}
                   initialName={currentName}
                   onCancel={() => close()}
                   onSave={async (name) => {
@@ -276,18 +296,21 @@ export function ReaderLabelMenu({
   );
 }
 
+/** Name a label. With more than one color offered (a new label), the first is picked and can be changed. */
 function RenameForm({
-  color,
+  colors,
   initialName,
   onCancel,
   onSave
 }: {
-  color: KbLibraryColor;
+  colors: KbLibraryColor[];
   initialName: string | null;
   onCancel: () => void;
-  onSave: (name: string | null) => Promise<string | null>;
+  onSave: (name: string | null, color: KbLibraryColor) => Promise<string | null>;
 }): JSX.Element {
   const [value, setValue] = useState(initialName ?? "");
+  const [color, setColor] = useState<KbLibraryColor>(colors[0]!);
+  const swatchName = useId();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fieldId = useId();
@@ -299,7 +322,7 @@ function RenameForm({
     setPending(true);
     setError(null);
     const trimmed = value.trim();
-    const message = await onSave(trimmed ? trimmed : null);
+    const message = await onSave(trimmed ? trimmed : null, color);
     setPending(false);
     if (message) setError(message);
   }
@@ -318,7 +341,7 @@ function RenameForm({
     >
       <label htmlFor={fieldId} className="flex items-center gap-2 text-sm font-medium">
         <Swatch color={color} />
-        Name for {kbColorLabel(color)}
+        {colors.length > 1 ? "New label" : "Label name"}
       </label>
       <input
         id={fieldId}
@@ -331,8 +354,31 @@ function RenameForm({
         className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
       />
       <p id={helpId} className="text-xs text-muted-foreground">
-        Only you see this name. Leave it empty to use the color name.
+        Only you see your labels.
       </p>
+      {colors.length > 1 ? (
+        <fieldset>
+          <legend className="sr-only">Color</legend>
+          <div className="flex flex-wrap gap-1.5">
+            {colors.map((c, i) => (
+              <label key={c} className="cursor-pointer">
+                <input
+                  type="radio"
+                  name={swatchName}
+                  checked={color === c}
+                  onChange={() => setColor(c)}
+                  className="peer sr-only"
+                />
+                <span className="sr-only">Color {i + 1}</span>
+                <Swatch
+                  color={c}
+                  className="h-5 w-5 peer-checked:ring-2 peer-checked:ring-foreground/70 peer-checked:ring-offset-2 peer-checked:ring-offset-card peer-focus-visible:ring-2 peer-focus-visible:ring-ring"
+                />
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
       {error ? (
         <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
           {error}

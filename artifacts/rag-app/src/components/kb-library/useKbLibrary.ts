@@ -178,7 +178,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
         },
         {
           success: color
-            ? `Labeled ${doc.title} ${kbLabelText(color, dataRef.current.labels)}.`
+            ? `Labeled ${doc.title} "${kbLabelText(color, dataRef.current.labels)}".`
             : `Removed your label from ${doc.title}.`
         }
       );
@@ -222,7 +222,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
         },
         {
           report: false,
-          success: next ? `Named ${kbColorLabel(color)} "${next}".` : `${kbColorLabel(color)} has no name now.`
+          success: next ? `Saved the label "${next}".` : `Removed the label${current ? ` "${current}"` : ""}.`
         }
       );
     },

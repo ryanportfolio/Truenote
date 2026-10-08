@@ -1,6 +1,6 @@
 import { useId, type ReactNode } from "react";
 import { Link } from "wouter";
-import { ChevronRight, Palette, Undo2 } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import {
   KB_UNCATEGORIZED,
   docsInFolder,
@@ -17,12 +17,10 @@ import {
   type KbSort,
   type KbTree
 } from "@/lib/kbLibrary";
-import { kbColorLabel, kbEffectiveCategoryColor } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
-import type { KbCategory, KbDocumentListItem } from "@/types/api";
+import type { KbDocumentListItem } from "@/types/api";
 import { useKbLibraryContext } from "./KbContext";
 import { KbDocRow } from "./KbDocRow";
-import { KbMenu } from "./KbMenu";
 import { FolderGlyph } from "./KbShared";
 
 export const UNCATEGORIZED_KEY = KB_UNCATEGORIZED;
@@ -69,45 +67,6 @@ export function folderHref(search: string, scope: string | null): string {
   else params.set("folder", folderParam(scope));
   const query = params.toString();
   return query ? `/kb?${query}` : "/kb";
-}
-
-/**
- * A folder's color for this user only, kept apart from the team color a
- * manager sets in Organize. The button names both so it is clear which one
- * is showing.
- */
-export function FolderColorMenu({ category }: { category: KbCategory }): JSX.Element {
-  const { actions } = useKbLibraryContext();
-  const showing = category.myColor
-    ? `my color, ${kbColorLabel(category.myColor)}`
-    : `team color, ${kbColorLabel(category.color)}`;
-  return (
-    <KbMenu
-      label={`Color for the folder ${category.name}. Showing ${showing}.`}
-      title="Folder color (only you see it)"
-      buttonClassName="btn-icon h-8 w-8 shrink-0"
-      items={[
-        {
-          kind: "swatches",
-          label: "My color",
-          hint: "Only you can see this. It replaces the team color for you.",
-          value: category.myColor,
-          onSelect: (color) => actions.setCategoryColor(category.id, color)
-        },
-        {
-          label: `Use team color (${kbColorLabel(category.color)})`,
-          icon: Undo2,
-          radio: true,
-          checked: category.myColor === null,
-          onSelect: () => {
-            if (category.myColor !== null) actions.setCategoryColor(category.id, null);
-          }
-        }
-      ]}
-    >
-      <Palette className="h-4 w-4" aria-hidden />
-    </KbMenu>
-  );
 }
 
 /** Quiet rows in one card; "Used often" marks the three most opened sources of the whole library. */
@@ -171,8 +130,8 @@ function FolderCard({
       className="relative flex min-w-0 flex-col rounded-lg border border-border bg-card p-4 shadow-card transition-colors duration-100 ease-out focus-within:border-primary/50 hover:border-primary/40"
     >
       <div className="flex items-center gap-3">
-        <FolderGlyph color={node ? kbEffectiveCategoryColor(node.category) : null} className="h-10 w-10" />
-        <div className="min-w-0">
+        <FolderGlyph className="h-10 w-10" />
+        <div className="min-w-0 flex-1">
           <Link
             href={folderHref(search, scope)}
             className="block rounded-sm text-base font-medium text-foreground after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -184,6 +143,7 @@ function FolderCard({
             {docs.length} {docs.length === 1 ? "source" : "sources"}
           </p>
         </div>
+        <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
       </div>
       {top.length > 0 ? (
         <ul aria-label={`Most used in ${name}`} className="relative z-10 mt-3 flex flex-col">
@@ -191,10 +151,9 @@ function FolderCard({
             <li key={doc.documentId}>
               <Link
                 href={`/kb/${doc.documentId}`}
-                className="flex items-center justify-between gap-2 rounded-sm py-1 text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="block truncate rounded-sm py-1 text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="min-w-0 truncate">{doc.title}</span>
-                <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                {doc.title}
               </Link>
             </li>
           ))}
@@ -211,7 +170,7 @@ function Cabinet({ visible, search }: { visible: KbDocumentListItem[]; search: s
   const { lookup } = useKbLibraryContext();
   const loose = docsWithoutFolder(visible, lookup.tree);
   return (
-    <ul aria-label="Folders" data-kb-cabinet className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <ul aria-label="Folders" data-kb-cabinet className="grid gap-4 sm:grid-cols-2">
       {lookup.tree.roots.map((node) => (
         <FolderCard key={node.category.id} node={node} visible={visible} search={search} />
       ))}
@@ -274,7 +233,6 @@ function OpenFolder({
           >
             {name}
           </h2>
-          {node ? <FolderColorMenu category={node.category} /> : null}
         </div>
         <p className="text-sm text-muted-foreground">
           {filtering
@@ -422,8 +380,7 @@ function OutlineNode({
         count={count}
         open={open}
         onToggle={() => onToggle(node.category.id)}
-        leading={<FolderGlyph color={kbEffectiveCategoryColor(node.category)} className="h-5 w-5" />}
-        trailing={<FolderColorMenu category={node.category} />}
+        leading={<FolderGlyph className="h-5 w-5" />}
       >
         <div className="ml-3 border-l border-border sm:ml-6">
           {node.children.length > 0 ? (
@@ -496,7 +453,7 @@ export function KbOutlineView({
               count={loose.length}
               open={looseOpen}
               onToggle={() => onToggle(UNCATEGORIZED_KEY)}
-              leading={<FolderGlyph color={null} className="h-5 w-5" />}
+              leading={<FolderGlyph className="h-5 w-5" />}
             >
               <ul aria-label="Sources not in a folder" className="ml-3 divide-y divide-border border-l border-border sm:ml-6">
                 {loose.map((doc) => (

@@ -4,7 +4,6 @@ import { KB_SORT_LABELS, type KbFilters, type KbSort } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
 import type { KbLibraryColor, KbTag } from "@/types/api";
 import { KbLabels } from "./KbLabels";
-import { ColorDot } from "./KbShared";
 
 const SORTS: KbSort[] = ["manual", "newest", "updated", "views", "cited", "title"];
 
@@ -215,7 +214,6 @@ export function KbFiltersButton({
                   checked={filters.tagIds.includes(tag.id)}
                   onChange={() => onFilters({ ...filters, tagIds: toggleIn(filters.tagIds, tag.id) })}
                 >
-                  <ColorDot color={tag.color} />
                   {tag.name}
                 </Check>
               ))}

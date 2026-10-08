@@ -397,8 +397,6 @@ export function KbLibrary({
         />
       ) : (
         <>
-          <KbShortcutShelf ref={shelfRef} shelf={shelf} onEdit={editShortcuts} />
-
           <div className="flex flex-col gap-2">
             <KbSearch
               query={query}
@@ -429,6 +427,8 @@ export function KbLibrary({
               />
             ) : null}
           </div>
+
+          <KbShortcutShelf ref={shelfRef} shelf={shelf} onEdit={editShortcuts} />
 
           {linked ? (
             <div

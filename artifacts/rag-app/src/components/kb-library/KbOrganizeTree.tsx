@@ -49,9 +49,8 @@ import {
   type KbCategoryNode,
   type KbTree
 } from "@/lib/kbLibrary";
-import { kbColorLabel } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
-import type { KbDocumentListItem, KbLibraryColor } from "@/types/api";
+import type { KbDocumentListItem } from "@/types/api";
 import { UNCATEGORIZED_KEY } from "./KbBrowseViews";
 import { useKbLibraryContext } from "./KbContext";
 import { KbMenu, type KbMenuEntry } from "./KbMenu";
@@ -638,24 +637,11 @@ function OrganizeCategory({
     if (ok) actions.deleteCategory(id);
   }
 
-  async function setTeamColor(color: KbLibraryColor): Promise<void> {
-    if (color === node.category.color) return;
-    const result = await actions.updateCategory(id, { color });
-    if (!result.ok) actions.reportError(result.message);
-  }
-
   const menu: KbMenuEntry[] = [
     {
       label: "Rename…",
       icon: Pencil,
       onSelect: () => openDialog({ kind: "category-edit", categoryId: id })
-    },
-    {
-      kind: "swatches",
-      label: "Team color",
-      hint: "Everyone in this program sees it, unless they pick their own.",
-      value: node.category.color,
-      onSelect: (color) => void setTeamColor(color)
     },
     "separator",
     {
@@ -727,9 +713,8 @@ function OrganizeCategory({
             )}
             aria-hidden
           />
-          <FolderGlyph color={node.category.color} className="h-6 w-6" />
+          <FolderGlyph className="h-6 w-6" />
           <span className="min-w-0 flex-1 truncate text-base">{node.category.name}</span>
-          <span className="sr-only">Team color: {kbColorLabel(node.category.color)}.</span>
           <CountPill count={total} />
         </button>
         <KbMenu label={`Organize folder ${node.category.name}`} items={menu}>
@@ -809,7 +794,7 @@ function UncategorizedGroup({
             )}
             aria-hidden
           />
-          <FolderGlyph color={null} className="h-6 w-6" />
+          <FolderGlyph className="h-6 w-6" />
           <span className="min-w-0 flex-1 truncate text-base">Not in a folder</span>
           <CountPill count={docs.length} />
         </button>
