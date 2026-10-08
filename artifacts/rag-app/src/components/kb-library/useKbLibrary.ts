@@ -47,7 +47,7 @@ import {
 } from "@/lib/kbLibrary";
 import { updateKbLibraryCache, writeKbLibraryCache } from "@/lib/kbLibraryCache";
 import { kbColorLabel, kbLabelText } from "@/lib/kbLibraryColors";
-import { serialSaves } from "@/lib/serialQueue";
+import { createSerialQueue, queuedListSaves } from "@/lib/serialQueue";
 import type {
   CreateKbCategoryRequest,
   CreateKbTagRequest,
@@ -108,7 +108,12 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
     async (
       apply: (d: Data) => Data,
       call: () => Promise<((d: Data) => Data) | void>,
-      options: { report?: boolean; success?: string } = {}
+      options: {
+        report?: boolean;
+        success?: string;
+        /** Reloads after a failure in place of `refresh`, e.g. once queued saves have settled. */
+        resync?: () => void;
+      } = {}
     ): Promise<ActionResult> => {
       const before = dataRef.current;
       const version = ++versionRef.current;
@@ -122,7 +127,8 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
         return { ok: true };
       } catch (err) {
         if (versionRef.current === version) commit(before);
-        void refresh();
+        if (options.resync) options.resync();
+        else void refresh();
         const message = errorMessage(err);
         if (options.report !== false) setActionError(message);
         return { ok: false, message };
@@ -285,17 +291,27 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
 
   // Each save replaces the whole list, so saves go out one at a time in the
   // order made: sent together, an older list could reach the server last and win.
-  // The page still updates at once; only the requests wait.
-  const saveMyTeamShortcutsRef = useRef(serialSaves(setKbTeamShortcuts));
+  // The page still updates at once; only the requests wait. The reload after a
+  // failure waits in the same queue, so it cannot read the list from before a
+  // save still waiting its turn.
+  const myTeamQueueRef = useRef(createSerialQueue());
+  const myTeamSaves = useMemo(
+    () => queuedListSaves(myTeamQueueRef.current, setKbTeamShortcuts, refresh),
+    [refresh]
+  );
 
   const setMyTeamShortcuts = useCallback(
     (documentIds: string[], success?: string) =>
       mutate(
         (d) => applyTeamShortcuts(d, documentIds),
-        () => saveMyTeamShortcutsRef.current(documentIds),
-        { success }
+        async () => {
+          await myTeamSaves.save(documentIds);
+          // Puts this list back if a reload put an older one in place, unless a newer change came since.
+          return (d: Data) => applyTeamShortcuts(d, documentIds);
+        },
+        { success, resync: () => void myTeamSaves.resync() }
       ),
-    [mutate]
+    [mutate, myTeamSaves]
   );
 
   const currentMyTeamIds = () => supervisorPins(dataRef.current.items).map((d) => d.documentId);

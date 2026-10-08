@@ -116,6 +116,21 @@ describe("applyTeamShortcuts", () => {
     const next = applyTeamShortcuts(library([a, doc("b", null, null)]), ["a", "b"]);
     expect(next.items[0]).toBe(a);
   });
+
+  it("puts a saved list back over an older list that a reload read before the save landed", () => {
+    // The page after a reload that ran while [a, b] was still queued: the server's old, empty list.
+    const stale = library([doc("a", null, null), doc("b", null, null), doc("c", null, null)]);
+    // The reconcile a successful [a, b] save returns.
+    const reconcile = (d: KbDocumentListResponse) => applyTeamShortcuts(d, ["a", "b"]);
+    expect(ids(supervisorPins(reconcile(stale).items))).toEqual(["a", "b"]);
+  });
+
+  it("changes nothing when the page already shows the saved list", () => {
+    const current = applyTeamShortcuts(library([doc("a", null, null), doc("b", null, null)]), ["b", "a"]);
+    const next = applyTeamShortcuts(current, ["b", "a"]);
+    expect(next.items).toEqual(current.items);
+    next.items.forEach((item, i) => expect(item).toBe(current.items[i]));
+  });
 });
 
 describe("withKbTeamPinDefaults", () => {

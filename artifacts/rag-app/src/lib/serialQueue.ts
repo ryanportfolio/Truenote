@@ -28,3 +28,20 @@ export function serialSaves<A extends unknown[], R>(
   const enqueue = createSerialQueue();
   return (...args: A) => enqueue(() => save(...args));
 }
+
+/**
+ * Whole-list saves and the reload that corrects the page after one fails,
+ * all through one queue. `resync` starts its read only after every save
+ * queued before it has settled: a read that ran sooner could return the
+ * server's list from before a pending save and put that old list back.
+ */
+export function queuedListSaves<A extends unknown[], R>(
+  enqueue: SerialQueue,
+  save: (...args: A) => Promise<R>,
+  refresh: () => Promise<void>
+): { save: (...args: A) => Promise<R>; resync: () => Promise<void> } {
+  return {
+    save: (...args: A) => enqueue(() => save(...args)),
+    resync: () => enqueue(refresh)
+  };
+}
