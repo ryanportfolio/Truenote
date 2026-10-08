@@ -11,9 +11,11 @@ hooks, and `.claude/skills/` exactly as before.
   reference-library routing.
 - Production runs on Railway, not Replit (since 2026-10-07). Never route
   development, configuration, secrets, deployment, schema changes or storage
-  through Replit. Until the domain moves, the owner still edits `truenote.org`
-  DNS in Replit's DNS screen and the old Replit deployment is the DNS rollback;
-  see "Hosting" in `CLAUDE.md` and `.claude/reference/deployment.md`.
+  through Replit. `truenote.org` and `www.truenote.org` resolve to Railway
+  since 2026-10-07. Until Replit is retired, the owner still edits
+  `truenote.org` DNS in Replit's DNS screen and the old Replit deployment is
+  the DNS rollback; see "Hosting" in `CLAUDE.md` and
+  `.claude/reference/deployment.md`.
 - If `CLAUDE.md` still contains `FILL IN` markers, treat those facts as unknown.
   Inspect the repository or ask the user instead of guessing.
 - Read the relevant `.claude/reference/` file before non-trivial work in an
@@ -30,8 +32,9 @@ hooks, and `.claude/skills/` exactly as before.
 - Do not execute `.claude/hooks/session-start.sh` in Codex.
 - No unit tests or type tests unless the user asks.
 - Do not inherit Claude-only runtime behavior: popup-tool rules, SessionStart
-  directives, default `caveman` activation, Anthropic model names, Claude skill
-  invocation syntax, or automatic git integration.
+  directives, Anthropic model names, Claude skill invocation syntax, or
+  automatic git integration. The Caveman Ultra prose default does apply; see
+  "Safety And Verification".
 - Translate Claude-only tool names to the available Codex equivalent per
   `.agents/codex-tools.md`. Current Codex system, developer, sandbox, approval,
   and tool instructions take precedence.
@@ -40,7 +43,7 @@ hooks, and `.claude/skills/` exactly as before.
 ## Skills
 
 - `.claude/skills/` remains Claude's library. Codex uses standalone native skills under `.agents/skills/`, registered in `.agents/skill-modes.json` as `native` or `disabled` (Claude-only). Read them directly and resolve resources from their Codex skill directory.
-- Adding or editing a skill updates its standalone Codex version in the same change and registers it `native` (or `disabled`) in `.agents/skill-modes.json`; never ship a generated adapter. For a `native` skill, once its port matches, run `node .claude/scripts/sync-codex-skills.mjs --baseline <name>` (`disabled` skills skip it), then `--check`, which fails on drift or a missing registration.
+- Adding or editing a skill updates its standalone Codex version in the same change and registers it `native` (or `disabled`) in `.agents/skill-modes.json`; never ship a generated adapter. For a `native` skill, once its port matches, run `node .claude/scripts/sync-codex-skills.mjs --baseline <name>` (`disabled` skills skip it), then `--check`, which prints a warning for drift or a missing registration (exit 0; only broken input exits 1), so read its output. Skills turned off in `.claude/settings.json` `skillOverrides` need no registration and are skipped.
 - Tool mapping: `.agents/codex-tools.md`. Maintenance and personal copies: `docs/codex-skills.md`.
 
 ## Safety And Verification
@@ -59,4 +62,4 @@ hooks, and `.claude/skills/` exactly as before.
 
 ## Browser per session
 
-- Browser per session, never shared. The official playwright plugin holds one persistent profile; a second connection fails with "Browser is already in use ... use --isolated" and deadlocks. Parallel or subagent browser work uses `@playwright/mcp --isolated` (in-memory profile; copy `.mcp.json` from claude-starter).
+- Browser per session, never shared. The official playwright plugin holds one persistent profile; a second connection fails with "Browser is already in use ... use --isolated" and deadlocks. Parallel or subagent browser work uses `@playwright/mcp --isolated` (in-memory profile; copy `.mcp.json` from Harness-Firmware).
