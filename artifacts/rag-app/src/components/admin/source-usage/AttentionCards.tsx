@@ -74,7 +74,7 @@ function CardBody({
         <>
           <p className="text-base leading-snug">
             <Big>{card.count}</Big> {card.count === 1 ? "source was" : "sources were"} not used in
-            any answer in the last {days} days.
+            any answer in the last {days} days
           </p>
           <Link href={neverCitedHref(card.documentIds, days)} className={ACTION_CLASS}>
             Review sources
@@ -98,7 +98,7 @@ function CardBody({
           <p className="text-base leading-snug">
             <Names people={card.people} linked={tie} onSelectPerson={onSelectPerson} />
             {tie ? " each had " : " had "}
-            <Big>{card.count}</Big> {what}.
+            <Big>{card.count}</Big> {what}
           </p>
           {lead ? (
             <button
@@ -118,7 +118,7 @@ function CardBody({
         <>
           <p className="text-base leading-snug">
             <span className="font-medium">{card.source.title}</span> is used in{" "}
-            <Big>{Math.round(card.share * 100)}%</Big> of answers.
+            <Big>{Math.round(card.share * 100)}%</Big> of answers
           </p>
           <Link
             href={`/kb/${encodeURIComponent(card.source.documentId)}`}

@@ -5,14 +5,7 @@ import { cn } from "@/lib/utils";
 import type { KbDocumentListItem } from "@/types/api";
 import { useKbLibraryContext } from "./KbContext";
 import { KbMenu, type KbMenuEntry } from "./KbMenu";
-import {
-  NOTE_STICKY_STYLE,
-  SourceColorLabel,
-  SourceColorStripe,
-  StarToggle,
-  StatusPill,
-  labelEntries
-} from "./KbShared";
+import { LabelChip, NOTE_STICKY_STYLE, StarToggle, StatusPill, labelEntries } from "./KbShared";
 
 /**
  * Everything a row does besides open and star, in one menu: the private note,
@@ -34,7 +27,12 @@ export function useDocMenuEntries(doc: KbDocumentListItem): KbMenuEntry[] {
       onSelect: () => actions.togglePin(doc.documentId)
     },
     "separator",
-    ...labelEntries(doc.myColor, data.labels, (color) => actions.setSourceColor(doc.documentId, color))
+    ...labelEntries(
+      doc.myColor,
+      data.labels,
+      (color) => actions.setSourceColor(doc.documentId, color),
+      () => openDialog({ kind: "label-create", documentId: doc.documentId })
+    )
   ];
   if (data.canPinForTeam) {
     entries.push(
@@ -93,8 +91,8 @@ export function pathsLabel(paths: string[]): string {
 }
 
 /**
- * One source in any browse view, kept quiet: an optional label stripe, the
- * title (a stretched link, so the whole row opens the reader), one muted
+ * One source in any browse view, kept quiet: the title (a stretched link, so
+ * the whole row opens the reader) with the user's label chip, one muted
  * line with its folder path, the private note as a one-line sticky, and on
  * the right at most one status pill, "Used often", the star and one menu.
  */
@@ -127,7 +125,6 @@ export function KbDocRow({
         roundedEdges && "first:rounded-t-lg last:rounded-b-lg"
       )}
     >
-      <SourceColorStripe color={doc.myColor} />
       <div className="col-start-1 row-start-1 min-w-0">
         <Link
           href={`/kb/${doc.documentId}`}
@@ -136,7 +133,7 @@ export function KbDocRow({
         >
           {doc.title}
         </Link>
-        <SourceColorLabel color={doc.myColor} labels={data.labels} />
+        <LabelChip color={doc.myColor} labels={data.labels} className="ml-2" />
         {doc.note ? (
           // As wide as the title column (up to the status column); two lines on phones, one from 640px.
           <button

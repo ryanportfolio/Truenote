@@ -209,7 +209,7 @@ async function callGenerationModel(
     }
   );
 
-  const text = completion.choices[0]?.message.content?.trim();
+  const text = completion.choices?.[0]?.message?.content?.trim();
   return { text: text ? text : null, usage: readTokenUsage(completion.usage) };
 }
 
@@ -294,7 +294,8 @@ export function validateGeneratedAnswer(
   }
   // Per-claim gate: every figure (fee, count, date, identifier) must appear in
   // an excerpt cited by its own claim: the nearest citation in the same
-  // sentence or table row (see figure-grounding.ts).
+  // sentence or table row, or any excerpt the answer cites when the sentence
+  // has none (see figure-grounding.ts).
   if (findUngroundedFigure(normalizedAnswer, chunks) !== null) {
     return {
       payload: null,

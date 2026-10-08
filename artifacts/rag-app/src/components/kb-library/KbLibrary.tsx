@@ -4,6 +4,7 @@ import { BookOpen, FolderClosed, FolderCog, Link2, List, ListTree, Search, X } f
 import { EmptyState } from "@/components/EmptyState";
 import {
   EMPTY_FILTERS,
+  KB_RECENT_QUERY,
   KB_VIEWS,
   KB_VIEW_LABELS,
   buildLookup,
@@ -15,6 +16,7 @@ import {
   folderFromSearch,
   idsFromSearch,
   loadPrefs,
+  recentlyOpened,
   savePrefs,
   searchLibrary,
   shortcutShelf,
@@ -27,6 +29,7 @@ import {
   type KbView
 } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
+import { useStuck } from "@/lib/useStuck";
 import type { CurrentUser, KbDocumentListResponse, KbLibraryColor } from "@/types/api";
 import { KbFoldersView, KbListView, KbMyShortcuts, KbOutlineView, folderHref, myShortcutGroups } from "./KbBrowseViews";
 import { KbLibraryContext, type KbDialogState, type KbLibraryContextValue } from "./KbContext";
@@ -89,6 +92,7 @@ export function KbLibrary({
   const [lastMoved, setLastMoved] = useState<{ key: string; at: number } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const shelfRef = useRef<HTMLElement>(null);
+  const { ref: searchBarRef, stuck: searchStuck } = useStuck();
   const listRef = useRef<HTMLElement>(null);
   const organizeButtonRef = useRef<HTMLButtonElement>(null);
   // The organizing value focus last followed; StrictMode's double effect run sees no change.
@@ -163,24 +167,28 @@ export function KbLibrary({
     };
   }, [search, data.items]);
 
-  const active = filtersActive(filters, query);
+  // "/" alone in the box lists recently opened sources; it searches and filters nothing.
+  const recentMode = query.trim() === KB_RECENT_QUERY;
+  const searchQuery = recentMode ? "" : query;
+  const recent = useMemo(() => recentlyOpened(data.items, 8), [data.items]);
+  const active = filtersActive(filters, searchQuery);
   const sort = sortForView(prefs, prefs.view);
   const visible = useMemo(
     () =>
       data.items.filter(
         (d) =>
-          (!linked || linked.ids.has(d.documentId)) && docPassesFilters(d, filters) && docMatchesQuery(d, query, lookup)
+          (!linked || linked.ids.has(d.documentId)) && docPassesFilters(d, filters) && docMatchesQuery(d, searchQuery, lookup)
       ),
-    [data.items, filters, query, lookup, linked]
+    [data.items, filters, searchQuery, lookup, linked]
   );
   const collapsed = useMemo(() => new Set(prefs.collapsed), [prefs.collapsed]);
   const shelf = useMemo(() => shortcutShelf(data.items), [data.items]);
-  const results = useMemo(() => searchLibrary(visible, query, lookup), [visible, query, lookup]);
+  const results = useMemo(() => searchLibrary(visible, searchQuery, lookup), [visible, searchQuery, lookup]);
   const tags = useMemo(() => sortTags(data.tags), [data.tags]);
   const scope = prefs.tab === "all" && prefs.view === "folders" ? folderFromSearch(search, lookup.tree) : null;
   const shortcutGroups = myShortcutGroups(visible);
   const shownCount = prefs.tab === "shortcuts" ? shortcutGroups.team.length + shortcutGroups.mine.length : visible.length;
-  const sentence = filterSentence({ shown: shownCount, query, filters, tagsById: lookup.tagsById, labels: data.labels });
+  const sentence = filterSentence({ shown: shownCount, query: searchQuery, filters, tagsById: lookup.tagsById, labels: data.labels });
   // A sort other than the view's own is named beside the filters, with Reset.
   const sortChanged = prefs.tab === "all" && sort !== defaultSort(prefs.view);
   // A Source usage link (?ids=) narrows the list like a filter does.
@@ -201,7 +209,8 @@ export function KbLibrary({
     });
   }, [scope]);
 
-  // "/" jumps to search from anywhere on the page, the same shortcut as /chat.
+  // "/" jumps to search from anywhere on the page, the same shortcut as /chat;
+  // with the box empty it also lists the sources opened most recently.
   // 1 to 9 open that shortcut, unless focus is in a field or a menu or dialog is open.
   useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent): void {
@@ -212,6 +221,7 @@ export function KbLibrary({
       if (document.querySelector('[role="menu"], [role="dialog"]')) return;
       if (event.key === "/") {
         event.preventDefault();
+        if (!query) setQuery(KB_RECENT_QUERY);
         searchRef.current?.focus();
         return;
       }
@@ -222,7 +232,7 @@ export function KbLibrary({
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [organizing, dialog, shelf, navigate]);
+  }, [organizing, dialog, shelf, navigate, query, setQuery]);
 
   // The dock appears once the shelf has scrolled out of view.
   const showShelf = !organizing && data.items.length > 0;
@@ -397,13 +407,18 @@ export function KbLibrary({
         />
       ) : (
         <>
-          <KbShortcutShelf ref={shelfRef} shelf={shelf} onEdit={editShortcuts} />
-
-          <div className="flex flex-col gap-2">
+          {/* The search stays in view while the page scrolls, over a band that shows only once it is pinned. */}
+          <div
+            ref={searchBarRef}
+            data-kb-search-bar
+            data-stuck={searchStuck || undefined}
+            className="sticky-band sticky top-0 z-30 -my-2 flex flex-col gap-2 py-2"
+          >
             <KbSearch
               query={query}
               onQuery={setQuery}
               results={results}
+              recent={recentMode ? recent : null}
               searchRef={searchRef}
               onOpenDoc={(id) => navigate(`/kb/${id}`)}
               onOpenFolder={openFolder}
@@ -429,6 +444,8 @@ export function KbLibrary({
               />
             ) : null}
           </div>
+
+          <KbShortcutShelf ref={shelfRef} shelf={shelf} onEdit={editShortcuts} />
 
           {linked ? (
             <div
@@ -464,7 +481,7 @@ export function KbLibrary({
           {errorBanner}
 
           <div className={cn("grid items-start gap-5", labelsBeside && "grid-cols-[minmax(0,1fr)_15rem] min-[1440px]:grid-cols-[minmax(0,1fr)_18rem]")}>
-            <section ref={listRef} aria-label="Sources list" className="flex min-w-0 scroll-mt-4 flex-col gap-4">
+            <section ref={listRef} aria-label="Sources list" className="flex min-w-0 scroll-mt-24 flex-col gap-4">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <div role="tablist" aria-label="Which sources" className="flex gap-2">
                   {TABS.map((t) => {
@@ -550,7 +567,7 @@ export function KbLibrary({
               </div>
             </section>
             {labelsBeside ? (
-              <aside aria-label="My labels" className="sticky top-4">
+              <aside aria-label="My labels" className="sticky top-20">
                 <KbLabels variant="card" selected={filters.colors} onToggle={toggleLabel} />
               </aside>
             ) : null}

@@ -56,6 +56,7 @@ import {
   type UsageScope
 } from "@/lib/sourceUsage";
 import { cn } from "@/lib/utils";
+import { useStuck } from "@/lib/useStuck";
 import type {
   CurrentUser,
   KbCategory,
@@ -178,6 +179,7 @@ function AdminSourceUsageInner({
   // Names seen in any response, so a selected person keeps a label while loading.
   const knownNames = useRef(new Map<string, string>());
   const rootRef = useRef<HTMLDivElement>(null);
+  const { ref: filtersRef, stuck: filtersStuck } = useStuck();
   // Focus handoffs across the loading state between everyone and one person.
   const returnPoint = useRef<ReturnPoint | null>(null);
   const pendingFocus = useRef<"person" | "everyone" | null>(null);
@@ -558,8 +560,10 @@ function AdminSourceUsageInner({
           />
         )
       ) : (
-        <header className="flex flex-col gap-4">
-          {/* The sidebar already says where you are; the heading stays for
+        <header ref={filtersRef} data-stuck={filtersStuck || undefined} className="sticky-band sticky top-0 z-30 -my-3 flex flex-col gap-4 py-3">
+          {/* The date and person filters stay in view while the page scrolls;
+              their band shows only once they are pinned.
+              The sidebar already says where you are; the heading stays for
               screen readers. Focus handoffs go to the first control instead. */}
           <h1 id="source-usage-title" tabIndex={-1} className="sr-only">
             Source usage
@@ -615,7 +619,7 @@ function AdminSourceUsageInner({
         </EmptyState>
       ) : (
         <div className="flex flex-col gap-8">
-          <AtAGlance totals={data.totals} days={days} />
+          <AtAGlance totals={data.totals} />
           <AttentionCards
             cards={attention}
             days={days}

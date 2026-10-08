@@ -1,10 +1,43 @@
-import { useId, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { Link } from "wouter";
 import { FileText, Highlighter, Link2, ListTree, Pencil } from "lucide-react";
 import { RelativeTime } from "@/components/RelativeTime";
 import type { KbDocPersonal } from "@/components/kb-library/KbDocPersonalBar";
 import { NoteForm } from "@/components/kb-library/KbShared";
 import { cn } from "@/lib/utils";
+
+/** Space kept between the side column and the header or the bottom of the screen. */
+const SIDE_GAP_PX = 16;
+
+/**
+ * Where the sticky side column pins, kept in `--kb-reader-side-top` on the
+ * column: just below the sticky header when it fits on screen. A taller
+ * column gets a negative offset, so it scrolls with the page until its
+ * bottom is in view and then stays put. No second scrollbar either way. Pass
+ * the returned function as the column's ref.
+ */
+export function useStickySide(): (el: HTMLElement | null) => void {
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const pane = el?.closest("main");
+    if (!el || !pane) return;
+    const header = pane.querySelector("[data-kb-reader-header]");
+    function update(): void {
+      if (!el || !pane) return;
+      const headerHeight = parseFloat(getComputedStyle(pane).getPropertyValue("--kb-reader-header")) || 0;
+      const fits = headerHeight + SIDE_GAP_PX;
+      const top = Math.min(fits, pane.clientHeight - el.offsetHeight - SIDE_GAP_PX);
+      el.style.setProperty("--kb-reader-side-top", `${Math.round(top)}px`);
+    }
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    observer.observe(pane);
+    if (header) observer.observe(header);
+    return () => observer.disconnect();
+  }, [el]);
+  return setEl;
+}
 
 /** Soft yellow paper for the private note, from the personal annotation token. */
 const NOTE_PAPER =

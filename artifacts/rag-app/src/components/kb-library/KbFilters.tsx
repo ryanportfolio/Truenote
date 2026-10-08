@@ -4,7 +4,6 @@ import { KB_SORT_LABELS, type KbFilters, type KbSort } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
 import type { KbLibraryColor, KbTag } from "@/types/api";
 import { KbLabels } from "./KbLabels";
-import { ColorDot } from "./KbShared";
 
 const SORTS: KbSort[] = ["manual", "newest", "updated", "views", "cited", "title"];
 
@@ -120,14 +119,19 @@ export function KbFiltersButton({
     function onPointerDown(event: PointerEvent): void {
       const target = event.target as Node;
       if (panelRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
-      // A label rename dialog or menu opened from inside stays part of the panel.
-      if (target instanceof Element && target.closest("[role=menu], [role=dialog]") && !panelRef.current?.contains(target)) {
+      // A label dialog, confirmation or menu opened from inside stays part of the panel.
+      if (
+        target instanceof Element &&
+        target.closest("[role=menu], [role=dialog], [data-confirm-layer]") &&
+        !panelRef.current?.contains(target)
+      ) {
         return;
       }
       setOpen(false);
     }
     function onKeyDown(event: KeyboardEvent): void {
-      if (event.key === "Escape" && !event.defaultPrevented) {
+      // Escape in a confirmation opened from the panel cancels only the confirmation.
+      if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector("[data-confirm-layer]")) {
         event.preventDefault();
         close(true);
       }
@@ -215,7 +219,6 @@ export function KbFiltersButton({
                   checked={filters.tagIds.includes(tag.id)}
                   onChange={() => onFilters({ ...filters, tagIds: toggleIn(filters.tagIds, tag.id) })}
                 >
-                  <ColorDot color={tag.color} />
                   {tag.name}
                 </Check>
               ))}

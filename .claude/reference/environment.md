@@ -8,7 +8,11 @@
 
 The user runs Claude Code from a local Windows checkout. pnpm comes from corepack (`corepack pnpm install`, `pnpm -r run check`, `pnpm -r run test`). The Railway CLI is installed and logged in, so deploys, logs, variables and database work over `railway ssh` happen from here, each production change with the owner's go.
 
-The app does not run locally: no `DATABASE_URL`, no provider API keys. Runtime checks happen on the deployed Railway service.
+The SPA runs locally against a fixture API (`scripts/preview/`): `node scripts/preview/review-env.mjs` starts both on ports 5099 and 5180, or `preview_start` on the `rag-app-preview` entry in `.claude/launch.json`. Role switch, error and delay controls: `scripts/preview/mock-api/README.md`. Check every UI change there in a browser; run `node scripts/preview/mock-api/smoke.mjs` after editing the fixture.
+
+The fixture is a hand-written copy of the API and can drift from it, so it proves the UI, not the server. The real api-server does not run locally: there is no dev database, and a local server must never point at production. Server, database, retrieval and real-data checks happen on the deployed Railway service.
+
+(Until 2026-10-07 the app ran on Replit, and every check meant a Replit deploy. Notes from that time saying the app cannot run locally are out of date.)
 
 ### Claude Code cloud sandbox (web sessions)
 

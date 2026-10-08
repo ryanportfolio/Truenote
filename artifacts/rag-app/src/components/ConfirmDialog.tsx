@@ -148,7 +148,8 @@ function ConfirmDialog({
   }, [onCancel]);
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    // data-confirm-layer: popovers that opened this confirmation treat clicks here as their own.
+    <div data-confirm-layer className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop: warm-ink wash. Clicking outside the panel cancels; mousedown
         * (not click) so a drag that starts inside the panel and ends here
         * doesn't dismiss. */}

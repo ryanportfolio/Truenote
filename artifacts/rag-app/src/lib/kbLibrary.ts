@@ -501,6 +501,9 @@ export function myPins(items: KbDocumentListItem[]): KbDocumentListItem[] {
     .sort((a, b) => time(a.pinnedAt) - time(b.pinnedAt) || byTitle(a, b));
 }
 
+/** Typed alone in the Sources search box, lists recently opened sources instead of searching. */
+export const KB_RECENT_QUERY = "/";
+
 /** My pins that get a number key (1 to 9), in strip order. */
 export const KB_NUMBERED_PINS = 9;
 

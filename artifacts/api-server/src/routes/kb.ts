@@ -1178,6 +1178,49 @@ kbRouter.put("/categories/:id/color", async (req, res, next) => {
  * included. `name: null` or a blank name removes it; the reply is
  * `{ item: { color, name } }` or `{ item: null }` after a removal.
  */
+/**
+ * Deletes one of the caller's labels everywhere, in one transaction: the color
+ * comes off every source that has it, in every program (the name is shared
+ * across programs, so a single program's sources are not enough), then the
+ * name goes. Only the caller's own rows change. Reply: `{ cleared: n }`.
+ */
+kbRouter.delete("/labels/:color", async (req, res, next) => {
+  try {
+    const user = authedUser(req);
+    const color = libraryColorOrNull(req.params.color);
+    if (color === null) {
+      res.status(400).json({ error: "Pick one of the listed colors." });
+      return;
+    }
+    const cleared = await db.transaction(async (tx) => {
+      const result = await tx.execute(sql`
+        UPDATE kb_source_user_state
+        SET color = NULL,
+            updated_at = now()
+        WHERE user_id = ${user.id}::uuid
+          AND color = ${color}
+        RETURNING document_id
+      `);
+      await tx.execute(sql`
+        DELETE FROM kb_source_user_state
+        WHERE user_id = ${user.id}::uuid
+          AND pinned_at IS NULL
+          AND note IS NULL
+          AND color IS NULL
+      `);
+      await tx.execute(sql`
+        DELETE FROM kb_user_color_labels
+        WHERE user_id = ${user.id}::uuid
+          AND color = ${color}
+      `);
+      return result.rows.length;
+    });
+    res.json({ cleared });
+  } catch (err) {
+    next(err);
+  }
+});
+
 kbRouter.put("/labels/:color", async (req, res, next) => {
   try {
     const user = authedUser(req);

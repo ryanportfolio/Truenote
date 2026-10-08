@@ -438,6 +438,39 @@
     background-size: auto, auto, 18px 18px;
   }
 
+  /*
+   * Band behind a sticky bar (Sources search, Usage filters). Hidden until the
+   * bar is pinned (data-stuck, from useStuck), then a frosted wash across the
+   * full page width (main clips it) whose lower edge fades into the page, so
+   * no hard edge shows against the dot grid. The bar must be positioned.
+   */
+  .sticky-band::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: -1rem;
+    left: -100vw;
+    right: -100vw;
+    z-index: -1;
+    pointer-events: none;
+    background-color: oklch(var(--background) / 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent);
+    opacity: 0;
+    transition: opacity 160ms ease-out;
+  }
+
+  .sticky-band[data-stuck]::before {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sticky-band::before {
+      transition: none;
+    }
+  }
+
   .auth-shell {
     display: grid;
     min-height: 100vh;
@@ -689,8 +722,7 @@
     outline-offset: 2px;
   }
 
-  .auth-demo-role-name,
-  .auth-demo-role-promise {
+  .auth-demo-role-name {
     position: relative;
     z-index: 1;
   }
@@ -705,13 +737,6 @@
 
   .auth-demo-role-active .auth-demo-role-name {
     color: oklch(var(--primary));
-  }
-
-  .auth-demo-role-promise {
-    margin-top: 0.2rem;
-    color: oklch(var(--muted-foreground));
-    font-size: 0.64rem;
-    line-height: 1.35;
   }
 
   .auth-demo-role-orbit {

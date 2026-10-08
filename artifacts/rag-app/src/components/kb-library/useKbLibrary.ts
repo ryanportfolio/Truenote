@@ -3,6 +3,7 @@ import {
   createKbCategory,
   createKbTag,
   deleteKbCategory,
+  deleteKbColorLabel,
   deleteKbTag,
   listKbDocuments,
   reorderKbCategories,
@@ -188,7 +189,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
         },
         {
           success: color
-            ? `Labeled ${doc.title} ${kbLabelText(color, dataRef.current.labels)}.`
+            ? `Labeled ${doc.title} "${kbLabelText(color, dataRef.current.labels)}".`
             : `Removed your label from ${doc.title}.`
         }
       );
@@ -232,8 +233,30 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
         },
         {
           report: false,
-          success: next ? `Named ${kbColorLabel(color)} "${next}".` : `${kbColorLabel(color)} has no name now.`
+          success: next ? `Saved the label "${next}".` : `Removed the label${current ? ` "${current}"` : ""}.`
         }
+      );
+    },
+    [mutate]
+  );
+
+  /** Delete a label everywhere: off every source that has it and its name, in one request. */
+  const deleteLabel = useCallback(
+    (color: KbLibraryColor): Promise<ActionResult> => {
+      const name = (dataRef.current.labels ?? []).find((l) => l.color === color)?.name ?? null;
+      const clear = (d: Data): Data =>
+        applyColorLabel(
+          { ...d, items: d.items.map((item) => (item.myColor === color ? { ...item, myColor: null } : item)) },
+          color,
+          null
+        );
+      return mutate(
+        clear,
+        async () => {
+          await deleteKbColorLabel(color);
+          return clear;
+        },
+        { report: false, success: name ? `Deleted the label "${name}".` : "Deleted the label." }
       );
     },
     [mutate]
@@ -605,6 +628,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       setSourceColor,
       setCategoryColor,
       setLabelName,
+      deleteLabel,
       setTeamPins,
       addTeamPin,
       removeTeamPin,
@@ -632,6 +656,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       setSourceColor,
       setCategoryColor,
       setLabelName,
+      deleteLabel,
       setTeamPins,
       addTeamPin,
       removeTeamPin,

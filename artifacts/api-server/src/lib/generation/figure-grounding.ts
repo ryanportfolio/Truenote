@@ -25,14 +25,16 @@ import type { RetrievalChunk } from "../retrieval/query.js";
  * 3. Paragraphs, list items and headings split into sentences; table rows
  *    stay whole. Within a sentence each figure is credited to the first
  *    citation group after it, or, when none follows, the last group before
- *    it. A citation-only remainder joins the sentence before it.
+ *    it. A citation-only remainder joins the sentence before it. A sentence
+ *    with no citation is checked against every excerpt the answer cites.
  * 4. Figures are typed spans (currency, percentage, plain number, or a
  *    compound date/time/range/fraction/identifier) compared as exact
  *    canonical strings. Money words (`40 cents`) set the currency unit and
  *    scale words (`$40 million`, `$40k`) the value. A figure is grounded only
  *    when a cited excerpt holds a figure of the same kind, unit and value, so
  *    a plain number matches only a plain number. Numbers never match part of
- *    a compound. A numeric character NFKC cannot map to ASCII digits, or a
+ *    a compound, except that a number joined to a unit word (`30-day`,
+ *    `50GB`) also reads as the plain number. A numeric character NFKC cannot map to ASCII digits, or a
  *    named character reference the gate cannot decode, rejects the answer.
  */
 
@@ -838,6 +840,8 @@ interface Figure {
   kind: FigureKind;
   /** Exact comparison key, kind and unit included. */
   key: string;
+  /** Plain-number key of a number joined to a unit word (`30-day`, `50GB`), which also matches `30 days`. */
+  alt?: string;
   text: string;
   start: number;
   end: number;
@@ -890,6 +894,20 @@ const SCALE_EXPONENTS: Record<string, number> = {
   hundred: 2, thousand: 3, lakh: 5, million: 6, crore: 7, billion: 9, trillion: 12,
   k: 3, m: 6, mm: 6, mn: 6, b: 9, bn: 9, t: 12, tn: 12
 };
+/**
+ * A number joined to unit words by a hyphen (`30-day`, `2-business-day`) or
+ * written against one (`50GB`). Group 1 is the number, group 2 the words.
+ * Every word must be in UNIT_WORDS, so an identifier (`30-XYZ`, `2FA`) and a
+ * scale letter (`10k`, `40-M`) keep their exact compound key.
+ */
+const NUMBER_WITH_UNIT_WORD = /^(\d+(?:\.\d+)?)-?(\p{L}{2,}(?:-\p{L}+)*)$/u;
+const UNIT_WORDS = new Set([
+  "second", "seconds", "sec", "secs", "minute", "minutes", "min", "mins", "hour", "hours", "hr", "hrs",
+  "day", "days", "night", "nights", "week", "weeks", "wk", "wks", "month", "months", "mo", "mos",
+  "year", "years", "yr", "yrs", "business", "calendar", "working",
+  "kb", "mb", "gb", "tb", "gig", "gigs", "line", "lines", "device", "devices", "mile", "miles",
+  "digit", "digits", "character", "characters", "point", "points", "step", "steps"
+]);
 const PERCENT_AFTER = /^(?: ?[%‰]| (?:percent|per cent|pct)(?![\p{L}\p{N}]))/iu;
 const SIGN_BEFORE = new RegExp(`(?<![\\p{L}\\p{N}])[${MINUS_SIGNS}]$`, "u");
 const ANY_SIGN_BEFORE = new RegExp(`(?<![\\p{L}\\p{N}])[${SIGNS}]$`, "u");
@@ -1036,7 +1054,12 @@ function extractFigures(text: string, marked: string = text): Figure[] {
       const scale = exponent > 0 ? `e${exponent}` : "";
       const compound = token.toLowerCase().replace(FRACTION_SLASH, "/");
       const key = `compound:${sign}${unit ?? ""}${compound}${scale}${percentMark}`;
-      figures.push({ kind: "compound", key, text: figureText, start, end });
+      const unitWord = !unit && !scale && !percentMark && !sign ? NUMBER_WITH_UNIT_WORD.exec(token) : null;
+      const alt =
+        unitWord && unitWord[2]!.toLowerCase().split("-").every((word) => UNIT_WORDS.has(word))
+          ? `plain:${canonicalNumber(unitWord[1]!)}`
+          : undefined;
+      figures.push({ kind: "compound", key, alt, text: figureText, start, end });
     }
   }
   return figures;
@@ -1063,14 +1086,21 @@ function indexExcerpt(content: string, view: View): Set<string> {
     let source = block.lines.join(block.kind === "row" ? " | " : "\n");
     if (!view.decode) source = source.replace(MARKDOWN_ESCAPE, "$1");
     const { text } = displayText(source, view, false);
-    for (const figure of extractFigures(text)) keys.add(figure.key);
+    for (const figure of extractFigures(text)) {
+      keys.add(figure.key);
+      if (figure.alt) keys.add(figure.alt);
+    }
   }
   return keys;
 }
 
-/** Same kind, unit and value: a plain number matches only a plain number. */
+/**
+ * Same kind, unit and value: a plain number matches only a plain number. A
+ * number joined to a unit word also reads as that plain number, so `30 days`
+ * and `30-day` ground each other.
+ */
 function excerptHasFigure(excerpt: Set<string>, figure: Figure): boolean {
-  return excerpt.has(figure.key);
+  return excerpt.has(figure.key) || (figure.alt !== undefined && excerpt.has(figure.alt));
 }
 
 // ---------------------------------------------------------------------------
@@ -1151,13 +1181,17 @@ export function findUngroundedFigure(
       return indexed;
     };
 
+    // A summary line ("The fee is $5.") is often followed by the cited detail,
+    // so a sentence with no citation of its own is checked against every
+    // excerpt the answer cites.
+    const answerIds = [...new Set(sentences.flatMap((s) => s.groups.flatMap((g) => g.ids)))];
+
     for (const sentence of sentences) {
       for (const figure of extractFigures(sentence.text, sentence.marked)) {
         const following = sentence.groups.find((group) => group.start >= figure.end);
         const preceding = [...sentence.groups].reverse().find((group) => group.end <= figure.start);
-        const group = following ?? preceding;
-        if (!group) return figure.text;
-        if (!group.ids.some((id) => excerptHasFigure(excerptFor(id), figure))) {
+        const ids = (following ?? preceding)?.ids ?? answerIds;
+        if (!ids.some((id) => excerptHasFigure(excerptFor(id), figure))) {
           return figure.text;
         }
       }

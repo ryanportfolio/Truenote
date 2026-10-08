@@ -1,13 +1,6 @@
 import { useId, useRef, useState, type FocusEvent, type FormEvent, type KeyboardEvent } from "react";
-import { Bookmark, CircleSlash, Folder, Lock, NotebookPen, Palette, Pencil, Star } from "lucide-react";
-import {
-  KB_LIBRARY_COLORS,
-  kbColorChip,
-  kbColorDot,
-  kbColorFolder,
-  kbColorLabel,
-  kbLabelName
-} from "@/lib/kbLibraryColors";
+import { Bookmark, CircleSlash, Folder, Lock, NotebookPen, Palette, Pencil, Plus, Star } from "lucide-react";
+import { KB_LIBRARY_COLORS, kbColorDot, kbColorLabel, kbLabelName } from "@/lib/kbLibraryColors";
 import { KB_NOTE_MAX, docStatus } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
 import type { KbColorLabel, KbDocumentListItem, KbLibraryColor, KbTag } from "@/types/api";
@@ -33,45 +26,11 @@ export function ColorDot({ color, className }: { color: KbLibraryColor; classNam
   );
 }
 
-/**
- * The user's private color on a source: a 4px stripe on the row's left edge
- * plus a spoken label, so the color is never the only cue. The parent must be
- * positioned.
- */
-export function SourceColorStripe({ color }: { color: KbLibraryColor | null }): JSX.Element | null {
-  if (!color) return null;
-  return (
-    <span
-      aria-hidden
-      className="pointer-events-none absolute inset-y-1 left-0 w-1 rounded-r-full"
-      style={kbColorDot(color)}
-    />
-  );
-}
-
-/** Screen reader text for a source's private label (its color, plus the user's name for it when given). */
-export function SourceColorLabel({
-  color,
-  labels
-}: {
-  color: KbLibraryColor | null;
-  labels?: readonly KbColorLabel[];
-}): JSX.Element | null {
-  if (!color) return null;
-  const name = kbLabelName(color, labels);
-  return (
-    <span className="sr-only">
-      Label: {kbColorLabel(color)}
-      {name ? `, ${name}` : ""}.
-    </span>
-  );
-}
-
+/** A team tag: neutral, so color on Sources always means the user's own label. */
 export function TagChip({ tag }: { tag: KbTag }): JSX.Element {
   return (
     <span
-      className="inline-flex max-w-[12rem] items-center truncate rounded-full border px-2 py-0 text-xs text-foreground"
-      style={kbColorChip(tag.color)}
+      className="inline-flex max-w-[12rem] items-center truncate rounded-full border border-border bg-muted/60 px-2 py-0 text-xs text-foreground"
       title={tag.name}
     >
       {tag.name}
@@ -304,53 +263,6 @@ export function myColorEntries(
   ];
 }
 
-/** Swatch radio group for category and tag colors. */
-export function ColorPicker({
-  value,
-  onChange,
-  legend,
-  hint
-}: {
-  value: KbLibraryColor;
-  onChange: (color: KbLibraryColor) => void;
-  legend: string;
-  /** One line under the legend, such as who sees the color. */
-  hint?: string;
-}): JSX.Element {
-  const name = useId();
-  const hintId = useId();
-  return (
-    <fieldset aria-describedby={hint ? hintId : undefined}>
-      <legend className="text-sm font-medium">{legend}</legend>
-      {hint ? (
-        <p id={hintId} className="mt-0.5 text-xs text-muted-foreground">
-          {hint}
-        </p>
-      ) : null}
-      <div className="mt-2 flex flex-wrap gap-2">
-        {KB_LIBRARY_COLORS.map((color) => (
-          <label key={color} className="cursor-pointer" title={kbColorLabel(color)}>
-            <input
-              type="radio"
-              name={name}
-              value={color}
-              checked={value === color}
-              onChange={() => onChange(color)}
-              className="peer sr-only"
-            />
-            <span className="sr-only">{kbColorLabel(color)}</span>
-            <span
-              aria-hidden
-              className="block h-7 w-7 rounded-full border border-foreground/15 transition-shadow duration-100 ease-out peer-checked:ring-2 peer-checked:ring-foreground/70 peer-checked:ring-offset-2 peer-checked:ring-offset-card peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2"
-              style={kbColorDot(color)}
-            />
-          </label>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
-
 /**
  * Private note editor shared by the Sources dialog and the document page.
  * Escape cancels, Ctrl or Cmd plus Enter saves. Saving an empty note deletes it.
@@ -531,56 +443,89 @@ export function NoteSticky({ note, className }: { note: string | null; className
   );
 }
 
-/** A folder icon in the folder's color. */
-export function FolderGlyph({ color, className }: { color: KbLibraryColor | null; className?: string }): JSX.Element {
+/**
+ * A folder icon. Every folder looks the same: on Sources, color means only
+ * the user's own labels.
+ */
+export function FolderGlyph({ className }: { className?: string }): JSX.Element {
   return (
     <Folder
       aria-hidden
       className={cn("shrink-0", className)}
       strokeWidth={1.5}
-      style={color ? kbColorFolder(color) : { color: "oklch(var(--muted-foreground))", fill: "oklch(var(--muted))" }}
+      style={{ color: "oklch(var(--muted-foreground))", fill: "oklch(var(--muted))" }}
     />
   );
 }
 
-/** Label colors in picker order: the ones the user named first, then the rest in palette order. */
-export function labelOrder(labels: readonly KbColorLabel[] | undefined): KbLibraryColor[] {
-  const named = KB_LIBRARY_COLORS.filter((c) => kbLabelName(c, labels));
-  return [...named, ...KB_LIBRARY_COLORS.filter((c) => !named.includes(c))];
+/**
+ * The user's label on a source: a small pill with the label's dot and name.
+ * A color the user never named shows the dot alone.
+ */
+export function LabelChip({
+  color,
+  labels,
+  className
+}: {
+  color: KbLibraryColor | null;
+  labels?: readonly KbColorLabel[];
+  className?: string;
+}): JSX.Element | null {
+  if (!color) return null;
+  const name = kbLabelName(color, labels);
+  return (
+    <span
+      data-kb-label-chip={color}
+      title={name ?? "Your label (no name yet)"}
+      className={cn(
+        "inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-card px-2 py-0.5 align-middle text-xs leading-tight text-foreground",
+        className
+      )}
+    >
+      <ColorDot color={color} />
+      <span className="sr-only">Your label: </span>
+      {name ? <span className="min-w-0 truncate">{name}</span> : <span className="sr-only">{kbColorLabel(color)}, no name yet</span>}
+    </span>
+  );
+}
+
+/** Label colors the user has named, in palette order. */
+export function namedLabelColors(labels: readonly KbColorLabel[] | undefined): KbLibraryColor[] {
+  return KB_LIBRARY_COLORS.filter((c) => kbLabelName(c, labels));
 }
 
 /**
- * The label picker: the user's names beside the swatches (the color name when
- * a color has no name), a check on the current one, and "No label".
+ * The label picker: the user's named labels (plus the current color if it has
+ * no name yet), "New label…" while a color is free, and "Remove label".
+ * Bare color names never appear.
  */
 export function labelEntries(
   value: KbLibraryColor | null,
   labels: readonly KbColorLabel[] | undefined,
-  onSelect: (color: KbLibraryColor | null) => void
+  onSelect: (color: KbLibraryColor | null) => void,
+  onNew?: () => void
 ): KbMenuEntry[] {
-  return [
-    { kind: "heading", label: "Label", hint: "Only you see this." },
-    ...labelOrder(labels).map((color): KbMenuEntry => {
-      const name = kbLabelName(color, labels);
-      return {
-        label: name ?? kbColorLabel(color),
-        detail: name ? kbColorLabel(color) : undefined,
-        swatch: color,
-        radio: true,
-        checked: value === color,
-        onSelect: () => {
-          if (value !== color) onSelect(color);
-        }
-      };
-    }),
-    {
-      label: "No label",
-      icon: CircleSlash,
+  const named = namedLabelColors(labels);
+  const shown = value && !named.includes(value) ? [...named, value] : named;
+  const entries: KbMenuEntry[] = [
+    { kind: "heading", label: "My labels", hint: "Only you see these." },
+    ...shown.map((color): KbMenuEntry => ({
+      label: kbLabelName(color, labels) ?? "No name yet",
+      // An unnamed label is told apart by its color, in words too.
+      detail: kbLabelName(color, labels) ? undefined : kbColorLabel(color),
+      swatch: color,
       radio: true,
-      checked: value === null,
+      checked: value === color,
       onSelect: () => {
-        if (value !== null) onSelect(null);
+        if (value !== color) onSelect(color);
       }
-    }
+    }))
   ];
+  if (onNew && named.length < KB_LIBRARY_COLORS.length) {
+    entries.push({ label: "New label…", icon: Plus, onSelect: onNew });
+  }
+  if (value !== null) {
+    entries.push({ label: "Remove label", icon: CircleSlash, onSelect: () => onSelect(null) });
+  }
+  return entries;
 }

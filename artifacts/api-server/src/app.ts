@@ -231,6 +231,12 @@ export function createApp(): Express {
   // raw `err.message` value can leak schema or credential details. Full
   // detail still goes to the server log for operator diagnosis.
   app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
+    // A path Express cannot decode (scanner probes such as `/.env%C0%AE/`) is
+    // a bad request, not a server fault: no error-log entry.
+    if (err instanceof URIError && (err as { status?: unknown }).status === 400) {
+      res.status(400).json({ error: "Bad request" });
+      return;
+    }
     console.error("[api-server] error:", safeErrorMessage(err));
     const incomingRequestId = req.headers["x-request-id"];
     void recordAppError({

@@ -38,12 +38,6 @@ interface LoginPageProps {
  *   - No "remember me" toggle — sessions are 7 days fixed
  */
 
-const DEMO_ROLE_PROMISES: Record<DemoAccount["role"], string> = {
-  manager: "Manage the program",
-  supervisor: "Ask and see your team",
-  csr: "Ask and check sources"
-};
-
 /**
  * The portal grid in index.css is two columns, which fits two or four
  * accounts (the server allows 1 to 4). One account takes the full row.
@@ -224,9 +218,6 @@ export function LoginPage({
                         )}
                       >
                         <span className="auth-demo-role-name">{account.label}</span>
-                        <span className="auth-demo-role-promise">
-                          {DEMO_ROLE_PROMISES[account.role]}
-                        </span>
                         <span
                           className={cn("auth-demo-role-orbit", demoLayout.orbit)}
                           aria-hidden
