@@ -16,7 +16,7 @@ import {
  * name once, from the first Q+A, rather than re-summarizing every turn.
  *
  * Same low-stakes posture as the follow-up rewriter: routes through the
- * shared OpenRouter ZDR utility (Mercury 2 on Inception), NOT direct OpenAI, so the
+ * shared OpenRouter ZDR utility (Mercury 2.5 on Inception), NOT direct OpenAI, so the
  * opening question and answer stay inside the product's Zero Data Retention
  * boundary. Any failure falls back to a truncated question — naming is an
  * enhancement, never a gate on answering.

@@ -54,7 +54,7 @@ export const REFUSAL_TEXT =
   "I couldn't find this in the knowledge base. Please escalate or check the source documents directly.";
 
 /**
- * Rules 1–7 of the system prompt from .claude/reference/retrieval.md →
+ * Rules 1-9 of the system prompt from .claude/reference/retrieval.md →
  * Generation contract. Do not paraphrase the rule text — the wording is part
  * of the product contract and is tested against eval questions in Phase 2.
  *

@@ -4,7 +4,7 @@
 - Public homepage at `/`
 - Public about page at `/about/`
 - Public security overview at `/security/`
-- Public security supporting pages at `/security/pci/` and `/security/report/`
+- Public security supporting page at `/security/pci/`
 - Public discovery files (`/robots.txt`, `/sitemap.xml`, `/llms.txt`, `/.well-known/security.txt`)
 
 ## Out of scope
