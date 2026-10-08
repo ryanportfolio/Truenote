@@ -12,6 +12,7 @@ import {
   myPins,
   sortDocs,
   subtreeDocumentIds,
+  teamPins,
   type KbCategoryNode,
   type KbSort,
   type KbTree
@@ -521,21 +522,46 @@ export function KbListView({ visible, sort }: BrowseProps): JSX.Element {
 }
 
 /** My shortcuts tab: the sources this user starred, in shelf order. Unstar to remove one. */
-export function KbMyShortcuts({ visible, filtering }: { visible: KbDocumentListItem[]; filtering: boolean }): JSX.Element {
-  const mine = myPins(visible);
+/**
+ * Every shortcut in shelf order: the team's first, then the ones the user
+ * added. A source that is both appears once, with the team's, as on the shelf.
+ */
+export function myShortcutGroups(visible: KbDocumentListItem[]): {
+  team: KbDocumentListItem[];
+  mine: KbDocumentListItem[];
+} {
+  const team = teamPins(visible);
+  const teamIds = new Set(team.map((d) => d.documentId));
+  return { team, mine: myPins(visible).filter((d) => !teamIds.has(d.documentId)) };
+}
+
+function ShortcutGroup({ title, docs }: { title: string; docs: KbDocumentListItem[] }): JSX.Element {
+  const headingId = useId();
   return (
-    <div className="flex flex-col gap-3" data-kb-my-shortcuts>
+    <section aria-labelledby={headingId} className="flex flex-col gap-2">
+      <h3 id={headingId} className="text-sm font-medium text-muted-foreground">
+        {title} ({docs.length})
+      </h3>
+      <KbRows docs={docs} label={title} />
+    </section>
+  );
+}
+
+export function KbMyShortcuts({ visible, filtering }: { visible: KbDocumentListItem[]; filtering: boolean }): JSX.Element {
+  const { team, mine } = myShortcutGroups(visible);
+  return (
+    <div className="flex flex-col gap-4" data-kb-my-shortcuts>
       <p className="text-sm text-muted-foreground">
-        Star a source to add it here and to your shortcuts shelf. Press its star again to remove it. Shortcuts from your
-        team come first on the shelf; your manager chooses those.
+        Everything on your shortcuts shelf. Star a source to add it; press its star again to remove it. Your manager
+        chooses the ones from your team.
       </p>
-      {mine.length > 0 ? (
-        <KbRows docs={mine} label="My shortcuts" />
-      ) : (
+      {team.length > 0 ? <ShortcutGroup title="From your team" docs={team} /> : null}
+      {mine.length > 0 ? <ShortcutGroup title="Added by you" docs={mine} /> : null}
+      {team.length + mine.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
           {filtering ? "None of your shortcuts match." : "You have no shortcuts yet. Use the star on any source to add one."}
         </p>
-      )}
+      ) : null}
     </div>
   );
 }
