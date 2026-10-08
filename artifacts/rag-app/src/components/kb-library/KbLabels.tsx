@@ -20,6 +20,19 @@ export function usedLabelColors(
   );
 }
 
+/** Edit labels: a pencil over a label tag, drawn for this card. */
+function EditGlyph(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3.5 12.6V5.2c0-.95.75-1.7 1.7-1.7h7.4l3.2 3.2" />
+      <circle cx="7.6" cy="7.6" r="1.25" fill="currentColor" stroke="none" />
+      <path d="M3.5 12.6l5.9 5.9" />
+      <path d="M17.6 8.2a2 2 0 0 1 2.8 2.8l-7.6 7.6-3.7.9.9-3.7z" />
+      <path d="M16.1 9.7l2.8 2.8" />
+    </svg>
+  );
+}
+
 function sourcesLabel(count: number): string {
   return `${count} ${count === 1 ? "source" : "sources"}`;
 }
@@ -173,17 +186,25 @@ export function KbLabels({
           My labels
         </Heading>
         {!editing && colors.length > 0 ? (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            aria-label="Edit labels"
-            className="cursor-pointer rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            Edit
-          </button>
+          <span className="group/edit relative -my-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label="Edit labels"
+              className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-primary/30 bg-primary/5 text-primary shadow-card transition-colors duration-100 ease-out hover:border-primary/60 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <EditGlyph />
+            </button>
+            {/* Instant tooltip (no browser delay), on hover and keyboard focus. */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute right-0 top-full z-30 mt-1.5 hidden whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background shadow-panel group-hover/edit:block group-has-[:focus-visible]/edit:block"
+            >
+              Edit
+            </span>
+          </span>
         ) : null}
       </div>
-      <p className="mt-0.5 text-sm text-muted-foreground">Only you see these</p>
 
       {editing ? (
         <div className="mt-3">

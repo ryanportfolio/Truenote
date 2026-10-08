@@ -397,7 +397,11 @@ export function KbLibrary({
         />
       ) : (
         <>
-          <div className="flex flex-col gap-2">
+          {/* The search stays in view while the page scrolls; the blurred band runs the full width of the page (main clips it). */}
+          <div
+            data-kb-search-bar
+            className="sticky top-0 z-30 -my-2 flex flex-col gap-2 py-2 before:pointer-events-none before:absolute before:inset-y-0 before:-left-[100vw] before:-right-[100vw] before:-z-10 before:bg-background/80 before:backdrop-blur-md before:content-['']"
+          >
             <KbSearch
               query={query}
               onQuery={setQuery}
@@ -464,7 +468,7 @@ export function KbLibrary({
           {errorBanner}
 
           <div className={cn("grid items-start gap-5", labelsBeside && "grid-cols-[minmax(0,1fr)_15rem] min-[1440px]:grid-cols-[minmax(0,1fr)_18rem]")}>
-            <section ref={listRef} aria-label="Sources list" className="flex min-w-0 scroll-mt-4 flex-col gap-4">
+            <section ref={listRef} aria-label="Sources list" className="flex min-w-0 scroll-mt-24 flex-col gap-4">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <div role="tablist" aria-label="Which sources" className="flex gap-2">
                   {TABS.map((t) => {
@@ -550,7 +554,7 @@ export function KbLibrary({
               </div>
             </section>
             {labelsBeside ? (
-              <aside aria-label="My labels" className="sticky top-4">
+              <aside aria-label="My labels" className="sticky top-20">
                 <KbLabels variant="card" selected={filters.colors} onToggle={toggleLabel} />
               </aside>
             ) : null}
