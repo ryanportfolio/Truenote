@@ -15,6 +15,8 @@ const DEMO_MESSAGE = "Demo accounts can't do this";
 
 let state = buildSeed();
 let delayMs = Number(process.env.MOCK_DELAY_MS) || 0;
+/** Upper bound for the delay control, so a typo cannot stall the fixture. */
+const MAX_DELAY_MS = 10000;
 const failPaths = new Set();
 const audit = [];
 
@@ -57,15 +59,18 @@ function readBody(req) {
   });
 }
 
-function parseCookies(req) {
-  const out = {};
+/** One cookie's value, or undefined. */
+function readCookie(req, name) {
   for (const part of (req.headers.cookie ?? "").split(";")) {
     const index = part.indexOf("=");
-    if (index < 0) continue;
-    out[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
+    if (index < 0 || part.slice(0, index).trim() !== name) continue;
+    return decodeURIComponent(part.slice(index + 1).trim());
   }
-  return out;
+  return undefined;
 }
+
+/** Strips line breaks so a request path cannot forge extra log lines. */
+const logSafe = (text) => String(text).replace(/\n|\r/g, "");
 
 /** zod .strict() stand-in: object body with only the allowed keys. */
 function strictBody(body, allowed) {
@@ -124,11 +129,19 @@ const ROLE_ALIASES = {
   super_user: "sam.okafor@truenote.example"
 };
 
+/** A role alias (csr, manager...), an email, a user id or a first name, as /__mock/as/<key> takes. */
+function userByKey(key) {
+  const email = ROLE_ALIASES[key];
+  return state.users.find(
+    (u) => u.email === email || u.email === key || u.id === key || u.name.split(" ")[0].toLowerCase() === key
+  );
+}
+
 function currentUser(req) {
-  const cookie = parseCookies(req).mock_user;
+  // The cookie holds the key the role switch was given, never user data.
+  const cookie = readCookie(req, "mock_user");
   if (cookie === "out") return null;
-  const id = cookie ?? state.users.find((u) => u.email === ROLE_ALIASES.manager).id;
-  const user = state.users.find((u) => u.id === id);
+  const user = userByKey(cookie ?? "manager");
   return user && user.isActive ? user : null;
 }
 
@@ -293,7 +306,10 @@ function kbList(user, req) {
 
 function kbDocument(user, req, docId, url) {
   const programId = requireProgram(user, req);
-  const doc = visibleDoc(user, programId, docId);
+  // A retired source stays readable through a citation receipt the user owns,
+  // so look it up before the receipt check, not through visibleDoc.
+  const doc = state.documents.find((d) => d.id === docId && d.programId === programId && canSee(user, d));
+  if (!doc) throw notFound();
   const versionId = url.searchParams.get("version");
   const version = versionId ? doc.versions.find((v) => v.id === versionId) : activeVersion(doc);
   if (!version) throw notFound();
@@ -311,6 +327,7 @@ function kbDocument(user, req, docId, url) {
       };
     }
   }
+  if (doc.retired && citationTarget === null) throw notFound();
   const isCurrentVersion = version.id === doc.activeVersionId;
   const mine = userStateOf(user, doc.id);
   if (isCurrentVersion) {
@@ -405,6 +422,21 @@ function setColorLabel(user, color, body) {
   if (name.length > 40) throw badRequest("Color names must be 1 to 40 characters.");
   state.colorLabels.set(key, { name, updatedAt: iso(Date.now()) });
   return { item: { color, name } };
+}
+
+/** Delete one of your labels everywhere: off every source that has it, in every program, then its name. */
+function deleteColorLabel(user, color) {
+  if (!COLORS.includes(color)) throw badRequest("Pick one of the listed colors.");
+  let cleared = 0;
+  for (const [key, value] of state.userState) {
+    if (!key.startsWith(`${user.id}:`) || value.color !== color) continue;
+    cleared += 1;
+    const next = { ...value, color: null };
+    if (next.pinnedAt === null && next.note === null) state.userState.delete(key);
+    else state.userState.set(key, next);
+  }
+  state.colorLabels.delete(`${user.id}:${color}`);
+  return { cleared };
 }
 
 function setSourceColor(user, req, docId, body) {
@@ -1435,6 +1467,7 @@ route("PUT", /^\/api\/kb\/categories\/([^/]+)\/color$/, ({ user, req, params, bo
   setCategoryColor(user, req, params[0], body)
 );
 route("PUT", /^\/api\/kb\/labels\/([^/]+)$/, ({ user, params, body }) => setColorLabel(user, params[0], body));
+route("DELETE", /^\/api\/kb\/labels\/([^/]+)$/, ({ user, params }) => deleteColorLabel(user, params[0]));
 route("GET", /^\/api\/kb\/documents\/([^/]+)\/highlights$/, ({ user, req, params }) =>
   listHighlights(user, req, params[0])
 );
@@ -1521,10 +1554,7 @@ function mockControl(req, res, url, path) {
   const asMatch = sub.match(/^\/as\/([^/]+)$/);
   if (asMatch) {
     const key = decodeURIComponent(asMatch[1]).toLowerCase();
-    const email = ROLE_ALIASES[key];
-    const user = state.users.find(
-      (u) => u.email === email || u.email === key || u.id === key || u.name.split(" ")[0].toLowerCase() === key
-    );
+    const user = userByKey(key);
     if (!user && key !== "out") {
       return send(res, 404, {
         error: `Unknown role "${key}". Use csr, manager, demo_manager, super_user, out, or a first name.`
@@ -1533,9 +1563,9 @@ function mockControl(req, res, url, path) {
     // Through the Vite proxy (xfwd: true) the browser is already on the SPA
     // origin, so a relative "/" lands on the app.
     const viaProxy = typeof req.headers["x-forwarded-host"] === "string";
-    const location = url.searchParams.get("to") ?? (viaProxy ? "/" : `http://localhost:${FRONTEND_PORT}/`);
+    const location = viaProxy ? "/" : `http://localhost:${FRONTEND_PORT}/`;
     res.writeHead(302, {
-      "Set-Cookie": `mock_user=${user ? user.id : "out"}; Path=/; SameSite=Lax`,
+      "Set-Cookie": `mock_user=${user ? encodeURIComponent(key) : "out"}; Path=/; SameSite=Lax`,
       Location: location
     });
     return res.end();
@@ -1553,7 +1583,9 @@ function mockControl(req, res, url, path) {
     return send(res, 200, { failing: [...failPaths] });
   }
   if (sub === "/delay") {
-    delayMs = Math.max(0, Number(url.searchParams.get("ms")) || 0);
+    const ms = Number(url.searchParams.get("ms")) || 0;
+    if (!(ms >= 0 && ms <= MAX_DELAY_MS)) return send(res, 400, { error: `ms must be 0 to ${MAX_DELAY_MS}.` });
+    delayMs = ms;
     return send(res, 200, { delayMs });
   }
   if (sub === "/audit") return send(res, 200, { items: audit });
@@ -1574,7 +1606,7 @@ const server = http.createServer(async (req, res) => {
   const path = url.pathname;
   res.on("finish", () => {
     if (!path.includes("__mock")) {
-      console.log(`${req.method} ${path}${url.search} ${res.statusCode} ${Date.now() - started}ms`);
+      console.log(logSafe(`${req.method} ${path}${url.search} ${res.statusCode} ${Date.now() - started}ms`));
     }
   });
   try {
@@ -1586,7 +1618,7 @@ const server = http.createServer(async (req, res) => {
       .map((r) => ({ r, m: r.method === req.method ? path.match(r.pattern) : null }))
       .find((x) => x.m);
     if (!match) {
-      console.warn(`[mock-api] no fixture for ${req.method} ${path}`);
+      console.warn(logSafe(`[mock-api] no fixture for ${req.method} ${path}`));
       return send(res, 404, { error: "Not found" });
     }
     const body = ["POST", "PUT", "PATCH", "DELETE"].includes(req.method) ? await readBody(req) : undefined;

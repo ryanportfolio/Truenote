@@ -484,7 +484,7 @@ export function LabelChip({
     >
       <ColorDot color={color} />
       <span className="sr-only">Your label: </span>
-      {name ? <span className="min-w-0 truncate">{name}</span> : <span className="sr-only">no name yet</span>}
+      {name ? <span className="min-w-0 truncate">{name}</span> : <span className="sr-only">{kbColorLabel(color)}, no name yet</span>}
     </span>
   );
 }
@@ -511,6 +511,8 @@ export function labelEntries(
     { kind: "heading", label: "My labels", hint: "Only you see these." },
     ...shown.map((color): KbMenuEntry => ({
       label: kbLabelName(color, labels) ?? "No name yet",
+      // An unnamed label is told apart by its color, in words too.
+      detail: kbLabelName(color, labels) ? undefined : kbColorLabel(color),
       swatch: color,
       radio: true,
       checked: value === color,

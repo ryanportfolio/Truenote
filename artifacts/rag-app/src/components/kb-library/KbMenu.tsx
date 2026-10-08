@@ -167,7 +167,9 @@ export function KbMenu({
     }
     // Scrolling or resizing keeps the menu beside its button; it closes only
     // when the button leaves the screen.
-    function onViewportChange(): void {
+    function onViewportChange(event: Event): void {
+      // Scrolling the menu's own list is not a page scroll.
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return;
       // A menu opened at the pointer would drift from what was clicked; close it.
       if (pointRef.current || !place()) setOpen(false);
     }

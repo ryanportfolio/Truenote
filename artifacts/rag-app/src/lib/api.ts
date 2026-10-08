@@ -557,6 +557,12 @@ export async function setKbColorLabel(
   return json.item;
 }
 
+/** Delete one of your labels everywhere: off every source that has it (all programs), then its name. */
+export async function deleteKbColorLabel(color: KbLibraryColor): Promise<void> {
+  const response = await fetch(`/api/kb/labels/${encodeURIComponent(color)}`, withDefaults({ method: "DELETE" }));
+  await asJson<{ cleared: number }>(response);
+}
+
 export async function setKbSourceColor(
   documentId: string,
   color: KbLibraryColor | null

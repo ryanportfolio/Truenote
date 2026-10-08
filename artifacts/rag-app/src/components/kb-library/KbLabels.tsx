@@ -2,7 +2,7 @@ import { useId, useState, type FormEvent } from "react";
 import { Check, Plus, Trash2 } from "lucide-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { KB_LABEL_NAME_MAX } from "@/lib/kbLibrary";
-import { KB_LIBRARY_COLORS, kbLabelName } from "@/lib/kbLibraryColors";
+import { KB_LIBRARY_COLORS, kbColorLabel, kbLabelName, kbLabelText } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
 import type { KbLibraryColor } from "@/types/api";
 import { useKbLibraryContext } from "./KbContext";
@@ -40,7 +40,8 @@ function sourcesLabel(count: number): string {
 /**
  * Edit mode: one row per label (dot, name, how many sources, delete), plus
  * "New label". Saving sends only the names that changed. Deleting takes the
- * label off its sources and removes the name, right away.
+ * label off its sources and removes the name, right away, in one request.
+ * Saving and deleting never overlap: each disables the other until it ends.
  */
 function LabelListForm({ colors, onDone }: { colors: KbLibraryColor[]; onDone: () => void }): JSX.Element {
   const { data, actions, openDialog } = useKbLibraryContext();
@@ -57,6 +58,7 @@ function LabelListForm({ colors, onDone }: { colors: KbLibraryColor[]; onDone: (
 
   async function onSubmit(event: FormEvent): Promise<void> {
     event.preventDefault();
+    if (pending) return;
     setPending(true);
     setError(null);
     for (const color of rows) {
@@ -81,11 +83,17 @@ function LabelListForm({ colors, onDone }: { colors: KbLibraryColor[]; onDone: (
       confirmLabel: "Delete label",
       tone: "danger"
     });
-    if (!ok) return;
-    for (const doc of data.items) if (doc.myColor === color) actions.setSourceColor(doc.documentId, null);
-    const result = await actions.setLabelName(color, "");
-    if (!result.ok) setError(result.message);
+    if (!ok || pending) return;
+    setPending(true);
+    setError(null);
+    const result = await actions.deleteLabel(color);
+    setPending(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
     setDeleted((prev) => new Set(prev).add(color));
+    setNames(({ [color]: _gone, ...rest }) => rest);
   }
 
   return (
@@ -97,7 +105,7 @@ function LabelListForm({ colors, onDone }: { colors: KbLibraryColor[]; onDone: (
               <ColorDot color={color} className="mt-3 h-3.5 w-3.5" />
               <div className="min-w-0 flex-1">
                 <label htmlFor={`${baseId}-${color}`} className="sr-only">
-                  Label name
+                  {kbColorLabel(color)} label name
                 </label>
                 <input
                   id={`${baseId}-${color}`}
@@ -121,7 +129,8 @@ function LabelListForm({ colors, onDone }: { colors: KbLibraryColor[]; onDone: (
               <button
                 type="button"
                 onClick={() => void remove(color)}
-                aria-label={`Delete label ${nameOf(color)}`.trim()}
+                disabled={pending}
+                aria-label={`Delete label ${nameOf(color) || kbLabelText(color, data.labels)}`}
                 title="Delete label"
                 className="btn-icon mt-0.5 h-8 w-8 shrink-0 hover:text-destructive"
               >
@@ -237,7 +246,11 @@ export function KbLabels({
                     >
                       <ColorDot color={color} />
                       <span className={cn("min-w-0 flex-1 break-words", !name && "text-muted-foreground")}>
-                        {name ?? "No name yet"}
+                        {name ?? (
+                          <>
+                            No name yet<span className="sr-only"> ({kbColorLabel(color)})</span>
+                          </>
+                        )}
                       </span>
                       <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
                         <span className="sr-only">, </span>

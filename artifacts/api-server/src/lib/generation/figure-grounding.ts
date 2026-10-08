@@ -895,11 +895,19 @@ const SCALE_EXPONENTS: Record<string, number> = {
   k: 3, m: 6, mm: 6, mn: 6, b: 9, bn: 9, t: 12, tn: 12
 };
 /**
- * A number joined to a unit word by a hyphen (`30-day`, `2-business-day`) or
- * written against a word of two or more letters (`50GB`, `2FA`). Group 2 is
- * the first word, so a scale letter (`10k`, `40-M`) is not read as a unit.
+ * A number joined to unit words by a hyphen (`30-day`, `2-business-day`) or
+ * written against one (`50GB`). Group 1 is the number, group 2 the words.
+ * Every word must be in UNIT_WORDS, so an identifier (`30-XYZ`, `2FA`) and a
+ * scale letter (`10k`, `40-M`) keep their exact compound key.
  */
-const NUMBER_WITH_UNIT_WORD = /^(\d+(?:\.\d+)?)(?:-|(?=\p{L}{2,}$))(\p{L}+)(?:-\p{L}+)*$/u;
+const NUMBER_WITH_UNIT_WORD = /^(\d+(?:\.\d+)?)-?(\p{L}{2,}(?:-\p{L}+)*)$/u;
+const UNIT_WORDS = new Set([
+  "second", "seconds", "sec", "secs", "minute", "minutes", "min", "mins", "hour", "hours", "hr", "hrs",
+  "day", "days", "night", "nights", "week", "weeks", "wk", "wks", "month", "months", "mo", "mos",
+  "year", "years", "yr", "yrs", "business", "calendar", "working",
+  "kb", "mb", "gb", "tb", "gig", "gigs", "line", "lines", "device", "devices", "mile", "miles",
+  "digit", "digits", "character", "characters", "point", "points", "step", "steps"
+]);
 const PERCENT_AFTER = /^(?: ?[%‰]| (?:percent|per cent|pct)(?![\p{L}\p{N}]))/iu;
 const SIGN_BEFORE = new RegExp(`(?<![\\p{L}\\p{N}])[${MINUS_SIGNS}]$`, "u");
 const ANY_SIGN_BEFORE = new RegExp(`(?<![\\p{L}\\p{N}])[${SIGNS}]$`, "u");
@@ -1048,7 +1056,7 @@ function extractFigures(text: string, marked: string = text): Figure[] {
       const key = `compound:${sign}${unit ?? ""}${compound}${scale}${percentMark}`;
       const unitWord = !unit && !scale && !percentMark && !sign ? NUMBER_WITH_UNIT_WORD.exec(token) : null;
       const alt =
-        unitWord && !(unitWord[2]!.toLowerCase() in SCALE_EXPONENTS)
+        unitWord && unitWord[2]!.toLowerCase().split("-").every((word) => UNIT_WORDS.has(word))
           ? `plain:${canonicalNumber(unitWord[1]!)}`
           : undefined;
       figures.push({ kind: "compound", key, alt, text: figureText, start, end });
