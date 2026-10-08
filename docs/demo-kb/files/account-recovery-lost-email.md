@@ -48,7 +48,7 @@ If you see these signs, do not make the change. Lock the account and escalate to
 
 ## Never do this
 
-- Never send account details, a code or a link to an address that is not already on the account.
+- Never send account details, a code or a link to an address that is not already on the account. The one exception is the confirmation link the system itself sends to the new address in step 5, after verification.
 - Never accept a Social Security number, a full card number or the account password as proof.
 - Never confirm which factor was wrong.
 

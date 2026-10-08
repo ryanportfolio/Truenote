@@ -727,6 +727,40 @@ async function demoAccounts(): Promise<DemoAccount[]> {
 }
 
 /** Credentials for a seeded or demo user, without printing them. */
+/**
+ * A password about to be set is journaled under `pending:<email>` before the
+ * request, so a lost response or a failed local write never strands the
+ * account: the next login tries the saved password, then the pending one,
+ * and promotes whichever works.
+ */
+function pendingKey(email: string): string {
+  return `pending:${email}`;
+}
+
+async function loginWithJournal(
+  api: Api,
+  email: string
+): Promise<{ id: string; role: string; mustResetPassword: boolean }> {
+  const secrets = csrSecrets();
+  const saved = secrets[email];
+  const pending = secrets[pendingKey(email)];
+  for (const password of [saved, pending]) {
+    if (!password) continue;
+    try {
+      const me = await api.login(email, password);
+      if (password !== saved || pending) {
+        secrets[email] = password;
+        delete secrets[pendingKey(email)];
+        writeCsrSecrets(secrets);
+      }
+      return me;
+    } catch (err) {
+      if (password === pending || !pending) throw err;
+    }
+  }
+  throw new Error(`no credentials for ${email} in ${CSR_SECRETS}`);
+}
+
 async function credentialsFor(user: ShowcaseUser | { key: UserKey; email: string }): Promise<string> {
   if (user.key === "csr" || user.key === "manager") {
     const match = (await demoAccounts()).find((a) => a.email.toLowerCase() === user.email);
@@ -740,7 +774,10 @@ async function credentialsFor(user: ShowcaseUser | { key: UserKey; email: string
 
 async function loginAs(user: ShowcaseUser | { key: UserKey; email: string }): Promise<{ api: Api; id: string }> {
   const api = new Api(user.key);
-  const me = await api.login(user.email, await credentialsFor(user));
+  const me =
+    user.key === "csr" || user.key === "manager"
+      ? await api.login(user.email, await credentialsFor(user))
+      : await loginWithJournal(api, user.email);
   if (me.mustResetPassword) throw new Error(`${user.email} still has to change its password; run the users step`);
   return { api, id: me.id };
 }
@@ -842,19 +879,21 @@ async function stepUsers(state: SeedState): Promise<void> {
     for (const u of NEW_CSRS) {
       const found = existing.find((e) => e.email === u.email);
       if (found) {
-        if (!secrets[u.email]) throw new Error(`${u.email} exists but has no credentials in ${CSR_SECRETS}`);
+        if (!secrets[u.email] && !secrets[pendingKey(u.email)]) {
+          throw new Error(`${u.email} exists but has no credentials in ${CSR_SECRETS}`);
+        }
         state.users![u.key] = { id: found.id, email: u.email, name: u.name, created: state.users![u.key]?.created ?? false };
         console.log(`users: ${u.email} exists`);
         continue;
       }
       const temporary = strongPassword();
+      // Saved before the request, so a lost response never strands the account.
+      secrets[u.email] = temporary;
+      writeCsrSecrets(secrets);
       const r = await api.call<{ item: { id: string } }>("POST", "/api/admin/users", {
         body: { email: u.email, name: u.name, role: "csr", programId: PROGRAM_ID, password: temporary },
         program: false
       });
-      // Record the temporary password first, so a failure below never strands the account.
-      secrets[u.email] = temporary;
-      writeCsrSecrets(secrets);
       state.users![u.key] = { id: r.json.item.id, email: u.email, name: u.name, created: true };
       saveState(state);
       console.log(`users: created ${u.name} <${u.email}>`);
@@ -863,13 +902,17 @@ async function stepUsers(state: SeedState): Promise<void> {
   // Forced first-login password change, through the API.
   for (const u of NEW_CSRS) {
     const api = new Api(u.key);
-    const current = secrets[u.email]!;
-    const me = await api.login(u.email, current);
+    const me = await loginWithJournal(api, u.email);
     if (me.mustResetPassword) {
+      const latest = csrSecrets();
+      const current = latest[u.email]!;
       const next = strongPassword();
+      latest[pendingKey(u.email)] = next;
+      writeCsrSecrets(latest);
       await api.call("POST", "/api/auth/change-password", { body: { currentPassword: current, newPassword: next }, program: false });
-      secrets[u.email] = next;
-      writeCsrSecrets(secrets);
+      latest[u.email] = next;
+      delete latest[pendingKey(u.email)];
+      writeCsrSecrets(latest);
       console.log(`users: ${u.email} changed its temporary password`);
     }
     await api.logout();
@@ -1051,11 +1094,10 @@ async function stepAsk(state: SeedState): Promise<void> {
         const roll = feedbackRand();
         if (roll < item.user.thumbsDownRate) feedback = -1;
         else if (roll < item.user.thumbsDownRate + item.user.thumbsUpRate) feedback = 1;
-        if (feedback !== null) {
-          await who.api.call("POST", "/api/feedback", { body: { queryLogId: body.queryLogId, feedback } });
-        }
       }
-      state.asks.push({
+      // The ask already wrote its rows, so record it before the optional
+      // feedback call; a failed feedback must not lose the receipt.
+      const record: AskRecord = {
         user: item.user.key,
         userId: who.id,
         queryLogId: body.queryLogId,
@@ -1064,10 +1106,16 @@ async function stepAsk(state: SeedState): Promise<void> {
         kind: item.kind,
         refused: body.refused,
         cited,
-        feedback,
+        feedback: null,
         at: new Date().toISOString()
-      });
+      };
+      state.asks.push(record);
       saveState(state);
+      if (feedback !== null && body.queryLogId) {
+        await who.api.call("POST", "/api/feedback", { body: { queryLogId: body.queryLogId, feedback } });
+        record.feedback = feedback;
+        saveState(state);
+      }
       console.log(
         `ask ${i + 1}/${plan.length} ${item.user.key} [${item.kind}] ${answered ? "answered" : "refused"}${feedback === 1 ? " +1" : feedback === -1 ? " -1" : ""}${sessionId ? " (same call)" : ""}: ${item.question}`
       );
