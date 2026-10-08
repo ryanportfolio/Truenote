@@ -384,6 +384,14 @@ keysEqual("kb list without program", suList, ["items", "categories", "tags", "la
   const jordanAfter = teamPins(await kbAs(csr)).map((i) => i.documentId);
   check("csr sees new order", jordanAfter.join() === want.join(), jordanAfter.join());
   check("other team unchanged", titles(await kbAs(kim)) === titles(kimKb));
+  const upper = await shortcuts(sup, { documentIds: want.map((id) => id.toUpperCase()) });
+  check("team-shortcuts accepts upper-case ids", upper.status === 200, upper.json?.error);
+  check("team-shortcuts stores lower case", teamPins(await kbAs(csr)).map((i) => i.documentId).join() === want.join());
+  const badUuid = await shortcuts(sup, { documentIds: ["not-a-uuid"] });
+  check("team-shortcuts bad uuid 400", badUuid.status === 400, badUuid.json.error);
+  const dupCase = await shortcuts(sup, { documentIds: [want[0], want[0].toUpperCase()] });
+  check("team-shortcuts duplicate in any case 400", dupCase.status === 400 &&
+    dupCase.json.error === "The list has the same item more than once.", dupCase.json.error);
   const audit = (await (await fetch(`${BASE}/__mock/audit`)).json()).items;
   check("team-shortcuts audited", audit.some((a) => a.action === "kb.library.team_shortcuts.set"));
 
@@ -412,6 +420,28 @@ keysEqual("kb list without program", suList, ["items", "categories", "tags", "la
   const supUsers = (await call(sup, "GET", "/api/admin/users")).json.items;
   check("supervisor users = own csrs", supUsers.length === 3 && supUsers.every((u) => u.role === "csr" && team.has(u.id)));
   check("csr users 403", (await call(csr, "GET", "/api/admin/users")).status === 403);
+
+  // POST /api/admin/users/:id/reset-password: a supervisor resets only their own CSRs.
+  const reset = (cookie, id) => call(cookie, "POST", `/api/admin/users/${id}/reset-password`);
+  const jordanUser = supUsers.find((u) => u.name === "Jordan Reyes");
+  const supReset = await reset(sup, jordanUser.id);
+  keysEqual("reset response", supReset.json, ["tempPassword"]);
+  check("supervisor resets own csr", supReset.status === 200 && supReset.json.tempPassword.length >= 12);
+  const afterReset = (await call(sup, "GET", "/api/admin/users")).json.items.find((u) => u.id === jordanUser.id);
+  check("reset sets mustResetPassword", afterReset.mustResetPassword === true);
+  const changed = await call(csr, "POST", "/api/auth/change-password", { currentPassword: "x", newPassword: "y" });
+  check("change-password clears the reset", changed.json.user.mustResetPassword === false);
+  const tomasId = teams.json.csrs.find((c) => c.name === "Tomas Rivera").id;
+  check("supervisor reset out of team 404", (await reset(sup, tomasId)).status === 404);
+  check("supervisor reset of a manager 404", (await reset(sup, managerMe.id)).status === 404);
+  check("supervisor reset self 404", (await reset(sup, supMe.id)).status === 404);
+  const demoReset = await reset(demoSup, tomasId);
+  check("demo supervisor reset 403", demoReset.status === 403 && demoReset.json.error === "Demo accounts can't do this");
+  check("csr reset 403", (await reset(csr, tomasId)).status === 403);
+  check("manager resets a supervisor", (await reset(manager, supMe.id)).status === 200);
+  check("manager reset self 404", (await reset(manager, managerMe.id)).status === 404);
+  check("reset bad id 400", (await reset(manager, "nope")).status === 400);
+  await call(sup, "POST", "/api/auth/change-password", { currentPassword: "x", newPassword: "y" });
   const supUsage = (await call(sup, "GET", "/api/admin/insights/source-usage?days=30")).json;
   check("supervisor people = team", supUsage.people.length === team.size && supUsage.people.every((p) => team.has(p.userId)));
   check("supervisor matrix rows in team", supUsage.matrix.rows.every((r) => team.has(r.userId)));

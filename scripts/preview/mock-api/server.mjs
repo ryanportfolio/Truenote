@@ -3,6 +3,7 @@
 // Shapes mirror artifacts/rag-app/src/types/api.ts.
 
 import http from "node:http";
+import { randomBytes } from "node:crypto";
 import { buildSeed, CLEARANCE_RANK, nextId } from "./seed.mjs";
 
 const PORT = Number(process.env.MOCK_PORT) || 5099;
@@ -82,6 +83,8 @@ function readCookie(req, name) {
 
 /** Strips line breaks so a request path cannot forge extra log lines. */
 const logSafe = (text) => String(text).replace(/\n|\r/g, "");
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** zod .strict() stand-in: object body with only the allowed keys. */
 function strictBody(body, allowed) {
@@ -874,10 +877,17 @@ function setTeamShortcuts(user, req, body) {
   if (user.isDemo) throw new HttpError(403, DEMO_MESSAGE);
   const programId = requireProgram(user, req);
   strictBody(body, ["documentIds"]);
-  const documentIds = idList(body.documentIds, "documentIds", 500);
-  // featuredSchema's own cap on the request list, before the stored-row cap below.
-  if (documentIds.length > MAX_FEATURED) {
+  // featuredSchema (uniqueIdList): uuids, at most 12, no repeats in any case,
+  // lowercased, before the stored-row cap below.
+  const raw = body.documentIds;
+  if (!Array.isArray(raw)) throw badRequest("Send a list of ids.");
+  if (raw.some((id) => typeof id !== "string" || !UUID_RE.test(id))) throw badRequest("Invalid uuid");
+  if (raw.length > MAX_FEATURED) {
     throw badRequest(`You can pin at most ${MAX_FEATURED} sources for the team.`);
+  }
+  const documentIds = raw.map((id) => id.toLowerCase());
+  if (new Set(documentIds).size !== documentIds.length) {
+    throw badRequest("The list has the same item more than once.");
   }
   const visible = visibleIdSet(user, programId);
   if (documentIds.some((docId) => !visible.has(docId))) throw notFound();
@@ -944,8 +954,6 @@ function teamsList(user, req) {
     canEdit: ownTeam === null
   };
 }
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** lib/teams.ts assignmentBodySchema: csrIds 1..200 uuids (deduped, lower case), supervisorId uuid or null. */
 function assignmentBody(body) {
@@ -1456,6 +1464,43 @@ function userList(user, req) {
   return { items };
 }
 
+/** routes/admin/users.ts canManageUser: who a manager+ actor may administer. */
+function canManageUser(actor, target) {
+  if (actor.id === target.id) return false;
+  if (actor.role === "super_user") return true;
+  if (target.role === "super_user" || target.role === "senior_manager") return false;
+  if (!actor.programId || actor.programId !== target.programId) return false;
+  if (actor.role === "senior_manager") return ["csr", "supervisor", "manager"].includes(target.role);
+  if (actor.role === "manager") return ["csr", "supervisor"].includes(target.role);
+  return false;
+}
+
+/**
+ * POST /api/admin/users/:id/reset-password: supervisor and above, never demo
+ * accounts. A supervisor may reset only a CSR on their own team; manager and
+ * above go through canManageUser. Anyone out of scope is a 404, not a 403.
+ * Returns the temporary password once and sets mustResetPassword.
+ */
+function resetUserPassword(user, id) {
+  requireRole(user, "supervisor");
+  if (user.isDemo) throw new HttpError(403, DEMO_MESSAGE);
+  if (!UUID_RE.test(id)) throw badRequest("Invalid user id");
+  const target = state.users.find((u) => u.id === id.toLowerCase());
+  if (!target) throw notFound();
+  const allowed =
+    user.role === "supervisor"
+      ? target.id !== user.id &&
+        target.role === "csr" &&
+        target.programId === user.programId &&
+        state.teamMembers.some(
+          (m) => m.csrId === target.id && m.supervisorId === user.id && m.programId === user.programId
+        )
+      : canManageUser(user, target);
+  if (!allowed) throw notFound();
+  target.mustResetPassword = true;
+  return { tempPassword: randomBytes(12).toString("base64url") };
+}
+
 function adminDocuments(user, req) {
   requireRole(user, "manager");
   const programId = effectiveProgramId(user, req);
@@ -1683,7 +1728,12 @@ route("POST", /^\/api\/auth\/forgot-password$/, () => undefined);
 route("POST", /^\/api\/auth\/reset-password$/, () => {
   throw badRequest("The fixture API does not support password resets.");
 });
-route("POST", /^\/api\/auth\/change-password$/, ({ req }) => ({ user: publicUser(requireUser(req)) }));
+route("POST", /^\/api\/auth\/change-password$/, ({ req }) => {
+  // Any password is accepted; changing it clears a reset from the Users page.
+  const user = requireUser(req);
+  user.mustResetPassword = false;
+  return { user: publicUser(user) };
+});
 
 route("GET", /^\/api\/sessions$/, ({ user, req }) => listSessions(user, req));
 route("GET", /^\/api\/sessions\/([^/]+)$/, ({ user, req, params }) => sessionDetail(user, req, params[0]));
@@ -1788,6 +1838,9 @@ route("GET", /^\/api\/admin\/insights\/source-usage\/questions$/, ({ user, req, 
 );
 route("GET", /^\/api\/admin\/queries$/, ({ user, req, url }) => queryLogList(user, req, url));
 route("GET", /^\/api\/admin\/users$/, ({ user, req }) => userList(user, req));
+route("POST", /^\/api\/admin\/users\/([^/]+)\/reset-password$/, ({ user, params }) =>
+  resetUserPassword(user, params[0])
+);
 // Manager and above; a super user gets every program, anyone else their own.
 route("GET", /^\/api\/admin\/programs$/, ({ user }) => {
   requireRole(user, "manager");
