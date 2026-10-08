@@ -1,48 +1,92 @@
-import { forwardRef, useEffect, useRef } from "react";
+import { forwardRef, useEffect, useId, useRef } from "react";
 import { Link } from "wouter";
-import { FileText, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import { KB_NUMBERED_PINS, type KbShortcut } from "@/lib/kbLibrary";
 import { kbColorDot } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
 import { useKbLibraryContext } from "./KbContext";
 import { ColorDot, SourceColorLabel } from "./KbShared";
 
-/** "From your team", "Pinned by you" or "Recently opened". */
-function ShortcutSource({ shortcut }: { shortcut: KbShortcut }): JSX.Element {
-  if (shortcut.source === "team") return <>From your team</>;
-  if (shortcut.source === "mine") return <>Pinned by you</>;
-  return <>Recently opened</>;
+/** Team shortcut: two people, the manager's pick for everyone. */
+function TeamGlyph(): JSX.Element {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="6" cy="5.25" r="2.25" />
+      <path d="M1.75 13.25c.4-2.3 2.1-3.75 4.25-3.75s3.85 1.45 4.25 3.75" />
+      <path d="M10.5 3.2a2.25 2.25 0 0 1 0 4.1" />
+      <path d="M12 9.8c1.25.5 2 1.75 2.25 3.45" />
+    </svg>
+  );
 }
+
+/** The user's own shortcut: the same star as the row toggle. */
+function MineGlyph(): JSX.Element {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor" aria-hidden>
+      <path d="M8 1.6l1.9 3.95 4.3.55-3.15 2.98.8 4.27L8 11.27l-3.85 2.08.8-4.27L1.8 6.1l4.3-.55z" />
+    </svg>
+  );
+}
+
+/** Recently opened: a clock face with a turning-back arrow. */
+function RecentGlyph(): JSX.Element {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M2.6 8a5.4 5.4 0 1 0 1.6-3.85" />
+      <path d="M2.4 2.4v2.4h2.4" />
+      <path d="M8 5.2V8l1.9 1.3" />
+    </svg>
+  );
+}
+
+const SHORTCUT_SOURCE = {
+  team: { label: "From your team", detail: "Your manager added this for everyone.", Glyph: TeamGlyph, tone: "bg-primary/10 text-primary" },
+  mine: { label: "Pinned by you", detail: "You added this to your shortcuts.", Glyph: MineGlyph, tone: "bg-amber-100 text-amber-700" },
+  recent: { label: "Recently opened", detail: "You opened this lately.", Glyph: RecentGlyph, tone: "bg-muted text-muted-foreground" }
+} as const;
 
 function ShortcutTile({ shortcut, index }: { shortcut: KbShortcut; index: number }): JSX.Element {
   const { data } = useKbLibraryContext();
+  const tipId = useId();
   const { doc } = shortcut;
   const number = index + 1;
+  const source = SHORTCUT_SOURCE[shortcut.source];
   return (
     <li
       data-kb-shortcut={number}
       data-kb-shortcut-source={shortcut.source}
-      className="relative flex min-w-0 flex-col rounded-lg border border-border bg-card px-2.5 pb-3 pt-2 shadow-card transition-colors duration-100 ease-out focus-within:z-20 hover:bg-muted/40 max-sm:w-40 max-sm:shrink-0 lg:min-w-[7rem] lg:flex-1 lg:basis-0"
+      className="group/tile relative flex min-w-0 flex-col rounded-lg border border-border bg-card px-2.5 pb-3 pt-2 shadow-card transition-colors duration-100 ease-out focus-within:z-20 hover:bg-muted/40 max-sm:w-40 max-sm:shrink-0 lg:min-w-[7rem] lg:flex-1 lg:basis-0"
     >
       {doc.myColor ? (
         <span aria-hidden className="absolute inset-y-2 left-0 w-1 rounded-r-full" style={kbColorDot(doc.myColor)} />
       ) : null}
       <span className="flex items-center justify-between gap-2 text-muted-foreground">
-        <FileText className="h-4 w-4 shrink-0" aria-hidden />
+        {/* Above the tile link's click overlay so hovering the icon shows its description. */}
+        <span className="group/why relative z-10 inline-flex" data-kb-shortcut-why={source.label}>
+          <span aria-hidden className={cn("inline-flex h-6 w-6 items-center justify-center rounded-md", source.tone)}>
+            <source.Glyph />
+          </span>
+          <span
+            id={tipId}
+            role="tooltip"
+            className="pointer-events-none absolute left-0 top-full z-30 mt-1 hidden w-max max-w-[11rem] rounded-md border border-border bg-card px-2.5 py-1.5 text-xs leading-snug text-foreground shadow-panel group-hover/why:block group-has-[a:focus-visible]/tile:block motion-safe:animate-in motion-safe:fade-in motion-safe:duration-100"
+          >
+            <span className="block font-medium">{source.label}</span>
+            <span className="block text-muted-foreground">{source.detail}</span>
+          </span>
+        </span>
         <span aria-hidden className="text-xs font-medium tabular-nums">
           {number}
         </span>
       </span>
-      <span className="mt-1.5 line-clamp-2 text-xs text-muted-foreground" data-kb-shortcut-why>
-        <ShortcutSource shortcut={shortcut} />
-      </span>
       <Link
         href={`/kb/${doc.documentId}`}
         aria-keyshortcuts={number <= KB_NUMBERED_PINS ? String(number) : undefined}
+        aria-describedby={tipId}
         title={doc.title}
-        className="mt-0.5 line-clamp-3 break-words rounded-sm text-sm font-medium leading-snug text-foreground after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="mt-1.5 line-clamp-3 break-words rounded-sm text-sm font-medium leading-snug text-foreground after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
-        <span className="sr-only">Shortcut {number}: </span>
+        <span className="sr-only">Shortcut {number}, {source.label.toLowerCase()}: </span>
         <span data-kb-title>{doc.title}</span>
         <SourceColorLabel color={doc.myColor} labels={data.labels} />
       </Link>
