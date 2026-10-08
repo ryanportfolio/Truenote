@@ -1,10 +1,11 @@
 import { forwardRef, useEffect, useId, useRef, useState } from "react";
 import { Link } from "wouter";
-import { Pencil, Star } from "lucide-react";
+import { Ellipsis, Pencil, Star } from "lucide-react";
 import { KB_NUMBERED_PINS, docCategoryPaths, type KbShortcut } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
 import { useKbLibraryContext } from "./KbContext";
-import { pathsLabel } from "./KbDocRow";
+import { pathsLabel, useDocMenuEntries } from "./KbDocRow";
+import { KbMenu } from "./KbMenu";
 import { ColorDot, LabelChip } from "./KbShared";
 
 /** Team shortcut: two people, the manager's pick for everyone. */
@@ -45,16 +46,23 @@ const SHORTCUT_SOURCE = {
   recent: { label: "Recently opened", detail: "You opened this lately.", Glyph: RecentGlyph, tone: "bg-muted text-muted-foreground" }
 } as const;
 
-function ShortcutTile({ shortcut, index }: { shortcut: KbShortcut; index: number }): JSX.Element {
+/**
+ * One shelf tile. Right-click (or the "..." that shows on hover and focus)
+ * opens the same actions as a list row, plus "Edit shortcuts".
+ */
+function ShortcutTile({ shortcut, index, onEdit }: { shortcut: KbShortcut; index: number; onEdit: () => void }): JSX.Element {
   const { data, lookup } = useKbLibraryContext();
   const tipId = useId();
+  const tileRef = useRef<HTMLLIElement>(null);
   const { doc } = shortcut;
+  const menu = [...useDocMenuEntries(doc), { label: "Edit shortcuts…", icon: Pencil, onSelect: onEdit }];
   const number = index + 1;
   const source = SHORTCUT_SOURCE[shortcut.source];
   const paths = docCategoryPaths(doc, lookup.tree);
   const where = paths.length > 0 ? `In ${pathsLabel(paths)}` : "Not in a folder";
   return (
     <li
+      ref={tileRef}
       data-kb-shortcut={number}
       data-kb-shortcut-source={shortcut.source}
       className="group/tile relative flex min-w-0 items-start gap-2.5 rounded-lg border border-border bg-card px-3 py-2.5 shadow-card transition-colors duration-100 ease-out focus-within:z-20 hover:z-20 hover:bg-muted/40 max-sm:w-52 max-sm:shrink-0"
@@ -93,6 +101,17 @@ function ShortcutTile({ shortcut, index }: { shortcut: KbShortcut; index: number
           <span className="sr-only">, {where.charAt(0).toLowerCase() + where.slice(1)}.</span>
         </Link>
         <LabelChip color={doc.myColor} labels={data.labels} />
+      </span>
+      <span className="absolute right-1.5 top-1.5 z-10 opacity-0 transition-opacity duration-100 focus-within:opacity-100 group-hover/tile:opacity-100 max-sm:opacity-100">
+        <KbMenu
+          label={`Actions for ${doc.title}`}
+          title="More actions (or right-click)"
+          items={menu}
+          contextTarget={tileRef}
+          buttonClassName="btn-icon h-7 w-7 bg-card"
+        >
+          <Ellipsis className="h-4 w-4" aria-hidden />
+        </KbMenu>
       </span>
     </li>
   );
@@ -137,7 +156,7 @@ export const KbShortcutShelf = forwardRef<
           )}
         >
           {shelf.map((shortcut, i) => (
-            <ShortcutTile key={shortcut.doc.documentId} shortcut={shortcut} index={i} />
+            <ShortcutTile key={shortcut.doc.documentId} shortcut={shortcut} index={i} onEdit={onEdit} />
           ))}
         </ol>
       ) : (

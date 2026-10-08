@@ -5,7 +5,8 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
-  type ReactNode
+  type ReactNode,
+  type RefObject
 } from "react";
 import { createPortal } from "react-dom";
 import { Check, type LucideIcon } from "lucide-react";
@@ -58,14 +59,17 @@ export type KbMenuEntry = KbMenuItem | KbMenuSwatches | KbMenuHeading | "separat
 /**
  * Small action menu (menu button pattern). Portaled with fixed positioning
  * so rows inside clipped cards can still open it. Arrow keys, Home and End
- * move between items; Escape closes and returns focus to the button.
+ * move between items; Escape closes and returns focus to the button. With
+ * `contextTarget`, a right-click (or the keyboard's menu key) on that element
+ * opens the same menu at the pointer instead of the browser's own menu.
  */
 export function KbMenu({
   label,
   items,
   children,
   buttonClassName,
-  title
+  title,
+  contextTarget
 }: {
   /** Accessible name for the button. */
   label: string;
@@ -74,8 +78,13 @@ export function KbMenu({
   children: ReactNode;
   buttonClassName?: string;
   title?: string;
+  /** Element whose right-click opens this menu at the pointer. */
+  contextTarget?: RefObject<HTMLElement>;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
+  // Where a right-click opened the menu; null when the button opened it.
+  const pointRef = useRef<{ x: number; y: number } | null>(null);
+  const [pointTick, setPointTick] = useState(0);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -87,11 +96,19 @@ export function KbMenu({
 
   const focusedRef = useRef(false);
 
-  /** Place the menu under (or above) its button; false when the button left the viewport. */
+  /** Place the menu under (or above) its button or the right-click point; false when the button left the viewport. */
   function place(): boolean {
     const button = buttonRef.current;
     const menu = menuRef.current;
     if (!button || !menu) return false;
+    const point = pointRef.current;
+    if (point) {
+      const left = Math.max(8, Math.min(point.x, window.innerWidth - menu.offsetWidth - 8));
+      const top =
+        point.y + menu.offsetHeight > window.innerHeight - 8 ? Math.max(8, point.y - menu.offsetHeight) : point.y;
+      setPosition((prev) => (prev && prev.top === top && prev.left === left ? prev : { top, left }));
+      return true;
+    }
     const rect = button.getBoundingClientRect();
     if (rect.bottom < 0 || rect.top > window.innerHeight) return false;
     const width = menu.offsetWidth;
@@ -110,7 +127,24 @@ export function KbMenu({
       return;
     }
     place();
-  }, [open]);
+  }, [open, pointTick]);
+
+  useEffect(() => {
+    const target = contextTarget?.current;
+    if (!target) return;
+    function onContextMenu(event: MouseEvent): void {
+      event.preventDefault();
+      // The keyboard's menu key reports no pointer; open under the element instead.
+      const fromKeyboard = event.clientX === 0 && event.clientY === 0;
+      const rect = (target as HTMLElement).getBoundingClientRect();
+      pointRef.current = fromKeyboard ? { x: rect.left, y: rect.bottom + 4 } : { x: event.clientX, y: event.clientY };
+      focusFirstRef.current = "first";
+      setOpen(true);
+      setPointTick((n) => n + 1);
+    }
+    target.addEventListener("contextmenu", onContextMenu);
+    return () => target.removeEventListener("contextmenu", onContextMenu);
+  }, [contextTarget]);
 
   // Focus moves into the menu once per opening, after it is positioned and
   // visible: onto the current choice when the menu has one (a color picker
@@ -134,7 +168,8 @@ export function KbMenu({
     // Scrolling or resizing keeps the menu beside its button; it closes only
     // when the button leaves the screen.
     function onViewportChange(): void {
-      if (!place()) setOpen(false);
+      // A menu opened at the pointer would drift from what was clicked; close it.
+      if (pointRef.current || !place()) setOpen(false);
     }
     document.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("resize", onViewportChange);
@@ -160,6 +195,7 @@ export function KbMenu({
       close(false);
     } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
+      pointRef.current = null;
       focusFirstRef.current = event.key === "ArrowUp" ? "last" : "first";
       setOpen(true);
     }
@@ -217,6 +253,7 @@ export function KbMenu({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         onClick={() => {
+          pointRef.current = null;
           focusFirstRef.current = "first";
           setOpen((v) => !v);
         }}
