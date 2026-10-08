@@ -43,6 +43,7 @@ import {
   ReaderOutline,
   ReaderRelated,
   goToHeading,
+  useStickySide,
   type ReaderHeading
 } from "@/components/kb-reader/ReaderSide";
 import "@/components/kb-reader/readerBody.css";
@@ -256,6 +257,7 @@ function ReaderArticle({
       : [];
   const labels = library?.labels ?? [];
   const [headings, setHeadings] = useState<ReaderHeading[]>([]);
+  const sideRef = useStickySide();
 
   // "On this page" lists the document's section headings as rendered, so
   // the links always match the ids on the page.
@@ -300,13 +302,13 @@ function ReaderArticle({
       />
       <KbDocPersonalError personal={personal} />
       <div className="mt-2 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_20.5rem] xl:items-start xl:gap-x-7">
-        {/* From 1280px the side column follows the reader down the page, just
-          * below the sticky header, and scrolls on its own when taller than
-          * the screen. Below that its parts flow around the document: note and
-          * outline first, related sources last. */}
+        {/* From 1280px the side column follows the reader down the page
+          * (useStickySide sets where it pins). Below that its parts flow
+          * around the document: note and outline first, related sources last. */}
         <div
+          ref={sideRef}
           data-kb-reader-side
-          className="contents xl:sticky xl:top-[calc(var(--kb-reader-header,0px)+1rem)] xl:col-start-2 xl:row-start-1 xl:-mx-2 xl:flex xl:max-h-[calc(100dvh-4rem-var(--kb-reader-header,0px)-2rem)] xl:flex-col xl:gap-5 xl:overflow-y-auto xl:px-2 xl:pb-2"
+          className="contents xl:sticky xl:top-[var(--kb-reader-side-top,1rem)] xl:col-start-2 xl:row-start-1 xl:flex xl:flex-col xl:gap-5"
         >
           <div className="flex min-w-0 flex-col gap-5">
             <ReaderNoteCard personal={personal} />
