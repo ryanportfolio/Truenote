@@ -6,7 +6,7 @@ The set covers every format the upload route accepts (PDF, DOCX, PNG, JPEG, WEBP
 
 ## Files
 
-All upload-ready files are in `files/`.
+All upload-ready files are in `files/`. The first 13 rows are the original format set; the 15 Markdown files after them were added on 2026-10-08 for the source library showcase (`scripts/src/seed-showcase.ts`).
 
 | File | Format | What it exercises |
 |---|---|---|
@@ -23,6 +23,21 @@ All upload-ready files are in `files/`.
 | `escalation-matrix.md` | Markdown | Routing table plus rules |
 | `outage-and-service-credits-faq.md` | Markdown | Question-and-answer format with a credit table |
 | `call-scripts.txt` | Plain text | Required lines and guidance |
+| `updating-a-payment-method.md` | Markdown | Payment methods table, decline handling, grace period |
+| `plan-upgrades-and-proration.md` | Markdown | Worked proration examples, billing-term switches |
+| `enterprise-seat-management.md` | Markdown | Administrator-only changes, seat pricing table |
+| `storage-limits-and-overage.md` | Markdown | Usage thresholds, no overage charges |
+| `two-factor-authentication-reset.md` | Markdown | Higher verification bar, 24-hour waiting period |
+| `account-recovery-lost-email.md` | Markdown | PIN-required email change, 72-hour hold |
+| `password-reset-and-account-unlock.md` | Markdown | Lockout rules, reset link lifetime, script |
+| `data-export-requests.md` | Markdown | Export contents table, link timing |
+| `retention-offers-and-save-script.md` | Markdown | Offer table by cancel reason, script lines |
+| `chargeback-and-dispute-intake.md` | Markdown | Dispute versus chargeback, BILL-CB intake |
+| `invoices-and-tax-receipts.md` | Markdown | Invoice detail changes, sales tax |
+| `education-and-nonprofit-discounts.md` | Markdown | Eligibility table, discounted prices |
+| `accessibility-and-relay-calls.md` | Markdown | Relay call etiquette, accommodations table |
+| `deceased-account-holder-requests.md` | Markdown | Request table by caller, LP-PRIV ticket |
+| `fraud-team-handoff.md` | Markdown | Written as a confidential procedure. Uploaded as `internal` on 2026-10-08, because the agent account's clearance is `internal` and the upload route refuses content above the uploader's clearance. Re-upload it as `confidential` from an account with that clearance to show it as a restricted source to CSRs |
 
 Upload them all into the same program. The documents agree with each other; where one refers to another (for example the refund procedure and the reason codes in the billing screenshot), the facts match.
 
@@ -44,6 +59,21 @@ These are the answers a CSR should get, with the file that holds each one. Sever
 - Escalate within 15 minutes when a customer asks for a supervisor (`escalation-matrix.md`, `escalation-path-poster.webp`, `call-scripts.txt`).
 - Deletion: 30-day soft delete, permanent on day 31; export link within 30 days, usually 3 business days (`privacy-requests.pdf`).
 - Support is closed on Thu Nov 26, Fri Dec 25 and Fri Jan 1; the outage line 1-800-555-0142 stays open 24/7 (`holiday-support-hours.png`, `outage-and-service-credits-faq.md`).
+- Card details are entered only by the customer in Billing settings; PayPal works on Basic and Pro, invoice billing only on Enterprise annual plans (`updating-a-payment-method.md`).
+- Upgrades are prorated by day; example: Basic to Pro with 15 of 30 days left costs $3.50 (`plan-upgrades-and-proration.md`).
+- Only the Enterprise account administrator changes seats; added seats are prorated, removed seats take effect at renewal, never below 5 users (`enterprise-seat-management.md`).
+- There are no storage overage charges or add-on storage; uploads pause at 100% and a warning goes out at 90% (`storage-limits-and-overage.md`).
+- A sign-in 2FA reset needs the PIN or the email code as one factor and has a 24-hour waiting period; customers get 10 backup codes (`two-factor-authentication-reset.md`).
+- Changing a lost account email needs the 6-digit PIN plus one more factor and has a 72-hour hold (`account-recovery-lost-email.md`).
+- Accounts lock for 30 minutes after 10 failed sign-ins; reset links last 60 minutes (`password-reset-and-account-unlock.md`).
+- Only one open export request per account; files come as ZIP archives, account data as JSON (`data-export-requests.md`).
+- Retention: one offer per call, no discounts; Basic and Pro can pause for 1 to 3 months once in 12 months (`retention-offers-and-save-script.md`).
+- Never refund a charge already in a chargeback; chargebacks go to Billing Operations, queue BILL-CB, 1 business day (`chargeback-and-dispute-intake.md`).
+- Invoices from the past 7 years are under Billing settings; tax IDs apply to future invoices only (`invoices-and-tax-receipts.md`).
+- Education and nonprofit discount: 30% off Pro and Enterprise (Pro monthly $8.39); students and teachers qualify for Pro; reviewed within 2 business days (`education-and-nonprofit-discounts.md`).
+- On relay calls, speak to the customer, not the operator, and verify with the same two factors (`accessibility-and-relay-calls.md`).
+- Bereavement: billing is paused the same day; account closure goes to Legal and Privacy, queue LP-PRIV, with no cancellation fee (`deceased-account-holder-requests.md`).
+- Suspected takeover or card testing is P1: lock the account and page Security Response, who respond within 1 hour (`fraud-team-handoff.md`).
 
 ## Eval questions
 
@@ -69,6 +99,10 @@ Suggested additions, one per format, so the eval covers each parser path:
 2. Upload every file in `files/` to the demo program from the admin documents page, choosing the existing approved content source, and wait until each one shows as ready. The external malware scan is turned off in the demo's Security settings, so uploads are not quarantined for lack of a scanner.
 3. Open each of the two older demo documents ("Cancellation Policy v4" and "Refund Procedure v4") and choose **Revoke now**, so citations point at the new set. Their original files were never copied to Railway, so they can be read but not rescanned. Revoking is safe for the eval on the Railway demo: none of its 10 eval questions has an expected document bound (`expected_doc_id` is empty on all of them, checked 2026-10-07), so citation scoring does not look for the old documents. On a database seeded with `scripts/src/seed.ts`, which binds `expected_doc_id` to the seeded documents, point those questions at the new documents before revoking, or their citation checks fail even when the answer is right.
 4. Ask one question per format from the table above and check that each answer cites the expected file.
+
+## Showcase seed
+
+`scripts/src/seed-showcase.ts` uploads the 15 showcase files and fills the source library and Source usage pages with demo activity: six CSRs at `larkspur.example` (Devon Clarke asks nothing), nested folders, tags, team pins, about 200 real questions with thumbs up and down, reader opens, personal shortcuts, notes and colors, and a backdate step that spreads the activity over 90 days. Its header lists each step, what it needs and which steps add rows on a re-run. It ran once against the Railway demo on 2026-10-08.
 
 ## Rebuilding the files
 

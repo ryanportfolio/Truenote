@@ -6,6 +6,7 @@
   "scripts": {
     "worker": "tsx src/worker.ts",
     "seed": "tsx src/seed.ts",
+    "seed:showcase": "tsx src/seed-showcase.ts",
     "sweep-orphans": "tsx src/sweep-orphans.ts",
     "eval": "tsx src/eval.ts",
     "reingest": "tsx src/reingest.ts",
