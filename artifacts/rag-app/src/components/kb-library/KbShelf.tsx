@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useId, useRef, useState } from "react";
 import { Link } from "wouter";
-import { Star } from "lucide-react";
+import { Pencil, Star } from "lucide-react";
 import { KB_NUMBERED_PINS, docCategoryPaths, type KbShortcut } from "@/lib/kbLibrary";
 import { kbColorDot } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
@@ -157,9 +157,12 @@ export const KbShortcutShelf = forwardRef<
           type="button"
           onClick={onEdit}
           data-kb-edit-shortcuts
-          className="cursor-pointer rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          aria-label="Edit shortcuts"
+          title="See and change your shortcuts"
+          className="btn-whisper gap-1.5 px-3 py-1.5 text-sm"
         >
-          Edit shortcuts
+          <Pencil className="h-4 w-4" aria-hidden />
+          Edit
         </button>
       </div>
       {shelf.length > 0 ? (
