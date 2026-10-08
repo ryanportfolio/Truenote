@@ -7,7 +7,7 @@
 
 Production runs on Railway: project `truenote`, one environment `production` with no other environment and no development database, application services `web` and `worker`, database service `pgvector`, and bucket `truenote-storage` (deployment.md).
 
-One person must be able to follow every step. You need the Railway CLI, logged in (the commands below were checked against CLI 5.26), Docker for the scratch database in section 4.2, and a repository checkout with pnpm for the test instance in section 5.4. Postgres client tools are not needed on your machine: `psql`, `pg_dump`, and `pg_restore` run inside the `pgvector` container or the scratch container.
+One person must be able to follow every step. You need the Railway CLI, logged in (the commands below were checked against CLI 5.26), an OpenSSH client (`ssh`) with the SSH key that `railway ssh` uses, for the tunnel in section 4.2, and a repository checkout with pnpm for the test instance in section 5.4. Postgres client tools are not needed on your machine: `psql`, `pg_dump`, and `pg_restore` run inside the `pgvector` container, including against the temporary test service in section 4.2.
 
 Railway commands below leave out the project and environment flags. Run them from a directory linked to production:
 
@@ -19,7 +19,7 @@ Linking is the route to use: the commands do not all accept the same flags (Rail
 
 ## Shells
 
-Commands that run on your machine are written for bash or zsh: Git Bash on Windows, or a macOS or Linux terminal running bash or zsh. Plain POSIX shells such as dash reject the `read -rs` form in the table below. PowerShell does not read the bash patterns these commands use; each command that uses one has its PowerShell form beside it. `railway`, `docker`, `node`, and `pnpm` commands that use no shell variable are the same in both shells. Commands run inside a container (after `railway ssh` or with `docker exec`) run in that container's Linux shell and are the same whichever shell you started from. SQL blocks run inside `psql`.
+Commands that run on your machine are written for bash or zsh: Git Bash on Windows, or a macOS or Linux terminal running bash or zsh. Plain POSIX shells such as dash reject the `read -rs` form in the table below. PowerShell does not read the bash patterns these commands use; each command that uses one has its PowerShell form beside it. `railway`, `ssh`, `node`, and `pnpm` commands that use no shell variable are the same in both shells, except `railway volume files` commands (last row of the table). Commands run inside a container (after `railway ssh`) run in that container's Linux shell and are the same whichever shell you started from. SQL blocks run inside `psql`.
 
 | Pattern | bash | PowerShell |
 |---|---|---|
@@ -27,6 +27,7 @@ Commands that run on your machine are written for bash or zsh: Git Bash on Windo
 | Read it in a command | `"$TARGET_DATABASE_URL"` | `$env:TARGET_DATABASE_URL` |
 | Set variables before starting a server | `API_PORT=3001 pnpm ...` (applies to that one command) | `$env:API_PORT = '3001'; pnpm ...` (stays set until the PowerShell window closes) |
 | Remove a variable for this session | `unset NAME` | `Remove-Item Env:NAME -ErrorAction SilentlyContinue` |
+| Pass a remote path that starts with `/` to `railway volume files` | `MSYS_NO_PATHCONV=1 railway volume files ...`. Git Bash needs the prefix: without it, `/truenote-dumps/x.dump` reaches Railway as `C:/Program Files/Git/truenote-dumps/x.dump`. Other bash and zsh shells ignore it. | `railway volume files ...`, unchanged, without the prefix |
 
 `PROD_DATABASE_URL`, `DATABASE_URL`, and `POSTGRES_PASSWORD` follow the same pattern.
 
@@ -46,11 +47,11 @@ psql -h localhost -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -X
 This is the connection `scripts/railway-apply-sql.mjs` uses. Always pass `-h localhost -p 5432`: in this container `PGPORT` points at the public TCP proxy ([`.claude/reference/pitfalls.md`](../../.claude/reference/pitfalls.md), entry of 2026-10-07). `/var/lib/postgresql` is where the `pgvector-volume` volume is mounted (deployment.md), so files that `\copy` and `pg_dump` write to `truenote-dumps` stay on the volume. Copy each one to your machine, then delete it from the volume:
 
 ```
-railway volume files --volume pgvector-volume download /truenote-dumps/<file> ./<file>
-railway volume files --volume pgvector-volume delete /truenote-dumps/<file>
+MSYS_NO_PATHCONV=1 railway volume files --volume pgvector-volume download /truenote-dumps/<file> ./<file>
+MSYS_NO_PATHCONV=1 railway volume files --volume pgvector-volume delete /truenote-dumps/<file>
 ```
 
-The `--volume` option goes before the subcommand ([Railway CLI: volume](https://docs.railway.com/cli/volume), accessed 2026-10-07). That page does not say whether a remote path is relative to the volume or to its mount point `[CONFIRM: with railway volume files list / that /truenote-dumps/ is the folder created above]`. It also says `files delete` refuses to run when an AI agent invokes it, so a person runs it. Files left on the volume hold production data, including password hashes, and once volume backups are on they are copied into every later backup.
+In PowerShell, drop `MSYS_NO_PATHCONV=1` (section "Shells"). The `--volume` option goes before the subcommand ([Railway CLI: volume](https://docs.railway.com/cli/volume), accessed 2026-10-07). That page does not say whether a remote path is relative to the volume or to its mount point `[CONFIRM: with MSYS_NO_PATHCONV=1 railway volume files --volume pgvector-volume list / that /truenote-dumps/ is the folder created above]`. It also says `files delete` refuses to run when an AI agent invokes it, so a person runs it. Files left on the volume hold production data, including password hashes, and once volume backups are on they are copied into every later backup.
 
 ## 1. What holds data and what backs it up
 
@@ -74,14 +75,14 @@ These are proposed targets for one maintainer. They are not measured. Replace "p
 | Uploaded source files | Every file since the last bucket export. No export exists today, so every file is at risk `[CONFIRM: export schedule; proposed weekly]` | 2 business days to collect missing files from program owners and re-upload (proposed) |
 | Secrets | Not applicable (re-issue) | 4 hours to re-issue and set all variables (proposed) |
 
-Dump cadence until volume backups are on (proposed): one dump a week, and one immediately before each risky change: applying a `lib/db/sql/` file, a bulk user import, a re-ingest, a document purge, or a deploy that changes ingestion or data handling. Record each dump (UTC time, size, SHA-256, storage location) in the restricted evidence location.
+Dump cadence until volume backups are on (proposed): one dump a week, and one immediately before each risky change: applying a `lib/db/sql/` file, a bulk user import, a re-ingest, a document purge, or a deploy that changes ingestion or data handling. Take every dump, including these, with section 4.1, step 5, so each gets its count record. Record each dump (UTC time, size, SHA-256, storage location) in the restricted evidence location, and store its count record next to it.
 
 Measure RPO as the gap between the chosen restore point and the last good write that the restore discarded. Measure RTO from the recorded decision time to the first passing smoke test against production after cutover.
 
 ## 3. Safety rules for any restore
 
 1. **Restore to a non-production target first.** Railway has one environment for Truenote, `production`, and no development database (deployment.md), so a non-production target is one of these:
-   - a scratch Postgres 18 container on the operator's machine (section 4.2), used for every scheduled test;
+   - a temporary Railway service in the `truenote` project, created from the `pgvector/pgvector:pg18` image for each scheduled test and deleted when its evidence is recorded (sections 4.2 and 4.6). It runs its own Postgres server with its own password and no volume, separate from the `pgvector` service and `pgvector-volume`. It sits in the `production` environment, the only one, and so on production's private network `[CONFIRM: that the owner accepts a temporary test service in the production environment]`;
    - for an incident restore from a dump (path B), a separate scratch database inside the `pgvector` server (section 4.4). It is not production until it is renamed into place, but it shares the production server's disk, memory, and credentials `[CONFIRM: that the owner accepts this Railway-hosted target, and that pgvector-volume has room for a second copy of the database]`.
 
    A volume-backup restore (path A) has no non-production target: Railway restores only into the same project and environment and mounts the restored volume on the `pgvector` service ([Railway: backups](https://docs.railway.com/reference/backups), accessed 2026-10-07). For path A the rule becomes: take a dump first (section 4.1, step 5), keep `web` and `worker` stopped, run section 5 against the restored production database before either starts, and keep the previous volume for rollback (section 4.5). Record in the evidence table which form of this rule applied.
@@ -112,7 +113,7 @@ Measure RPO as the gap between the chosen restore point and the last good write 
 Paths:
 
 - **Path A, volume backup** (not yet usable: backups are off). Restores the `pgvector` volume from a Railway backup.
-- **Path B, operator dump** (available today). Restores a `pg_dump` taken by the operator: into a scratch container for a scheduled test (section 4.2), or into a scratch database on the `pgvector` server for an incident (section 4.4).
+- **Path B, operator dump** (available today). Restores a `pg_dump` taken by the operator: into a temporary Railway service for a scheduled test (section 4.2), or into a scratch database on the `pgvector` server for an incident (section 4.4).
 
 ### 4.1 Prepare
 
@@ -153,36 +154,83 @@ Paths:
    When the cutover in section 4.4 stops writes, run all three exports in this step again and use the later files for reconciliation, so changes made while the target was being verified are not lost.
 5. Take a logical dump of production for every path B restore, including scheduled tests; before every path A restore, as a last-resort rollback copy; and on the cadence in section 2. The command matches the 2026-10-07 data copy (deployment.md, "Data copy"): `pg_dump` 18 inside `pgvector`, custom format, `--no-owner --no-acl`, without the `_system` and `pgboss` schemas and without the rows of `sessions` and `password_reset_tokens`. Excluding `_system` changes nothing when that schema does not exist.
 
-   First, in the production psql session, run the baseline query from step 3 again, immediately before the dump, and record the result as the export-time counts. Writes made between step 3 and the dump change production counts, so path B is checked against these export-time counts, not the step 3 baseline (section 5.2). `pg_dump` exports one consistent snapshot taken when it starts, so only writes made between this query and that start can still cause a difference. Then leave `psql` (`\q`) and, still inside the container:
+   The dump and its count record are written to `pgvector-volume`, the production volume. For a scheduled test they are the one write the test makes to it; both files are deleted from the volume after section 4.2 has restored the dump, and no later than section 4.6, step 3. Before writing them, check that the volume has room. Inside the container, `df -h /var/lib/postgresql` shows the free space on the volume; in the production psql session, `SELECT pg_size_pretty(pg_database_size(current_database()));` shows the database size. Continue only when the free space is larger than the database size; a custom-format dump of the database is smaller than the database itself. `[CONFIRM: on the first test, that df inside the container reports the volume's size limit; railway metrics -s pgvector --volume also shows volume metrics (Railway CLI 5.26 railway metrics --help)]`
+
+   First, in the production psql session, immediately before the dump, write the dump's count record: the baseline query from step 3, run again with its output sent to a file next to the dump. Enter `\o truenote-prod-<UTC date>-counts.txt`, paste the step 3 query, then enter `\o` to send output back to the screen. Every dump gets a count record: the weekly dumps, the dumps before risky changes (section 2), and the dumps taken for a test or before a restore. A restore from a dump is checked against that dump's own count record (section 5.2). The step 3 baseline does not serve: writes made between step 3 and the dump change production counts, and an incident restore uses a dump taken long before. `pg_dump` exports one consistent snapshot taken when it starts, so only writes made between the count query and that start can still cause a difference. Then leave `psql` (`\q`) and, still inside the container:
 
    ```
    pg_dump -h localhost -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --no-owner --no-acl --exclude-schema=_system --exclude-schema=pgboss --exclude-table-data=public.sessions --exclude-table-data=public.password_reset_tokens --file=/var/lib/postgresql/truenote-dumps/truenote-prod-<UTC date>.dump
    sha256sum /var/lib/postgresql/truenote-dumps/truenote-prod-<UTC date>.dump
    ```
 
-   Copy the dump to your machine (section "Shells") and record its SHA-256. Store it encrypted outside the repository `[CONFIRM: storage location for dumps]`, then delete it from the volume. An incident restore uses an earlier dump taken before the damage; section 4.4 uploads that one back to the volume.
+   Copy the dump and its count record to your machine (section "Shells") and record the dump's SHA-256. Store both together, encrypted, outside the repository `[CONFIRM: storage location for dumps]`, then delete both from the volume. For a scheduled test, delete them only after section 4.2 has restored the dump: that restore reads the file on the volume. An incident restore uses an earlier dump taken before the damage; section 4.4 uploads that one back to the volume, and section 5.2 compares the restore with that dump's count record.
 
    What the dump leaves out: sessions and reset tokens, so everyone signs in again after a restore from it; and the `pgboss` job queue, which the first boot of `web` or `worker` recreates empty (deployment.md, "Data copy"). Ingestion or evaluation jobs queued at dump time are lost; a version that was waiting on one needs a new upload `[CONFIRM: which document version states such a version is left in]`.
 
-### 4.2 Create the scratch target (path B, scheduled tests)
+### 4.2 Create the test service (path B, scheduled tests)
 
-On the operator's machine, start an empty Postgres 18 server from the image production uses (deployment.md), reachable only from this machine. Set its password for the session first (bash: `read -rs POSTGRES_PASSWORD && export POSTGRES_PASSWORD`; PowerShell: `$env:POSTGRES_PASSWORD = Read-Host 'Scratch database password'`), then:
+Create a temporary service in the `truenote` project that runs an empty Postgres 18 server from the image production uses (deployment.md). The service costs money for as long as it runs, whether or not a test is in progress. Railway's pricing page lists container prices of $10 per GB of RAM per month and $20 per vCPU per month, each shown with its per-minute equivalent ([Railway: pricing plans](https://docs.railway.com/reference/pricing/plans), accessed 2026-10-07). Create it once the dump from step 4.1.5 is on the volume, and delete it as soon as the evidence is recorded (section 4.6).
 
-```
-docker run -d --name truenote-restore -e POSTGRES_PASSWORD -p 127.0.0.1:5433:5432 pgvector/pgvector:pg18
-```
+1. On your machine, generate the service's password into a session variable. The value stays out of shell history. It is 64 hex characters, so it needs no escaping in a connection string.
 
-`-e POSTGRES_PASSWORD` with no value passes the variable from your shell, so the password stays off the command line. Then enable the extensions the schema uses (deployment.md: `vector`, `pg_trgm`, `pgcrypto`) and restore the dump from step 4.1.5:
+   ```
+   POSTGRES_PASSWORD=$(openssl rand -hex 32) && export POSTGRES_PASSWORD
+   ```
 
-```
-docker cp truenote-prod-<UTC date>.dump truenote-restore:/tmp/truenote.dump
-docker exec truenote-restore psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
-docker exec truenote-restore pg_restore -U postgres -d postgres --no-owner --no-acl --single-transaction --exit-on-error /tmp/truenote.dump
-```
+   PowerShell:
 
-The target's connection string uses user `postgres`, the password above, host `127.0.0.1`, port `5433`, and database `postgres`. Set it as `TARGET_DATABASE_URL` with the pattern in the shell table. Run the SQL checks in section 5 with `docker exec -it truenote-restore psql -U postgres -d postgres`.
+   ```
+   $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); $env:POSTGRES_PASSWORD = -join ($b | ForEach-Object { $_.ToString('x2') })
+   ```
 
-A Railway-hosted scratch target is also possible: Railway's restore drill restores into a scratch database created with `CREATE DATABASE` ([Railway: back up and restore Postgres](https://docs.railway.com/guides/postgres-backups-restores), accessed 2026-10-07), which on Truenote means a database inside the production `pgvector` server `[CONFIRM: owner decision whether scheduled tests may use it]`.
+2. Create the service from the image, with that password as its `POSTGRES_PASSWORD` variable:
+
+   ```
+   railway add --image pgvector/pgvector:pg18 --service truenote-restore-test --variables "POSTGRES_PASSWORD=$POSTGRES_PASSWORD"
+   ```
+
+   PowerShell:
+
+   ```
+   railway add --image pgvector/pgvector:pg18 --service truenote-restore-test --variables "POSTGRES_PASSWORD=$env:POSTGRES_PASSWORD"
+   ```
+
+   `--image` creates the service from an image and `--variables` sets `"{key}={value}"` pairs on it (Railway CLI 5.26 `railway add --help`). Shell history keeps the variable name, not the value; the value is on the `railway` process's command line while it runs. The server's user and database are both `postgres`, the image defaults when `POSTGRES_USER` and `POSTGRES_DB` are unset `[CONFIRM: the pgvector/pgvector:pg18 defaults]`. `railway add` also links the new service to the current directory ([Railway CLI: add](https://docs.railway.com/cli/add), accessed 2026-10-07). Every Railway command in this runbook that targets a service passes `-s`, so none of them falls through to the test service.
+
+   The service has no volume. Its data lives on the container's ephemeral storage and is gone when the service is deleted; a restart or redeploy also loses it, and the restore must then be repeated. Ephemeral storage per service is 1 GB on the Trial and Free plans and 100 GB on Hobby and Pro (Railway: pricing plans) `[CONFIRM: the workspace's plan, and that the restored database fits]`. `[CONFIRM: that Railway attaches no volume to a service created from this image]`; section 4.6 checks for one before deleting the service.
+
+   Right after creating it, check that the service has no TCP proxy, so it is never reachable from the internet during the test:
+
+   ```
+   railway tcp-proxy list -s truenote-restore-test --json
+   ```
+
+   It must list no proxy. If it lists one, delete it with `railway tcp-proxy delete <proxy id> -s truenote-restore-test --yes` and run the list again before going on.
+3. Wait until the server is up: `railway deployment list -s truenote-restore-test --json` shows `SUCCESS`, and `railway logs -s truenote-restore-test` shows `database system is ready to accept connections` `[CONFIRM: that the first deployment starts with POSTGRES_PASSWORD set; if the log says the superuser password is not specified, run railway redeploy -s truenote-restore-test -y]`. Read the service's private DNS name with `railway private-network status -s truenote-restore-test`. The commands below assume `truenote-restore-test.railway.internal`, Railway's `SERVICE_NAME.railway.internal` form ([Railway: private networking](https://docs.railway.com/networking/private-networking), accessed 2026-10-07).
+4. Restore from inside the production `pgvector` container, over Railway's private network. The dump does not leave Railway for this: the restore reads the file that step 4.1.5 wrote to `pgvector-volume`. Print the password once to paste at the prompts (bash: `printf '%s\n' "$POSTGRES_PASSWORD"`; PowerShell: `$env:POSTGRES_PASSWORD`), open a shell in the container (section "Shells"), and run:
+
+   ```
+   pg_isready -h truenote-restore-test.railway.internal -p 5432
+   psql -h truenote-restore-test.railway.internal -p 5432 -U postgres -d postgres -X -W -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+   pg_restore -h truenote-restore-test.railway.internal -p 5432 -U postgres -d postgres -W --no-owner --no-acl --single-transaction --exit-on-error /var/lib/postgresql/truenote-dumps/truenote-prod-<UTC date>.dump
+   ```
+
+   `pg_isready` must report `accepting connections` before the other two run. The extensions are the ones the schema uses (deployment.md: `vector`, `pg_trgm`, `pgcrypto`). `-W` makes `psql` and `pg_restore` ask for the password, so a `PGPASSWORD` in the production container's environment, if one is set, is not used for the test server. `-h` names the test service on every command: `localhost` in this container is production. Run the SQL checks in section 5 in the same container with `psql -h truenote-restore-test.railway.internal -p 5432 -U postgres -d postgres -X -W`.
+5. Give the section 5.4 test instance a connection through an SSH tunnel from your machine to the test service. Railway SSH forwards local ports to "the container's loopback and your project's private network", and dials the connection from inside the container ([Railway CLI: ssh](https://docs.railway.com/cli/ssh), accessed 2026-10-07). Write an OpenSSH config block for the service, then open the tunnel in a separate shell and leave it running through section 5.4:
+
+   ```
+   railway ssh config --service truenote-restore-test --alias truenote-restore-test
+   ```
+
+   ```
+   ssh -N -L 127.0.0.1:5433:127.0.0.1:5432 truenote-restore-test
+   ```
+
+   The same page says a service without a domain uses its service instance ID as the SSH user `[CONFIRM: on the first test, that the generated block and the tunnel work for this service, which has no domain]`. The target's connection string uses user `postgres`, the password above, host `127.0.0.1`, port `5433`, and database `postgres`. Set it as `TARGET_DATABASE_URL` with the pattern in the shell table.
+
+   Do not open a TCP proxy on the test service instead. A proxy is a public endpoint, and Railway's TCP proxy page does not say whether the traffic is encrypted ([Railway: TCP proxy](https://docs.railway.com/networking/tcp-proxy), accessed 2026-10-07) `[CONFIRM: whether the pgvector image serves TLS; if the tunnel fails and the owner approves a proxy, create it with railway tcp-proxy create --port 5432 -s truenote-restore-test, connect to the domain and port railway tcp-proxy list -s truenote-restore-test prints, and delete it at the end of section 5.4]`. Never point a test at production's `pgvector` proxy.
+
+Scheduled tests do not use a scratch database inside the production `pgvector` server, the target of Railway's restore drill ([Railway: back up and restore Postgres](https://docs.railway.com/guides/postgres-backups-restores), accessed 2026-10-07): it would put a second copy of the data on production's disk and load production's server at every test. Section 4.4 uses that target only for incidents.
 
 Path B tests Truenote's own dump, not a Railway backup. It restores the state at dump time, not a chosen point in the past, so it cannot show that a backup is recoverable. Record which path you used. Until the owner turns on volume backups and path A is rehearsed (section 8), path A is untested.
 
@@ -218,8 +266,10 @@ Skip this section for a scheduled test.
    **Path B, operator dump (available today).** Use a dump taken before the damage. If it is no longer on the volume, upload it:
 
    ```
-   railway volume files --volume pgvector-volume upload ./truenote-prod-<UTC date>.dump /truenote-dumps/truenote-prod-<UTC date>.dump
+   MSYS_NO_PATHCONV=1 railway volume files --volume pgvector-volume upload ./truenote-prod-<UTC date>.dump /truenote-dumps/truenote-prod-<UTC date>.dump
    ```
+
+   In PowerShell, drop `MSYS_NO_PATHCONV=1` (section "Shells").
 
    In a shell in the `pgvector` container (section "Shells"), restore it into a new database next to production:
 
@@ -229,14 +279,26 @@ Skip this section for a scheduled test.
    pg_restore -h localhost -p 5432 -U "$POSTGRES_USER" -d truenote_restore --no-owner --no-acl --single-transaction --exit-on-error /var/lib/postgresql/truenote-dumps/truenote-prod-<UTC date>.dump
    ```
 
-   Run every check in section 5 against `truenote_restore` (`psql -h localhost -p 5432 -U "$POSTGRES_USER" -d truenote_restore -X`). Then close every `psql` session and swap the databases:
+   Run every check in section 5 against `truenote_restore` (`psql -h localhost -p 5432 -U "$POSTGRES_USER" -d truenote_restore -X`). Postgres refuses to rename a database that has open connections, and the section 5.4 test API server keeps pooled connections to `truenote_restore` while it runs. So before the swap, stop the test API server and the Vite frontend dev server (Ctrl+C in each shell) and close every `psql` session. Then check, in the `pgvector` container, that neither database has a connection left:
+
+   ```
+   psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "SELECT datname, pid, application_name, client_addr, backend_start FROM pg_stat_activity WHERE datname IN ('$POSTGRES_DB', 'truenote_restore')"
+   ```
+
+   Continue only when it returns no rows; otherwise find and close each listed connection, then run the check again. Swap the databases:
 
    ```
    psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "ALTER DATABASE \"$POSTGRES_DB\" RENAME TO truenote_before_restore"
    psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "ALTER DATABASE truenote_restore RENAME TO \"$POSTGRES_DB\""
    ```
 
-   Postgres refuses to rename a database that has open connections, so a refusal means something is still connected; find it with the `pg_stat_activity` query in step 2. The application reaches `$POSTGRES_DB` through `DATABASE_URL_PRIVATE` `[CONFIRM: that DATABASE_URL_PRIVATE names $POSTGRES_DB, as scripts/railway-apply-sql.mjs assumes for production]`. `truenote_before_restore` is the rollback copy (section 4.5).
+   If the first rename succeeds and the second fails, no database has the name `$POSTGRES_DB`. Rename the first one back at once, then run the connection check again, close what it lists, and repeat the swap:
+
+   ```
+   psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "ALTER DATABASE truenote_before_restore RENAME TO \"$POSTGRES_DB\""
+   ```
+
+   The application reaches `$POSTGRES_DB` through `DATABASE_URL_PRIVATE` `[CONFIRM: that DATABASE_URL_PRIVATE names $POSTGRES_DB, as scripts/railway-apply-sql.mjs assumes for production]`. `truenote_before_restore` is the rollback copy (section 4.5).
 4. Bring the restored schema forward to the deployed code, with `web` and `worker` still stopped. A database restore does not restore code, so the restored database has the schema of the restore point while step 6 starts the currently deployed commit. That code needs the tables and columns in `lib/db/src/schema.ts` plus the objects the DDL files created. A Railway restore point is never older than the 2026-10-07 baseline, which already holds every file under `docs/security/` (deployment.md, "Schema changes"), so only `lib/db/sql/` files can be missing. Check at every restore:
    - In the production psql session, list the recorded files: `SELECT filename, sha256 FROM schema_migrations ORDER BY filename;`. Compare with the files in `lib/db/sql/` at the deployed commit. A file in the folder and not in the result needs applying. If the table itself is missing, `0001_schema_migrations.sql` comes first.
    - Run the section 5.1 query and [`../compliance/pci/production-control-verification.sql`](../compliance/pci/production-control-verification.sql) against production and compare the output with the last production run from before the incident.
@@ -355,11 +417,17 @@ If production fails the checks or the smoke test after cutover:
 
 1. Stop `web` and `worker` again (`railway down -s web -y`, `railway down -s worker -y`) and keep them stopped through this section, under the rules in section 4.4, step 2.
 2. Path A: mount the previous volume again; Railway keeps it in the project, unmounted ([Railway: backups](https://docs.railway.com/reference/backups), accessed 2026-10-07). `[CONFIRM: the exact steps, for example railway volume detach and railway volume attach (Railway CLI: volume), and whether the swap is staged until Deploy like the restore]`
-3. Path B: swap the databases back, in a shell in the `pgvector` container:
+3. Path B: swap the databases back, in a shell in the `pgvector` container. First run the connection check from section 4.4, step 3, with `truenote_before_restore` in place of `truenote_restore`. Then swap:
 
    ```
    psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "ALTER DATABASE \"$POSTGRES_DB\" RENAME TO truenote_failed_restore"
    psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "ALTER DATABASE truenote_before_restore RENAME TO \"$POSTGRES_DB\""
+   ```
+
+   If the first rename succeeds and the second fails, no database has the name `$POSTGRES_DB`. Rename the first one back at once, then run the connection check again, close what it lists, and repeat the swap:
+
+   ```
+   psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "ALTER DATABASE truenote_failed_restore RENAME TO \"$POSTGRES_DB\""
    ```
 
 4. Last resort: restore the dump taken in step 4.1.5 into a new database and swap it in, the same way as path B.
@@ -368,9 +436,24 @@ If production fails the checks or the smoke test after cutover:
 
 ### 4.6 Clean up
 
-1. Remove the scratch container once the evidence is recorded: `docker rm -f truenote-restore`. After a path B incident restore, drop `truenote_before_restore` (and `truenote_failed_restore`, if it exists) once the incident is closed and the evidence is stored: `psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "DROP DATABASE truenote_before_restore"`. Both hold pre-restore production data, including password hashes and the damage. After a path A restore, the previous volume holds the same, plus every backup newer than the one restored; delete it only after the incident is closed and no newer backup is needed `[CONFIRM: owner decision on how long to keep it]`.
-2. Delete the dump and export files from the volume, and local copies once they are stored in the restricted location.
-3. Stop the test API server and the Vite frontend dev server.
+1. After a scheduled test, stop the test API server and the Vite frontend dev server, close the SSH tunnel (Ctrl+C in its shell), and leave every `psql` session on the test service, so nothing holds a connection to it. An incident restore stopped the servers before the swap (section 4.4, step 3) and again after re-applying revocations (section 4.4, step 5).
+2. Delete the test service once the evidence is recorded. It holds the restored production data, including password hashes, and costs money for as long as it runs (section 4.2). First check what is attached to it; each list must come back empty, and anything listed is deleted first:
+
+   ```
+   railway tcp-proxy list -s truenote-restore-test --json
+   railway domain list -s truenote-restore-test --json
+   railway volume list --json
+   ```
+
+   Delete a listed proxy with `railway tcp-proxy delete <proxy id> -s truenote-restore-test --yes` and a listed domain with `railway domain delete <domain> -s truenote-restore-test --yes`. `railway volume list` covers the whole project: only `pgvector-volume` may appear, and a volume mounted on `truenote-restore-test` is deleted with `railway volume delete --volume <volume id> --yes`; never delete `pgvector-volume`. Then remove the SSH config block and delete the service:
+
+   ```
+   railway ssh config remove --service truenote-restore-test
+   railway service delete --service truenote-restore-test --yes
+   ```
+
+   `railway service delete` asks for `--2fa-code <code>` when the account has two-factor authentication and the run is non-interactive (Railway CLI 5.26 `railway service delete --help`). `[CONFIRM: whether deleting a service also deletes its proxy, domains, and volumes; the checks above do not rely on it]` Check that it is gone: `railway service list --json` no longer lists `truenote-restore-test`, and `railway volume list --json` lists only `pgvector-volume`. Then remove the password from the session (bash: `unset POSTGRES_PASSWORD`; PowerShell: `Remove-Item Env:POSTGRES_PASSWORD -ErrorAction SilentlyContinue`) and run the `railway link` command at the top of this runbook again, so the directory is no longer linked to the deleted service `[CONFIRM: that relinking without -s clears the linked service]`. After a path B incident restore, drop `truenote_before_restore` (and `truenote_failed_restore`, if it exists) once the incident is closed and the evidence is stored: `psql -h localhost -p 5432 -U "$POSTGRES_USER" -d postgres -X -c "DROP DATABASE truenote_before_restore"`. Both hold pre-restore production data, including password hashes and the damage. After a path A restore, the previous volume holds the same, plus every backup newer than the one restored; delete it only after the incident is closed and no newer backup is needed `[CONFIRM: owner decision on how long to keep it]`.
+3. Delete the dump, its count record, and the export files from the volume, and local copies once they are stored in the restricted location.
 
 ## 5. Verification checks
 
@@ -413,7 +496,7 @@ Pass, for a restore point in the past:
 - tables that only grow (`security_events`, `query_log`) are within 10% of their restore-point counts (proposed tolerance);
 - `users`, `programs`, and `documents` are not zero unless production is also zero.
 
-Pass, for path B: counts equal the export-time counts captured immediately before the `pg_dump` in step 4.1.5, not the step 4.1.3 baseline, which was taken earlier and can differ because of writes made in between. Any difference is explained in the record by writes made between that count query and the start of `pg_dump`. `sessions` is empty on the target by design; the baseline query does not count it.
+Pass, for path B: counts equal the count record of the dump actually restored, captured immediately before that dump's `pg_dump` and stored next to it (step 4.1.5). For a scheduled test that is the dump just taken; the step 4.1.3 baseline was taken earlier and can differ because of writes made in between. For an incident restore it is the earlier dump taken before the damage; production has had legitimate writes since, so neither the step 4.1.3 baseline nor any count taken now applies. Any difference from the count record is explained in the record by writes made between that count query and the start of `pg_dump`. A dump without a count record cannot pass this check: record that, and apply the restore-point rules above with the dump's start time as the restore point. `sessions` is empty on the target by design; the baseline query does not count it.
 
 ### 5.3 Security-event hash chain
 
@@ -458,6 +541,8 @@ Also confirm that the target's last event sequence matches the restore point: no
 ### 5.4 Application smoke test
 
 Against the target, with the isolation settings from section 3. The API server serves the built frontend only when `NODE_ENV=production`, which section 3 forbids, so the test runs the Vite dev server in front of the API, as in local development. Run both from a repository checkout on a machine whose firewall does not expose port 3001: the API server listens on all interfaces (`artifacts/api-server/src/index.ts`) and will serve restored production data. The Vite dev server listens on localhost, because `artifacts/rag-app/vite.config.ts` sets no `server.host`.
+
+Connection to the target. For a scheduled test, the API server reaches the test service through the SSH tunnel from section 4.2, step 5, which must stay open while the test runs; `TARGET_DATABASE_URL` holds that connection string. The test service has no public endpoint, and this test does not need one. For an incident restore, the target is the database `truenote_restore` on the `pgvector` server (section 4.4, step 3), reached the way section 4.4, step 5 reaches production; set `TARGET_DATABASE_URL` to that connection string with `truenote_restore` as the database. In the API server's shell, set `DATABASE_URL` from it (bash: `export DATABASE_URL="$TARGET_DATABASE_URL"`; PowerShell: `$env:DATABASE_URL = $env:TARGET_DATABASE_URL`).
 
 1. In one shell, with `DATABASE_URL` set to the target, `RAG_STORAGE_DRIVER=memory`, `LOCAL_LOGIN_MODE=enabled`, and no `OIDC_*` or `S3_*` variable set (section 3), start the API server on port 3001:
 
@@ -531,6 +616,6 @@ The bucket has no backup or versioning (section 1). If files are lost:
 
 Add one row per restore test or real restore. Keep raw query output in the restricted evidence location `[CONFIRM: location]`; put only the summary here.
 
-| Date (UTC) | Operator | Reason (test / incident id) | Path (A / B) and target (scratch container / scratch database / production after path A) | Restore point (UTC) | Measured RPO | Measured RTO | Checks passed (5.1 / 5.2 / 5.3 link / 5.3 recompute / 5.4) | Issues and follow-up |
+| Date (UTC) | Operator | Reason (test / incident id) | Path (A / B) and target (temporary Railway service / scratch database / production after path A) | Restore point (UTC) | Measured RPO | Measured RTO | Checks passed (5.1 / 5.2 / 5.3 link / 5.3 recompute / 5.4) | Issues and follow-up |
 |---|---|---|---|---|---|---|---|---|
 | | | | | | | | | |
