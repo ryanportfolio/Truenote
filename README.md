@@ -152,9 +152,10 @@ The current database model and invariants are documented in [`.claude/reference/
 ```bash
 psql -v ON_ERROR_STOP=1 -d truenote -f lib/db/sql/0000_baseline.sql
 psql -v ON_ERROR_STOP=1 -d truenote -f lib/db/sql/0001_schema_migrations.sql
+psql -v ON_ERROR_STOP=1 -d truenote -f lib/db/sql/0002_eval_questions_is_protected.sql
 ```
 
-Continue with `0002` and later files when they exist. The baseline creates the `vector`, `pg_trgm`, and `pgcrypto` extensions, so the database role needs permission to create them. Like production, the result has the `siem_delivery_outbox` table but not the SIEM outbox functions or trigger from [`docs/security/p1-siem-delivery-outbox.sql`](./docs/security/p1-siem-delivery-outbox.sql). pg-boss creates its own queue schema the first time the API or worker starts it.
+Continue with `0003` and later files when they exist. The baseline creates the `vector`, `pg_trgm`, and `pgcrypto` extensions, so the database role needs permission to create them. Like production, the result has the `siem_delivery_outbox` table but not the SIEM outbox functions or trigger from [`docs/security/p1-siem-delivery-outbox.sql`](./docs/security/p1-siem-delivery-outbox.sql). pg-boss creates its own queue schema the first time the API or worker starts it.
 
 Install locked dependencies and create a local environment file:
 
