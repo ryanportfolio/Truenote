@@ -113,14 +113,9 @@ numbers move"; protected questions detect "did we cheat to move them."
   Aim for ~30–40% protected, weighted toward exact-value questions (fees,
   dates, policy numbers) and out-of-KB refusal cases.
 
-**Not applied on Railway.** `eval_questions` has no `is_protected` column in production (checked 2026-10-07): the DDL below was never applied, so every question currently counts as unprotected: `splits.protected` has 0 questions and the admin page shows no held-out split line. A future change ships it as a `lib/db/sql/NNNN_<name>.sql` file applied with `scripts/railway-apply-sql.mjs` after the owner's go (`deployment.md`); no such file exists yet.
+The column ships as `lib/db/sql/0002_eval_questions_is_protected.sql`, applied to Railway production on 2026-10-08 with `scripts/railway-apply-sql.mjs`. No question is protected yet, so `splits.protected` has 0 questions and the admin page shows no held-out split line until some are marked.
 
-```sql
-ALTER TABLE eval_questions
-  ADD COLUMN IF NOT EXISTS is_protected boolean NOT NULL DEFAULT false;
-```
-
-Once the column exists, mark questions protected with raw SQL and owner-selected ids (there is no UI toggle yet):
+Mark questions protected with raw SQL and owner-selected ids (there is no UI toggle yet):
 
 ```sql
 UPDATE eval_questions SET is_protected = true WHERE id IN ('<uuid>', '<uuid>', ...);

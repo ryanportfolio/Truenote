@@ -61,7 +61,7 @@ node scripts/railway-apply-sql.mjs lib/db/sql/NNNN_<name>.sql           # status
 node scripts/railway-apply-sql.mjs lib/db/sql/NNNN_<name>.sql --apply   # one transaction + schema_migrations row
 ```
 
-The script runs `psql --single-transaction` inside `pgvector` over `railway ssh` and refuses a file already recorded in `schema_migrations`. It sends the whole command in one `railway ssh` call and refuses anything over 6,500 base64 characters (Windows caps the command line near 8,000); after its wrapper and the SQL's own base64 encoding, that leaves about 2.7 KB of SQL per file, so split a larger change into several numbered files. Then deploy the code that needs the change, and inspect the resulting definition (`\d+ <table>`, `pg_get_constraintdef`, `pg_get_functiondef`).
+The script runs `psql --single-transaction` inside `pgvector` over `railway ssh` and refuses a file already recorded in `schema_migrations`. It sends the whole command in one `railway ssh` call and refuses anything over 6,500 base64 characters (Windows caps the command line near 8,000); after its wrapper and the SQL's own base64 encoding, that leaves about 2.7 KB of SQL per file, so split a larger change into several numbered files only when each file is safe to land on its own. A change that must commit as one transaction (for example the SIEM outbox file, see `data-model.md`) stays one file: raise the limit or copy it into the container and run it with `psql -f`. Then deploy the code that needs the change, and inspect the resulting definition (`\d+ <table>`, `pg_get_constraintdef`, `pg_get_functiondef`).
 
 Applied: `0001_schema_migrations.sql` (2026-10-07, sha256 `f33bb30e…`). Baseline before it: the Replit production schema as restored on 2026-10-07.
 
