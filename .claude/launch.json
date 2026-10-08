@@ -2,9 +2,23 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "rag-app-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/preview/review-env.mjs"
+      ],
+      "port": 5180
+    },
+    {
       "name": "rag-app",
       "runtimeExecutable": "corepack",
-      "runtimeArgs": ["pnpm", "--filter", "@workspace/rag-app", "run", "dev"],
+      "runtimeArgs": [
+        "pnpm",
+        "--filter",
+        "@workspace/rag-app",
+        "run",
+        "dev"
+      ],
       "port": 5173,
       "autoPort": true
     }
