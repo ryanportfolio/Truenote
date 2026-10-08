@@ -27,7 +27,6 @@ import type { RetrievalChunk } from "../retrieval/query.js";
  *    citation group after it, or, when none follows, the last group before
  *    it. A citation-only remainder joins the sentence before it. A sentence
  *    with no citation is checked against every excerpt the answer cites.
- *    A plain number or compound the CSR's question holds needs no excerpt.
  * 4. Figures are typed spans (currency, percentage, plain number, or a
  *    compound date/time/range/fraction/identifier) compared as exact
  *    canonical strings. Money words (`40 cents`) set the currency unit and
@@ -1102,13 +1101,11 @@ function excerptHasFigure(excerpt: Set<string>, figure: Figure): boolean {
 
 /**
  * Returns the first figure not grounded in an excerpt its own claim cites (or
- * the text that makes the answer unverifiable), else null. `question` is the
- * CSR's own wording; a figure it holds needs no excerpt.
+ * the text that makes the answer unverifiable), else null.
  */
 export function findUngroundedFigure(
   normalizedAnswer: string,
-  chunks: RetrievalChunk[],
-  question?: string
+  chunks: RetrievalChunk[]
 ): string | null {
   const contentById = new Map(chunks.map((chunk) => [chunk.id, chunk.content]));
   const sentinelIds: string[] = [];
@@ -1180,15 +1177,9 @@ export function findUngroundedFigure(
     // so a sentence with no citation of its own is checked against every
     // excerpt the answer cites.
     const answerIds = [...new Set(sentences.flatMap((s) => s.groups.flatMap((g) => g.ids)))];
-    const asked = question ? indexExcerpt(question, view) : null;
 
     for (const sentence of sentences) {
       for (const figure of extractFigures(sentence.text, sentence.marked)) {
-        // The CSR typed it ("signed up in 2021"); repeating it invents nothing.
-        // Money and percentages still need an excerpt, so "is the fee $50?"
-        // never confirms a fee the documents do not state.
-        const policyFigure = figure.kind === "currency" || figure.kind === "percent";
-        if (asked && !policyFigure && excerptHasFigure(asked, figure)) continue;
         const following = sentence.groups.find((group) => group.start >= figure.end);
         const preceding = [...sentence.groups].reverse().find((group) => group.end <= figure.start);
         const ids = (following ?? preceding)?.ids ?? answerIds;
