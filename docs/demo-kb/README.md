@@ -6,7 +6,7 @@ The set covers every format the upload route accepts (PDF, DOCX, PNG, JPEG, WEBP
 
 ## Files
 
-All upload-ready files are in `files/`.
+All upload-ready files are in `files/`. The first 13 rows are the original format set; the 15 Markdown files after them were added on 2026-10-08 for the source library showcase (`scripts/src/seed-showcase.ts`).
 
 | File | Format | What it exercises |
 |---|---|---|
@@ -23,6 +23,21 @@ All upload-ready files are in `files/`.
 | `escalation-matrix.md` | Markdown | Routing table plus rules |
 | `outage-and-service-credits-faq.md` | Markdown | Question-and-answer format with a credit table |
 | `call-scripts.txt` | Plain text | Required lines and guidance |
+| `updating-a-payment-method.md` | Markdown | Payment methods table, decline handling, grace period |
+| `plan-upgrades-and-proration.md` | Markdown | Worked proration examples, billing-term switches |
+| `enterprise-seat-management.md` | Markdown | Administrator-only changes, seat pricing table |
+| `storage-limits-and-overage.md` | Markdown | Usage thresholds, no overage charges |
+| `two-factor-authentication-reset.md` | Markdown | Higher verification bar, 24-hour waiting period |
+| `account-recovery-lost-email.md` | Markdown | PIN-required email change, 72-hour hold |
+| `password-reset-and-account-unlock.md` | Markdown | Lockout rules, reset link lifetime, script |
+| `data-export-requests.md` | Markdown | Export contents table, link timing |
+| `retention-offers-and-save-script.md` | Markdown | Offer table by cancel reason, script lines |
+| `chargeback-and-dispute-intake.md` | Markdown | Dispute versus chargeback, BILL-CB intake |
+| `invoices-and-tax-receipts.md` | Markdown | Invoice detail changes, sales tax |
+| `education-and-nonprofit-discounts.md` | Markdown | Eligibility table, discounted prices |
+| `accessibility-and-relay-calls.md` | Markdown | Relay call etiquette, accommodations table |
+| `deceased-account-holder-requests.md` | Markdown | Request table by caller, LP-PRIV ticket |
+| `fraud-team-handoff.md` | Markdown | Uploaded as `confidential`: CSRs with `internal` clearance cannot see it, so it shows as a restricted source to them |
 
 Upload them all into the same program. The documents agree with each other; where one refers to another (for example the refund procedure and the reason codes in the billing screenshot), the facts match.
 
@@ -44,6 +59,21 @@ These are the answers a CSR should get, with the file that holds each one. Sever
 - Escalate within 15 minutes when a customer asks for a supervisor (`escalation-matrix.md`, `escalation-path-poster.webp`, `call-scripts.txt`).
 - Deletion: 30-day soft delete, permanent on day 31; export link within 30 days, usually 3 business days (`privacy-requests.pdf`).
 - Support is closed on Thu Nov 26, Fri Dec 25 and Fri Jan 1; the outage line 1-800-555-0142 stays open 24/7 (`holiday-support-hours.png`, `outage-and-service-credits-faq.md`).
+- Card details are entered only by the customer in Billing settings; PayPal works on Basic and Pro, invoice billing only on Enterprise annual plans (`updating-a-payment-method.md`).
+- Upgrades are prorated by day; example: Basic to Pro with 15 of 30 days left costs $3.50 (`plan-upgrades-and-proration.md`).
+- Only the Enterprise account administrator changes seats; added seats are prorated, removed seats take effect at renewal, never below 5 users (`enterprise-seat-management.md`).
+- There are no storage overage charges or add-on storage; uploads pause at 100% and a warning goes out at 90% (`storage-limits-and-overage.md`).
+- A sign-in 2FA reset needs the PIN or the email code as one factor and has a 24-hour waiting period; customers get 10 backup codes (`two-factor-authentication-reset.md`).
+- Changing a lost account email needs the 6-digit PIN plus one more factor and has a 72-hour hold (`account-recovery-lost-email.md`).
+- Accounts lock for 30 minutes after 10 failed sign-ins; reset links last 60 minutes (`password-reset-and-account-unlock.md`).
+- Only one open export request per account; files come as ZIP archives, account data as JSON (`data-export-requests.md`).
+- Retention: one offer per call, no discounts; Basic and Pro can pause for 1 to 3 months once in 12 months (`retention-offers-and-save-script.md`).
+- Never refund a charge already in a chargeback; chargebacks go to Billing Operations, queue BILL-CB, 1 business day (`chargeback-and-dispute-intake.md`).
+- Invoices from the past 7 years are under Billing settings; tax IDs apply to future invoices only (`invoices-and-tax-receipts.md`).
+- Education and nonprofit discount: 30% off Pro and Enterprise (Pro monthly $8.39); students and teachers qualify for Pro; reviewed within 2 business days (`education-and-nonprofit-discounts.md`).
+- On relay calls, speak to the customer, not the operator, and verify with the same two factors (`accessibility-and-relay-calls.md`).
+- Bereavement: billing is paused the same day; account closure goes to Legal and Privacy, queue LP-PRIV, with no cancellation fee (`deceased-account-holder-requests.md`).
+- Suspected takeover or card testing is P1: lock the account and page Security Response, who respond within 1 hour (`fraud-team-handoff.md`, confidential).
 
 ## Eval questions
 
