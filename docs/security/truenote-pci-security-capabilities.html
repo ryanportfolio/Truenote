@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0040AB">
-  <meta name="description" content="Truenote's completed safeguards, passed checks, payment-card data handling, and customer responsibilities for organizations that operate a PCI DSS cardholder data environment.">
+  <meta name="description" content="Truenote PCI DSS 4.0.1 review: software safeguards, payment-data boundaries, assessment scope, and required operating evidence.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://truenote.org/security/pci/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Truenote">
   <meta property="og:title" content="PCI-focused safeguards | Truenote Security">
-  <meta property="og:description" content="Completed safeguards, passed checks, and payment-card data handling for organizations that operate a PCI DSS cardholder data environment.">
+  <meta property="og:description" content="Software safeguards, assessment limits, and open PCI DSS review requirements before customer use.">
   <meta property="og:url" content="https://truenote.org/security/pci/">
   <title>PCI-focused safeguards | Truenote Security</title>
   <style>
@@ -136,6 +136,7 @@
       text-transform: uppercase;
     }
     .explainer p { margin: 0; }
+    .explainer p + p { margin-top: 14px; }
     .grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -212,18 +213,16 @@
     .evidence-title { color: var(--ink); font-size: 0.86rem; font-weight: 600; }
     .evidence-description { display: block; margin-top: 4px; color: var(--muted); font-size: 0.75rem; font-weight: 400; }
     .evidence-action { display: inline-flex; align-items: center; gap: 5px; margin-top: 12px; color: var(--primary); font-size: 0.74rem; font-weight: 700; }
-    .note {
-      margin: 18px 0 0;
-      padding: 16px 20px;
-      border-left: 4px solid var(--primary);
-      border-radius: 8px;
-      background: var(--soft);
-      color: var(--muted);
-      font-size: 0.86rem;
-    }
-    .duty-list { max-width: 880px; margin: 12px 0 0; padding-left: 22px; }
-    .duty-list li { margin-bottom: 8px; }
-    #scope .explainer { margin-bottom: 18px; }
+    .table-scroll { overflow-x: auto; margin-top: 24px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    caption { padding: 16px; text-align: left; font-weight: 700; }
+    th, td { padding: 14px 16px; text-align: left; vertical-align: top; border-top: 1px solid var(--line); }
+    thead th { background: var(--soft); }
+    th[scope="row"] { min-width: 170px; }
+    .evidence-scope { display: block; margin-top: 13px; color: var(--good); font-size: 0.72rem; font-weight: 700; }
+    .pending-scope { color: var(--muted); }
+    .boundary { padding: 22px 24px; border-left: 4px solid var(--primary); border-radius: 8px; background: var(--soft); color: var(--muted); font-size: 0.86rem; }
+    .boundary strong { color: var(--ink); }
     footer { padding: 30px 0 48px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.8rem; }
     @media (max-width: 880px) {
       .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -259,92 +258,119 @@
       </div>
       <p class="eyebrow">Security engineering</p>
       <h1>PCI-focused safeguards in Truenote</h1>
-      <p class="lede">Completed software safeguards, passed checks, and how Truenote handles payment-card data, for organizations that operate a PCI DSS cardholder data environment.</p>
-      <div class="hero-meta"><span>Current as of October 9, 2026</span><span>Completed work only</span><span>Repository evidence linked</span></div>
+      <p class="lede">Software controls, payment-data limits, and the assessment and operating evidence required before Truenote is introduced into an organization's PCI DSS environment.</p>
+      <div class="hero-meta"><span>Reviewed October 9, 2026</span><span>PCI DSS 4.0.1 review basis</span><span>Scope and approval pending</span></div>
     </div>
   </header>
 
   <nav aria-label="Document sections">
-    <div class="shell"><a href="#meaning">What PCI covers</a><a href="#card-data">Card data</a><a href="#scope">Scope</a><a href="#safeguards">Safeguards</a><a href="#checks">Passed checks</a><a href="#evidence">Evidence</a></div>
+    <div class="shell"><a href="#meaning">Assessment status</a><a href="#data">Payment-data boundary</a><a href="#safeguards">Safeguards</a><a href="#coverage">PCI coverage</a><a href="#readiness">Review requirements</a><a href="#checks">Passed checks</a><a href="#evidence">Evidence</a></div>
   </nav>
 
   <main class="shell">
     <section id="meaning">
       <div class="explainer">
         <div class="explainer-label">Plain-language context</div>
-        <p>PCI DSS includes secure-software requirements for systems that are inside, or can affect, a cardholder data environment. For an application such as Truenote, that means disciplined software development, vulnerability detection, protection against common web attacks, and controlled releases. This page lists the safeguards Truenote has completed and tested, how it handles payment-card data, and what stays with the customer.</p>
+        <div><p>PCI DSS includes secure-software requirements and broader controls for systems that handle payment data or can affect its security. Truenote's software evidence supports a security review; customer scope, operating effectiveness, and validation remain unresolved. No PCI DSS compliance, certification, Attestation of Compliance, or independent-assessment result is claimed here.</p><p>PCI DSS v4.0.1 is the review basis. Requirements with a March 31, 2025 effective date are already effective. The compliance-accepting entity and qualified assessor determine applicability and the accepted validation path. See the <a href="https://www.pcisecuritystandards.org/document_library/?class=pcidss&amp;doc=pci_dss">PCI SSC document library</a> and <a href="https://www.pcisecuritystandards.org/faqs/1473/">applicability guidance</a>, checked October 9, 2026.</p></div>
       </div>
     </section>
 
-    <section id="card-data">
-      <h2>Payment-card data in Truenote</h2>
-      <p>Truenote answers questions from a customer's own procedures and policies. It is not designed to store, process, or transmit cardholder data and needs none to work. It detects card numbers written as 13 to 19 digits, separated only by spaces or hyphens, that pass the Luhn check. Detection is pattern-based: a card number written another way, such as split across lines, is not caught by these checks. The checks run where text enters or leaves the system:</p>
-      <div class="checks">
-        <article class="check"><h3>Questions</h3><p>A question or conversation history containing a card number is rejected before it is stored or sent to any provider.</p></article>
-        <article class="check"><h3>Uploaded documents</h3><p>A document containing a card number is quarantined after parsing and never becomes searchable.</p></article>
-        <article class="check"><h3>AI provider requests</h3><p>Card numbers are redacted from text before it is sent for embedding, reranking, or answer generation. Answer requests then pass OpenRouter's sensitive-information guardrail, which redacts the card numbers it detects in user messages.</p></article>
-        <article class="check"><h3>Answers</h3><p>A generated answer containing a card number is refused instead of shown.</p></article>
+    <section id="data">
+      <h2>Payment-data boundary and scope</h2>
+      <p>Truenote provides cited answers from approved reference material. No approved path for live payment-card data has been recorded. Until Security and the PCI scope owner approve a different assessed path, do not enter or upload primary account numbers (PAN), CVV/CVC, PIN or PIN blocks, full track data, payment screenshots, call transcripts containing payment data, credentials, or live customer personal data.</p>
+      <p>For the merchant/customer use being considered, sensitive authentication data must not be retained after authorization, even if encrypted. Truenote is not a payment vault or payment-capture channel. See <a href="https://www.pcisecuritystandards.org/faqs/1533/">PCI SSC guidance on sensitive authentication data</a>.</p>
+      <div class="grid">
+        <article class="card"><h3>Questions and model output</h3><p>The ask route blocks supported secret, Social Security number, and card-number patterns in the current question and supplied history before its persistence and provider work. Text-provider firewalls add deterministic redaction. Generated-answer screening covers a narrower pattern set.</p><p>Card-number detection requires 13-to-19-digit Luhn-valid values with space or hyphen separators. Pattern screening does not reliably identify standalone CVV/CVC, names, addresses, all credentials, or encoded and fragmented values. Personal notes and label names are stored without these sensitive-content checks. A prohibited-data policy still needs technical enforcement, user training, and incident handling.</p></article>
+        <article class="card"><h3>Documents and raw bytes</h3><p>Object storage receives originals before ingestion. An enabled malware scanner receives raw bytes; PDF/image parsing can send them to LandingAI before parsed-content screening. Parsed text is persisted before its screening decision. Quarantining a version does not remove those copies or reverse the disclosure.</p><p>Only approved, sanitized source files should enter this path. Every raw-file processor, storage location, and recovery copy needs a scope and retention decision.</p></article>
+        <article class="card"><h3>Scope and shared responsibility</h3><p>A PAN prohibition or redactor alone does not establish that Truenote is outside PCI scope. Administrative access, connected systems, endpoints, hosting, providers, and the ability to affect the customer's cardholder data environment also require assessment.</p><p>Program and clearance isolation are application authorization controls. They do not prove PCI network segmentation. Provider certifications do not transfer compliance to Truenote or its customer.</p></article>
       </div>
-      <p class="note">Limits: an uploaded file is stored and sent to the document parser before the card-number check runs. Removing a document retires it and keeps the stored file; only a separate super-user purge deletes the file, and the purge does not ask the document parser to delete its copy, which follows the parser's own retention settings. Personal notes and label names are not screened yet. Customers should keep cardholder data out of every document and field they put into Truenote.</p>
-    </section>
-
-    <section id="scope">
-      <h2>Scope and customer responsibilities</h2>
-      <div class="explainer">
-        <div class="explainer-label">Assessment status</div>
-        <p>Truenote has not completed a PCI DSS assessment and holds no Attestation of Compliance or Report on Compliance. Whether Truenote falls within a customer's assessment scope depends on how the customer connects it to their environment; the customer's assessor makes that determination.</p>
-      </div>
-      <p>Customers that use Truenote alongside a cardholder data environment should:</p>
-      <ul class="duty-list">
-        <li>Keep cardholder data out of uploaded documents, questions, notes, and labels.</li>
-        <li>Keep Truenote outside the cardholder data environment, with network segmentation their assessor accepts.</li>
-        <li>Turn on single sign-on through their own identity provider with multi-factor authentication, and manage staff accounts there.</li>
-        <li>Review the service providers listed on the <a href="/security/#providers">Security page</a> and include Truenote in their own risk and scope assessment.</li>
-      </ul>
+      <p>Required scope records: <a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/scope-and-data-flow.md">data flows and inventories</a>, <a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/pci-scope-decision-record.md">scope and PAN decision procedure</a>, and <a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/third-party-responsibility-matrix.md">third-party responsibility matrix</a>. Scope includes originals, parsed documents, questions and answers, audit/diagnostic records, backups, and provider copies.</p>
     </section>
 
     <section id="safeguards">
-      <h2>Completed safeguards</h2>
-      <p>Each item below is backed by implementation and a passed repository test, or by a check of the live service on October 9, 2026. Where part of a safeguard is not active on truenote.org, the card says so.</p>
+      <h2>Software safeguards and draft procedures</h2>
+      <p>Each item states its evidence scope. A written procedure or template becomes operating evidence only after approval, assigned responsibilities, and authentic execution records.</p>
       <div class="grid">
-        <article class="card"><p class="number">01</p><h3>Threat-driven testing</h3><p>A threat model maps application, AI-provider, authorization, data, hosting, and PCI-impact threats to controls and tests. It was updated in October 2026 for the move to Railway. Negative tests check that each boundary fails closed.</p></article>
-        <article class="card"><p class="number">02</p><h3>Pre-provider data screening</h3><p>Questions and conversation history containing deterministic high-risk data are blocked before storage. Text sent to embedding, reranking, answer, and utility-model providers is redacted first. Answer and rewrite requests also pass a guardrail on Truenote's OpenRouter account that redacts card numbers, Social Security numbers, email addresses, phone numbers, IP addresses, person names, and street addresses in user messages.</p></article>
-        <article class="card"><p class="number">03</p><h3>Model-output screening</h3><p>Sensitive generated text is blocked before a normal answer is returned. Missing or invalid citations also produce a refusal.</p></article>
-        <article class="card"><p class="number">04</p><h3>Server-side access boundaries</h3><p>Program and classification limits are applied before retrieval and checked again before protected content can reach generation or citation lookup.</p></article>
-        <article class="card"><p class="number">05</p><h3>Controlled content activation</h3><p>File-type, file-signature, EICAR, sensitive-data, source, parsing, lifecycle, and role checks must pass before knowledge content becomes available. An external malware scanner can be connected; none is enabled on truenote.org today.</p></article>
-        <article class="card"><p class="number">06</p><h3>Web application protection</h3><p>HTTPS is enforced with a two-year Strict-Transport-Security header. A nonce-based Content Security Policy requires Trusted Types and blocks framing. Browser requests that change data are rejected unless they come from Truenote's own origin.</p></article>
-        <article class="card"><p class="number">07</p><h3>Account security</h3><p>Passwords are hashed with Argon2id and must be at least 15 characters. Session tokens are stored only as hashes and sent in HttpOnly, Secure cookies. Single sign-on with multi-factor authentication is available per deployment; truenote.org uses password sign-in today.</p></article>
-        <article class="card"><p class="number">08</p><h3>Automated security analysis</h3><p>Every pull request runs CodeQL, secret scanning, a production dependency audit, software bill of materials generation, type checks, a frontend build, and unit tests. Four required checks must pass before a change reaches main; repository administrators can override them on a pull request.</p></article>
-        <article class="card"><p class="number">09</p><h3>Hash-chained security events</h3><p>Security events from sign-ins and API changes are written through a database function that links each event to the one before it with a SHA-256 hash. SIEM delivery code (signed payloads, retry leases, backoff, dead-letter handling) is written and unit-tested; it is not connected on truenote.org today.</p></article>
+        <article class="card"><p class="number">01</p><h3>Secure development lifecycle</h3><p>A draft Truenote-specific lifecycle defines responsibilities through design, testing, release, and verification. Approved adoption, role-based training, and sampled use remain required.</p><span class="evidence-scope pending-scope">Operational evidence required · procedure and curriculum</span></article>
+        <article class="card"><p class="number">02</p><h3>Threat-driven testing</h3><p>The engineering threat model covers application, AI, provider, access, data, and PCI-impact boundaries. Negative tests exercise denial paths. Named approval and residual-risk treatment remain open.</p><span class="evidence-scope">Verified · repository negative tests</span></article>
+        <article class="card"><p class="number">03</p><h3>Pre-provider data screening</h3><p>Supported high-risk question/history patterns are blocked before ask persistence. Deterministic text redaction covers embedding, reranking, answer, and utility calls. Raw files and broader personal-data classes have separate limits.</p><span class="evidence-scope">Verified · portable provider-boundary tests</span></article>
+        <article class="card"><p class="number">04</p><h3>Model-output screening</h3><p>Generated text matching supported secret, Social Security number, or card-number patterns is refused. Missing or invalid citations also produce a refusal. Complete personal-data detection is not claimed.</p><span class="evidence-scope">Verified · generation safety tests</span></article>
+        <article class="card"><p class="number">05</p><h3>Server-side access boundaries</h3><p>Program and classification filters precede protected retrieval, reranking, generation, and citation lookup. Stored history rechecks current clearance, program, source approval, and lifecycle access. Exchanges lacking complete authorized provenance, including zero-citation refusals, are withheld; affected titles are hidden. Feedback and missing-content flags are restricted to the person who asked the question. Production authorization still needs release-specific verification.</p><span class="evidence-scope">Verified · repository isolation tests</span></article>
+        <article class="card"><p class="number">06</p><h3>Controlled content activation</h3><p>File, source, lifecycle, parsing, and role controls constrain activation. Scanner absence/failure quarantines uploads when enabled. A super-user scanner override and senior-role self-activation require governance.</p><span class="evidence-scope">Verified · repository policy tests</span></article>
+        <article class="card"><p class="number">07</p><h3>Automated security analysis</h3><p>Hosted CI runs CodeQL, secret scanning, dependency audit, SBOM generation, type checks, builds, and tests. Ordinary CI does not require the strict vulnerability release gate or establish that findings are closed.</p><span class="evidence-scope">Verified · named hosted workflow below</span></article>
+        <article class="card"><p class="number">08</p><h3>Controlled change records</h3><p>A draft procedure and templates cover impact, approval, review, testing, deployment, recovery, and verification. Approved authority, a reconciled register, and completed operating samples remain required.</p><span class="evidence-scope pending-scope">Operational evidence required · change-control adoption</span></article>
+        <article class="card"><p class="number">09</p><h3>Tamper-evident audit logic</h3><p>Database controls define append-only hash chaining. Delivery code supports signed payloads, leases, retries, and dead letters. Production inspection found missing audit-mutation blockers and automatic audit/delivery controls, plus unrestricted administrative runtime access. Independent log retention is not verified.</p><span class="evidence-scope">Verified · SIEM delivery code tests only</span></article>
       </div>
+    </section>
+
+    <section id="coverage">
+      <h2>PCI review coverage beyond software development</h2>
+      <p>The existing detailed software-development mapping covers Requirement 6. A complete PCI assessment must also resolve the other applicable requirement families. This checklist describes evidence to obtain; it does not mark a requirement satisfied or determine applicability.</p>
+      <div class="table-scroll" role="region" aria-label="PCI requirement review coverage" tabindex="0">
+        <table>
+          <caption>Assessment topics and required evidence</caption>
+          <thead><tr><th scope="col">PCI DSS area</th><th scope="col">Evidence required for the assessed scope</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">1 · Network controls</th><td>Approved boundaries, connections, ingress/egress rules, administrative paths, and any segmentation test evidence. Application scoping alone is insufficient.</td></tr>
+            <tr><th scope="row">2 · Secure configuration</th><td>Inventories and hardened baselines for services, database, storage, endpoints, and management accounts; configuration and default-account review.</td></tr>
+            <tr><th scope="row">3 · Stored account data</th><td>Approved data prohibition or assessed storage paths; retention, discovery, deletion, backups, encryption, and key-management evidence where applicable.</td></tr>
+            <tr><th scope="row">4 · Data in transit</th><td>Protection of applicable data paths, certificates, protocols, and trust decisions. Public HTTPS proves only the observed public connection.</td></tr>
+            <tr><th scope="row">5 · Malware protection</th><td>Applicable malware controls, enabled configuration, updates, monitoring, exception approvals, and operating results. An upload test signature alone is insufficient.</td></tr>
+            <tr><th scope="row">6 · Secure software and changes</th><td>Approved development and training, current vulnerability triage and patch records, independent code review, controlled releases, and applicable web/payment-page protection.</td></tr>
+            <tr><th scope="row">7 · Least privilege</th><td>Approved roles, account provisioning and removal, periodic access review, and application/database/platform privilege tests.</td></tr>
+            <tr><th scope="row">8 · Identity and authentication</th><td>Unique identities, applicable MFA, account and credential lifecycle, emergency access, idle reauthentication, and revocation evidence.</td></tr>
+            <tr><th scope="row">9 · Physical security</th><td>Applicable hosting-provider physical assurance, customer endpoint controls, and media handling, with responsibilities assigned.</td></tr>
+            <tr><th scope="row">10 · Logging and monitoring</th><td>Required event coverage, protected and independently retained logs, time synchronization, review/alerts, access restrictions, and failure response.</td></tr>
+            <tr><th scope="row">11 · Security testing</th><td>Applicable internal/external scans and ASV evidence, application/network penetration tests, segmentation validation, payment-page change detection, remediation, and retest.</td></tr>
+            <tr><th scope="row">12 · Security governance</th><td>Scope confirmation, approved policies, named responsibilities, risk analyses where required, training, third-party agreements and monitoring, and exercised incident response.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Specific applicability decisions include automated public-facing web protection (6.4.2), payment-page script authorization/integrity/inventory (6.4.3), and payment-page change detection (11.6.1). CSP and origin checks alone do not establish those controls. Record an assessed justification for every exclusion; do not infer an exclusion from the application's intended use.</p>
+      <p>For applicable access, 8.2.8 requires reauthentication after 15 minutes of inactivity. Truenote currently has a seven-day application session lifetime without an enforced application idle timeout. The assessor must confirm whether a verified endpoint/session control satisfies the requirement or application changes are required. See <a href="https://www.pcisecuritystandards.org/faqs/1147/">PCI SSC idle-session guidance</a>.</p>
+    </section>
+
+    <section id="readiness">
+      <h2>Requirements before security approval</h2>
+      <p>Readiness remains incomplete. The demo/testing deployment intentionally leaves OIDC identity integration and the malware-scanner endpoint unconfigured; their integrations need end-to-end acceptance before customer use. SIEM additionally lacks database functions and triggers, so setting a receiver alone is insufficient. Public demo login remains configured. Current operating records also leave recovery, provider assurance, scope, and independent testing unresolved.</p>
+      <ol>
+        <li><strong>Approve the boundary and permitted data.</strong> Name the application operator, customer PCI owner, and decision authority; inventory data, processors, administrative connections, storage, and recovery copies. Authorize a bounded synthetic trace, reconcile it, and approve the final scope and validation path.</li>
+        <li><strong>Establish safe operation.</strong> Resolve identity/MFA, session and privileged access, demo isolation, scanning and overrides, least-privilege database controls, external audit delivery, encryption, retention, and tested backup/restore. Create an authorized test environment or approve a documented substitute.</li>
+        <li><strong>Close release-management evidence.</strong> Reconcile current scanner results to the historical baseline, assign owners and deadlines, approve each disposition, retain remediation/retest, and pass the strict managed-release gate. Adopt change control and retain a reviewed production-change sample bound to deployed bytes.</li>
+        <li><strong>Obtain provider and independent assurance.</strong> Verify exact provider services, contracts, retention/ZDR, subprocessors, and applicable attestations. Complete authorized application/API, AI, and any applicable network/segmentation tests, then remediate and retest findings.</li>
+        <li><strong>Retain approval and recurring evidence.</strong> Authenticate signed decisions and assessment results, complete training and incident/recovery exercises, assign operating cadences and expiry reviews, and obtain customer security authorization before live organizational use.</li>
+      </ol>
+      <p>Each requirement needs a named accountable person, a dated artifact tied to the environment and release, a binary acceptance result, and a reviewer. Templates, screenshots, structural validators, and passing CI alone cannot supply that evidence. The <a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/pci-decision-meeting-pack.md">decision meeting pack</a> and <a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/independent-testing-plan.md">independent-testing plan</a> define the next approval and assurance steps.</p>
+      <div class="boundary"><strong>Assessment boundary:</strong> this page is a readiness and evidence summary. It does not establish PCI DSS compliance, certify software, or replace the customer's assessment. Assessment records must state the services, requirements, environment, and period actually tested, including exclusions and unresolved findings.</div>
     </section>
 
     <section id="checks">
       <h2>Checks that passed</h2>
-      <p>These results verify the repository implementation and its documented evidence package.</p>
+      <p>The <a href="https://github.com/ryanportfolio/Truenote/actions/runs/37873695940">security workflow for reviewed main commit e63293ca7d9d</a> passed. The results below cover tested repository paths, not a deployed CDE assessment.</p>
       <div class="checks">
-        <article class="check"><h3>Access isolation</h3><p>Unit tests of the authorization checks used by retrieval, citations, and document reads denied cross-program and above-clearance access.</p></article>
+        <article class="check"><h3>Access isolation</h3><p>Negative tests denied cross-program and above-clearance retrieval, citation access, and document reads.</p></article>
         <article class="check"><h3>AI input boundary</h3><p>Portable tests captured provider payloads and confirmed deterministic redaction before supported provider calls.</p></article>
         <article class="check"><h3>Citation and refusal rules</h3><p>Tests rejected missing, malformed, unknown, and out-of-range citations and refused sensitive model output.</p></article>
         <article class="check"><h3>Browser request defense</h3><p>Tests accepted trusted same-origin mutations and rejected foreign, opaque, malformed, cross-site, and sibling-origin requests.</p></article>
-        <article class="check"><h3>Audit delivery logic</h3><p>Tests passed signed delivery, retry scheduling, completion, and dead-letter handling. The lease-fenced database functions were checked by content.</p></article>
-        <article class="check"><h3>Security delivery pipeline</h3><p>The October 9, 2026 run on main passed type checking, the frontend production build, unit tests, secret scan, dependency audit and SBOM, and CodeQL analysis. Open CodeQL findings are tracked in a triage register.</p></article>
+        <article class="check"><h3>Audit delivery logic</h3><p>Tests passed signed delivery, lease fencing, retry scheduling, dead-letter handling, and delivery-health behavior.</p></article>
+        <article class="check"><h3>Security delivery pipeline</h3><p>Hosted checks passed type checking, production build, unit tests, secret scan, dependency audit and SBOM, and CodeQL analysis.</p></article>
       </div>
+      <p>The strict managed-release vulnerability and supplemental branch-enforcement gates were skipped in that ordinary main run. CodeQL job success does not assert zero findings. Current scans must be reconciled to approved dispositions; the historical register remains open.</p>
     </section>
 
     <section id="evidence">
-      <h2>Open the complete public evidence set</h2>
-      <p>Every completed safeguard and passed check named above is represented below. Each card opens the exact public repository document, implementation, test, or workflow record in a new tab. Procedures that are still drafts are labeled as drafts.</p>
+      <h2>Open the public software evidence set</h2>
+      <p>These links cover implementation, tests, draft procedures, and workflow records. They are an evidence map, not a complete assessment dossier. Links to main show evolving source; the named workflow above pins the reviewed commit. Restricted operating records and third-party reports require separate review.</p>
 
       <div class="evidence-group">
         <h3>Secure development and change management</h3>
-        <p>The threat model and evidence index are maintained. The lifecycle, curriculum, change procedure, and record format are drafts awaiting owner approval.</p>
+        <p>Processes, design analysis, staff guidance, and release records.</p>
         <ul class="evidence-list">
-          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/secure-development-lifecycle.md" target="_blank" rel="noreferrer"><span class="evidence-title">Secure development lifecycle (draft)</span><span class="evidence-description">Proposed security responsibilities from design and threat review through release verification.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/secure-development-lifecycle.md" target="_blank" rel="noreferrer"><span class="evidence-title">Secure development lifecycle</span><span class="evidence-description">Security responsibilities from design and threat review through release verification.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
           <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/threat-model.md" target="_blank" rel="noreferrer"><span class="evidence-title">Application and PCI-impact threat model</span><span class="evidence-description">Trust boundaries, abuse cases, mapped controls, and test references.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
-          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/secure-development-training-curriculum.md" target="_blank" rel="noreferrer"><span class="evidence-title">Secure-development curriculum (draft)</span><span class="evidence-description">Truenote-specific secure design, coding, tooling, and assessment material; not yet delivered.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
-          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/change-control.md" target="_blank" rel="noreferrer"><span class="evidence-title">Change-control procedure (draft)</span><span class="evidence-description">Proposed authorization, review, testing, deployment, recovery, and closure workflow.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
-          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/manual-change-record-template.md" target="_blank" rel="noreferrer"><span class="evidence-title">Production-change record format (blank)</span><span class="evidence-description">Blank template for reason, impact, approval, test, deployment, and recovery.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/secure-development-training-curriculum.md" target="_blank" rel="noreferrer"><span class="evidence-title">Secure-development curriculum</span><span class="evidence-description">Truenote-specific secure design, coding, tooling, and assessment material.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/change-control.md" target="_blank" rel="noreferrer"><span class="evidence-title">Change-control procedure</span><span class="evidence-description">Authorization, review, testing, deployment, recovery, and closure workflow.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/manual-change-record-template.md" target="_blank" rel="noreferrer"><span class="evidence-title">Production-change record format</span><span class="evidence-description">Complete reason, impact, approval, test, deployment, and recovery record.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
           <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/evidence-index.md" target="_blank" rel="noreferrer"><span class="evidence-title">Master security evidence index</span><span class="evidence-description">Cross-reference for repository implementation, tests, workflows, and documents.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
         </ul>
       </div>
@@ -374,7 +400,7 @@
           <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/__tests__/negative-controls.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Authorization negative-control tests</span><span class="evidence-description">Cross-program, clearance, activation, and unsafe-state denial cases.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
           <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/content-scan.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Content screening implementation</span><span class="evidence-description">EICAR, secret, identity, payment-card, and prompt-injection detection.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
           <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/__tests__/content-scan.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Content screening tests</span><span class="evidence-description">Safe detection behavior without retaining matched sensitive values.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
-          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/middleware/browser-security.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Browser request-defense middleware</span><span class="evidence-description">Origin and Fetch Metadata checks and the Content Security Policy, including frame-ancestors.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/middleware/browser-security.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Browser request-defense middleware</span><span class="evidence-description">Origin, Fetch Metadata, CSP, framing, MIME, referrer, and permissions controls.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
           <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/middleware/__tests__/browser-security.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Browser request-defense tests</span><span class="evidence-description">Trusted-origin acceptance and foreign, opaque, malformed, and cross-site denial.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
         </ul>
       </div>
@@ -383,10 +409,10 @@
         <h3>Audit and secure delivery</h3>
         <p>Security-event integrity, durable delivery, hosted analysis, and evidence validation.</p>
         <ul class="evidence-list">
-          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/audit.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Security-event audit implementation</span><span class="evidence-description">Correlated security receipts written through the hash-chaining database function.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/audit.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Security-event audit implementation</span><span class="evidence-description">Correlated security receipts and append-only event creation.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
           <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/siem-outbox.ts" target="_blank" rel="noreferrer"><span class="evidence-title">Durable SIEM delivery implementation</span><span class="evidence-description">Signed payloads, lease-fenced claims, retries, backoff, and dead-letter handling.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
-          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/__tests__/siem-outbox.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">SIEM delivery tests</span><span class="evidence-description">Signing, retry, completion, and dead-letter cases, plus content checks of the lease and health functions.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
-          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/security/p1-siem-delivery-outbox.sql" target="_blank" rel="noreferrer"><span class="evidence-title">SIEM delivery database controls</span><span class="evidence-description">Outbox constraints, indexes, lease functions, grants, and verification queries. Not yet installed on truenote.org.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/artifacts/api-server/src/lib/security/__tests__/siem-outbox.test.ts" target="_blank" rel="noreferrer"><span class="evidence-title">SIEM delivery tests</span><span class="evidence-description">Signing, lease, retry, completion, dead-letter, and health-reporting cases.</span><span class="evidence-action">Open tests <span aria-hidden="true">↗</span></span></a></li>
+          <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/docs/security/p1-siem-delivery-outbox.sql" target="_blank" rel="noreferrer"><span class="evidence-title">SIEM delivery database controls</span><span class="evidence-description">Outbox constraints, indexes, lease functions, grants, and verification queries.</span><span class="evidence-action">Open evidence <span aria-hidden="true">↗</span></span></a></li>
           <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/actions/workflows/security.yml" target="_blank" rel="noreferrer"><span class="evidence-title">Hosted security workflow results</span><span class="evidence-description">Type checks, build, tests, secret scan, dependency audit, SBOM, and CodeQL.</span><span class="evidence-action">Open workflow <span aria-hidden="true">↗</span></span></a></li>
           <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/.github/workflows/security.yml" target="_blank" rel="noreferrer"><span class="evidence-title">Security workflow definition</span><span class="evidence-description">Exact hosted job configuration and retained security-analysis steps.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>
           <li><a class="evidence-link" href="https://github.com/ryanportfolio/Truenote/blob/main/scripts/src/verify-pci-evidence.ts" target="_blank" rel="noreferrer"><span class="evidence-title">PCI evidence-integrity verifier</span><span class="evidence-description">Machine checks for links, hashes, workflow settings, threat rows, and evidence scopes.</span><span class="evidence-action">Open source <span aria-hidden="true">↗</span></span></a></li>

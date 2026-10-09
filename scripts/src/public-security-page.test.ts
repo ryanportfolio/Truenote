@@ -45,7 +45,7 @@ describe("public security reporting surface", () => {
     assert.ok(securityOverview.includes('href="/security/pci/"'));
     assert.ok(
       securityOverview.includes(
-        "This page includes only safeguards that have completed repository evidence"
+        "Customer use remains subject to organizational security approval"
       )
     );
     assert.equal(securityOverview.includes("living PCI DSS readiness record"), false);
@@ -69,16 +69,12 @@ describe("public security reporting surface", () => {
         "PCI DSS includes secure-software requirements"
       )
     );
-    assert.ok(pciReadiness.includes("<h2>Completed safeguards</h2>"));
+    assert.ok(pciReadiness.includes("<h2>Software safeguards and draft procedures</h2>"));
     assert.ok(pciReadiness.includes("<h2>Checks that passed</h2>"));
-    assert.ok(pciReadiness.includes("<h2>Open the complete public evidence set</h2>"));
-    assert.equal(pciReadiness.includes("Evidence boundary:"), false);
-    assert.equal(
-      pciReadiness.includes(
-        "It is not a claim that Truenote is PCI DSS compliant, certified, or independently assessed"
-      ),
-      false
-    );
+    assert.ok(pciReadiness.includes("<h2>Open the public software evidence set</h2>"));
+    assert.ok(pciReadiness.includes("Assessment boundary:"));
+    assert.ok(pciReadiness.includes("No PCI DSS compliance, certification"));
+    assert.ok(pciReadiness.includes("Scope and approval pending"));
     assert.equal(
       (pciReadiness.match(/class="evidence-link"/g) ?? []).length,
       31
@@ -140,12 +136,8 @@ describe("public security reporting surface", () => {
     }
     for (const publicSource of [securityOverview, pciReadiness]) {
       for (const internalOnlyText of [
-        "Implemented, unverified",
-        "Operational evidence required",
-        "Third-party evidence required",
         "Earliest incomplete gate",
         "what still needs",
-        "Requirement 6",
         "TN-WORK-",
         "P0 remains open"
       ]) {

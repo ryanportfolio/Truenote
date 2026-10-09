@@ -1,0 +1,168 @@
+{
+  "capturedAt": "2026-10-09T16:24:50.767Z",
+  "project": "truenote",
+  "environment": "production",
+  "service": "pgvector",
+  "method": "Railway CLI SSH; psql catalog SELECTs in READ ONLY transactions; runtime connection username only from web and worker",
+  "scope": "Audit/SIEM functions, all non-internal triggers on the three named tables, table ownership/ACLs and runtime role privileges. Not the full PCI verifier or synthetic control acceptance.",
+  "applicationRowsRead": false,
+  "productionChanges": false,
+  "queries": [
+    {
+      "name": "audit-catalog",
+      "sha256": "c261f033e8ac10e17107009f2a676273f2fb03606b32ac65be7b36d4027b3b0b",
+      "sql": "BEGIN TRANSACTION READ ONLY;\nSET LOCAL statement_timeout = '15s';\nSET LOCAL lock_timeout = '3s';\nSELECT json_build_object('kind','context','database',current_database(),'role',current_user,'read_only',current_setting('transaction_read_only'),'at',CURRENT_TIMESTAMP);\nWITH expected(name) AS (VALUES ('append_security_event'),('block_security_event_mutation'),('audit_document_version_lifecycle'),('audit_content_source_change'),('enqueue_security_event_for_siem'),('claim_siem_deliveries'),('complete_siem_delivery'),('fail_siem_delivery'),('get_siem_delivery_health'))\nSELECT json_build_object('kind','function','name',e.name,'present',p.oid IS NOT NULL,'signature',p.oid::regprocedure::text,'security_definer',p.prosecdef,'settings',p.proconfig,'definition',CASE WHEN p.oid IS NOT NULL THEN pg_get_functiondef(p.oid) END)\nFROM expected e LEFT JOIN pg_proc p ON p.proname=e.name AND p.pronamespace='public'::regnamespace ORDER BY e.name;\nSELECT json_build_object('kind','trigger','table',c.relname,'name',t.tgname,'enabled',t.tgenabled,'definition',pg_get_triggerdef(t.oid,true)) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid WHERE c.relnamespace='public'::regnamespace AND c.relname IN ('security_events','document_versions','content_sources') AND NOT t.tgisinternal ORDER BY c.relname,t.tgname;\nSELECT json_build_object('kind','table','name',c.relname,'owner',pg_get_userbyid(c.relowner),'acl',c.relacl,'rowsecurity',c.relrowsecurity) FROM pg_class c WHERE c.relnamespace='public'::regnamespace AND c.relname IN ('security_events','siem_delivery_outbox') ORDER BY c.relname;\nCOMMIT;\n"
+    },
+    {
+      "name": "audit-privileges",
+      "sha256": "9273418f27b58507e7a0d60ca9e02174d58f9e1f799c79de3aad3bb12ea49da9",
+      "sql": "BEGIN TRANSACTION READ ONLY;\nSET LOCAL statement_timeout = '15s';\nSELECT json_build_object('kind','role','name',rolname,'superuser',rolsuper,'inherit',rolinherit,'bypassrls',rolbypassrls) FROM pg_roles WHERE rolname='postgres';\nSELECT json_build_object('kind','privileges','table',n,'role','postgres','owner',pg_get_userbyid(c.relowner),'update',has_table_privilege('postgres',c.oid,'UPDATE'),'delete',has_table_privilege('postgres',c.oid,'DELETE'),'truncate',has_table_privilege('postgres',c.oid,'TRUNCATE')) FROM (VALUES('security_events'),('siem_delivery_outbox')) AS e(n) JOIN pg_class c ON c.oid=to_regclass('public.'||n);\nCOMMIT;\n"
+    }
+  ],
+  "catalog": [
+    {
+      "kind": "context",
+      "database": "railway",
+      "role": "postgres",
+      "read_only": "on",
+      "at": "2026-10-09T16:24:22.632036+00:00"
+    },
+    {
+      "kind": "function",
+      "name": "append_security_event",
+      "present": true,
+      "signature": "append_security_event(text,text,uuid,text,text,uuid,text,text,text,text,jsonb)",
+      "security_definer": true,
+      "settings": [
+        "search_path=public, pg_catalog"
+      ],
+      "definition": "CREATE OR REPLACE FUNCTION public.append_security_event(p_action text, p_outcome text, p_actor_user_id uuid, p_actor_email text, p_actor_role text, p_program_id uuid, p_resource_type text, p_resource_id text, p_request_id text, p_source_ip text, p_details jsonb)\n RETURNS TABLE(id uuid, occurred_at timestamp with time zone, event_hash text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nDECLARE\n  v_id uuid := gen_random_uuid();\n  v_occurred_at timestamptz := clock_timestamp();\n  v_previous_hash text;\n  v_event_hash text;\nBEGIN\n  IF p_action IS NULL OR p_action = '' THEN\n    RAISE EXCEPTION 'security event action is required';\n  END IF;\n\n  IF p_outcome NOT IN ('success', 'denied', 'failure') THEN\n    RAISE EXCEPTION 'security event outcome is invalid';\n  END IF;\n\n  PERFORM pg_advisory_xact_lock(\n    hashtext('truenote.security_events.hash_chain')\n  );\n\n  SELECT se.event_hash\n  INTO v_previous_hash\n  FROM security_events se\n  ORDER BY se.sequence DESC\n  LIMIT 1;\n\n  v_event_hash := encode(\n    digest(\n      concat_ws(\n        '|',\n        COALESCE(v_previous_hash, ''),\n        v_id::text,\n        v_occurred_at::text,\n        p_action,\n        p_outcome,\n        COALESCE(p_actor_user_id::text, ''),\n        COALESCE(p_actor_email, ''),\n        COALESCE(p_actor_role, ''),\n        COALESCE(p_program_id::text, ''),\n        COALESCE(p_resource_type, ''),\n        COALESCE(p_resource_id, ''),\n        COALESCE(p_request_id, ''),\n        COALESCE(p_source_ip, ''),\n        COALESCE(p_details, '{}'::jsonb)::text\n      ),\n      'sha256'\n    ),\n    'hex'\n  );\n\n  INSERT INTO security_events (\n    id,\n    occurred_at,\n    action,\n    outcome,\n    actor_user_id,\n    actor_email,\n    actor_role,\n    program_id,\n    resource_type,\n    resource_id,\n    request_id,\n    source_ip,\n    details,\n    previous_hash,\n    event_hash\n  )\n  VALUES (\n    v_id,\n    v_occurred_at,\n    p_action,\n    p_outcome,\n    p_actor_user_id,\n    p_actor_email,\n    p_actor_role,\n    p_program_id,\n    p_resource_type,\n    p_resource_id,\n    p_request_id,\n    p_source_ip,\n    COALESCE(p_details, '{}'::jsonb),\n    v_previous_hash,\n    v_event_hash\n  );\n\n  RETURN QUERY\n  SELECT v_id, v_occurred_at, v_event_hash;\nEND;\n$function$\n",
+      "definitionSha256": "0aaa29ad211ce729f57cf3c606157d3260ccebbf7ad727e243b67d2c5bc83377"
+    },
+    {
+      "kind": "function",
+      "name": "audit_content_source_change",
+      "present": false,
+      "signature": null,
+      "security_definer": null,
+      "settings": null,
+      "definition": null
+    },
+    {
+      "kind": "function",
+      "name": "audit_document_version_lifecycle",
+      "present": false,
+      "signature": null,
+      "security_definer": null,
+      "settings": null,
+      "definition": null
+    },
+    {
+      "kind": "function",
+      "name": "block_security_event_mutation",
+      "present": false,
+      "signature": null,
+      "security_definer": null,
+      "settings": null,
+      "definition": null
+    },
+    {
+      "kind": "function",
+      "name": "claim_siem_deliveries",
+      "present": false,
+      "signature": null,
+      "security_definer": null,
+      "settings": null,
+      "definition": null
+    },
+    {
+      "kind": "function",
+      "name": "complete_siem_delivery",
+      "present": false,
+      "signature": null,
+      "security_definer": null,
+      "settings": null,
+      "definition": null
+    },
+    {
+      "kind": "function",
+      "name": "enqueue_security_event_for_siem",
+      "present": false,
+      "signature": null,
+      "security_definer": null,
+      "settings": null,
+      "definition": null
+    },
+    {
+      "kind": "function",
+      "name": "fail_siem_delivery",
+      "present": false,
+      "signature": null,
+      "security_definer": null,
+      "settings": null,
+      "definition": null
+    },
+    {
+      "kind": "function",
+      "name": "get_siem_delivery_health",
+      "present": false,
+      "signature": null,
+      "security_definer": null,
+      "settings": null,
+      "definition": null
+    },
+    {
+      "kind": "table",
+      "name": "security_events",
+      "owner": "postgres",
+      "acl": null,
+      "rowsecurity": false
+    },
+    {
+      "kind": "table",
+      "name": "siem_delivery_outbox",
+      "owner": "postgres",
+      "acl": null,
+      "rowsecurity": false
+    }
+  ],
+  "runtimeConnections": [
+    {
+      "service": "web",
+      "kind": "runtime_database_identity",
+      "username": "postgres"
+    },
+    {
+      "service": "worker",
+      "kind": "runtime_database_identity",
+      "username": "postgres"
+    }
+  ],
+  "privileges": [
+    {
+      "kind": "role",
+      "name": "postgres",
+      "superuser": true,
+      "inherit": true,
+      "bypassrls": true
+    },
+    {
+      "kind": "privileges",
+      "table": "security_events",
+      "role": "postgres",
+      "owner": "postgres",
+      "update": true,
+      "delete": true,
+      "truncate": true
+    },
+    {
+      "kind": "privileges",
+      "table": "siem_delivery_outbox",
+      "role": "postgres",
+      "owner": "postgres",
+      "update": true,
+      "delete": true,
+      "truncate": true
+    }
+  ]
+}
