@@ -33,6 +33,25 @@ Set per service (values never in git or chat; the owner's source file is `Deskto
 
 `railway variable set KEY --stdin --skip-deploys -p <project> -e <env> -s <service>` batches changes without a redeploy; `railway variable delete` always redeploys.
 
+### Database roles
+
+Two roles, defined by `lib/db/sql/0007_app_runtime_role.sql`:
+
+- `postgres` (`POSTGRES_USER`): superuser, owns every table, function and schema. Used only for `scripts/railway-apply-sql.mjs`, `railway ssh -s pgvector` maintenance, dumps and restores, and catalog evidence queries.
+- `truenote_app`: the application's login role for `web` and `worker`. Owns nothing, no DDL, no temporary tables, no TRUNCATE. Row access (SELECT, INSERT, UPDATE, DELETE) to the application tables listed in 0007 and to every `pgboss` table; SELECT only on `security_events`, whose rows it writes through `append_security_event` (SECURITY DEFINER); nothing on `schema_migrations`, `security_control_metadata` or `siem_delivery_outbox`. `security_events` also refuses UPDATE, DELETE and TRUNCATE from any role, the owner included (`0008_security_events_append_only.sql`).
+
+Status (2026-10-09): 0007 to 0009 are written and not applied; `web` and `worker` still connect as `postgres` through `${{pgvector.DATABASE_URL_PRIVATE}}`.
+
+The connection string for `web` and `worker` is `DATABASE_URL=postgresql://truenote_app:${{pgvector.TRUENOTE_APP_DB_PASSWORD}}@${{pgvector.PGHOST_PRIVATE}}:${{pgvector.PGPORT_PRIVATE}}/${{pgvector.PGDATABASE}}`. The password lives only in the `pgvector` variable `TRUENOTE_APP_DB_PASSWORD`. `node scripts/railway-set-app-db-password.mjs` prints the role's attributes and whether that variable exists; with `--apply` (owner's go) it sets a new random password in the variable without redeploying `pgvector`, sets the role to the matching SCRAM verifier, and checks it, printing neither. Running services keep their open connections and need a redeploy of both to use a new password. Rollback of the switch: set `DATABASE_URL` on both services back to `${{pgvector.DATABASE_URL_PRIVATE}}` and redeploy; the role and grants do nothing while unused.
+
+Commands run inside `worker` over `railway ssh` (the eval harness, `eval.md`) use the worker's `DATABASE_URL` and so run as `truenote_app`. Work that needs more runs as `postgres` from `pgvector`, as `scripts/src/seed-showcase.ts` already does for its backdating step.
+
+Rules for later changes:
+
+- A new table or sequence created by a migration in `public` or `pgboss` gets `truenote_app` row grants automatically (default privileges set by 0007). A migration adding a table the application must not read or write revokes them in the same file, as 0007 does for the ledger and the SIEM outbox.
+- pg-boss creates tables only when it installs or migrates its schema and when `createQueue` meets a new queue name. `truenote_app` can do neither, so `start()` or `createQueue()` fails with `permission denied` on a pg-boss upgrade or a new queue. Ship those as `lib/db/sql/` files run by `postgres`: a new queue as `SELECT pgboss.create_queue('<name>', '<options json>');` with the policy from its `ensureQueue` call (the runtime call is then a no-op and does not change stored options); an upgrade as the SQL from `PgBoss.getMigrationPlans('pgboss', <current version>)`, without its own `BEGIN`/`COMMIT`.
+- A new SECURITY DEFINER function the application calls gets `REVOKE EXECUTE ... FROM PUBLIC` and `GRANT EXECUTE ... TO truenote_app`.
+
 ### Agent account
 
 The owner authorized an agent account for operating and testing the site (2026-10-07): `claude-agent@truenote.org`, role `super_user`, user id `af8a8c7a-6369-4813-8c6e-fec0ccbf3cb6`, with the owner's data clearance. It was created directly inside the worker with the app's `hashPassword` and recorded as security event `admin.user.create`, so that no password had to pass through chat or an API response. The admin create-user route (`POST /api/admin/users`) works without email: it returns a one-time `tempPassword` in the response. The credentials live only on the owner's machine in `~/.claude/secrets/truenote-agent.json`; never print or commit them. Use the account through the app's own API (`POST /api/auth/login`, then the session cookie with `Origin` and, for program-scoped calls, `X-Program-Id: 00000000-0000-0000-0000-0000000000aa`), and log out when done. The demo set in `docs/demo-kb/` was uploaded this way. Deactivate the account from the admin users page if it is no longer wanted.
