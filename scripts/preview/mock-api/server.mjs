@@ -1504,6 +1504,8 @@ function resetUserPassword(user, id) {
         )
       : canManageUser(user, target);
   if (!allowed) throw notFound();
+  // routes/admin/users.ts demoTouchesDemo: never a demo account on a demo account.
+  if (user.isDemo && target.isDemo) throw new HttpError(403, DEMO_MESSAGE);
   target.mustResetPassword = true;
   return { tempPassword: randomBytes(12).toString("base64url") };
 }

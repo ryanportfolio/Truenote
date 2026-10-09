@@ -86,18 +86,23 @@ export async function persistDemoLimitsPolicy(
 
 // Demo requests check the switch on every write, so the value is cached
 // briefly. The route clears it once a save commits; another replica sees
-// the change within CACHE_MS.
+// the change within CACHE_MS of its own last read starting. A read that
+// started before a clear is not cached, so it can't outlive the save.
 const CACHE_MS = 5_000;
 let cached: { enabled: boolean; at: number } | null = null;
+let generation = 0;
 
 export function forgetDemoLimits(): void {
   cached = null;
+  generation += 1;
 }
 
 async function demoLimitsEnabled(): Promise<boolean> {
   if (cached && Date.now() - cached.at < CACHE_MS) return cached.enabled;
+  const startedAt = Date.now();
+  const startedGeneration = generation;
   const { enabled } = await getDemoLimitsPolicy();
-  cached = { enabled, at: Date.now() };
+  if (generation === startedGeneration) cached = { enabled, at: startedAt };
   return enabled;
 }
 

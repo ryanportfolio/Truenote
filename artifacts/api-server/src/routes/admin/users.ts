@@ -8,6 +8,7 @@ import { hashPassword } from "../../lib/auth/passwords.js";
 import {
   authedUser,
   blockDemoWrites,
+  DEMO_WRITE_BLOCKED_MESSAGE,
   requireAuth,
   requireFreshPassword,
   requireManagerOrAbove,
@@ -20,6 +21,7 @@ import {
   type TargetUserSummary
 } from "../../lib/auth/current-user.js";
 import { resolveEffectiveProgramId } from "../../lib/auth/effective-program.js";
+import { isDemoEmail } from "../../lib/auth/demo-accounts.js";
 import { getMinPasswordLength } from "../../lib/config.js";
 import {
   BulkUserEmailsSchema,
@@ -60,7 +62,8 @@ export const usersRouter = Router();
 // blockDemoWrites: a demo manager or supervisor may LIST users (the page
 // renders, the capability is visible) but can't create/edit/deactivate
 // anyone or reset passwords — any of those would let one anonymous visitor
-// break login for the next.
+// break login for the next. A super user can lift those limits (Security
+// page); demoTouchesDemo still keeps demo accounts off each other.
 usersRouter.use(
   requireAuth,
   requireFreshPassword,
@@ -70,6 +73,15 @@ usersRouter.use(
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * A demo account may not edit, reset or remove a demo account, even with
+ * the demo limits lifted: demo passwords are published, so one visitor
+ * breaking a demo login would lock out every other visitor.
+ */
+function demoTouchesDemo(actor: CurrentUser, targetEmail: string): boolean {
+  return isDemoEmail(actor.email) && isDemoEmail(targetEmail);
+}
 
 const ROLE_VALUES = [
   "super_user",
@@ -672,7 +684,8 @@ usersRouter.patch("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req
     type TxResult =
       | { kind: "ok"; row: SafeUserRow }
       | { kind: "not-found" }
-      | { kind: "forbidden" };
+      | { kind: "forbidden" }
+      | { kind: "demo" };
 
     let txResult: TxResult;
     try {
@@ -707,6 +720,7 @@ usersRouter.patch("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req
         ) {
           return { kind: "not-found" };
         }
+        if (demoTouchesDemo(actor, target.email)) return { kind: "demo" };
 
         const finalRole = parsed.data.role ?? target.role;
         const finalProgramId =
@@ -799,6 +813,10 @@ usersRouter.patch("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req
       res.status(403).json({ error: "Forbidden" });
       return;
     }
+    if (txResult.kind === "demo") {
+      res.status(403).json({ error: DEMO_WRITE_BLOCKED_MESSAGE });
+      return;
+    }
     res.json({ item: toListItem(txResult.row) });
   } catch (err) {
     next(err);
@@ -846,7 +864,7 @@ usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_
     const tempPassword = generateTempPassword();
     const passwordHash = await hashPassword(tempPassword);
 
-    type TxResult = { kind: "ok" } | { kind: "not-found" };
+    type TxResult = { kind: "ok" } | { kind: "not-found" } | { kind: "demo" };
     const txResult = await db.transaction(async (tx): Promise<TxResult> => {
       // SELECT FOR UPDATE — locks the row so any concurrent PATCH/reset on
       // the same user_id queues behind us, and re-reads the CURRENT
@@ -854,6 +872,7 @@ usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_
       const rows = await tx
         .select({
           id: users.id,
+          email: users.email,
           role: users.role,
           programId: users.programId
         })
@@ -892,6 +911,7 @@ usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_
       // 404 (not 403) on out-of-scope ids — same existence-hiding
       // convention as the documents routes.
       if (!allowed) return { kind: "not-found" };
+      if (demoTouchesDemo(actor, target.email)) return { kind: "demo" };
 
       // Atomic: update password + force-reset flag + revoke every existing
       // session. If we ran them as separate writes, a transient DB failure
@@ -909,6 +929,10 @@ usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_
 
     if (txResult.kind === "not-found") {
       res.status(404).json({ error: "Not found" });
+      return;
+    }
+    if (txResult.kind === "demo") {
+      res.status(403).json({ error: DEMO_WRITE_BLOCKED_MESSAGE });
       return;
     }
 
@@ -947,12 +971,13 @@ usersRouter.delete("/:id", userAdminWriteLimit, requireManagerOrAbove, async (re
       return;
     }
 
-    type TxResult = { kind: "ok" } | { kind: "not-found" } | { kind: "active" };
+    type TxResult = { kind: "ok" } | { kind: "not-found" } | { kind: "active" } | { kind: "demo" };
 
     const txResult = await db.transaction(async (tx): Promise<TxResult> => {
       const rows = await tx
         .select({
           id: users.id,
+          email: users.email,
           role: users.role,
           programId: users.programId,
           isActive: users.isActive
@@ -974,6 +999,7 @@ usersRouter.delete("/:id", userAdminWriteLimit, requireManagerOrAbove, async (re
       ) {
         return { kind: "not-found" };
       }
+      if (demoTouchesDemo(actor, target.email)) return { kind: "demo" };
       if (target.isActive) return { kind: "active" };
 
       // Cascades sessions + password_reset_tokens; SET NULL on any
@@ -984,6 +1010,10 @@ usersRouter.delete("/:id", userAdminWriteLimit, requireManagerOrAbove, async (re
 
     if (txResult.kind === "not-found") {
       res.status(404).json({ error: "Not found" });
+      return;
+    }
+    if (txResult.kind === "demo") {
+      res.status(403).json({ error: DEMO_WRITE_BLOCKED_MESSAGE });
       return;
     }
     if (txResult.kind === "active") {
