@@ -309,6 +309,7 @@ export async function loadCitationSnapshots(input: {
   queryLogIds: string[];
   userId: string;
   programId: string;
+  strict?: boolean;
 }): Promise<Map<string, LinkedSource[]>> {
   const out = new Map<string, LinkedSource[]>();
   if (input.queryLogIds.length === 0) return out;
@@ -331,6 +332,7 @@ export async function loadCitationSnapshots(input: {
   } catch (error) {
     if (!isMissingCitationSnapshotsColumn(error)) {
       warning("[citations] failed to load snapshots:", error);
+      if (input.strict) throw error;
     }
   }
   return out;
@@ -392,9 +394,8 @@ export interface VersionActivity {
  *   - key ABSENT                → version no longer exists (its document was
  *                                 deleted, cascading the version away)
  *
- * Returns null (not an empty map) on query failure, so callers can tell
- * "lookup failed, fail open to current behavior" apart from "every cited
- * version has genuinely been deleted, drop them all".
+ * Returns null on query failure. Callers must withhold receipts when current
+ * activity cannot be established.
  */
 export async function loadVersionActivity(
   versionIds: string[]
@@ -431,32 +432,27 @@ export async function loadVersionActivity(
  *                              marks it as no longer current)
  *   - deleted (absent)       → source DROPPED: a removed document must stop
  *                              serving its excerpt from history
- *   - null document_version_id (legacy/degenerate receipt) → passthrough:
- *                              nothing to tie it to a version, leave as-is
+ *   - missing version identity or failed lookup -> source withheld
  *
- * `activity === null` means the lookup failed — fail open to current behavior
- * rather than blanking valid history over a transient DB error. Pure and
- * synchronous so the branch logic is unit-tested without a database.
+ * Only active/current and explicitly retired/inactive versions are eligible.
  */
 export function applyVersionActivity(
   sources: LinkedSource[],
   activity: Map<string, VersionActivity> | null
 ): LinkedSource[] {
-  if (activity === null) return sources;
+  if (activity === null) return [];
   const out: LinkedSource[] = [];
   for (const source of sources) {
     const versionId = source.document_version_id;
-    if (versionId === null) {
-      out.push(source);
-      continue;
-    }
+    if (versionId === null) continue;
     if (!activity.has(versionId)) continue; // deleted → drop
     const state = activity.get(versionId);
     if (!state) continue;
-    if (["revoked", "rejected", "quarantined", "failed"].includes(state.lifecycleState)) {
-      continue;
+    if (state.isActive && state.lifecycleState === "active") {
+      out.push(source);
+    } else if (!state.isActive && state.lifecycleState === "retired") {
+      out.push({ ...source, superseded: true });
     }
-    out.push(state.isActive ? source : { ...source, superseded: true });
   }
   return out;
 }

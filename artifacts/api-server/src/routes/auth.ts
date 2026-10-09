@@ -171,12 +171,11 @@ authRouter.post("/login", async (req, res, next) => {
     }
 
     const oidc = getOidcConfig();
-    if (oidc.enabled && oidc.localLoginMode === "disabled") {
+    if (oidc.localLoginMode === "disabled") {
       res.status(403).json({ error: "Use company SSO to sign in." });
       return;
     }
     if (
-      oidc.enabled &&
       oidc.localLoginMode === "break_glass" &&
       row.role !== "super_user"
     ) {
@@ -187,7 +186,7 @@ authRouter.post("/login", async (req, res, next) => {
     const { token } = await createSession(row.id);
     setSessionCookie(res, token);
     recordSecurityEventBestEffort({
-      action: row.role === "super_user" && oidc.enabled && oidc.localLoginMode === "break_glass"
+      action: row.role === "super_user" && oidc.localLoginMode === "break_glass"
         ? "auth.break_glass.login"
         : "auth.local.login",
       outcome: "success",
@@ -486,6 +485,12 @@ authRouter.post("/forgot-password", async (req, res, next) => {
   }
 });
 
+class ResetPasswordRejectedError extends Error {
+  constructor(readonly status: 400 | 403, message: string) {
+    super(message);
+  }
+}
+
 /**
  * POST /api/auth/reset-password — consume a reset link, set new
  * password, log the user in.
@@ -545,7 +550,9 @@ authRouter.post("/reset-password", async (req, res, next) => {
         )
         .returning({ userId: passwordResetTokens.userId });
       const consumedRow = consumed[0];
-      if (!consumedRow) return null;
+      if (!consumedRow) {
+        throw new ResetPasswordRejectedError(400, "This reset link is invalid or has expired");
+      }
 
       const userId = consumedRow.userId;
 
@@ -565,14 +572,29 @@ authRouter.post("/reset-password", async (req, res, next) => {
         .where(eq(users.id, userId))
         .limit(1);
       const user = userRows[0];
-      if (!user || !user.isActive) return null;
+      if (!user || !user.isActive) {
+        throw new ResetPasswordRejectedError(400, "This reset link is invalid or has expired");
+      }
 
       // Belt-and-suspenders: forgot-password never issues tokens for
       // demo emails, but a token minted before the account became a
       // demo account (or via a future code path) must still not rotate
       // a published demo password. Generic invalid-link response — no
       // need to advertise the account's demo status here.
-      if (isDemoEmail(user.email)) return null;
+      if (isDemoEmail(user.email)) {
+        throw new ResetPasswordRejectedError(400, "This reset link is invalid or has expired");
+      }
+
+      const { localLoginMode } = getOidcConfig();
+      if (
+        localLoginMode === "disabled" ||
+        (localLoginMode === "break_glass" && user.role !== "super_user")
+      ) {
+        // Reset and invite completion issue a local session, so the same
+        // policy as /login applies. Throw to roll back token consumption;
+        // returning a denial here would commit it and burn the reset link.
+        throw new ResetPasswordRejectedError(403, "Use company SSO to sign in.");
+      }
 
       await tx
         .update(users)
@@ -598,16 +620,13 @@ authRouter.post("/reset-password", async (req, res, next) => {
       };
     });
 
-    if (!result) {
-      res
-        .status(400)
-        .json({ error: "This reset link is invalid or has expired" });
-      return;
-    }
-
     setSessionCookie(res, result.sessionToken);
     res.json({ user: result.user });
   } catch (err) {
+    if (err instanceof ResetPasswordRejectedError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
     next(err);
   }
 });

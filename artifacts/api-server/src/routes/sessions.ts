@@ -3,9 +3,6 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../lib/db-client.js";
 import {
   chatSessions,
-  chunks,
-  documents,
-  documentVersions,
   queryLog
 } from "@workspace/db/schema";
 import {
@@ -15,14 +12,8 @@ import {
   requireFreshPassword
 } from "../middleware/current-user.js";
 import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
-import {
-  applyVersionActivity,
-  linkedSourceFromChunk,
-  loadCitationSnapshots,
-  loadVersionActivity,
-  withoutDurableCitation,
-  type LinkedSource
-} from "../lib/citations.js";
+import type { LinkedSource } from "../lib/citations.js";
+import { loadAuthorizedHistorySources } from "../lib/security/history-access.js";
 
 /**
  * CSR chat session history. A session groups the query_log rows from one
@@ -87,9 +78,27 @@ sessionsRouter.get("/", async (req, res, next) => {
       )
       .orderBy(desc(chatSessions.updatedAt))
       .limit(100);
+    // Titles derive from conversation content. Release one only when every
+    // exchange still has complete, currently authorized provenance.
+    const logs = rows.length === 0 ? [] : await db.select({
+      id: queryLog.id,
+      sessionId: queryLog.sessionId,
+      citedChunkIds: queryLog.citedChunkIds
+    }).from(queryLog).where(and(
+      inArray(queryLog.sessionId, rows.map((row) => row.id)),
+      eq(queryLog.programId, programId),
+      eq(queryLog.userId, user.id)
+    ));
+    const authorized = await loadAuthorizedHistorySources({ logs, userId: user.id, programId });
+    const titleAllowed = new Map<string, boolean>();
+    for (const log of logs) {
+      if (log.sessionId === null) continue;
+      titleAllowed.set(log.sessionId,
+        titleAllowed.get(log.sessionId) !== false && authorized.has(log.id));
+    }
     const items: SessionListItem[] = rows.map((r) => ({
       id: r.id,
-      title: r.title,
+      title: titleAllowed.get(r.id) === true ? r.title : null,
       updatedAt: r.updatedAt ? r.updatedAt.toISOString() : null
     }));
     res.json({ items });
@@ -151,110 +160,11 @@ sessionsRouter.get("/:id", async (req, res, next) => {
       )
       .orderBy(asc(queryLog.createdAt));
 
-    // Durable snapshots are the primary receipt. They retain the exact
-    // document version, clean excerpt, and raw markdown range even when a
-    // same-version re-ingest replaces every chunk id.
-    const loadedSnapshots = await loadCitationSnapshots({
-      queryLogIds: logRows.map((row) => row.id),
-      userId: user.id,
-      programId
-    });
-    const snapshotsByLogId = new Map<string, LinkedSource[]>();
-    for (const row of logRows) {
-      const snapshots = loadedSnapshots.get(row.id);
-      const citedIds = row.citedChunkIds ?? [];
-      if (
-        snapshots &&
-        snapshots.length === citedIds.length &&
-        snapshots.every((source, index) => source.chunk_id === citedIds[index])
-      ) {
-        snapshotsByLogId.set(row.id, snapshots);
-      }
-    }
-
-    // Legacy fallback for rows written before citation_snapshots DDL (or
-    // while it was unavailable). This preserves current behavior, but it is
-    // intentionally not the durability mechanism: replaced chunks can drop.
-    const allChunkIds = Array.from(
-      new Set(
-        logRows
-          .filter((row) => !snapshotsByLogId.has(row.id))
-          .flatMap((row) => row.citedChunkIds ?? [])
-      )
-    );
-    interface ResolvedChunk {
-      chunkId: string;
-      content: string;
-      metadata: unknown;
-      docId: string;
-      docTitle: string;
-      documentVersionId: string;
-      versionNumber: number;
-    }
-    const chunkMap = new Map<string, ResolvedChunk>();
-    if (allChunkIds.length > 0) {
-      const chunkRows = await db
-        .select({
-          chunkId: chunks.id,
-          content: chunks.content,
-          metadata: chunks.metadata,
-          docId: documents.id,
-          docTitle: documents.title,
-          documentVersionId: documentVersions.id,
-          versionNumber: documentVersions.versionNumber
-        })
-        .from(chunks)
-        .innerJoin(documentVersions, eq(documentVersions.id, chunks.documentVersionId))
-        .innerJoin(documents, eq(documents.id, documentVersions.documentId))
-        // Only resolve chunks in the caller's program AND from still-active
-        // versions. Legacy rows have no durable receipt, so a replaced or
-        // removed version has no audit claim to keep — it simply drops (the
-        // inline [id] renders as an unknown citation client-side). The
-        // snapshot path handles superseded/deleted versions separately below.
-        .where(
-          and(
-            inArray(chunks.id, allChunkIds),
-            eq(chunks.programId, programId),
-            eq(documentVersions.isActive, true)
-          )
-        );
-      for (const c of chunkRows) {
-        chunkMap.set(c.chunkId, c);
-      }
-    }
-
-    // Fold live version activity into the durable snapshots: mark a citation
-    // whose version has since been replaced as superseded (kept, but flagged
-    // no-longer-current), and drop one whose version was deleted. Runs once
-    // over every snapshot version id in this session. The legacy fallback
-    // already filtered to active versions in its chunk query above.
-    const snapshotVersionIds = [...snapshotsByLogId.values()]
-      .flat()
-      .map((source) => source.document_version_id)
-      .filter((v): v is string => v !== null);
-    const versionActivity = await loadVersionActivity(snapshotVersionIds);
-
-    const exchanges: SessionExchange[] = logRows.map((r) => {
-      const snapshots = snapshotsByLogId.get(r.id);
-      const sources = snapshots
-        ? applyVersionActivity(snapshots, versionActivity)
-        : (r.citedChunkIds ?? []).flatMap((chunkId, citationIndex) => {
-            const chunk = chunkMap.get(chunkId);
-            if (!chunk) return [];
-            return [
-              withoutDurableCitation(linkedSourceFromChunk({
-                chunkId: chunk.chunkId,
-                docTitle: chunk.docTitle,
-                content: chunk.content,
-                documentId: chunk.docId,
-                documentVersionId: chunk.documentVersionId,
-                versionNumber: chunk.versionNumber,
-                metadata: chunk.metadata,
-                citationIndex
-              }))
-            ];
-          });
-      return {
+    const authorized = await loadAuthorizedHistorySources({ logs: logRows, userId: user.id, programId });
+    const exchanges: SessionExchange[] = logRows.flatMap((r) => {
+      const sources = authorized.get(r.id);
+      if (!sources) return [];
+      return [{
         queryLogId: r.id,
         question: r.question,
         answer: r.answer ?? "",
@@ -262,12 +172,12 @@ sessionsRouter.get("/:id", async (req, res, next) => {
         latencyMs: r.latencyMs,
         feedback: r.feedback,
         sources
-      };
+      }];
     });
 
     const detail: SessionDetail = {
       id: session.id,
-      title: session.title,
+      title: logRows.length > 0 && exchanges.length === logRows.length ? session.title : null,
       exchanges
     };
     res.json(detail);

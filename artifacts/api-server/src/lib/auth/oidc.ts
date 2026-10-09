@@ -54,14 +54,20 @@ export function getOidcConfig(): OidcConfig {
     stateSecret.length >= 32
   );
   const requestedMode = process.env.LOCAL_LOGIN_MODE?.trim();
-  const localLoginMode: LocalLoginMode =
+  let localLoginMode: LocalLoginMode;
+  if (
     requestedMode === "enabled" ||
     requestedMode === "break_glass" ||
     requestedMode === "disabled"
-      ? requestedMode
-      : enabled
-        ? "break_glass"
-        : "enabled";
+  ) {
+    // Local access policy remains binding even when the IdP is unusable.
+    localLoginMode = requestedMode;
+  } else if (requestedMode || (configured && !enabled)) {
+    // A typo or incomplete SSO setup must not silently permit local access.
+    localLoginMode = "disabled";
+  } else {
+    localLoginMode = enabled ? "break_glass" : "enabled";
+  }
   return {
     configured,
     enabled,
