@@ -22,7 +22,7 @@ export interface RunEvaluationPayload {
   runId: string;
 }
 
-const EVAL_QUEUE_POLICY = {
+export const EVAL_QUEUE_POLICY = {
   // Retries recover transient claim failures and worker crashes. The DB lease
   // token makes every progress/terminal write compare-and-set; an expired
   // handler that later resumes cannot overwrite its replacement.

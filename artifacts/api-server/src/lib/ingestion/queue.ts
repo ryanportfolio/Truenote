@@ -12,7 +12,7 @@ export interface IngestDocumentVersionPayload {
   documentVersionId: string;
 }
 
-const INGEST_QUEUE_POLICY = {
+export const INGEST_QUEUE_POLICY = {
   retryLimit: 3,
   retryDelay: 30,
   retryBackoff: true,
