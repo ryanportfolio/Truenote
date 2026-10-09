@@ -48,6 +48,17 @@ an independent penetration test or PCI assessment, or authorize production use.
   contains query text, definitions/hashes and metadata only. This is a confirmed
   installation/privilege gap. The full formal PCI catalog verifier and synthetic
   acceptance tests were not run.
+- Update, later on October 9: with the owner's approval, `lib/db/sql/0007` to
+  `0009` were applied and both services were switched to `truenote_app`, a
+  login role that owns nothing, runs no DDL, has no TRUNCATE, and can read
+  `security_events` but write it only through `append_security_event`. The
+  append-only guard (plus a TRUNCATE guard) and the document-lifecycle and
+  source-audit triggers are installed. A privilege sweep, rolled-back negative
+  tests (the role's writes to `security_events` and its DDL are refused; the
+  owner's UPDATE and DELETE are refused by the trigger) and application checks
+  are retained in the
+  [remediation receipt](evidence/railway-app-role-2026-10-09.json). The SIEM
+  functions and trigger remain absent, and the full verifier was still not run.
 - Current operating records say database volume backups are off, uploaded files
   have no backup, no restore exercise is retained, and Railway has one production
   environment. Those are dated records, not newly observed provider settings.
@@ -173,7 +184,7 @@ appointments. Named people and due dates must be assigned by the decision author
 | External malware scanner | Configuration required | `security/content-scan.ts`, `security/malware-policy.ts`, live endpoint absent | EICAR is not a full scanner. Actual enabled/override state not inspected | Platform/AppSec | Approved scanner configured; scanning enabled; clean/infected/unavailable/error tests retain correct receipts before parser work |
 | Scanner overrides and content approval | Operational evidence required | `security/document-policy.ts`, `docs/security/malware-scanning-control.sql`, `review-approval-control.sql` | Super-user scan bypass and senior-role self-activation are intentional exceptions | Data owner/Security | Adopt approval/exception policy, scope and expire bypasses, identify prior bypassed content, and rescan or retire it before customer use |
 | Raw-file and post-parse data handling | Gap | `artifacts/api-server/src/lib/ingestion/run.ts`, data-flow inventory | Sensitive raw files can be stored/disclosed before text screening; parsed text persisted before the decision | AppSec/data owner | Approve and enforce sanitized-only ingress or an assessed protected raw-file path; test prohibited-data rejection and cleanup across originals, parsed content, processors, and backups |
-| Audit database prerequisites and runtime privilege | Gap | Live Railway read-only catalog and runtime-role receipt October 9 | Mutation-blocking and lifecycle/source audit functions/triggers absent; web/worker connect as a superuser with audit modification/deletion/truncation privileges | Database owner | Install reviewed numbered migrations; provision separately owned controls and least-privilege runtime access; full catalog and synthetic acceptance checks pass after authorized changes |
+| Audit database prerequisites and runtime privilege | Operational evidence required | Live Railway read-only catalog and runtime-role receipt October 9; remediation receipt later October 9 | Found: mutation-blocking and lifecycle/source audit functions/triggers absent and web/worker connected as a superuser. Remediated October 9: guards and audit triggers installed; web/worker connect as least-privilege `truenote_app` (sweep and negative tests retained). Open: full verifier, synthetic acceptance, and administrator-resistant retention (the owner can still disable triggers) | Database owner | Install reviewed numbered migrations; provision separately owned controls and least-privilege runtime access; full catalog and synthetic acceptance checks pass after authorized changes |
 | External SIEM delivery | Gap | Live catalog confirms five delivery functions and enqueue trigger absent; live web endpoint/signing key absent October 9 | No demonstrated external delivery, independent retention, alert ownership or failure response | Database/SecOps | Verified prerequisites plus signed delivery, retry/recovery, dead-letter, alert, retention, and responder receipts pass |
 | Data retention and deletion | Operational evidence required | Document purge policy, retention override setting, provider matrix | No accepted schedule spanning logs, questions/answers, parsed files, providers and recovery copies | Data/privacy owner | Approve scoped schedules and overrides; retained deletion/discovery exercises cover all copies and documented exceptions |
 | Encryption and secrets | Third-party evidence required | Public HTTPS/HSTS observed; private proxy closure documented; service and provider records | No current full-path cryptographic/key-management attestation | Platform/vendor-risk | Verify private transport, storage/backup encryption, key ownership/access/rotation, certificates and credential lifecycle for the assessed paths |
@@ -233,7 +244,7 @@ readiness limits. No application/runtime behavior was changed.
 | Browser source preview | Passed at desktop width 1280 and phone width 375: both revised pages render, styles load, section navigation works, the PCI table exposes all 12 rows, and tables scroll within their focusable regions without horizontal page overflow |
 | Strict managed-release vulnerability CLI | Failed with six blocker groups: 51 missing finding owners, 51 missing due dates, 51 pending dispositions, 11 missing source owners, nine missing source evidence sets, and 11 non-operating sources. This is a failed readiness gate, not 51 confirmed exploits |
 | Current GitHub CodeQL | Authenticated API receipt retained: 31 open, eight fixed, nine dismissed; latest-main SARIF has 36 results. Reviewed all open alerts against current source; no alert state or scanning configuration changed |
-| Live Railway audit catalog and runtime roles | Read-only catalog checks and username-only runtime inspection retained. Confirmed missing audit/SIEM objects, no non-internal triggers on the three audited tables, and superuser runtime access. No application rows read or mutation attempted; full formal verifier not executed |
+| Live Railway audit catalog and runtime roles | Read-only catalog checks and username-only runtime inspection retained. Confirmed missing audit/SIEM objects, no non-internal triggers on the three audited tables, and superuser runtime access. No application rows read or mutation attempted; full formal verifier not executed. Remediated later the same day; see the [remediation receipt](evidence/railway-app-role-2026-10-09.json) |
 | Source syntax and whitespace | Existing page-contract file passed Node syntax checking; `git diff --check` passed |
 
 The source preview used the same stylesheet-extraction convention as the Vite
