@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   applyVersionActivity,
+  loadVersionActivity,
   citationTargetFromLinkedSource,
   citationReceiptFromLinkedSource,
   citationTargetMatchesMarkdown,
@@ -9,6 +10,10 @@ import {
   parseCitationSnapshots,
   withoutDurableCitation
 } from "../citations.js";
+
+const database = vi.hoisted(() => ({ execute: vi.fn() }));
+vi.mock("../db-client.js", () => ({ db: database }));
+vi.mock("../observability/error-log.js", () => ({ recordAppError: vi.fn() }));
 
 const ids = {
   chunk: "1526858c-e128-43ad-84bb-22b05d34e801",
@@ -198,18 +203,18 @@ describe("applyVersionActivity", () => {
     expect(out).toHaveLength(0);
   });
 
-  it("passes through legacy sources that have no version id", () => {
+  it("withholds sources that cannot be tied to a version", () => {
     const legacy = withoutDurableCitation(sourceForVersion(activeVersion, 0));
     expect(legacy.document_version_id).toBeNull();
-    expect(applyVersionActivity([legacy], new Map())).toEqual([legacy]);
+    expect(applyVersionActivity([legacy], new Map())).toEqual([]);
   });
 
-  it("fails open (keeps everything) when the activity lookup failed", () => {
+  it("fails closed when the activity lookup failed", () => {
     const sources = [
       sourceForVersion(activeVersion, 0),
       sourceForVersion(deletedVersion, 1)
     ];
-    expect(applyVersionActivity(sources, null)).toEqual(sources);
+    expect(applyVersionActivity(sources, null)).toEqual([]);
   });
 
   it("resolves a mixed set per source, keeping original citation indexes", () => {
@@ -236,5 +241,18 @@ describe("applyVersionActivity", () => {
     );
 
     expect(out).toEqual([]);
+  });
+});
+
+
+describe("version activity database lookup", () => {
+  it("withholds receipts after a database failure", async () => {
+    database.execute.mockRejectedValueOnce(new Error("database unavailable"));
+    const activity = await loadVersionActivity([ids.version]);
+    expect(activity).toBeNull();
+    expect(applyVersionActivity([linkedSource()], activity)).toEqual([]);
+  });
+  it.each(["submitted", "pending_review", "quarantined", "failed", "rejected", "unknown"])("withholds %s even if marked active", (lifecycleState) => {
+    expect(applyVersionActivity([linkedSource()], new Map([[ids.version, { isActive: true, lifecycleState }]]))).toEqual([]);
   });
 });
