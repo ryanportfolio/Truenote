@@ -1553,6 +1553,26 @@ function sourceForCitation(citation) {
   return superseded ? { ...citation, superseded: true } : { ...citation };
 }
 
+// Mirrors routes/sessions.ts: an exchange is shown only when every cited
+// document is still live and readable by the user, so uncited rows
+// (refusals included) stay out of history.
+// The title (named from the opening exchange) shows only when that exchange
+// is visible and every other hidden exchange is an uncited refusal. Sessions
+// with nothing visible are left out of the list.
+function sessionHistory(session, user) {
+  const rows = state.queryLog
+    .filter((r) => r.sessionId === session.id && r.userId === user.id && r.programId === session.programId)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const isVisible = (r) =>
+    r.citations.length > 0 &&
+    r.citations.every((c) => state.documents.some((d) => d.id === c.doc_id && !d.retired && canSee(user, d)));
+  const visible = rows.filter(isVisible);
+  const titleAllowed =
+    rows.length > 0 && isVisible(rows[0]) &&
+    rows.every((r) => isVisible(r) || (r.refused && r.citations.length === 0));
+  return { visible, title: titleAllowed ? session.title : null };
+}
+
 function listSessions(user, req) {
   const programId = effectiveProgramId(user, req);
   if (!programId) return { items: [], noProgramSelected: true };
@@ -1560,7 +1580,9 @@ function listSessions(user, req) {
     items: state.sessions
       .filter((s) => s.userId === user.id && s.programId === programId)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .map(({ id, title, updatedAt }) => ({ id, title, updatedAt }))
+      .map((s) => ({ session: s, history: sessionHistory(s, user) }))
+      .filter(({ history }) => history.visible.length > 0)
+      .map(({ session, history }) => ({ id: session.id, title: history.title, updatedAt: session.updatedAt }))
   };
 }
 
@@ -1570,11 +1592,11 @@ function sessionDetail(user, req, id) {
     (s) => s.id === id && s.userId === user.id && s.programId === programId
   );
   if (!session) throw notFound();
+  const history = sessionHistory(session, user);
   return {
     id: session.id,
-    title: session.title,
-    exchanges: state.queryLog
-      .filter((r) => r.sessionId === session.id)
+    title: history.title,
+    exchanges: history.visible
       .map((r) => ({
         queryLogId: r.id,
         question: r.question,
