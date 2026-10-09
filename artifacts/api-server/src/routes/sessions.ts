@@ -32,6 +32,26 @@ sessionsRouter.use(requireAuth, requireFreshPassword, requireCsrOrAbove);
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+interface TitleLog {
+  id: string;
+  refused: boolean | null;
+  citedChunkIds: string[] | null;
+}
+
+/**
+ * The title is generated from the opening exchange (routes/ask.ts), so it
+ * is released only when that exchange is currently authorized and no other
+ * cited exchange is withheld. A later uncited refusal stores only fixed
+ * refusal text and does not withhold the title, though it stays out of
+ * history. `logs` must be oldest first.
+ */
+function canReleaseTitle(logs: TitleLog[], authorized: Map<string, unknown>): boolean {
+  const [opening] = logs;
+  if (!opening || !authorized.has(opening.id)) return false;
+  return logs.every((log) => authorized.has(log.id) ||
+    (log.refused === true && (log.citedChunkIds ?? []).length === 0));
+}
+
 export interface SessionListItem {
   id: string;
   title: string | null;
@@ -78,29 +98,35 @@ sessionsRouter.get("/", async (req, res, next) => {
       )
       .orderBy(desc(chatSessions.updatedAt))
       .limit(100);
-    // Titles derive from conversation content. Release one only when every
-    // exchange still has complete, currently authorized provenance.
+    // Titles derive from conversation content (see canReleaseTitle).
+    // Sessions with no visible exchange are left out: they would open empty.
     const logs = rows.length === 0 ? [] : await db.select({
       id: queryLog.id,
       sessionId: queryLog.sessionId,
-      citedChunkIds: queryLog.citedChunkIds
+      citedChunkIds: queryLog.citedChunkIds,
+      refused: queryLog.refused
     }).from(queryLog).where(and(
       inArray(queryLog.sessionId, rows.map((row) => row.id)),
       eq(queryLog.programId, programId),
       eq(queryLog.userId, user.id)
-    ));
+    )).orderBy(asc(queryLog.createdAt), asc(queryLog.id));
     const authorized = await loadAuthorizedHistorySources({ logs, userId: user.id, programId });
-    const titleAllowed = new Map<string, boolean>();
+    const bySession = new Map<string, TitleLog[]>();
     for (const log of logs) {
       if (log.sessionId === null) continue;
-      titleAllowed.set(log.sessionId,
-        titleAllowed.get(log.sessionId) !== false && authorized.has(log.id));
+      const group = bySession.get(log.sessionId);
+      if (group) group.push(log);
+      else bySession.set(log.sessionId, [log]);
     }
-    const items: SessionListItem[] = rows.map((r) => ({
-      id: r.id,
-      title: titleAllowed.get(r.id) === true ? r.title : null,
-      updatedAt: r.updatedAt ? r.updatedAt.toISOString() : null
-    }));
+    const items: SessionListItem[] = rows.flatMap((r) => {
+      const sessionLogs = bySession.get(r.id) ?? [];
+      if (!sessionLogs.some((log) => authorized.has(log.id))) return [];
+      return [{
+        id: r.id,
+        title: canReleaseTitle(sessionLogs, authorized) ? r.title : null,
+        updatedAt: r.updatedAt ? r.updatedAt.toISOString() : null
+      }];
+    });
     res.json({ items });
   } catch (err) {
     next(err);
@@ -158,7 +184,9 @@ sessionsRouter.get("/:id", async (req, res, next) => {
           eq(queryLog.userId, user.id)
         )
       )
-      .orderBy(asc(queryLog.createdAt));
+      // Same order as the namer in routes/ask.ts, so both agree on the
+      // opening exchange.
+      .orderBy(asc(queryLog.createdAt), asc(queryLog.id));
 
     const authorized = await loadAuthorizedHistorySources({ logs: logRows, userId: user.id, programId });
     const exchanges: SessionExchange[] = logRows.flatMap((r) => {
@@ -177,7 +205,7 @@ sessionsRouter.get("/:id", async (req, res, next) => {
 
     const detail: SessionDetail = {
       id: session.id,
-      title: logRows.length > 0 && exchanges.length === logRows.length ? session.title : null,
+      title: canReleaseTitle(logRows, authorized) ? session.title : null,
       exchanges
     };
     res.json(detail);

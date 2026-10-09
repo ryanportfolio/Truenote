@@ -161,7 +161,37 @@ describe("history receipt edge cases", () => {
   it("does not release a title without any exchanges to authorize", async () => {
     state.logs = [];
     expect((await request("/:id")).body.title).toBeNull();
+    expect((await request("/")).body.items).toEqual([]);
+  });
+  it("withholds a title named from an opening refusal but lists the session", async () => {
+    state.logs.unshift({ ...state.logs[0], id: OTHER, question: "REFUSED QUESTION", answer: "REFUSAL", citedChunkIds: [], refused: true });
+    state.sessions[0].title = "REFUSED QUESTION";
+    const detail = await request("/:id");
+    expect(detail.body.title).toBeNull();
+    expect(detail.body.exchanges).toHaveLength(1);
+    expect(JSON.stringify(detail.body)).not.toContain("REFUSED QUESTION");
+    const list = await request("/");
+    expect(list.body.items).toHaveLength(1);
+    expect(list.body.items[0].title).toBeNull();
+  });
+  it("keeps the title when a later exchange is a content-free refusal", async () => {
+    state.logs.push({ ...state.logs[0], id: OTHER, question: "REFUSED QUESTION", answer: "REFUSAL", citedChunkIds: [], refused: true });
+    const detail = await request("/:id");
+    expect(detail.body.title).toBe("PRIVATE TITLE");
+    expect(detail.body.exchanges).toHaveLength(1);
+    expect(JSON.stringify(detail.body)).not.toContain("REFUSED QUESTION");
+    expect((await request("/")).body.items[0].title).toBe("PRIVATE TITLE");
+  });
+  it("still withholds the title for an uncited exchange that is not a refusal", async () => {
+    state.logs.push({ ...state.logs[0], id: OTHER, question: "UNCITED QUESTION", answer: "UNCITED ANSWER", citedChunkIds: [], refused: false });
+    expect((await request("/:id")).body.title).toBeNull();
     expect((await request("/")).body.items[0].title).toBeNull();
+  });
+  it("leaves sessions with no visible exchange out of the list", async () => {
+    state.logs[0].citedChunkIds = []; state.logs[0].refused = true; state.snapshots = [];
+    expect((await request("/")).body.items).toEqual([]);
+    state.logs[0].citedChunkIds = [CHUNK]; state.logs[0].refused = false; state.versions = [];
+    expect((await request("/")).body.items).toEqual([]);
   });
   it("rejects a durable receipt with no version identity", async () => {
     state.snapshots[0].citation_snapshots[0].document_version_id = null;
