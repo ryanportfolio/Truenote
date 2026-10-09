@@ -46,9 +46,10 @@ import {
   supervisorPins,
   teamPins
 } from "@/lib/kbLibrary";
-import { updateKbLibraryCache, writeKbLibraryCache } from "@/lib/kbLibraryCache";
+import { invalidateKbLibraryCache, updateKbLibraryCache, writeKbLibraryCache } from "@/lib/kbLibraryCache";
 import { kbColorLabel, kbLabelText } from "@/lib/kbLibraryColors";
-import { createSerialQueue, queuedListSaves } from "@/lib/serialQueue";
+import { getSelectedProgramIdRaw } from "@/lib/selectedProgram";
+import { createSerialQueue, QueueClosedError, queuedListSaves } from "@/lib/serialQueue";
 import type {
   CreateKbCategoryRequest,
   CreateKbTagRequest,
@@ -264,14 +265,70 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
 
   // Team pins -----------------------------------------------------------------
 
-  const setTeamPins = useCallback(
-    (documentIds: string[], success?: string) =>
-      mutate(
-        (d) => applyFeatured(d, documentIds),
-        () => setKbFeatured(documentIds),
-        { success }
+  // Each save of a recommended list (here and a supervisor's below) replaces
+  // the whole list, so saves go out one at a time in the order made: sent
+  // together, an older list could reach the server last and win. The page
+  // still updates at once; only the requests wait. The reload after a failure
+  // waits in the same queue, so it cannot read the list from before a save
+  // still waiting its turn. Sign-out, session expiry and a program switch
+  // unmount the page without a reload; saves still waiting then are skipped,
+  // since they would go out with the next user's session or program.
+  // True while mounted; set in an effect so StrictMode's second mount reopens it.
+  const openRef = useRef(true);
+  // Program-wide list saves queued but not yet started.
+  const featuredWaitingRef = useRef(0);
+  useEffect(() => {
+    openRef.current = true;
+    return () => {
+      openRef.current = false;
+      // Those saves are about to be skipped, and the cached library already
+      // shows their lists. Drop it now, before a return visit can open from it.
+      if (featuredWaitingRef.current > 0) invalidateKbLibraryCache();
+    };
+  }, []);
+  const featuredQueueRef = useRef(createSerialQueue());
+  const featuredSaves = useMemo(
+    () =>
+      queuedListSaves(
+        featuredQueueRef.current,
+        (documentIds: string[], programId: string | null) => {
+          featuredWaitingRef.current -= 1;
+          return setKbFeatured(documentIds, programId);
+        },
+        refresh,
+        () => openRef.current
       ),
-    [mutate]
+    [refresh]
+  );
+
+  const setTeamPins = useCallback(
+    (documentIds: string[], success?: string) => {
+      // Fixed now: a save that starts while a program switch is still
+      // remounting the page writes to the program it was made in.
+      const programId = getSelectedProgramIdRaw();
+      return mutate(
+        (d) => applyFeatured(d, documentIds),
+        async () => {
+          featuredWaitingRef.current += 1;
+          try {
+            await featuredSaves.save(documentIds, programId);
+          } catch (err) {
+            if (err instanceof QueueClosedError) {
+              featuredWaitingRef.current -= 1;
+              // mutate's rollback writes this closed page's state through to
+              // the cache; with the cache dropped first, it cannot replace
+              // the library a return visit has loaded since.
+              invalidateKbLibraryCache();
+            }
+            throw err;
+          }
+          // Puts this list back if a reload put an older one in place, unless a newer change came since.
+          return (d: Data) => applyFeatured(d, documentIds);
+        },
+        { success, resync: () => void featuredSaves.resync() }
+      );
+    },
+    [mutate, featuredSaves]
   );
 
   const currentTeamPinIds = () => teamPins(dataRef.current.items).map((d) => d.documentId);
@@ -312,22 +369,8 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
 
   // A supervisor's recommendations to their own team ------------------------------
 
-  // Each save replaces the whole list, so saves go out one at a time in the
-  // order made: sent together, an older list could reach the server last and win.
-  // The page still updates at once; only the requests wait. The reload after a
-  // failure waits in the same queue, so it cannot read the list from before a
-  // save still waiting its turn. Sign-out and session expiry unmount the page
-  // without a reload; saves still waiting then are skipped, since they would
-  // go out with the next user's session and replace that user's list.
+  // Queued the same way as the program-wide list above.
   const myTeamQueueRef = useRef(createSerialQueue());
-  // True while mounted; set in an effect so StrictMode's second mount reopens it.
-  const openRef = useRef(true);
-  useEffect(() => {
-    openRef.current = true;
-    return () => {
-      openRef.current = false;
-    };
-  }, []);
   const myTeamSaves = useMemo(
     () => queuedListSaves(myTeamQueueRef.current, setKbTeamShortcuts, refresh, () => openRef.current),
     [refresh]

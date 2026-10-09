@@ -713,12 +713,15 @@ export async function setKbDocumentTags(
   await asJson<{ ok: true }>(response);
 }
 
-/** Replace the team-pinned list with this ordered list (empty array clears it). Max 12. */
-export async function setKbFeatured(documentIds: string[]): Promise<void> {
-  const response = await fetch(
-    "/api/kb/library/featured",
-    jsonRequest("PUT", { documentIds })
-  );
+/**
+ * Replace the team-pinned list with this ordered list (empty array clears it).
+ * Max 12. `programId` pins the write to the program whose list was edited,
+ * whatever is selected by the time the request goes out.
+ */
+export async function setKbFeatured(documentIds: string[], programId: string | null): Promise<void> {
+  const init = jsonRequest("PUT", { documentIds });
+  if (programId !== null) (init.headers as Headers).set("X-Program-Id", programId);
+  const response = await fetch("/api/kb/library/featured", init);
   await asJson<{ ok: true }>(response);
 }
 
