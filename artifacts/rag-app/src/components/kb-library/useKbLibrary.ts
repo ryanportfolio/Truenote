@@ -49,7 +49,7 @@ import {
 import { invalidateKbLibraryCache, updateKbLibraryCache, writeKbLibraryCache } from "@/lib/kbLibraryCache";
 import { kbColorLabel, kbLabelText } from "@/lib/kbLibraryColors";
 import { getSelectedProgramIdRaw } from "@/lib/selectedProgram";
-import { createSerialQueue, QueueClosedError, queuedListSaves } from "@/lib/serialQueue";
+import { createSerialQueue, QueueClosedError, queuedListSaves, type SerialQueue } from "@/lib/serialQueue";
 import type {
   CreateKbCategoryRequest,
   CreateKbTagRequest,
@@ -65,6 +65,47 @@ type Data = KbDocumentListResponse;
 
 function errorMessage(err: unknown): string {
   return err instanceof Error && err.message ? err.message : "That change didn't save. Try again.";
+}
+
+/**
+ * `queuedListSaves` for one recommended list, counting in `waiting` the saves
+ * queued but not yet started; the hook drops the library cache when it
+ * unmounts with any waiting (they are about to be skipped).
+ */
+function countedListSaves<A extends unknown[]>(
+  queue: SerialQueue,
+  save: (...args: A) => Promise<void>,
+  refresh: () => Promise<void>,
+  isOpen: () => boolean,
+  waiting: { current: number }
+): { save: (...args: A) => Promise<void>; resync: () => Promise<void> } {
+  const saves = queuedListSaves(
+    queue,
+    (...args: A) => {
+      waiting.current -= 1;
+      return save(...args);
+    },
+    refresh,
+    isOpen
+  );
+  return {
+    save: async (...args: A) => {
+      waiting.current += 1;
+      try {
+        await saves.save(...args);
+      } catch (err) {
+        if (err instanceof QueueClosedError) {
+          waiting.current -= 1;
+          // mutate's rollback writes the closed page's state through to the
+          // cache; with the cache dropped first, it cannot replace the
+          // library a return visit has loaded since.
+          invalidateKbLibraryCache();
+        }
+        throw err;
+      }
+    },
+    resync: saves.resync
+  };
 }
 
 /**
@@ -275,28 +316,26 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
   // since they would go out with the next user's session or program.
   // True while mounted; set in an effect so StrictMode's second mount reopens it.
   const openRef = useRef(true);
-  // Program-wide list saves queued but not yet started.
-  const featuredWaitingRef = useRef(0);
+  // Saves of either list queued but not yet started.
+  const listSavesWaitingRef = useRef(0);
   useEffect(() => {
     openRef.current = true;
     return () => {
       openRef.current = false;
       // Those saves are about to be skipped, and the cached library already
       // shows their lists. Drop it now, before a return visit can open from it.
-      if (featuredWaitingRef.current > 0) invalidateKbLibraryCache();
+      if (listSavesWaitingRef.current > 0) invalidateKbLibraryCache();
     };
   }, []);
   const featuredQueueRef = useRef(createSerialQueue());
   const featuredSaves = useMemo(
     () =>
-      queuedListSaves(
+      countedListSaves(
         featuredQueueRef.current,
-        (documentIds: string[], programId: string | null) => {
-          featuredWaitingRef.current -= 1;
-          return setKbFeatured(documentIds, programId);
-        },
+        setKbFeatured,
         refresh,
-        () => openRef.current
+        () => openRef.current,
+        listSavesWaitingRef
       ),
     [refresh]
   );
@@ -309,19 +348,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       return mutate(
         (d) => applyFeatured(d, documentIds),
         async () => {
-          featuredWaitingRef.current += 1;
-          try {
-            await featuredSaves.save(documentIds, programId);
-          } catch (err) {
-            if (err instanceof QueueClosedError) {
-              featuredWaitingRef.current -= 1;
-              // mutate's rollback writes this closed page's state through to
-              // the cache; with the cache dropped first, it cannot replace
-              // the library a return visit has loaded since.
-              invalidateKbLibraryCache();
-            }
-            throw err;
-          }
+          await featuredSaves.save(documentIds, programId);
           // Puts this list back if a reload put an older one in place, unless a newer change came since.
           return (d: Data) => applyFeatured(d, documentIds);
         },
@@ -372,7 +399,14 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
   // Queued the same way as the program-wide list above.
   const myTeamQueueRef = useRef(createSerialQueue());
   const myTeamSaves = useMemo(
-    () => queuedListSaves(myTeamQueueRef.current, setKbTeamShortcuts, refresh, () => openRef.current),
+    () =>
+      countedListSaves(
+        myTeamQueueRef.current,
+        setKbTeamShortcuts,
+        refresh,
+        () => openRef.current,
+        listSavesWaitingRef
+      ),
     [refresh]
   );
 
