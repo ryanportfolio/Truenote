@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../lib/db-client.js";
 import {
@@ -200,45 +200,66 @@ async function resolveOrCreateSession(
 /**
  * Auto-name a session from its opening exchange, detached from the
  * response path (the CSR already has their answer; a title is not worth
- * added latency mid-call). The `title IS NULL` guard makes it fire once —
- * later exchanges skip it, and a concurrent namer can't clobber a title.
+ * added latency mid-call). Only the session's first query_log row may name
+ * it: history releases a title only when that row is authorized
+ * (routes/sessions.ts), so a later exchange whose naming finishes first
+ * must not supply the title. The `title IS NULL` guard keeps a concurrent
+ * namer from clobbering a title.
  */
 function scheduleSessionNaming(
   sessionId: string,
+  queryLogId: string | null,
   question: string,
   answer: string,
   diagnostics: { correlationId: string; userId: string; programId: string }
 ): void {
-  void (async () => {
-    try {
-      const rows = await db
-        .select({ title: chatSessions.title })
-        .from(chatSessions)
-        .where(eq(chatSessions.id, sessionId))
-        .limit(1);
-      if (rows[0]?.title != null) return;
-      const title = await nameSession({ question, answer, diagnostics });
-      await db
-        .update(chatSessions)
-        .set({ title })
-        .where(and(eq(chatSessions.id, sessionId), isNull(chatSessions.title)));
-    } catch (err) {
-      console.warn(
-        "[ask] session auto-name failed:",
-        err instanceof Error ? err.message : err
-      );
-      void recordAppError({
-        severity: "warning",
-        source: "generation",
-        operation: "session-auto-name",
-        error: err,
-        correlationId: diagnostics.correlationId,
-        userId: diagnostics.userId,
-        programId: diagnostics.programId,
-        context: { sessionId }
-      });
-    }
-  })();
+  if (queryLogId === null) return;
+  void nameSessionFromOpening(sessionId, queryLogId, question, answer, diagnostics);
+}
+
+/** Exported for tests; production callers use scheduleSessionNaming. */
+export async function nameSessionFromOpening(
+  sessionId: string,
+  queryLogId: string,
+  question: string,
+  answer: string,
+  diagnostics: { correlationId: string; userId: string; programId: string }
+): Promise<void> {
+  try {
+    const opening = await db
+      .select({ id: queryLog.id })
+      .from(queryLog)
+      .where(eq(queryLog.sessionId, sessionId))
+      .orderBy(asc(queryLog.createdAt), asc(queryLog.id))
+      .limit(1);
+    if (opening[0]?.id !== queryLogId) return;
+    const rows = await db
+      .select({ title: chatSessions.title })
+      .from(chatSessions)
+      .where(eq(chatSessions.id, sessionId))
+      .limit(1);
+    if (rows[0]?.title != null) return;
+    const title = await nameSession({ question, answer, diagnostics });
+    await db
+      .update(chatSessions)
+      .set({ title })
+      .where(and(eq(chatSessions.id, sessionId), isNull(chatSessions.title)));
+  } catch (err) {
+    console.warn(
+      "[ask] session auto-name failed:",
+      err instanceof Error ? err.message : err
+    );
+    void recordAppError({
+      severity: "warning",
+      source: "generation",
+      operation: "session-auto-name",
+      error: err,
+      correlationId: diagnostics.correlationId,
+      userId: diagnostics.userId,
+      programId: diagnostics.programId,
+      context: { sessionId }
+    });
+  }
 }
 
 /**
@@ -486,8 +507,8 @@ async function runAsk(
   const sessionTouchStartedAt = performance.now();
   await touchSession(sessionId);
   stages.sessionTouch = elapsedMs(sessionTouchStartedAt);
-  // Name the session from its first real exchange (no-op if already named).
-  scheduleSessionNaming(sessionId, question, generation.payload.answer, {
+  // Name the session from its opening exchange (no-op otherwise).
+  scheduleSessionNaming(sessionId, queryLogId, question, generation.payload.answer, {
     correlationId: timingSeed.correlationId,
     userId: user.id,
     programId
