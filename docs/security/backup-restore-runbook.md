@@ -284,7 +284,7 @@ Skip this section for a scheduled test.
    node scripts/railway-set-app-db-password.mjs --apply
    ```
 
-   It stores a new password in the variable with `--skip-deploys`, so neither `pgvector` nor the stopped services start, sets the role to the matching verifier, and must print `role truenote_app: verifier stored`. Both services pick the password up when step 6 starts them. Then run every check in section 5 against production, with `web` and `worker` still stopped; if any fails, go to section 4.5.
+   It stores a new password in the variable with `--skip-deploys`, so neither `pgvector` nor the stopped services start, sets the role to the matching verifier, and must print `role truenote_app: verifier stored`. If it refuses because the role is missing, the backup predates `0007_app_runtime_role.sql`; run it again after step 4 has applied that file. Both services pick the password up when step 6 starts them. Then run every check in section 5 against production, with `web` and `worker` still stopped; if any fails, go to section 4.5.
 
    **Path B, operator dump (available today).** Use a dump taken before the damage. If it is no longer on the volume, upload it:
 
@@ -657,6 +657,13 @@ The bucket has no backup or versioning (section 1). If files are lost:
 
       The CLI strips the trailing line break that PowerShell adds. The reference variables follow `POSTGRES_PASSWORD`.
    4. Redeploy `web` and `worker` so they connect with the new `DATABASE_URL` (deployment.md, "Deploying"), and check `/health` and the logs as in section 4.4, step 6. Then remove the variable from the session (bash: `unset NEW_DB_PASSWORD`; PowerShell: `Remove-Item Env:NEW_DB_PASSWORD -ErrorAction SilentlyContinue`).
+   5. Once `web` and `worker` connect as the application role `truenote_app` (deployment.md, "Database roles"), their `DATABASE_URL` no longer uses `POSTGRES_PASSWORD`, so steps 1 to 4 leave the application's password unchanged. When that password may be exposed too (any compromise of `web`, `worker`, their variables, or the `pgvector` variables), rotate it as well, from a repository checkout on your machine:
+
+      ```
+      node scripts/railway-set-app-db-password.mjs --apply
+      ```
+
+      It stores a new password in the `pgvector` variable `TRUENOTE_APP_DB_PASSWORD` without redeploying anything, sets the role to the matching verifier, and must print `role truenote_app: verifier stored`. The old password stops working for new connections at once. Then redeploy `web` and `worker` (deployment.md, "Deploying") and check `/health` and the logs as in section 4.4, step 6.
 
    `[CONFIRM: which services step 3 redeploys by itself, and that the reference variables of web and worker pick up the change; rehearse once outside an incident]`
 

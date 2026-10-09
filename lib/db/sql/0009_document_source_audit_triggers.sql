@@ -33,11 +33,17 @@ BEGIN
   WHERE d.id = NEW.document_id;
 
   v_old_state := CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD.lifecycle_state END;
-  v_actor_text := CASE NEW.lifecycle_state
-    WHEN 'active' THEN NEW.approved_by::text
-    WHEN 'rejected' THEN NEW.rejected_by::text
-    WHEN 'revoked' THEN NEW.revoked_by::text
-    ELSE NEW.uploaded_by
+  -- The actor is recorded only where the row names who acted: the uploader
+  -- on insert, the approver, rejecter or revoker for those states. Other
+  -- transitions (scan, parse, review queue, rescan, retirement) carry no
+  -- actor here; the request's http.security_mutation event records the
+  -- user, and worker transitions have none.
+  v_actor_text := CASE
+    WHEN TG_OP = 'INSERT' THEN NEW.uploaded_by
+    WHEN NEW.lifecycle_state = 'active' THEN NEW.approved_by::text
+    WHEN NEW.lifecycle_state = 'rejected' THEN NEW.rejected_by::text
+    WHEN NEW.lifecycle_state = 'revoked' THEN NEW.revoked_by::text
+    ELSE NULL
   END;
   IF v_actor_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
     v_actor_id := v_actor_text::uuid;
