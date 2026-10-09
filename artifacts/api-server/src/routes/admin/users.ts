@@ -63,7 +63,8 @@ export const usersRouter = Router();
 // renders, the capability is visible) but can't create/edit/deactivate
 // anyone or reset passwords — any of those would let one anonymous visitor
 // break login for the next. A super user can lift those limits (Security
-// page); demoTouchesDemo still keeps demo accounts off each other.
+// page); demoTargetLocked still keeps everyone but super users off the demo
+// accounts themselves.
 usersRouter.use(
   requireAuth,
   requireFreshPassword,
@@ -75,12 +76,14 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * A demo account may not edit, reset or remove a demo account, even with
- * the demo limits lifted: demo passwords are published, so one visitor
- * breaking a demo login would lock out every other visitor.
+ * Only a super user may edit, reset or remove a demo account, even with the
+ * demo limits lifted. Demo passwords are published, so one visitor breaking
+ * a demo login would lock out every other visitor, and the check is on the
+ * target: an account a demo manager created (a supervisor they then move the
+ * demo CSR under, say) is not a demo account but is stopped here too.
  */
-function demoTouchesDemo(actor: CurrentUser, targetEmail: string): boolean {
-  return isDemoEmail(actor.email) && isDemoEmail(targetEmail);
+function demoTargetLocked(actor: CurrentUser, targetEmail: string): boolean {
+  return isDemoEmail(targetEmail) && actor.role !== "super_user";
 }
 
 const ROLE_VALUES = [
@@ -720,7 +723,7 @@ usersRouter.patch("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req
         ) {
           return { kind: "not-found" };
         }
-        if (demoTouchesDemo(actor, target.email)) return { kind: "demo" };
+        if (demoTargetLocked(actor, target.email)) return { kind: "demo" };
 
         const finalRole = parsed.data.role ?? target.role;
         const finalProgramId =
@@ -911,7 +914,7 @@ usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_
       // 404 (not 403) on out-of-scope ids — same existence-hiding
       // convention as the documents routes.
       if (!allowed) return { kind: "not-found" };
-      if (demoTouchesDemo(actor, target.email)) return { kind: "demo" };
+      if (demoTargetLocked(actor, target.email)) return { kind: "demo" };
 
       // Atomic: update password + force-reset flag + revoke every existing
       // session. If we ran them as separate writes, a transient DB failure
@@ -999,7 +1002,7 @@ usersRouter.delete("/:id", userAdminWriteLimit, requireManagerOrAbove, async (re
       ) {
         return { kind: "not-found" };
       }
-      if (demoTouchesDemo(actor, target.email)) return { kind: "demo" };
+      if (demoTargetLocked(actor, target.email)) return { kind: "demo" };
       if (target.isActive) return { kind: "active" };
 
       // Cascades sessions + password_reset_tokens; SET NULL on any
