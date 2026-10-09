@@ -1,0 +1,509 @@
+{
+  "capturedAt": "2026-10-09T22:25:36Z",
+  "project": "truenote",
+  "environment": "production",
+  "service": "pgvector",
+  "purpose": "Remediation receipt for the runtime-privilege and audit-trigger gaps in railway-audit-catalog-2026-10-09.json.",
+  "method": "Railway CLI SSH into pgvector; psql as the migration role. Catalog SELECTs in READ ONLY transactions; negative tests as truenote_app (SET LOCAL ROLE) and as the owner inside one transaction that ends in ROLLBACK, each statement targeting zero rows except the two owner checks on the oldest security_events row, which the trigger refused.",
+  "applicationRowsRead": "Catalog metadata only, plus row counts and the security events of one test document uploaded and retired for this check (version 4c4a8095-93c6-4780-8cb8-e148b52e1eae).",
+  "productionChanges": [
+    {
+      "at": "2026-10-09T19:35:43Z",
+      "change": "lib/db/sql/0007_app_runtime_role.sql applied",
+      "sha256": "851668b5261fe97d4d3fd80814ec9b188bdeeb84ec2bd084d0bd09841ba15896"
+    },
+    {
+      "at": "2026-10-09T19:35:48Z",
+      "change": "lib/db/sql/0008_security_events_append_only.sql applied",
+      "sha256": "e535e00244d863e733ee0c2592e3d8564a9e7a0450c12fea545d36a863b21c31"
+    },
+    {
+      "at": "2026-10-09T19:35:52Z",
+      "change": "lib/db/sql/0009_document_source_audit_triggers.sql applied",
+      "sha256": "0e930d991c2080964c26d133203da28e12f8de75e5786b1fcb24afd28d1bd8dd"
+    },
+    {
+      "at": "2026-10-09",
+      "change": "truenote_app password set by scripts/railway-set-app-db-password.mjs (SCRAM verifier; plaintext only in the pgvector variable TRUENOTE_APP_DB_PASSWORD; verified locally against the stored verifier, values not printed)"
+    },
+    {
+      "at": "2026-10-09T22:18Z",
+      "change": "worker DATABASE_URL switched to truenote_app; deployment f2d9c0a9 from commit 1256d3d1"
+    },
+    {
+      "at": "2026-10-09T22:24Z",
+      "change": "web DATABASE_URL switched to truenote_app; redeploy 08c5b8d7 of commit 1256d3d1"
+    }
+  ],
+  "queries": [
+    {
+      "name": "privilege-sweep",
+      "sha256": "402cc125b223d0ba5a480119809aeb23d1820fc0595faa72f2f17912f58aa576",
+      "sql": "BEGIN TRANSACTION READ ONLY;\nSET LOCAL statement_timeout = '15s';\nSELECT json_build_object('k','role','name',rolname,'login',rolcanlogin,'super',rolsuper,'createrole',rolcreaterole,'createdb',rolcreatedb,'inherit',rolinherit,'repl',rolreplication,'bypassrls',rolbypassrls,'connlimit',rolconnlimit,'pw',(SELECT rolpassword IS NOT NULL FROM pg_authid a WHERE a.oid=r.oid),'members',(SELECT count(*) FROM pg_auth_members m WHERE m.member=r.oid)) FROM pg_roles r WHERE rolname='truenote_app';\nSELECT json_build_object('k','owns','n',(SELECT count(*) FROM pg_class WHERE relowner=to_regrole('truenote_app'))+(SELECT count(*) FROM pg_proc WHERE proowner=to_regrole('truenote_app'))+(SELECT count(*) FROM pg_namespace WHERE nspowner=to_regrole('truenote_app')));\nSELECT json_build_object('k','db','connect',has_database_privilege('truenote_app',current_database(),'CONNECT'),'create',has_database_privilege('truenote_app',current_database(),'CREATE'),'temp',has_database_privilege('truenote_app',current_database(),'TEMP'));\nSELECT json_build_object('k','schema','s',n,'usage',has_schema_privilege('truenote_app',n,'USAGE'),'create',has_schema_privilege('truenote_app',n,'CREATE')) FROM unnest(ARRAY['public','pgboss']) n;\nSELECT json_build_object('k','tbl','t',n.nspname||'.'||c.relname,'p',concat_ws('',CASE WHEN has_table_privilege('truenote_app',c.oid,'SELECT') THEN 'r' END,CASE WHEN has_table_privilege('truenote_app',c.oid,'INSERT') THEN 'a' END,CASE WHEN has_table_privilege('truenote_app',c.oid,'UPDATE') THEN 'w' END,CASE WHEN has_table_privilege('truenote_app',c.oid,'DELETE') THEN 'd' END,CASE WHEN has_table_privilege('truenote_app',c.oid,'TRUNCATE') THEN 'D' END,CASE WHEN has_table_privilege('truenote_app',c.oid,'REFERENCES') THEN 'x' END,CASE WHEN has_table_privilege('truenote_app',c.oid,'TRIGGER') THEN 't' END)) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','pgboss') AND c.relkind IN ('r','p') ORDER BY n.nspname, c.relname;\nSELECT json_build_object('k','seq','s',c.relname,'usage',has_sequence_privilege('truenote_app',c.oid,'USAGE'),'update',has_sequence_privilege('truenote_app',c.oid,'UPDATE')) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','pgboss') AND c.relkind='S';\nSELECT json_build_object('k','fn','f',p.oid::regprocedure::text,'exec',has_function_privilege('truenote_app',p.oid,'EXECUTE'),'public_exec',EXISTS (SELECT 1 FROM aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a WHERE a.grantee=0)) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN ('public','pgboss') AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid=p.oid AND d.deptype='e') ORDER BY n.nspname, p.proname;\nSELECT json_build_object('k','defacl','role',pg_get_userbyid(defaclrole),'schema',defaclnamespace::regnamespace::text,'objtype',defaclobjtype,'acl',defaclacl) FROM pg_default_acl;\nSELECT json_build_object('k','trg','table',c.relname,'name',t.tgname,'enabled',t.tgenabled,'def',pg_get_triggerdef(t.oid,true)) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid WHERE c.relname IN ('security_events','document_versions','content_sources') AND NOT t.tgisinternal ORDER BY c.relname, t.tgname;\nSELECT json_build_object('k','fndef','f',p.proname,'secdef',p.prosecdef,'cfg',p.proconfig,'sha256',encode(digest(pg_get_functiondef(p.oid),'sha256'),'hex')) FROM pg_proc p WHERE p.pronamespace='public'::regnamespace AND p.proname IN ('append_security_event','block_security_event_mutation','audit_document_version_lifecycle','audit_content_source_change') ORDER BY p.proname;\nSELECT json_build_object('k','ledger','f',filename,'sha',left(sha256,8),'at',applied_at) FROM schema_migrations WHERE filename >= '0007' ORDER BY filename;\nCOMMIT;\n"
+    },
+    {
+      "name": "negative-tests-rolled-back",
+      "sha256": "196bd996817a9d2986b9183ce8a50c50777e0a1c5253a1925e0367c2e3aa311c",
+      "sql": "BEGIN;\nSET LOCAL statement_timeout = '15s';\nSET LOCAL lock_timeout = '2s';\nCREATE TEMP TABLE neg_results (who text, test text, outcome text);\nGRANT INSERT ON neg_results TO truenote_app;\n-- As the application role: each statement must fail (zero rows targeted).\nSET LOCAL ROLE truenote_app;\nDO $$\nDECLARE\n  t text;\n  tests text[] := ARRAY[\n    'UPDATE security_events SET action = action WHERE false',\n    'DELETE FROM security_events WHERE false',\n    'TRUNCATE security_events',\n    'INSERT INTO security_events (action, outcome, event_hash) SELECT action, outcome, event_hash FROM security_events WHERE false',\n    'SELECT 1 FROM schema_migrations LIMIT 0',\n    'SELECT 1 FROM siem_delivery_outbox LIMIT 0',\n    'SELECT 1 FROM security_control_metadata LIMIT 0',\n    'CREATE TABLE public.neg_probe (id int)',\n    'CREATE TABLE pgboss.neg_probe (id int)',\n    'CREATE TEMP TABLE neg_probe (id int)',\n    'CREATE SCHEMA neg_probe',\n    'CREATE FUNCTION public.neg_probe() RETURNS int LANGUAGE sql AS ''SELECT 1''',\n    'ALTER TABLE users ADD COLUMN neg_probe int',\n    'TRUNCATE users',\n    'GRANT SELECT ON users TO PUBLIC',\n    'SELECT pgboss.delete_queue(''neg-probe-nonexistent'')',\n    'ALTER TABLE security_events DISABLE TRIGGER security_events_append_only'\n  ];\nBEGIN\n  FOREACH t IN ARRAY tests LOOP\n    BEGIN\n      EXECUTE t;\n      INSERT INTO neg_results VALUES ('truenote_app', t, 'ALLOWED');\n    EXCEPTION WHEN OTHERS THEN\n      INSERT INTO neg_results VALUES ('truenote_app', t, 'refused ' || SQLSTATE || ': ' || SQLERRM);\n    END;\n  END LOOP;\n  -- Must succeed: zero-row reads and writes on granted tables.\n  FOREACH t IN ARRAY ARRAY[\n    'SELECT 1 FROM users LIMIT 0',\n    'SELECT 1 FROM security_events LIMIT 0',\n    'UPDATE users SET name = name WHERE false',\n    'DELETE FROM sessions WHERE false',\n    'INSERT INTO error_log SELECT * FROM error_log WHERE false',\n    'UPDATE pgboss.queue SET name = name WHERE false',\n    'SELECT 1 FROM pgboss.version LIMIT 0',\n    'DELETE FROM pgboss.job WHERE false'\n  ] LOOP\n    BEGIN\n      EXECUTE t;\n      INSERT INTO neg_results VALUES ('truenote_app', t, 'allowed (expected)');\n    EXCEPTION WHEN OTHERS THEN\n      INSERT INTO neg_results VALUES ('truenote_app', t, 'FAILED ' || SQLSTATE || ': ' || SQLERRM);\n    END;\n  END LOOP;\nEND\n$$;\nRESET ROLE;\n-- As the owner: the append-only triggers must refuse (inside this rolled-back transaction).\nDO $$\nBEGIN\n  BEGIN\n    DELETE FROM security_events WHERE sequence = (SELECT min(sequence) FROM security_events);\n    INSERT INTO neg_results VALUES ('postgres', 'DELETE oldest security_events row', 'ALLOWED');\n  EXCEPTION WHEN OTHERS THEN\n    INSERT INTO neg_results VALUES ('postgres', 'DELETE oldest security_events row', 'refused ' || SQLSTATE || ': ' || SQLERRM);\n  END;\n  BEGIN\n    UPDATE security_events SET action = action WHERE sequence = (SELECT min(sequence) FROM security_events);\n    INSERT INTO neg_results VALUES ('postgres', 'UPDATE oldest security_events row', 'ALLOWED');\n  EXCEPTION WHEN OTHERS THEN\n    INSERT INTO neg_results VALUES ('postgres', 'UPDATE oldest security_events row', 'refused ' || SQLSTATE || ': ' || SQLERRM);\n  END;\n  BEGIN\n    TRUNCATE security_events;\n    INSERT INTO neg_results VALUES ('postgres', 'TRUNCATE security_events', 'ALLOWED');\n  EXCEPTION WHEN OTHERS THEN\n    INSERT INTO neg_results VALUES ('postgres', 'TRUNCATE security_events', 'refused ' || SQLSTATE || ': ' || SQLERRM);\n  END;\nEND\n$$;\nSELECT who || ' | ' || test || ' | ' || outcome FROM neg_results;\nROLLBACK;\n"
+    }
+  ],
+  "role": {
+    "name": "truenote_app",
+    "login": true,
+    "super": false,
+    "createrole": false,
+    "createdb": false,
+    "inherit": false,
+    "repl": false,
+    "bypassrls": false,
+    "connlimit": 90,
+    "pw": true,
+    "members": 0
+  },
+  "ownedObjects": 0,
+  "database": {
+    "connect": true,
+    "create": false,
+    "temp": false
+  },
+  "schemas": [
+    {
+      "s": "public",
+      "usage": true,
+      "create": false
+    },
+    {
+      "s": "pgboss",
+      "usage": true,
+      "create": false
+    }
+  ],
+  "tablePrivileges": {
+    "legend": "r=SELECT a=INSERT w=UPDATE d=DELETE D=TRUNCATE x=REFERENCES t=TRIGGER",
+    "byPrivilege": {
+      "rawd": [
+        "pgboss.archive",
+        "pgboss.j3f168501ed9816b51a9f5765e0742e1eb034ab6bf72c9ae3f3a975e3",
+        "pgboss.j7386cf047f3467a6d772b8270c999fb8d80e2ecb05cad3e038573937",
+        "pgboss.jdbb32041bdef918c659fd7e9e7ef884fc0ecddc04d4656b43245be0c",
+        "pgboss.job",
+        "pgboss.queue",
+        "pgboss.schedule",
+        "pgboss.subscription",
+        "pgboss.version",
+        "public.app_settings",
+        "public.chat_sessions",
+        "public.chunks",
+        "public.content_sources",
+        "public.document_versions",
+        "public.documents",
+        "public.error_log",
+        "public.eval_questions",
+        "public.eval_runs",
+        "public.kb_categories",
+        "public.kb_category_documents",
+        "public.kb_category_user_prefs",
+        "public.kb_document_tags",
+        "public.kb_document_views",
+        "public.kb_highlights",
+        "public.kb_source_featured",
+        "public.kb_source_user_state",
+        "public.kb_tags",
+        "public.kb_team_shortcuts",
+        "public.kb_user_color_labels",
+        "public.password_reset_tokens",
+        "public.programs",
+        "public.query_log",
+        "public.security_rate_limits",
+        "public.sessions",
+        "public.team_members",
+        "public.users"
+      ],
+      "none": [
+        "public.schema_migrations",
+        "public.security_control_metadata",
+        "public.siem_delivery_outbox"
+      ],
+      "r": [
+        "public.security_events"
+      ]
+    }
+  },
+  "sequences": [
+    {
+      "s": "security_events_sequence_seq",
+      "usage": false,
+      "update": false
+    }
+  ],
+  "functions": [
+    {
+      "f": "pgboss.create_queue(text,json)",
+      "exec": true,
+      "public_exec": true
+    },
+    {
+      "f": "pgboss.delete_queue(text)",
+      "exec": false,
+      "public_exec": false
+    },
+    {
+      "f": "append_security_event(text,text,uuid,text,text,uuid,text,text,text,text,jsonb)",
+      "exec": true,
+      "public_exec": false
+    },
+    {
+      "f": "audit_content_source_change()",
+      "exec": true,
+      "public_exec": true
+    },
+    {
+      "f": "audit_document_version_lifecycle()",
+      "exec": true,
+      "public_exec": true
+    },
+    {
+      "f": "block_security_event_mutation()",
+      "exec": true,
+      "public_exec": true
+    },
+    {
+      "f": "kb_categories_guard()",
+      "exec": true,
+      "public_exec": true
+    },
+    {
+      "f": "kb_category_documents_guard()",
+      "exec": true,
+      "public_exec": true
+    },
+    {
+      "f": "kb_document_program_row_guard()",
+      "exec": true,
+      "public_exec": true
+    },
+    {
+      "f": "kb_document_tags_guard()",
+      "exec": true,
+      "public_exec": true
+    },
+    {
+      "f": "kb_library_document_program(uuid)",
+      "exec": true,
+      "public_exec": true
+    },
+    {
+      "f": "kb_team_shortcuts_supervisor_guard()",
+      "exec": true,
+      "public_exec": true
+    },
+    {
+      "f": "kb_team_shortcuts_user_cleanup()",
+      "exec": true,
+      "public_exec": true
+    },
+    {
+      "f": "team_members_guard()",
+      "exec": true,
+      "public_exec": true
+    },
+    {
+      "f": "team_members_user_cleanup()",
+      "exec": true,
+      "public_exec": true
+    }
+  ],
+  "defaultPrivileges": [
+    {
+      "role": "postgres",
+      "schema": "public",
+      "objtype": "r",
+      "acl": [
+        "truenote_app=arwd/postgres"
+      ]
+    },
+    {
+      "role": "postgres",
+      "schema": "public",
+      "objtype": "S",
+      "acl": [
+        "truenote_app=rU/postgres"
+      ]
+    },
+    {
+      "role": "postgres",
+      "schema": "pgboss",
+      "objtype": "r",
+      "acl": [
+        "truenote_app=arwd/postgres"
+      ]
+    }
+  ],
+  "triggers": [
+    {
+      "table": "content_sources",
+      "name": "content_sources_audit_insert",
+      "enabled": "O",
+      "def": "CREATE TRIGGER content_sources_audit_insert AFTER INSERT ON content_sources FOR EACH ROW EXECUTE FUNCTION audit_content_source_change()"
+    },
+    {
+      "table": "content_sources",
+      "name": "content_sources_audit_update",
+      "enabled": "O",
+      "def": "CREATE TRIGGER content_sources_audit_update AFTER UPDATE ON content_sources FOR EACH ROW EXECUTE FUNCTION audit_content_source_change()"
+    },
+    {
+      "table": "document_versions",
+      "name": "document_versions_audit_insert",
+      "enabled": "O",
+      "def": "CREATE TRIGGER document_versions_audit_insert AFTER INSERT ON document_versions FOR EACH ROW EXECUTE FUNCTION audit_document_version_lifecycle()"
+    },
+    {
+      "table": "document_versions",
+      "name": "document_versions_audit_lifecycle",
+      "enabled": "O",
+      "def": "CREATE TRIGGER document_versions_audit_lifecycle AFTER UPDATE OF lifecycle_state ON document_versions FOR EACH ROW WHEN (old.lifecycle_state IS DISTINCT FROM new.lifecycle_state) EXECUTE FUNCTION audit_document_version_lifecycle()"
+    },
+    {
+      "table": "security_events",
+      "name": "security_events_append_only",
+      "enabled": "O",
+      "def": "CREATE TRIGGER security_events_append_only BEFORE DELETE OR UPDATE ON security_events FOR EACH ROW EXECUTE FUNCTION block_security_event_mutation()"
+    },
+    {
+      "table": "security_events",
+      "name": "security_events_no_truncate",
+      "enabled": "O",
+      "def": "CREATE TRIGGER security_events_no_truncate BEFORE TRUNCATE ON security_events FOR EACH STATEMENT EXECUTE FUNCTION block_security_event_mutation()"
+    }
+  ],
+  "functionDefinitions": [
+    {
+      "f": "append_security_event",
+      "secdef": true,
+      "cfg": [
+        "search_path=public, pg_catalog"
+      ],
+      "sha256": "0aaa29ad211ce729f57cf3c606157d3260ccebbf7ad727e243b67d2c5bc83377"
+    },
+    {
+      "f": "audit_content_source_change",
+      "secdef": true,
+      "cfg": [
+        "search_path=public, pg_catalog"
+      ],
+      "sha256": "10a49486b94590c8886555a99efea65043ad98fd13e31a2257bd5bf086f79743"
+    },
+    {
+      "f": "audit_document_version_lifecycle",
+      "secdef": true,
+      "cfg": [
+        "search_path=public, pg_catalog"
+      ],
+      "sha256": "7372131dae14476d543efbac9a142a349065618871b605b79df04eee38d8db6b"
+    },
+    {
+      "f": "block_security_event_mutation",
+      "secdef": false,
+      "cfg": null,
+      "sha256": "5a59a73ea2d2c07f1691eaa24db8915006b5d2c5cbd7ae06716f6d5e0cc074d3"
+    }
+  ],
+  "ledger": [
+    {
+      "f": "0007_app_runtime_role.sql",
+      "sha": "851668b5",
+      "at": "2026-10-09T19:35:43.412233+00:00"
+    },
+    {
+      "f": "0008_security_events_append_only.sql",
+      "sha": "e535e002",
+      "at": "2026-10-09T19:35:48.259148+00:00"
+    },
+    {
+      "f": "0009_document_source_audit_triggers.sql",
+      "sha": "0e930d99",
+      "at": "2026-10-09T19:35:52.506459+00:00"
+    },
+    {
+      "f": "0010_clear_refusal_derived_titles.sql",
+      "sha": "3b2f4368",
+      "at": "2026-10-09T22:08:58.500544+00:00"
+    }
+  ],
+  "negativeTests": [
+    {
+      "role": "truenote_app",
+      "statement": "UPDATE security_events SET action = action WHERE false",
+      "outcome": "refused 42501: permission denied for table security_events"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "DELETE FROM security_events WHERE false",
+      "outcome": "refused 42501: permission denied for table security_events"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "TRUNCATE security_events",
+      "outcome": "refused 42501: permission denied for table security_events"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "INSERT INTO security_events (action, outcome, event_hash) SELECT action, outcome, event_hash FROM security_events WHERE false",
+      "outcome": "refused 42501: permission denied for table security_events"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "SELECT 1 FROM schema_migrations LIMIT 0",
+      "outcome": "refused 42501: permission denied for table schema_migrations"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "SELECT 1 FROM siem_delivery_outbox LIMIT 0",
+      "outcome": "refused 42501: permission denied for table siem_delivery_outbox"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "SELECT 1 FROM security_control_metadata LIMIT 0",
+      "outcome": "refused 42501: permission denied for table security_control_metadata"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "CREATE TABLE public.neg_probe (id int)",
+      "outcome": "refused 42501: permission denied for schema public"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "CREATE TABLE pgboss.neg_probe (id int)",
+      "outcome": "refused 42501: permission denied for schema pgboss"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "CREATE TEMP TABLE neg_probe (id int)",
+      "outcome": "refused 42501: permission denied for schema pg_temp_57"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "CREATE SCHEMA neg_probe",
+      "outcome": "refused 42501: permission denied for database railway"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "CREATE FUNCTION public.neg_probe() RETURNS int LANGUAGE sql AS 'SELECT 1'",
+      "outcome": "refused 42501: permission denied for schema public"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "ALTER TABLE users ADD COLUMN neg_probe int",
+      "outcome": "refused 42501: must be owner of table users"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "TRUNCATE users",
+      "outcome": "refused 42501: permission denied for table users"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "GRANT SELECT ON users TO PUBLIC",
+      "outcome": "ALLOWED"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "SELECT pgboss.delete_queue('neg-probe-nonexistent')",
+      "outcome": "refused 42501: permission denied for function delete_queue"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "ALTER TABLE security_events DISABLE TRIGGER security_events_append_only",
+      "outcome": "refused 42501: must be owner of table security_events"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "SELECT 1 FROM users LIMIT 0",
+      "outcome": "allowed (expected)"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "SELECT 1 FROM security_events LIMIT 0",
+      "outcome": "allowed (expected)"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "UPDATE users SET name = name WHERE false",
+      "outcome": "allowed (expected)"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "DELETE FROM sessions WHERE false",
+      "outcome": "allowed (expected)"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "INSERT INTO error_log SELECT * FROM error_log WHERE false",
+      "outcome": "allowed (expected)"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "UPDATE pgboss.queue SET name = name WHERE false",
+      "outcome": "allowed (expected)"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "SELECT 1 FROM pgboss.version LIMIT 0",
+      "outcome": "allowed (expected)"
+    },
+    {
+      "role": "truenote_app",
+      "statement": "DELETE FROM pgboss.job WHERE false",
+      "outcome": "allowed (expected)"
+    },
+    {
+      "role": "postgres",
+      "statement": "DELETE oldest security_events row",
+      "outcome": "refused P0001: security_events is append-only"
+    },
+    {
+      "role": "postgres",
+      "statement": "UPDATE oldest security_events row",
+      "outcome": "refused P0001: security_events is append-only"
+    },
+    {
+      "role": "postgres",
+      "statement": "TRUNCATE security_events",
+      "outcome": "refused 0A000: cannot truncate a table referenced in a foreign key constraint"
+    }
+  ],
+  "negativeTestNotes": [
+    "GRANT SELECT ON users TO PUBLIC is accepted with the warning 'no privileges were granted': truenote_app holds no grant option, so nothing changes.",
+    "TRUNCATE security_events as the owner is refused first by the siem_delivery_outbox foreign key; the BEFORE TRUNCATE trigger sits behind it.",
+    "A first run of these tests included SET ROLE postgres, which succeeds only because the session user is the superuser; truenote_app is not a member of postgres (pg_has_role = false). That test was removed; the transaction was rolled back and both triggers were confirmed enabled afterwards."
+  ],
+  "runtimeConnections": [
+    {
+      "observedAt": "2026-10-09T22:24Z",
+      "users": {
+        "truenote_app": 9,
+        "postgres": "1 (this psql session)"
+      },
+      "note": "web 7 pool connections and worker 2 pg-boss connections"
+    },
+    {
+      "observedAt": "2026-10-09T22:25Z",
+      "users": {
+        "truenote_app": 2,
+        "postgres": "1 (this psql session)"
+      },
+      "note": "web pool connections idle-closed"
+    }
+  ],
+  "applicationChecks": {
+    "worker": "Logs show [worker] ready and no permission errors across several 120 s pg-boss maintenance cycles. Test upload ingested (parseStatus ready, lifecycle active); events document.lifecycle.submitted, scanning, parsing, pending_review, active and retired written by the trigger; the last 50 events link (previous_hash equals the prior event_hash).",
+    "web": "/health ok; /, /security, /security/pci 200; agent sign-in 200; one question answered with 3 sources (refused=false); admin security page 200; security_events count 730 to 733 across the check; logs show listening and no permission errors.",
+    "testDocument": "Retired. Purge refused with 409 'Document retention period has not elapsed' (retention override disabled)."
+  },
+  "notVerified": [
+    "Full formal PCI catalog verifier (docs/compliance/pci/production-control-verification.sql) not executed.",
+    "SIEM delivery functions and enqueue trigger remain absent (deferred until a receiver exists).",
+    "Independent retention of audit events outside this database."
+  ]
+}

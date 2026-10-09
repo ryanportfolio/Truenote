@@ -7,6 +7,7 @@
   "scope": "Audit/SIEM functions, all non-internal triggers on the three named tables, table ownership/ACLs and runtime role privileges. Not the full PCI verifier or synthetic control acceptance.",
   "applicationRowsRead": false,
   "productionChanges": false,
+  "laterRemediation": "Dated receipt, unchanged except this note. Later on 2026-10-09 lib/db/sql/0007-0009 were applied and web and worker were switched to the least-privilege role truenote_app; see docs/security/evidence/railway-app-role-2026-10-09.json. The findings above describe the state before that change.",
   "queries": [
     {
       "name": "audit-catalog",
