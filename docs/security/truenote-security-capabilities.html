@@ -372,11 +372,12 @@
 
     <section id="accounts">
       <h2>Accounts, storage, and audit records</h2>
-      <p>These controls were confirmed by source review in October 2026. Where a control is also live in the production database, the card says so.</p>
+      <p>These controls were confirmed by source review in October 2026, or in provider settings where the card says so. Where a control is also live in the production database, the card says so.</p>
       <div class="grid">
         <article class="card"><h3>Password storage</h3><p>Passwords are hashed with Argon2id. Sign-in compares against a dummy hash when an account does not exist, so response time does not reveal which emails are registered.</p><span class="evidence-scope">Source reviewed</span></article>
         <article class="card"><h3>Sessions</h3><p>Session tokens are 256-bit random values stored only as SHA-256 hashes. The cookie is HttpOnly, Secure, and SameSite=Lax. Sessions last up to seven days and are revoked on password change, password reset, and account deactivation.</p><span class="evidence-scope">Source reviewed</span></article>
         <article class="card"><h3>Single sign-on</h3><p>OpenID Connect sign-in can be enabled per deployment and requires multi-factor authentication by default. truenote.org uses password sign-in today.</p><span class="evidence-scope">Source reviewed; SSO tests passed</span></article>
+        <article class="card"><h3>OpenRouter guardrail</h3><p>Answer and query-rewrite requests also pass a guardrail on Truenote's OpenRouter account. It redacts card numbers, Social Security numbers, email addresses, phone numbers, IP addresses, person names, and street addresses in user messages, and redacts prompt-injection patterns, before a model receives the request.</p><span class="evidence-scope">Configured in OpenRouter</span></article>
         <article class="card"><h3>File storage</h3><p>Uploaded files are kept in a private bucket and read only through the server. Truenote issues no public or pre-signed file links.</p><span class="evidence-scope">Source reviewed</span></article>
         <article class="card"><h3>Hash-chained security events</h3><p>Sign-ins and administrative and document changes made through the API are written through a database function that links each event to the one before it with a SHA-256 hash. Background steps such as parsing and automatic activation are not yet recorded as security events.</p><span class="evidence-scope">Function present in production, October 2026</span></article>
         <article class="card"><h3>SIEM delivery</h3><p>A signed, retrying delivery queue for sending security events to a customer's SIEM is written and unit-tested. It is not connected on truenote.org today.</p><span class="evidence-scope">Unit tests passed; not deployed</span></article>
@@ -391,7 +392,7 @@
           <thead><tr><th scope="col">Provider</th><th scope="col">Purpose</th><th scope="col">Data it receives</th></tr></thead>
           <tbody>
             <tr><td>Railway</td><td>Application hosting, PostgreSQL database, and file storage (Railway buckets run on Tigris)</td><td>All application data, including uploaded files</td></tr>
-            <tr><td>OpenRouter</td><td>Answer generation, query rewriting, and conversation titles, routed to DeepInfra, Microsoft Azure, Baseten, Inception, or CoreWeave</td><td>Questions, conversation context, and retrieved excerpts, after redaction</td></tr>
+            <tr><td>OpenRouter</td><td>Answer generation, query rewriting, and conversation titles, routed to DeepInfra, Microsoft Azure, Baseten, Inception, or CoreWeave</td><td>Questions, conversation context, and retrieved excerpts, after redaction by Truenote and by the OpenRouter guardrail</td></tr>
             <tr><td>OpenAI</td><td>Text embeddings and optional evaluation scoring</td><td>Document passages and questions, after redaction</td></tr>
             <tr><td>Cohere</td><td>Search result reranking</td><td>Questions and candidate passages, after redaction</td></tr>
             <tr><td>LandingAI</td><td>PDF and image parsing</td><td>Uploaded file contents</td></tr>
