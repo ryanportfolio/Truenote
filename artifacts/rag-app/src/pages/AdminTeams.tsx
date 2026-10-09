@@ -67,13 +67,8 @@ function AdminTeamsInner({ user }: AdminTeamsPageProps): JSX.Element {
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight">Teams</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {supervisorViewer ? "The people on your team." : "Group CSRs under their supervisor."}
-          </p>
-        </div>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Teams</h1>
         {hasContent && !teams.loading ? <TeamsViewSwitch view={view} onChange={changeView} /> : null}
       </header>
 
