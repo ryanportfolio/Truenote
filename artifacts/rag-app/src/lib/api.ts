@@ -367,7 +367,7 @@ export async function flagMissingContent(queryLogId: string): Promise<void> {
 }
 
 export async function submitFeedback(queryLogId: string, feedback: -1 | 0 | 1): Promise<void> {
-  await fetch(
+  const response = await fetch(
     "/api/feedback",
     withDefaults({
       method: "POST",
@@ -375,6 +375,7 @@ export async function submitFeedback(queryLogId: string, feedback: -1 | 0 | 1): 
       body: JSON.stringify({ queryLogId, feedback })
     })
   );
+  await asJson<{ ok: boolean }>(response);
 }
 
 export async function listDocuments(): Promise<DocumentListResponse> {
