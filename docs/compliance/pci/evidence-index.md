@@ -48,8 +48,8 @@ public repository:
 | Evidence | Owner | Current state |
 |---|---|---|
 | Provisional synthetic-test authorization and final QSA/compliance-accepted CDE scope, data flow, applicability, and responsibility matrix | PCI scope owner | Both stages missing; no synthetic trace is authorized by repository artifacts |
-| GitHub branch/ruleset and access-review export | Engineering/Security | Branch protection absent at 2026-07-16 check |
-| Passing required-check runs tied to released commit | Engineering | Historical run exists; new PR security-gate behavior not yet verified |
+| GitHub branch/ruleset and access-review export | Engineering/Security | Ruleset `main: require PR and CI` active at 2026-10-09 check: pull request required, four required checks (typecheck/build/tests, secret scan, CodeQL, dependency audit and SBOM), zero required approvals, administrator bypass on pull requests. No settings export or access review retained |
+| Passing required-check runs tied to released commit | Engineering | Required checks passed on main at `e63293ca` (2026-10-09); Railway deploys are not yet tied to a checked commit |
 | Secure-development training records | Product Security | Missing |
 | Approved threat-model review and treatment record | Product Security/PCI | Engineering model/template prepared; named sign-off and treatment evidence missing |
 | Vulnerability inventory, approved SLAs, exceptions, closure/retest records | Product Security | Initial CodeQL import exists; remaining sources, ownership, disposition, and operation missing |
