@@ -6,7 +6,7 @@ Repository configuration proves how Truenote calls a provider; it does not prove
 the provider's contract, account configuration, retention behavior, PCI status, or
 fitness for an in-scope CDE path.
 
-Production hosting is moving from Replit to Railway. The Railway stack has run
+Production hosting moved from Replit to Railway. The Railway stack has run
 with a copy of the Replit production data since 2026-10-07. On 2026-10-07 the
 `truenote.org` and `www.truenote.org` A records resolved to Railway's addresses.
 Replit stays deployed only as the DNS rollback target, and its bucket still holds
