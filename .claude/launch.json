@@ -21,6 +21,21 @@
       ],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "film",
+      "runtimeExecutable": "py",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8780",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "artifacts/rag-app/public"
+      ],
+      "port": 8780,
+      "url": "http://localhost:8780"
     }
   ]
 }
