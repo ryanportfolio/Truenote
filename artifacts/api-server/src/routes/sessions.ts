@@ -109,12 +109,14 @@ sessionsRouter.get("/", async (req, res, next) => {
       inArray(queryLog.sessionId, rows.map((row) => row.id)),
       eq(queryLog.programId, programId),
       eq(queryLog.userId, user.id)
-    )).orderBy(asc(queryLog.createdAt));
+    )).orderBy(asc(queryLog.createdAt), asc(queryLog.id));
     const authorized = await loadAuthorizedHistorySources({ logs, userId: user.id, programId });
     const bySession = new Map<string, TitleLog[]>();
     for (const log of logs) {
       if (log.sessionId === null) continue;
-      bySession.set(log.sessionId, [...(bySession.get(log.sessionId) ?? []), log]);
+      const group = bySession.get(log.sessionId);
+      if (group) group.push(log);
+      else bySession.set(log.sessionId, [log]);
     }
     const items: SessionListItem[] = rows.flatMap((r) => {
       const sessionLogs = bySession.get(r.id) ?? [];
@@ -182,7 +184,9 @@ sessionsRouter.get("/:id", async (req, res, next) => {
           eq(queryLog.userId, user.id)
         )
       )
-      .orderBy(asc(queryLog.createdAt));
+      // Same order as the namer in routes/ask.ts, so both agree on the
+      // opening exchange.
+      .orderBy(asc(queryLog.createdAt), asc(queryLog.id));
 
     const authorized = await loadAuthorizedHistorySources({ logs: logRows, userId: user.id, programId });
     const exchanges: SessionExchange[] = logRows.flatMap((r) => {
