@@ -16,7 +16,7 @@ import {
 } from "../middleware/current-user.js";
 import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
 import { hasAtLeastRole, type CurrentUser } from "../lib/auth/current-user.js";
-import { isDemoEmail } from "../lib/auth/demo-accounts.js";
+import { isLimitedDemo } from "../lib/auth/demo-limits.js";
 import {
   colorLabelSchema,
   canPinForTeam,
@@ -197,8 +197,9 @@ kbRouter.get("/documents", async (req, res, next) => {
     const user = authedUser(req);
     const maxClassification = await getUserMaxClassification(user.id);
     const programId = await resolveEffectiveProgramId(user, req);
-    const canOrganize = hasAtLeastRole(user, "manager") && !isDemoEmail(user.email);
-    const canPinTeam = canPinForTeam(user.role) && !isDemoEmail(user.email);
+    const limitedDemo = await isLimitedDemo(user.email);
+    const canOrganize = hasAtLeastRole(user, "manager") && !limitedDemo;
+    const canPinTeam = canPinForTeam(user.role) && !limitedDemo;
     if (programId === null) {
       // Color names belong to the user, not a program, so they still load.
       res.json({

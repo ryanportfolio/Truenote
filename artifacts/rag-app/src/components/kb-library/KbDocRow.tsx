@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { Ellipsis, ExternalLink, FolderInput, Lock, NotebookPen, Star, Tags, Users } from "lucide-react";
 import { docCategoryPaths, isRecommended } from "@/lib/kbLibrary";
@@ -95,6 +96,7 @@ export function pathsLabel(paths: string[]): string {
  * the whole row opens the reader) with the user's label chip, one muted
  * line with its folder path, the private note as a one-line sticky, and on
  * the right at most one status pill, "Used often", the star and one menu.
+ * A right-click anywhere on the row opens that menu at the pointer.
  */
 export function KbDocRow({
   doc,
@@ -114,9 +116,11 @@ export function KbDocRow({
   const menu = useDocMenuEntries(doc);
   const paths = docCategoryPaths(doc, lookup.tree);
   const recommended = isRecommended(doc);
+  const rowRef = useRef<HTMLLIElement>(null);
 
   return (
     <li
+      ref={rowRef}
       data-kb-row={doc.documentId}
       className={cn(
         // One grid so each part renders once: on phones the status drops under the title.
@@ -170,7 +174,12 @@ export function KbDocRow({
         <StarToggle doc={doc} onToggle={() => actions.togglePin(doc.documentId)} />
       </span>
       <span className="relative z-10 col-start-3 row-start-1 sm:col-start-4 md:col-start-5">
-        <KbMenu label={`More actions for ${doc.title}`} title="More actions" items={menu}>
+        <KbMenu
+          label={`More actions for ${doc.title}`}
+          title="More actions (or right-click)"
+          items={menu}
+          contextTarget={rowRef}
+        >
           <Ellipsis className="h-5 w-5" aria-hidden />
         </KbMenu>
       </span>

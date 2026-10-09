@@ -8,7 +8,7 @@ import {
   type CurrentUser,
   type UserRole
 } from "../lib/auth/current-user.js";
-import { isDemoEmail } from "../lib/auth/demo-accounts.js";
+import { isLimitedDemo } from "../lib/auth/demo-limits.js";
 
 /**
  * App-level middleware. Resolves `req.user` from the session cookie if one
@@ -134,7 +134,8 @@ export const DEMO_WRITE_BLOCKED_MESSAGE = "Demo accounts can't do this";
  * knowledge-base highlights) simply don't mount it.
  *
  * `ok: false` rides along for callers typed against the upload response
- * shape; everyone else reads `error`.
+ * shape; everyone else reads `error`. A super user can switch these limits
+ * off on the Security page (lib/auth/demo-limits.ts).
  */
 export function blockDemoWrites(
   req: Request,
@@ -142,20 +143,25 @@ export function blockDemoWrites(
   next: NextFunction
 ): void {
   if (
-    req.user &&
-    req.method !== "GET" &&
-    req.method !== "HEAD" &&
-    req.method !== "OPTIONS" &&
-    isDemoEmail(req.user.email)
+    !req.user ||
+    req.method === "GET" ||
+    req.method === "HEAD" ||
+    req.method === "OPTIONS"
   ) {
+    next();
+    return;
+  }
+  isLimitedDemo(req.user.email).then((limited) => {
+    if (!limited) {
+      next();
+      return;
+    }
     res.status(403).json({
       ok: false,
       error: DEMO_WRITE_BLOCKED_MESSAGE,
       code: "demo_account"
     });
-    return;
-  }
-  next();
+  }, next);
 }
 
 /**

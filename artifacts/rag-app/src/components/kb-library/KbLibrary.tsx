@@ -195,12 +195,14 @@ export function KbLibrary({
   const narrowed = active || linked !== null;
 
   // Opening or leaving a folder moves focus to what replaced the link that was used.
+  // A tab that left the folder (All sources) keeps focus on the tab.
   const lastScope = useRef(scope);
   useEffect(() => {
     const before = lastScope.current;
     lastScope.current = scope;
     if (before === scope) return;
     requestAnimationFrame(() => {
+      if (document.activeElement?.matches("[data-kb-tab]")) return;
       if (scope !== null) {
         document.querySelector<HTMLElement>("[data-kb-folder-title]")?.focus({ preventScroll: false });
       } else if (before !== null) {
@@ -303,6 +305,8 @@ export function KbLibrary({
 
   function setTab(tab: KbTab, focus = false): void {
     setPrefs((p) => ({ ...p, tab }));
+    // All sources from inside a folder goes back to All folders, like the breadcrumb.
+    if (tab === "all" && new URLSearchParams(search).has("folder")) navigate(folderHref(search, null));
     if (focus) requestAnimationFrame(() => document.getElementById(`${tabsId}-${tab}`)?.focus());
   }
 

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, RefreshCw, ShieldCheck, ShieldOff } from "lucide-react";
+import { AlertTriangle, Lock, LockOpen, RefreshCw, ShieldCheck, ShieldOff } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
-import { getSecurityDashboard, updateMalwareScanning } from "@/lib/api";
+import { getSecurityDashboard, updateDemoLimits, updateMalwareScanning } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { CurrentUser, SecurityDashboardResponse } from "@/types/api";
 
@@ -30,6 +30,7 @@ function SecurityDashboard(): JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDisable, setConfirmDisable] = useState(false);
+  const [confirmLift, setConfirmLift] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (initial = false): Promise<void> => {
@@ -49,6 +50,19 @@ function SecurityDashboard(): JSX.Element {
   useEffect(() => {
     void load(true);
   }, [load]);
+
+  async function setDemoLimits(enabled: boolean): Promise<void> {
+    setSaving(true);
+    setError(null);
+    try {
+      setData(await updateDemoLimits(enabled));
+      setConfirmLift(false);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Security setting could not be saved");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function setScanning(enabled: boolean): Promise<void> {
     setSaving(true);
@@ -103,7 +117,7 @@ function SecurityDashboard(): JSX.Element {
           <section className="overflow-hidden rounded-lg border border-border bg-card shadow-card" aria-labelledby="scanner-heading">
             <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex min-w-0 gap-3">
-                <span className={cn("mt-0.5 rounded-full p-2", data.malwareScanning.enabled ? "bg-success/15 text-success" : "bg-warning/20 text-warning-foreground") }>
+                <span className={cn("mt-0.5 self-start rounded-full p-2", data.malwareScanning.enabled ? "bg-success/15 text-success" : "bg-warning/20 text-warning-foreground") }>
                   {data.malwareScanning.enabled ? <ShieldCheck className="h-5 w-5" aria-hidden /> : <ShieldOff className="h-5 w-5" aria-hidden />}
                 </span>
                 <div>
@@ -205,6 +219,16 @@ function SecurityDashboard(): JSX.Element {
             ) : null}
           </section>
 
+          {data.demoLimits.demoAccountsConfigured ? (
+            <DemoLimitsCard
+              limits={data.demoLimits}
+              saving={saving}
+              confirming={confirmLift}
+              onConfirm={setConfirmLift}
+              onSave={(enabled) => void setDemoLimits(enabled)}
+            />
+          ) : null}
+
           <section aria-labelledby="scan-summary-heading">
             <h2 id="scan-summary-heading" className="text-xl font-semibold tracking-tight">Document scan history</h2>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -274,7 +298,7 @@ function SecurityDashboard(): JSX.Element {
                 {data.controlEvents.map((event) => (
                   <li key={event.id} className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
                     <span>
-                      Malware scanning {event.action.endsWith(".enabled") ? "enabled" : "disabled"}
+                      {controlEventLabel(event.action)}
                       {event.actorEmail ? ` by ${event.actorEmail}` : ""}
                     </span>
                     <span className="text-xs text-muted-foreground">
@@ -288,6 +312,109 @@ function SecurityDashboard(): JSX.Element {
         </>
       ) : null}
     </div>
+  );
+}
+
+function controlEventLabel(action: string): string {
+  const on = action.endsWith(".enabled");
+  if (action.startsWith("security.demo_limits.")) return on ? "Demo limits restored" : "Demo limits lifted";
+  return `Malware scanning ${on ? "enabled" : "disabled"}`;
+}
+
+/**
+ * The super user's master switch for demo-account limits. On: demo logins
+ * are read-only outside their personal features. Off: they act like normal
+ * accounts of their role, except for changing the password.
+ */
+function DemoLimitsCard({
+  limits,
+  saving,
+  confirming,
+  onConfirm,
+  onSave
+}: {
+  limits: SecurityDashboardResponse["demoLimits"];
+  saving: boolean;
+  confirming: boolean;
+  onConfirm: (open: boolean) => void;
+  onSave: (enabled: boolean) => void;
+}): JSX.Element {
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-card shadow-card" aria-labelledby="demo-limits-heading">
+      <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 gap-3">
+          <span className={cn("mt-0.5 self-start rounded-full p-2", limits.enabled ? "bg-success/15 text-success" : "bg-warning/20 text-warning-foreground")}>
+            {limits.enabled ? <Lock className="h-5 w-5" aria-hidden /> : <LockOpen className="h-5 w-5" aria-hidden />}
+          </span>
+          <div>
+            <h2 id="demo-limits-heading" className="text-xl font-semibold tracking-tight">
+              Demo accounts
+            </h2>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+              {limits.enabled
+                ? "Limits on. Demo logins can't change shared content."
+                : "Limits off. Demo logins can do what their role allows, except change the password."}
+            </p>
+            {limits.updatedAt ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Changed <RelativeTime iso={limits.updatedAt} />
+                {limits.updatedByName ? ` by ${limits.updatedByName}` : ""}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        {limits.enabled ? (
+          <button
+            type="button"
+            data-demo-limits-lift
+            className="shrink-0 rounded-full border border-destructive/40 px-3 py-2 text-sm text-destructive transition-colors duration-100 ease-out hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => onConfirm(true)}
+            disabled={saving || !limits.persistenceReady}
+          >
+            Lift limits
+          </button>
+        ) : (
+          <button
+            type="button"
+            data-demo-limits-restore
+            className="btn-primary shrink-0 px-5 py-2 text-base"
+            onClick={() => onSave(true)}
+            disabled={saving || !limits.persistenceReady}
+          >
+            {saving ? "Restoring…" : "Restore limits"}
+          </button>
+        )}
+      </div>
+
+      {confirming && limits.enabled ? (
+        <div role="alert" className="border-t border-destructive/20 bg-destructive/10 px-5 py-4">
+          <div className="flex gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" aria-hidden />
+            <div>
+              <p className="text-sm font-medium">Lift the demo limits?</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                The demo passwords are on the login page. Anyone who signs in with them can then upload and delete
+                documents, edit users and change settings their role allows.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" className="btn-whisper px-3 py-1.5 text-sm" onClick={() => onConfirm(false)} disabled={saving}>
+                  Keep limits
+                </button>
+                <button
+                  type="button"
+                  data-demo-limits-confirm
+                  className="rounded-full border border-destructive/40 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => onSave(false)}
+                  disabled={saving}
+                >
+                  {saving ? "Lifting…" : "Lift limits"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

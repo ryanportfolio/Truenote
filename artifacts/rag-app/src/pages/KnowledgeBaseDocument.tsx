@@ -36,7 +36,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
 import { PassageHighlighter } from "@/components/kb/PassageHighlighter";
 import { KbDocPersonalError, useKbDocPersonal } from "@/components/kb-library/KbDocPersonalBar";
-import { ReaderHeader, type ReaderCrumb } from "@/components/kb-reader/ReaderHeader";
+import { ReaderActions, ReaderHeader, type ReaderCrumb } from "@/components/kb-reader/ReaderHeader";
 import {
   ReaderHighlightHint,
   ReaderNoteCard,
@@ -293,25 +293,25 @@ function ReaderArticle({
 
   return (
     <div data-kb-reader className="flex flex-col">
-      <ReaderHeader
-        crumbs={crumbs}
-        otherPaths={others}
-        personal={personal}
-        labels={labels}
-        labelsReady={library !== null}
-        onRenameLabel={renameLabel}
-      />
+      <ReaderHeader crumbs={crumbs} otherPaths={others} />
       <KbDocPersonalError personal={personal} />
       <div className="mt-2 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_20.5rem] xl:items-start xl:gap-x-7">
         {/* From 1280px the side column follows the reader down the page
           * (useStickySide sets where it pins). Below that its parts flow
-          * around the document: note and outline first, related sources last. */}
+          * around the document: actions, note and outline first, related
+          * sources last. */}
         <div
           ref={sideRef}
           data-kb-reader-side
           className="contents xl:sticky xl:top-[var(--kb-reader-side-top,1rem)] xl:col-start-2 xl:row-start-1 xl:flex xl:flex-col xl:gap-5"
         >
           <div className="flex min-w-0 flex-col gap-5">
+            <ReaderActions
+              personal={personal}
+              labels={labels}
+              labelsReady={library !== null}
+              onRenameLabel={renameLabel}
+            />
             <ReaderNoteCard personal={personal} />
             <ReaderOutline
               headings={headings}

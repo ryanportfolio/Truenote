@@ -42,3 +42,6 @@ export const teamsReadLimit = perUserLimit(60, 60_000);
 
 /** User administration writes (create, import, edit, delete): 30 a minute per user. */
 export const userAdminWriteLimit = perUserLimit(30, 60_000);
+
+/** Security page setting changes (the demo-limits switch): 30 a minute per user. */
+export const securitySettingWriteLimit = perUserLimit(30, 60_000);

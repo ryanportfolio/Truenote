@@ -60,32 +60,19 @@ function useScrollPaddingBelow(headerRef: RefObject<HTMLElement>): void {
 }
 
 /**
- * Sticky reader header: where the source lives (Sources / folder / subfolder)
- * and two personal actions, each a labeled button: keep it in my shortcuts
- * and a color label. The private note is edited on its own card. Sticky from
- * 768px up; on phones it scrolls away so the document gets the screen, and
- * the actions shrink to short pills ("Shortcut", "Label") whose accessible
- * names keep the full wording. While the note editor is open, "Save note" is
- * the one filled button, so the shortcut button turns quiet until the editor
- * closes. Once pinned it gets the same frosted, fading band as the Sources
- * search bar.
+ * Sticky reader header: where the source lives (Sources / folder /
+ * subfolder), one line, so the pinned band stays short. Sticky from 768px
+ * up; on phones it scrolls away so the document gets the screen. Once pinned
+ * it gets the same frosted, fading band as the Sources search bar. The
+ * personal actions live at the top of the side column (ReaderActions).
  */
 export function ReaderHeader({
   crumbs,
-  otherPaths,
-  personal,
-  labels,
-  labelsReady,
-  onRenameLabel
+  otherPaths
 }: {
   crumbs: ReaderCrumb[];
   /** Other folders the source is also in ("Retention"), each a link to that folder. */
   otherPaths: ReaderCrumb[];
-  personal: KbDocPersonal;
-  labels: KbColorLabel[];
-  /** False while the user's labels are still loading. */
-  labelsReady: boolean;
-  onRenameLabel: SaveLabelName;
 }): JSX.Element {
   const headerRef = useRef<HTMLDivElement | null>(null);
   useScrollPaddingBelow(headerRef);
@@ -97,9 +84,6 @@ export function ReaderHeader({
     },
     [stuckRef]
   );
-  const { item, editing } = personal;
-  const inShortcuts = item.pinnedAt !== null;
-  const shortcutName = inShortcuts ? "In my shortcuts" : "Add to my shortcuts";
   return (
     <div
       ref={setHeader}
@@ -155,31 +139,57 @@ export function ReaderHeader({
           ) : null}
         </ol>
       </nav>
-      <div className="mt-2.5 flex flex-nowrap items-center gap-1.5 sm:mt-3 sm:flex-wrap sm:gap-2.5">
-        <button
-          type="button"
-          aria-pressed={inShortcuts}
-          aria-label={shortcutName}
-          data-kb-reader-shortcut
-          onClick={() => void personal.togglePin()}
-          title={inShortcuts ? "Remove it from your shortcuts" : "Keep it in your shortcuts on Sources"}
-          className={cn(
-            "shrink-0 gap-1.5 px-2.5 py-1.5 text-[13px] sm:gap-2 sm:px-4 sm:py-2 sm:text-sm",
-            inShortcuts || editing ? "btn-whisper text-primary" : "btn-primary"
-          )}
-        >
-          <Star className="h-4 w-4" fill={inShortcuts ? "currentColor" : "none"} aria-hidden />
-          <span className="sm:hidden">Shortcut</span>
-          <span className="hidden sm:inline">{shortcutName}</span>
-        </button>
-        <ReaderLabelMenu
-          value={item.myColor}
-          labels={labels}
-          labelsReady={labelsReady}
-          onSelect={(color) => void personal.setColor(color)}
-          onRename={onRenameLabel}
-        />
-      </div>
+    </div>
+  );
+}
+
+/**
+ * The reader's two personal actions, each a labeled button: keep it in my
+ * shortcuts and a color label. Shown at the top of the side column. On phones
+ * they shrink to short pills ("Shortcut", "Label") whose accessible names keep
+ * the full wording. While the note editor is open, "Save note" is the one
+ * filled button, so the shortcut button turns quiet until the editor closes.
+ */
+export function ReaderActions({
+  personal,
+  labels,
+  labelsReady,
+  onRenameLabel
+}: {
+  personal: KbDocPersonal;
+  labels: KbColorLabel[];
+  /** False while the user's labels are still loading. */
+  labelsReady: boolean;
+  onRenameLabel: SaveLabelName;
+}): JSX.Element {
+  const { item, editing } = personal;
+  const inShortcuts = item.pinnedAt !== null;
+  const shortcutName = inShortcuts ? "In my shortcuts" : "Add to my shortcuts";
+  return (
+    <div data-kb-reader-actions className="flex flex-nowrap items-center gap-1.5 sm:flex-wrap sm:gap-2.5">
+      <button
+        type="button"
+        aria-pressed={inShortcuts}
+        aria-label={shortcutName}
+        data-kb-reader-shortcut
+        onClick={() => void personal.togglePin()}
+        title={inShortcuts ? "Remove it from your shortcuts" : "Keep it in your shortcuts on Sources"}
+        className={cn(
+          "shrink-0 gap-1.5 px-2.5 py-1.5 text-[13px] sm:gap-2 sm:px-4 sm:py-2 sm:text-sm",
+          inShortcuts || editing ? "btn-whisper text-primary" : "btn-primary"
+        )}
+      >
+        <Star className="h-4 w-4" fill={inShortcuts ? "currentColor" : "none"} aria-hidden />
+        <span className="sm:hidden">Shortcut</span>
+        <span className="hidden sm:inline">{shortcutName}</span>
+      </button>
+      <ReaderLabelMenu
+        value={item.myColor}
+        labels={labels}
+        labelsReady={labelsReady}
+        onSelect={(color) => void personal.setColor(color)}
+        onRename={onRenameLabel}
+      />
     </div>
   );
 }

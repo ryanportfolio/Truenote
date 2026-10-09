@@ -44,7 +44,7 @@ export function PeopleTable({
     <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
       <table className="w-full text-sm">
         <caption className="sr-only">
-          People who asked questions in this window. Select a name to see that person's questions.
+          People who asked questions in this window. Select a person to see their questions.
         </caption>
         <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
@@ -96,7 +96,14 @@ export function PeopleTable({
             return (
               <tr
                 key={person.userId}
-                className="border-t border-border align-top transition-colors duration-100 ease-out hover:bg-muted/40"
+                // The whole row opens the person; the name button is the keyboard path.
+                // Clicks on a source link, or that end a text selection, stay theirs.
+                onClick={(event) => {
+                  if (event.target instanceof Element && event.target.closest("a, button")) return;
+                  if (window.getSelection()?.toString()) return;
+                  onSelectPerson(person.userId);
+                }}
+                className="group/row cursor-pointer border-t border-border align-top transition-colors duration-100 ease-out hover:bg-muted/40"
               >
                 <td className="px-3 py-2">
                   <button
@@ -104,11 +111,11 @@ export function PeopleTable({
                     aria-label={`${name}, show their questions`}
                     data-person-row={person.userId}
                     onClick={() => onSelectPerson(person.userId)}
-                    className="group inline-flex items-center gap-1 rounded-sm text-left font-medium underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="group inline-flex items-center gap-1 rounded-sm text-left font-medium underline-offset-2 hover:underline group-hover/row:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     {name}
                     <ChevronRight
-                      className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-100 ease-out group-hover:translate-x-0.5 motion-reduce:transition-none"
+                      className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-100 ease-out group-hover:translate-x-0.5 group-hover/row:translate-x-0.5 motion-reduce:transition-none"
                       aria-hidden
                     />
                   </button>

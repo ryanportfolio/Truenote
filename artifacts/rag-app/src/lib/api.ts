@@ -940,6 +940,18 @@ export async function getSecurityDashboard(): Promise<SecurityDashboardResponse>
   return asJson<SecurityDashboardResponse>(response);
 }
 
+export async function updateDemoLimits(enabled: boolean): Promise<SecurityDashboardResponse> {
+  const response = await fetch(
+    "/api/admin/security/demo-limits",
+    withDefaults({
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled })
+    })
+  );
+  return asJson<SecurityDashboardResponse>(response);
+}
+
 export async function updateMalwareScanning(
   enabled: boolean
 ): Promise<SecurityDashboardResponse> {

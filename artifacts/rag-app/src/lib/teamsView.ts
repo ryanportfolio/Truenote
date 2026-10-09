@@ -7,7 +7,8 @@ import type { TeamsCsr, TeamsSupervisor } from "@/types/api";
  */
 
 // ---------------------------------------------------------------------------
-// View (roster or table), saved per user like the source usage view
+// View (roster or table), saved per user like the source usage view; table
+// until the user picks roster
 
 export type TeamsView = "roster" | "table";
 
@@ -19,9 +20,9 @@ export function teamsViewKey(userId: string): string {
 
 export function loadTeamsView(userId: string): TeamsView {
   try {
-    return window.localStorage.getItem(teamsViewKey(userId)) === "table" ? "table" : "roster";
+    return window.localStorage.getItem(teamsViewKey(userId)) === "roster" ? "roster" : "table";
   } catch {
-    return "roster";
+    return "table";
   }
 }
 
