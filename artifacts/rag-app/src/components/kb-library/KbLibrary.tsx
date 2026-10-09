@@ -496,7 +496,11 @@ export function KbLibrary({
                         aria-controls={`${tabsId}-panel`}
                         tabIndex={selected ? 0 : -1}
                         data-kb-tab={t.id}
-                        onClick={() => setTab(t.id)}
+                        onClick={() => {
+                          setTab(t.id);
+                          // All sources from inside a folder goes back to All folders, like the breadcrumb.
+                          if (t.id === "all" && new URLSearchParams(search).has("folder")) navigate(folderHref(search, null));
+                        }}
                         onKeyDown={onTabKeyDown}
                         className={cn(
                           "btn-base px-4 py-1.5 text-sm",
