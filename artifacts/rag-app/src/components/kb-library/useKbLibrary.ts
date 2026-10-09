@@ -275,15 +275,29 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
   // since they would go out with the next user's session or program.
   // True while mounted; set in an effect so StrictMode's second mount reopens it.
   const openRef = useRef(true);
+  // Program-wide list saves queued but not yet started.
+  const featuredWaitingRef = useRef(0);
   useEffect(() => {
     openRef.current = true;
     return () => {
       openRef.current = false;
+      // Those saves are about to be skipped, and the cached library already
+      // shows their lists. Drop it now, before a return visit can open from it.
+      if (featuredWaitingRef.current > 0) invalidateKbLibraryCache();
     };
   }, []);
   const featuredQueueRef = useRef(createSerialQueue());
   const featuredSaves = useMemo(
-    () => queuedListSaves(featuredQueueRef.current, setKbFeatured, refresh, () => openRef.current),
+    () =>
+      queuedListSaves(
+        featuredQueueRef.current,
+        (documentIds: string[], programId: string | null) => {
+          featuredWaitingRef.current -= 1;
+          return setKbFeatured(documentIds, programId);
+        },
+        refresh,
+        () => openRef.current
+      ),
     [refresh]
   );
 
@@ -295,12 +309,17 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       return mutate(
         (d) => applyFeatured(d, documentIds),
         async () => {
+          featuredWaitingRef.current += 1;
           try {
             await featuredSaves.save(documentIds, programId);
           } catch (err) {
-            // Skipped at unmount: the cached library still shows this unsaved
-            // list, so drop it and let the next visit load the server's.
-            if (err instanceof QueueClosedError) invalidateKbLibraryCache();
+            if (err instanceof QueueClosedError) {
+              featuredWaitingRef.current -= 1;
+              // mutate's rollback writes this closed page's state through to
+              // the cache; with the cache dropped first, it cannot replace
+              // the library a return visit has loaded since.
+              invalidateKbLibraryCache();
+            }
             throw err;
           }
           // Puts this list back if a reload put an older one in place, unless a newer change came since.
