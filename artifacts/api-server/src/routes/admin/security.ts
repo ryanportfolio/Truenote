@@ -9,6 +9,8 @@ import {
   scannerConfiguration
 } from "../../lib/security/malware-policy.js";
 import { actionableDocumentFindings } from "../../lib/security/document-policy.js";
+import { getDemoAccounts } from "../../lib/auth/demo-accounts.js";
+import { forgetDemoLimits, getDemoLimitsPolicy, persistDemoLimitsPolicy } from "../../lib/auth/demo-limits.js";
 import {
   authedUser,
   blockDemoWrites,
@@ -27,6 +29,7 @@ securityRouter.use(
 );
 
 const UpdateMalwareScanningBody = z.object({ enabled: z.boolean() });
+const UpdateDemoLimitsBody = z.object({ enabled: z.boolean() });
 
 interface ScanRow {
   version_id: string;
@@ -52,8 +55,9 @@ function iso(value: Date | string | null): string | null {
 }
 
 async function dashboardResponse() {
-  const [policy, schemaResult, summaryResult, scansResult, eventsResult] = await Promise.all([
+  const [policy, demoLimits, schemaResult, summaryResult, scansResult, eventsResult] = await Promise.all([
     getMalwareScanningPolicy(),
+    getDemoLimitsPolicy(),
     db.execute(sql`
       SELECT (
         COUNT(*) FILTER (
@@ -97,7 +101,9 @@ async function dashboardResponse() {
       FROM security_events
       WHERE action IN (
         'security.malware_scanning.enabled',
-        'security.malware_scanning.disabled'
+        'security.malware_scanning.disabled',
+        'security.demo_limits.enabled',
+        'security.demo_limits.disabled'
       )
       ORDER BY occurred_at DESC
       LIMIT 50
@@ -122,6 +128,10 @@ async function dashboardResponse() {
       disabledStatusReady,
       scannerConfigured: scanner.configured,
       scannerTransportSecure: scanner.transportSecure
+    },
+    demoLimits: {
+      ...demoLimits,
+      demoAccountsConfigured: getDemoAccounts() !== null
     },
     summary: {
       quarantined: summary?.quarantined ?? 0,
@@ -205,6 +215,44 @@ securityRouter.patch("/malware-scanning", async (req, res, next) => {
         tx as unknown as Parameters<typeof appendSecurityEvent>[1]
       );
     });
+    res.json(await dashboardResponse());
+  } catch (error) {
+    next(error);
+  }
+});
+
+// The master switch for demo-account limits. Off lets the published demo
+// logins act like normal accounts of their role (password changes stay
+// blocked); see lib/auth/demo-limits.ts.
+securityRouter.patch("/demo-limits", async (req, res, next) => {
+  const parsed = UpdateDemoLimitsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Provide the demo limits state" });
+    return;
+  }
+
+  try {
+    const user = authedUser(req);
+    const enabled = parsed.data.enabled;
+    await db.transaction(async (tx) => {
+      await persistDemoLimitsPolicy(
+        enabled,
+        user.id,
+        tx as unknown as Parameters<typeof persistDemoLimitsPolicy>[2]
+      );
+      await appendSecurityEvent(
+        {
+          action: `security.demo_limits.${enabled ? "enabled" : "disabled"}`,
+          outcome: "success",
+          actor: user,
+          resourceType: "app_setting",
+          resourceId: "demo_limits",
+          details: { enabled }
+        },
+        tx as unknown as Parameters<typeof appendSecurityEvent>[1]
+      );
+    });
+    forgetDemoLimits();
     res.json(await dashboardResponse());
   } catch (error) {
     next(error);

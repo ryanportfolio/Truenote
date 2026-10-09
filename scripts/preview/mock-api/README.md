@@ -113,8 +113,13 @@ These mirror `routes/kb.ts`, `routes/kb-library.ts`, `routes/admin/teams.ts`, `r
 - `GET /api/ask-examples` (every role, program required) returns `{ questions, custom }`: the three defaults with `custom: false` until a manager saves a list. `PUT` (manager and above, not demo) takes `{ questions }`: up to 6, each trimmed to 1 to 200 characters, repeats dropped case-insensitively; an empty list restores the defaults.
 - `GET /api/admin/programs`: a super user gets every program, a manager or senior manager their own.
 
+## Demo limits (Security page)
+
+- `GET /api/admin/security` (super user only) returns the Security dashboard. The malware scanner part is a fixed stub (enforcement on, no endpoint, no findings); `demoLimits` is live.
+- `PATCH /api/admin/security/demo-limits` (super user only) takes `{ enabled }` and records a control event. With `enabled: false`, every "not demo" rule above lets demo accounts through, and `canOrganize` and `canPinForTeam` follow. The switch resets to on when the server restarts.
+
 Chat answers come from a keyword match over the fixture library; a question with no match gets the refusal. New questions show up in Source usage right away.
 
 ## Endpoints
 
-`/api/config`, `/api/me`, `/api/auth/login|logout|forgot-password|reset-password|change-password`, `/api/sessions`, `/api/sessions/:id`, `/api/ask`, `/api/ask/stream`, `/api/feedback`, `/api/flag-missing`, `/api/kb/documents`, `/api/kb/documents/:id`, `/api/kb/documents/:id/pin|note|color|highlights`, `/api/kb/categories/:id/color`, `/api/kb/labels/:color`, `/api/kb/highlights/:id`, `/api/kb/library/*` (every route in `lib/api.ts`), `/api/admin/insights/kb-gaps`, `/api/admin/insights/source-usage`, `/api/admin/insights/source-usage/questions`, `/api/admin/queries`, `/api/admin/users`, `/api/admin/users/:id/reset-password`, `/api/admin/programs`, `/api/admin/teams`, `/api/admin/teams/assignments`, `/api/ask-examples`, `/api/documents` (read-only list). Anything else returns 404 and logs `[mock-api] no fixture for ...` in the server terminal.
+`/api/config`, `/api/me`, `/api/auth/login|logout|forgot-password|reset-password|change-password`, `/api/sessions`, `/api/sessions/:id`, `/api/ask`, `/api/ask/stream`, `/api/feedback`, `/api/flag-missing`, `/api/kb/documents`, `/api/kb/documents/:id`, `/api/kb/documents/:id/pin|note|color|highlights`, `/api/kb/categories/:id/color`, `/api/kb/labels/:color`, `/api/kb/highlights/:id`, `/api/kb/library/*` (every route in `lib/api.ts`), `/api/admin/insights/kb-gaps`, `/api/admin/insights/source-usage`, `/api/admin/insights/source-usage/questions`, `/api/admin/queries`, `/api/admin/users`, `/api/admin/users/:id/reset-password`, `/api/admin/programs`, `/api/admin/teams`, `/api/admin/teams/assignments`, `/api/admin/security`, `/api/admin/security/demo-limits`, `/api/ask-examples`, `/api/documents` (read-only list). Anything else returns 404 and logs `[mock-api] no fixture for ...` in the server terminal.

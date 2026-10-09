@@ -196,9 +196,16 @@ function requireProgram(user, req) {
 }
 
 const canSee = (user, doc) => CLEARANCE_RANK[user.clearance] >= CLEARANCE_RANK[doc.classification];
-const canOrganize = (user) => ROLE_RANK[user.role] >= ROLE_RANK.manager && !user.isDemo;
+/**
+ * lib/auth/demo-limits.ts: demo accounts are limited until a super user
+ * lifts the limits on the Security page.
+ */
+const demoLimits = { enabled: true, updatedAt: null, updatedByName: null, updatedByEmail: null };
+const limitedDemo = (user) => Boolean(user.isDemo) && demoLimits.enabled;
+const securityEvents = [];
+const canOrganize = (user) => ROLE_RANK[user.role] >= ROLE_RANK.manager && !limitedDemo(user);
 /** lib/kb-library.ts canPinForTeam plus the demo block on the list flag. */
-const canPinForTeam = (user) => user.role === "supervisor" && !user.isDemo;
+const canPinForTeam = (user) => user.role === "supervisor" && !limitedDemo(user);
 
 /**
  * lib/teams.ts teamScope: a supervisor sees their own id plus their CSRs'
@@ -591,7 +598,7 @@ function createHighlight(user, req, docId, body) {
 
 function requireOrganizer(user, req) {
   requireRole(user, "manager");
-  if (user.isDemo) throw new HttpError(403, DEMO_MESSAGE);
+  if (limitedDemo(user)) throw new HttpError(403, DEMO_MESSAGE);
   return requireProgram(user, req);
 }
 
@@ -874,7 +881,7 @@ function setFeatured(user, req, body) {
  */
 function setTeamShortcuts(user, req, body) {
   if (user.role !== "supervisor") throw new HttpError(403, TEAM_PINNER_MESSAGE);
-  if (user.isDemo) throw new HttpError(403, DEMO_MESSAGE);
+  if (limitedDemo(user)) throw new HttpError(403, DEMO_MESSAGE);
   const programId = requireProgram(user, req);
   strictBody(body, ["documentIds"]);
   // featuredSchema (uniqueIdList): uuids, at most 12, no repeats in any case,
@@ -977,7 +984,7 @@ function assignmentBody(body) {
 
 function assignTeam(user, req, body) {
   requireRole(user, "manager");
-  if (user.isDemo) throw new HttpError(403, DEMO_MESSAGE);
+  if (limitedDemo(user)) throw new HttpError(403, DEMO_MESSAGE);
   const programId = requireProgram(user, req);
   const { csrIds, supervisorId } = assignmentBody(body);
   const activeIn = (id, role) =>
@@ -1011,7 +1018,7 @@ function askExamples(user, req) {
 /** Replace the list. An empty list goes back to the defaults. */
 function setAskExamples(user, req, body) {
   requireRole(user, "manager");
-  if (user.isDemo) throw new HttpError(403, DEMO_MESSAGE);
+  if (limitedDemo(user)) throw new HttpError(403, DEMO_MESSAGE);
   const programId = requireProgram(user, req);
   const questions = body?.questions;
   const valid =
@@ -1483,7 +1490,7 @@ function canManageUser(actor, target) {
  */
 function resetUserPassword(user, id) {
   requireRole(user, "supervisor");
-  if (user.isDemo) throw new HttpError(403, DEMO_MESSAGE);
+  if (limitedDemo(user)) throw new HttpError(403, DEMO_MESSAGE);
   if (!UUID_RE.test(id)) throw badRequest("Invalid user id");
   const target = state.users.find((u) => u.id === id.toLowerCase());
   if (!target) throw notFound();
@@ -1712,6 +1719,45 @@ route("GET", /^\/api\/config$/, () => ({
   ]
 }));
 route("GET", /^\/api\/health$/, () => ({ ok: true }));
+
+// routes/admin/security.ts: super users only. The scanner part is a fixed
+// "on, not configured" stub; the demo-limits switch works.
+function securityDashboard() {
+  return {
+    malwareScanning: {
+      enabled: true,
+      persistenceReady: true,
+      disabledStatusReady: true,
+      scannerConfigured: false,
+      scannerTransportSecure: false,
+      updatedAt: null,
+      updatedByName: null,
+      updatedByEmail: null
+    },
+    demoLimits: { ...demoLimits, persistenceReady: true, demoAccountsConfigured: true },
+    summary: { quarantined: 0, unavailable: 0, errors: 0, infected: 0, disabled: 0 },
+    scans: [],
+    controlEvents: securityEvents.slice(0, 50)
+  };
+}
+route("GET", /^\/api\/admin\/security$/, ({ user }) => {
+  requireRole(user, "super_user");
+  return securityDashboard();
+});
+route("PATCH", /^\/api\/admin\/security\/demo-limits$/, ({ user, body }) => {
+  requireRole(user, "super_user");
+  if (typeof body?.enabled !== "boolean") throw badRequest("Provide the demo limits state");
+  const at = iso(Date.now());
+  Object.assign(demoLimits, { enabled: body.enabled, updatedAt: at, updatedByName: user.name, updatedByEmail: user.email });
+  securityEvents.unshift({
+    id: `sec-${securityEvents.length + 1}`,
+    occurredAt: at,
+    action: `security.demo_limits.${body.enabled ? "enabled" : "disabled"}`,
+    actorEmail: user.email,
+    details: { enabled: body.enabled }
+  });
+  return securityDashboard();
+});
 route("GET", /^\/api\/me$/, ({ req }) => ({ user: publicUser(requireUser(req)) }));
 route("POST", /^\/api\/auth\/login$/, ({ body, res }) => {
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";

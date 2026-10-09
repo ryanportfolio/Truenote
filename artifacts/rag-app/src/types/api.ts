@@ -1064,6 +1064,16 @@ export interface SecurityDashboardResponse {
     updatedByName: string | null;
     updatedByEmail: string | null;
   };
+  /** Master switch for the demo-account limits; on (enabled) by default. */
+  demoLimits: {
+    enabled: boolean;
+    persistenceReady: boolean;
+    /** False when this deployment publishes no demo logins. */
+    demoAccountsConfigured: boolean;
+    updatedAt: string | null;
+    updatedByName: string | null;
+    updatedByEmail: string | null;
+  };
   summary: {
     quarantined: number;
     unavailable: number;
