@@ -2,6 +2,10 @@
 
 > Living list. Grows via `/recall save <text>` when something bites you. Read before non-trivial work.
 
+## 2026-10-09: Railway SSH needs an existing SSH client on the process PATH
+
+In the Codex desktop shell, `railway ssh` authenticated but failed with `Failed to execute ssh command: program not found`. Windows OpenSSH was absent; Git's client existed at `C:\Program Files\Git\usr\bin\ssh.exe`. Prepending that directory to the current process PATH made the same read-only catalog command succeed. Check existing clients before treating this as missing Railway access or installing anything. No persistent PATH or account change is needed. Cost: one failed catalog attempt.
+
 ## 2026-05-19: Vite's dev proxy forwards only `/api/*`
 
 In local dev, `artifacts/rag-app/vite.config.ts` reads `API_PORT` at startup and proxies `/api/*` to `localhost:$API_PORT`; the frontend does not need the api-server port at build time. `/health` is not under `/api`, so a local smoke test hits the api-server directly: `curl localhost:$API_PORT/health`, not the Vite port.

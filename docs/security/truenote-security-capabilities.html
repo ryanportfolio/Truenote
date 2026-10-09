@@ -4,20 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0040AB">
-  <meta name="description" content="Truenote security safeguards and the evidence behind each: access isolation, content screening, AI data handling, cited answers, browser defense, audit records, service providers, and release checks.">
+  <meta name="description" content="Truenote security controls, repository verification, data-handling limits, and production review requirements.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://truenote.org/security/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Truenote">
-  <meta property="og:title" content="Security at Truenote | Safeguards and evidence">
-  <meta property="og:description" content="Tested safeguards, hosted-service settings, service providers, and release checks for Truenote.">
+  <meta property="og:title" content="Security at Truenote | Controls and review status">
+  <meta property="og:description" content="Security controls, repository verification, data-handling limits, and production review requirements.">
   <meta property="og:url" content="https://truenote.org/security/">
   <meta property="og:image" content="https://truenote.org/visuals/luminous-archive.webp">
   <meta property="og:image:type" content="image/webp">
   <meta property="og:image:alt" content="The Truenote luminous archive, with layered documents gathering around an evidence core">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Security at Truenote | Safeguards and evidence">
-  <meta name="twitter:description" content="Tested safeguards, hosted-service settings, service providers, and release checks for Truenote.">
+  <meta name="twitter:title" content="Security at Truenote | Controls and review status">
+  <meta name="twitter:description" content="Security controls, repository verification, data-handling limits, and production review requirements.">
   <meta name="twitter:image" content="https://truenote.org/visuals/luminous-archive.webp">
   <meta name="twitter:image:alt" content="The Truenote luminous archive, with layered documents gathering around an evidence core">
   <script type="application/ld+json">
@@ -26,8 +26,8 @@
     "@type": "WebPage",
     "@id": "https://truenote.org/security/",
     "url": "https://truenote.org/security/",
-    "name": "Security at Truenote | Safeguards and evidence",
-    "description": "Truenote security safeguards and the evidence behind each: access isolation, content screening, AI data handling, cited answers, browser defense, audit records, service providers, and release checks.",
+    "name": "Security at Truenote | Controls and review status",
+    "description": "Security controls, repository verification, data-handling limits, and production review requirements.",
     "isPartOf": { "@id": "https://truenote.org/#website" },
     "about": { "@id": "https://truenote.org/#organization" },
     "dateModified": "2026-10-09",
@@ -40,7 +40,7 @@
     }
   }
   </script>
-  <title>Security at Truenote | Safeguards and evidence</title>
+  <title>Security at Truenote | Controls and review status</title>
   <style>
     :root {
       color-scheme: light;
@@ -240,7 +240,6 @@
       font-size: 0.78rem;
       font-weight: 800;
     }
-    .check:last-child:nth-child(odd) { grid-column: 1 / -1; }
     .check h3 { margin-bottom: 4px; }
     .check p { margin: 0; color: var(--muted); font-size: 0.84rem; }
     .source-panel {
@@ -257,21 +256,6 @@
     .source-panel p { margin: 0; color: var(--muted); font-size: 0.88rem; }
     .actions { display: flex; flex-wrap: wrap; gap: 9px; }
     .actions .button.secondary { background: var(--card); color: var(--primary); }
-    .table-wrap {
-      overflow-x: auto;
-      margin-top: 24px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: var(--card);
-      box-shadow: var(--shadow);
-    }
-    table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
-    th, td { padding: 12px 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
-    th { background: var(--soft); color: var(--ink); font-size: 0.78rem; }
-    td { color: var(--muted); }
-    td:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; }
-    tbody tr:last-child td { border-bottom: 0; }
-    .card h3 + p { margin-top: 0; }
     .boundary {
       padding: 22px 24px;
       border-left: 4px solid var(--primary);
@@ -281,6 +265,13 @@
       font-size: 0.86rem;
     }
     .boundary strong { color: var(--ink); }
+    .table-scroll { overflow-x: auto; margin-top: 24px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    caption { padding: 16px; text-align: left; font-weight: 700; }
+    th, td { padding: 14px 16px; text-align: left; vertical-align: top; border-top: 1px solid var(--line); }
+    thead th { background: var(--soft); }
+    th[scope="row"] { min-width: 170px; }
+    .card .dependency { margin-top: 12px; font-size: 0.78rem; }
     footer { padding: 30px 0 48px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.8rem; }
     @media (max-width: 880px) {
       .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -294,8 +285,6 @@
       section { margin-bottom: 60px; }
       .grid, .checks { grid-template-columns: 1fr; }
       .card { padding: 18px; }
-      td:first-child { white-space: normal; }
-      th, td { padding: 10px 11px; }
     }
     @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
     @media print {
@@ -305,7 +294,7 @@
       .hero { background: var(--card); color: var(--ink); }
       .hero-inner { padding: 30px 0; }
       .lede, .site-links a, .brand { color: var(--muted); }
-      .card, .checks, .callout, .table-wrap { box-shadow: none; break-inside: avoid; }
+      .card, .checks, .callout { box-shadow: none; break-inside: avoid; }
     }
   </style>
 </head>
@@ -318,115 +307,123 @@
       </div>
       <p class="eyebrow">Truenote security architecture</p>
       <h1>Security controls Truenote has today</h1>
-      <p class="lede">How Truenote limits access, screens content and AI data paths, keeps answers tied to citations, protects the browser session, records security events, and checks every release. Each item names the evidence behind it.</p>
-      <div class="hero-meta"><span>Current as of October 9, 2026</span><span>Evidence named per item</span><span>Hosted on Railway</span></div>
+      <p class="lede">Implemented safeguards for a knowledge assistant, the checks that support them, and the configuration and operating evidence required before customer use.</p>
+      <div class="hero-meta"><span>Reviewed October 9, 2026</span><span>Pre-pilot security review</span><span>Evidence scope shown</span></div>
     </div>
   </header>
 
   <nav aria-label="Document sections">
-    <div class="shell"><a href="#overview">Overview</a><a href="#safeguards">Safeguards</a><a href="#hosted">Hosted service</a><a href="#accounts">Accounts and audit</a><a href="#providers">Service providers</a><a href="#checks">Release checks</a><a href="#source">Source and reporting</a></div>
+    <div class="shell"><a href="#overview">Overview</a><a href="#safeguards">Safeguards</a><a href="#data">Data and access</a><a href="#providers">Providers</a><a href="#readiness">Production review</a><a href="#checks">Passed checks</a><a href="#source">Source and reporting</a></div>
   </nav>
 
   <main class="shell">
     <section id="overview">
       <div class="callout">
-        <div><h2>Layered controls, tested at their boundaries</h2><p>Truenote applies access limits on the server before retrieval, screens uploads and AI requests for sensitive data, refuses to answer without valid citations, restricts browser requests to its own origin, and hash-chains security events. This page includes only safeguards that have completed repository evidence or a recorded check of the hosted service, and each section states which.</p></div>
+        <div><h2>Code evidence and production readiness</h2><p>Truenote applies server-side access limits, deterministic content checks, cited answers or refusals, browser request defenses, and security-event recording. Repository checks verify specific code paths. Customer use remains subject to organizational security approval, deployed-control verification, and the open requirements below.</p></div>
         <a class="button" href="/security/pci/">View PCI-focused safeguards</a>
       </div>
     </section>
 
     <section id="safeguards">
       <h2>Verified safeguards</h2>
-      <article><span class="tag verified">Verified</span><span class="grade-scope">Repository tests on the October 9, 2026 main branch</span></article>
-      <p>“Verified” here means the named repository tests passed. Each card states which tests. Tests prove the code paths they exercise; settings on the hosted service are covered in the next section.</p>
+      <article><span class="tag verified">Verified</span><span class="grade-scope">Repository acceptance checks</span></article>
+      <p>"Verified" means the named repository acceptance check passed. It does not mean every deployed path or provider has been independently assessed. Configuration and operating limits stay attached to each capability.</p>
       <div class="grid">
-        <article class="card"><p class="number">01</p><h3>Program and clearance isolation</h3><p>Every retrieval query and document read is limited in SQL to the signed-in user's program and clearance level. Saved conversations keep the citation excerpts a user was already shown, scoped to that user and program, even if their clearance is later lowered. Only super users can switch programs, one program per request.</p><span class="evidence-scope">Authorization unit tests passed</span></article>
-        <article class="card"><p class="number">02</p><h3>Role-based administration</h3><p>Five roles (super user, senior manager, manager, supervisor, CSR) are enforced on every signed-in API route. Supervisors see only their own team. Only a super user can grant the super-user role.</p><span class="evidence-scope">Role and team-scope tests passed</span></article>
-        <article class="card"><p class="number">03</p><h3>Controlled content activation</h3><p>Uploads must pass a file-type allowlist, a file-signature check, a 20 MB size limit, an EICAR test-file check, sensitive-data screening, source approval, and parsing. Private keys, AWS and OpenAI keys, Social Security numbers, and payment-card numbers quarantine the upload. Only senior managers and super users activate content; their own uploads activate once these checks pass. An external malware scanner can be connected; none is enabled on truenote.org today.</p><span class="evidence-scope">Activation and screening tests passed</span></article>
-        <article class="card"><p class="number">04</p><h3>Hybrid retrieval boundary</h3><p>Vector, full-text, typo-tolerant, and neighboring-passage queries each apply the program, clearance, and lifecycle filters in SQL. Reranking only reorders results that already passed those filters.</p><span class="evidence-scope">Scope-filter unit tests passed</span></article>
-        <article class="card"><p class="number">05</p><h3>Answer-route retention policy</h3><p>Each answer and query-rewrite request asks OpenRouter for Zero Data Retention, denies data collection, pins one model host, and turns off OpenRouter's own fallback. If a route fails, Truenote tries the next route on a fixed allowlist; administrators cannot add routes outside it.</p><span class="evidence-scope">Routing tests passed</span></article>
-        <article class="card"><p class="number">06</p><h3>Pre-provider input firewall</h3><p>Deterministic patterns for private keys, AWS and OpenAI keys, US Social Security numbers, payment-card numbers (digits separated only by spaces or hyphens), email addresses, structured phone numbers, and IP addresses are redacted before text is sent for embedding, reranking, answer generation, query rewriting, or evaluation scoring. Uploaded files reach the document parser before this screen runs.</p><span class="evidence-scope">Provider-payload tests passed</span></article>
-        <article class="card"><p class="number">07</p><h3>Cite or refuse</h3><p>An answer with missing, malformed, unknown, or out-of-range citations becomes a refusal. Fees, dates, counts, and identifiers written as numbers must appear in an excerpt the sentence cites, or in one the answer cites when the sentence has no citation. Answers containing sensitive data are refused.</p><span class="evidence-scope">Generation tests passed</span></article>
-        <article class="card"><p class="number">08</p><h3>Citation receipts</h3><p>Each answer stores an ordered snapshot of its sources with document version and anchor context. Stale anchors are rejected, and revoked or deleted versions are dropped from history when version status can be read.</p><span class="evidence-scope">Citation tests passed</span></article>
-        <article class="card"><p class="number">09</p><h3>Browser request defense</h3><p>Browser requests that change data must come from Truenote's own origin. The Origin and Fetch Metadata headers are checked, and foreign, opaque, malformed, cross-site, and sibling-origin requests are rejected. Requests that send neither header, such as non-browser API clients, pass this check and still need a valid session.</p><span class="evidence-scope">Browser-security tests passed</span></article>
-        <article class="card"><p class="number">10</p><h3>Redacted diagnostics</h3><p>Structured error handling removes credentials, complete private keys, Social Security numbers, and payment-card values from covered diagnostic paths.</p><span class="evidence-scope">Redaction tests passed</span></article>
-        <article class="card"><p class="number">11</p><h3>Bounded provider failure</h3><p>Each provider call has a deadline, a retry cap, and cancellation. The ask path as a whole has its own deadline and returns the standard refusal when it expires.</p><span class="evidence-scope">Failure-path tests passed</span></article>
-        <article class="card"><p class="number">12</p><h3>Workload limits</h3><p>Asks have per-user and per-program limits, and document uploads have per-user limits. Both are stored in PostgreSQL, so they hold across server instances. Administrative routes have their own per-user limits.</p><span class="evidence-scope">Rate-limit tests passed</span></article>
-        <article class="card"><p class="number">13</p><h3>Evaluation integrity</h3><p>Evaluation tests cover retrieval and reranking failure attribution, citation scoring, refusal questions, faithfulness, durable queue recovery, and separate pass rates for held-out questions.</p><span class="evidence-scope">Evaluation tests passed</span></article>
+        <article class="card"><p class="number">01</p><h3>Program and clearance isolation</h3><p>Server-side filters deny cross-program and above-clearance access before protected content reaches ranking, generation, citations, or document reads.</p><span class="evidence-scope">Repository tests passed</span></article>
+        <article class="card"><p class="number">02</p><h3>Controlled content activation</h3><p>Source, file-signature, EICAR, parsed-content, lifecycle, and role checks constrain activation. Missing or failed malware scanning quarantines uploads when scanning is enabled.</p><span class="evidence-scope">Repository tests passed</span><p class="dependency">EICAR detection is a test-signature check. A super user can disable external scanning; authorized senior managers and super users can activate their own uploads. Independent approval is not universal.</p></article>
+        <article class="card"><p class="number">03</p><h3>Hybrid retrieval boundary</h3><p>Vector, full-text, typo-tolerant, reranking, and neighbor retrieval preserve authorization and lifecycle limits through the complete pipeline.</p><span class="evidence-scope">Repository tests passed</span></article>
+        <article class="card"><p class="number">04</p><h3>Zero Data Retention routing policy</h3><p>Approved answer routes request Zero Data Retention, deny data collection, pin one provider, disable OpenRouter provider fallback for each request, and reject arbitrary routes. Truenote can retry other routes within its approved model chain.</p><span class="evidence-scope">Repository tests passed</span><p class="dependency">This is a routing policy. Actual provider eligibility, account settings, contracts, and retention require separate evidence. It does not cover every parser, embedding, or reranking service.</p></article>
+        <article class="card"><p class="number">05</p><h3>Pre-provider input firewall</h3><p>Supported secret, US Social Security number, Luhn-valid 13-to-19-digit card-number (space or hyphen separators), email, structured-phone, and IP-address patterns are redacted at embedding, reranking, answer, and utility-model text boundaries.</p><span class="evidence-scope">Boundary tests passed</span><p class="dependency">Names, street addresses, arbitrary credentials, standalone card-verification codes, and obfuscated or contextual personal data are not comprehensively detected. Raw uploaded files follow a separate path.</p></article>
+        <article class="card"><p class="number">06</p><h3>Cite or refuse</h3><p>Missing, malformed, unknown, and out-of-range citations produce a refusal. Generated text matching the supported secret, Social Security number, or card-number rules is also refused.</p><span class="evidence-scope">Generation tests passed</span><p class="dependency">A valid citation does not prove every statement is accurate. Output screening has a defined pattern scope; it does not guarantee complete personal-data protection or immunity to prompt injection.</p></article>
+        <article class="card"><p class="number">07</p><h3>Version-bound citation receipts</h3><p>Ordered source snapshots preserve version and anchor context. Stored history rechecks current program, clearance, source approval, and lifecycle access before returning questions, answers, excerpts, or titles. Exchanges without complete authorized provenance, including zero-citation refusals, are withheld; a title is hidden if any exchange is withheld. Eligible superseded receipts remain readable while their parent document and source stay authorized.</p><span class="evidence-scope">Repository tests passed</span></article>
+        <article class="card"><p class="number">08</p><h3>Browser request defense</h3><p>Trusted same-origin mutations pass while foreign, opaque, malformed, cross-site, and sibling-origin requests are rejected. CSP restricts active content. Clients sending neither Origin nor Fetch Metadata headers pass this browser-origin check and still require authentication on protected routes.</p><span class="evidence-scope">Browser-security tests passed</span></article>
+        <article class="card"><p class="number">09</p><h3>Redacted diagnostics</h3><p>Structured error handling removes credentials, complete private keys, Social Security numbers, and payment-card values from covered diagnostic paths.</p><span class="evidence-scope">Redaction tests passed</span></article>
+        <article class="card"><p class="number">10</p><h3>Bounded provider failure</h3><p>Provider operations use explicit deadlines, retry caps, abort propagation, and a fail-closed deadline for the complete ask path.</p><span class="evidence-scope">Failure-path tests passed</span></article>
+        <article class="card"><p class="number">11</p><h3>Tamper-evident audit logic</h3><p>Database controls define append-only, hash-chained security events. API sign-ins and administrative/document changes produce events; background parsing and automatic activation do not yet have complete event coverage. SIEM delivery tests cover signing, lease fencing, retries, dead-letter handling, and health reporting.</p><span class="evidence-scope">Audit-delivery tests passed</span><p class="dependency">Read-only production inspection found hash-chain event creation present, but audit-mutation blockers, automatic lifecycle/source audit controls, and external-delivery prerequisites absent. The application database role has unrestricted administrative privileges. Install and verify the missing controls, restrict runtime access, and establish independent retention before relying on audit integrity.</p></article>
+        <article class="card"><p class="number">12</p><h3>Evaluation integrity</h3><p>Evaluation tests cover retrieval, reranking, citations, refusals, faithfulness, durable queue recovery, and separate pass rates for held-out questions.</p><span class="evidence-scope">Evaluation tests passed</span></article>
+        <article class="card"><p class="number">13</p><h3>Workload limits</h3><p>Answer requests use PostgreSQL counters per user and program; uploads use per-user counters. Login and selected administrative routes have additional limits.</p><span class="evidence-scope">Rate-limit tests passed</span><p class="dependency">Some static, history, personal and administrative reads remain without application request limits by an intentional demo-phase decision. Before customer use, the owner must approve application or verified edge abuse coverage and thresholds.</p></article>
       </div>
     </section>
 
-    <section id="hosted">
-      <h2>Hosted service settings</h2>
-      <article><span class="tag verified">Verified</span><span class="grade-scope">Checked on truenote.org, October 9, 2026</span></article>
-      <p>These settings were read from the live service's responses.</p>
-      <div class="checks">
-        <article class="check"><h3>HTTPS only</h3><p>Plain HTTP redirects to HTTPS. Strict-Transport-Security is set for two years with includeSubDomains and the preload directive; truenote.org is not yet on browser preload lists.</p></article>
-        <article class="check"><h3>Content Security Policy</h3><p>Scripts run only with a per-request nonce under strict-dynamic, Trusted Types are required, plugins are blocked, and no site can frame Truenote.</p></article>
-        <article class="check"><h3>Browser isolation headers</h3><p>nosniff, X-Frame-Options DENY, a same-origin opener policy, a same-origin referrer policy, and a permissions policy that turns off camera, microphone, location, payment, and USB access.</p></article>
-        <article class="check"><h3>API responses</h3><p>API responses are marked no-store. Production errors return a generic message, and the health check returns only a status flag.</p></article>
-        <article class="check"><h3>Password length</h3><p>New passwords must be at least 15 characters.</p></article>
-        <article class="check"><h3>Security contact</h3><p>An RFC 9116 security.txt at /.well-known/security.txt points to private vulnerability reporting.</p></article>
-      </div>
-    </section>
-
-    <section id="accounts">
-      <h2>Accounts, storage, and audit records</h2>
-      <p>These controls were confirmed by source review in October 2026, or in provider settings where the card says so. Where a control is also live in the production database, the card says so.</p>
+    <section id="data">
+      <h2>Data handling and account access</h2>
       <div class="grid">
-        <article class="card"><h3>Password storage</h3><p>Passwords are hashed with Argon2id. Sign-in compares against a dummy hash when an account does not exist, so response time does not reveal which emails are registered.</p><span class="evidence-scope">Source reviewed</span></article>
-        <article class="card"><h3>Sessions</h3><p>Session tokens are 256-bit random values stored only as SHA-256 hashes. The cookie is HttpOnly, Secure, and SameSite=Lax. Sessions last up to seven days and are revoked on password change, password reset, and account deactivation.</p><span class="evidence-scope">Source reviewed</span></article>
-        <article class="card"><h3>Single sign-on</h3><p>OpenID Connect sign-in can be enabled per deployment and requires multi-factor authentication by default. truenote.org uses password sign-in today.</p><span class="evidence-scope">Source reviewed; SSO tests passed</span></article>
-        <article class="card"><h3>OpenRouter guardrail</h3><p>Answer and query-rewrite requests also pass a guardrail on Truenote's OpenRouter account. It redacts card numbers, Social Security numbers, email addresses, phone numbers, IP addresses, person names, and street addresses in user messages, and redacts prompt-injection patterns, before a model receives the request.</p><span class="evidence-scope">Configured in OpenRouter</span></article>
-        <article class="card"><h3>File storage</h3><p>Uploaded files are kept in a private bucket and read only through the server. Truenote issues no public or pre-signed file links.</p><span class="evidence-scope">Source reviewed</span></article>
-        <article class="card"><h3>Hash-chained security events</h3><p>Sign-ins and administrative and document changes made through the API are written through a database function that links each event to the one before it with a SHA-256 hash. Background steps such as parsing and automatic activation are not yet recorded as security events.</p><span class="evidence-scope">Function present in production, October 2026</span></article>
-        <article class="card"><h3>SIEM delivery</h3><p>A signed, retrying delivery queue for sending security events to a customer's SIEM is written and unit-tested. It is not connected on truenote.org today.</p><span class="evidence-scope">Unit tests passed; not deployed</span></article>
+        <article class="card"><h3>Permitted content</h3><p>Truenote is intended for approved policies, procedures, and operational reference material. Until a signed data and PCI scope decision permits otherwise, keep payment-card numbers, CVV/CVC, PINs, track data, credentials, and live customer personal data out of questions, history, documents, screenshots, and reports.</p></article>
+        <article class="card"><h3>Raw-file boundary</h3><p>Uploads reach object storage before ingestion. An enabled scanner receives raw bytes; PDF and image parsing can send those bytes to LandingAI before parsed-text screening. Parsed text is persisted before its sensitive-content decision. Quarantine restricts activation; it does not undo earlier storage or disclosure.</p></article>
+        <article class="card"><h3>Provider coverage</h3><p>OpenAI receives protected embedding text, Cohere receives protected reranking text, and OpenRouter and its selected model provider receive protected generation and utility text. Parser and scanner data handling, account settings, contracts, retention, and subprocessors require separate approval.</p></article>
+        <article class="card"><h3>Identity and sessions</h3><p>Code implements Argon2id password hashing, hashed session tokens, production Secure and HttpOnly cookies, account deactivation checks, and session revocation. OIDC with MFA-claim validation is available but intentionally unconfigured during testing. Explicit disabled or break-glass local-login policy remains enforced even when OIDC configuration is unusable, including password-reset and invitation completion. New passwords have a minimum length of 15 characters in the reviewed deployment. Application sessions have a seven-day absolute lifetime and no enforced idle timeout.</p><p class="dependency">The security owner must approve session controls, MFA, access reviews, and break-glass handling. Public demo access must be isolated or retired before organizational data is introduced.</p></article>
+        <article class="card"><h3>Retention and deletion</h3><p>Normal document removal retires it and retains source bytes and evidence. Retention-gated permanent purge is restricted to super users. A deployment setting can permit a retention override. Customer-approved schedules must cover originals, parsed content, questions, answers, diagnostics, security events, provider copies, and backups; document purge alone does not establish complete deletion.</p></article>
+        <article class="card"><h3>Unscreened personal fields</h3><p>Personal notes and label names are stored without the question or document sensitive-content screening. The prohibited-data policy applies to these fields too; current pattern controls do not enforce it there.</p></article>
+        <article class="card"><h3>Transport and storage</h3><p>The reviewed public pages serve over HTTPS with HSTS and a restrictive Content Security Policy. Private-service transport, storage and backup encryption, key access, rotation, and deletion still require platform evidence. Public HTTPS does not establish encryption for every hop or stored copy.</p></article>
       </div>
+      <p>See the <a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/scope-and-data-flow.md">data-flow inventory</a> and <a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/compliance/pci/third-party-responsibility-matrix.md">provider responsibility matrix</a> for the reviewed paths and required evidence.</p>
     </section>
 
     <section id="providers">
-      <h2>Service providers</h2>
-      <p>Truenote uses these providers. Text sent to the AI providers passes the input firewall described above, except files sent to the document parser.</p>
-      <div class="table-wrap">
+      <h2>Service providers and data paths</h2>
+      <p>Text redaction applies at the implemented AI boundaries. It does not screen raw files or establish provider contracts, account settings, endpoint eligibility, or retention.</p>
+      <div class="table-scroll" role="region" aria-label="Service provider data paths" tabindex="0"><table>
+        <caption>Provider inventory reviewed against current source</caption>
+        <thead><tr><th scope="col">Provider</th><th scope="col">Purpose</th><th scope="col">Data handled</th></tr></thead><tbody>
+          <tr><th scope="row">Railway and bucket provider Tigris</th><td>Web, worker, PostgreSQL, and private file storage</td><td>Application records, uploaded originals, parsed content, and operational records</td></tr>
+          <tr><th scope="row">OpenRouter and approved model hosts</th><td>Answer generation, query rewriting, and conversation titles; approved hosts include DeepInfra, Azure, Baseten, Inception, and CoreWeave</td><td>Questions, conversation context, and retrieved excerpts after application text redaction</td></tr>
+          <tr><th scope="row">OpenAI</th><td>Embeddings and optional evaluation scoring</td><td>Document passages, questions, and evaluation text after application text redaction</td></tr>
+          <tr><th scope="row">Cohere</th><td>Search reranking</td><td>Questions and candidate passages after application text redaction</td></tr>
+          <tr><th scope="row">LandingAI and a configured malware scanner</th><td>PDF/image parsing and optional malware scanning</td><td>Original uploaded file bytes before parsed-text screening</td></tr>
+          <tr><th scope="row">Resend</th><td>Invitation and password-reset email</td><td>Email addresses and one-time links</td></tr>
+          <tr><th scope="row">GitHub</th><td>Source hosting, automated checks, and security-report intake</td><td>Source code, check artifacts, and submitted reports; application customer content must stay out of reports and CI artifacts</td></tr>
+        </tbody></table></div>
+      <p>Retained OpenRouter account screenshots are configuration evidence. Runtime application of that guardrail and provider handling still need a release-specific synthetic receipt and account assurance.</p>
+    </section>
+
+    <section id="readiness">
+      <h2>Requirements before customer use</h2>
+      <p>The review is incomplete. The current repository and limited read-only deployment observations support the following status, as of October 9, 2026. SSO and scanner integrations are intentionally unset during the demo/testing phase; they require configuration and end-to-end verification before customer use. Missing database audit controls are a separate installation gap. Missing evidence remains open even when the implementation passes tests.</p>
+      <div class="table-scroll" role="region" aria-label="Production readiness requirements" tabindex="0">
         <table>
-          <thead><tr><th scope="col">Provider</th><th scope="col">Purpose</th><th scope="col">Data it receives</th></tr></thead>
+          <caption>Production controls and acceptance evidence</caption>
+          <thead><tr><th scope="col">Area</th><th scope="col">Evidence grade</th><th scope="col">Required acceptance</th></tr></thead>
           <tbody>
-            <tr><td>Railway</td><td>Application hosting, PostgreSQL database, and file storage (Railway buckets run on Tigris)</td><td>All application data, including uploaded files</td></tr>
-            <tr><td>OpenRouter</td><td>Answer generation, query rewriting, and conversation titles, routed to DeepInfra, Microsoft Azure, Baseten, Inception, or CoreWeave</td><td>Questions, conversation context, and retrieved excerpts, after redaction by Truenote and by the OpenRouter guardrail</td></tr>
-            <tr><td>OpenAI</td><td>Text embeddings and optional evaluation scoring</td><td>Document passages and questions, after redaction</td></tr>
-            <tr><td>Cohere</td><td>Search result reranking</td><td>Questions and candidate passages, after redaction</td></tr>
-            <tr><td>LandingAI</td><td>PDF and image parsing</td><td>Uploaded file contents</td></tr>
-            <tr><td>Resend</td><td>Invitation and password-reset email</td><td>Email addresses and one-time links</td></tr>
-            <tr><td>GitHub</td><td>Source code, automated checks, and vulnerability reports</td><td>Source code and reports; no customer content</td></tr>
+            <tr><th scope="row">Organizational approval and PCI scope</th><td>Operational evidence required</td><td>Approved data policy, accountable owners, assessed boundary, provider responsibilities, and written customer security approval.</td></tr>
+            <tr><th scope="row">SSO, MFA, and access</th><td>Configuration required</td><td>Configure the approved IdP, verify MFA and revocation, resolve idle-session controls, restrict emergency access, and review privileged and demo accounts.</td></tr>
+            <tr><th scope="row">Malware scanning</th><td>Configuration required</td><td>Configure an approved scanner, confirm scanning is enabled, govern overrides, and prove clean, infected, unavailable, and failure outcomes before parsing.</td></tr>
+            <tr><th scope="row">External audit delivery</th><td>Gap</td><td>Complete the deployed database prerequisites and receiver configuration; retain delivery, retry, alert, dead-letter, privilege, and independent-retention evidence.</td></tr>
+            <tr><th scope="row">Recovery and incident response</th><td>Operational evidence required</td><td>Confirm database and uploaded-file backups, restore to an authorized test target, measure recovery time and data loss, and complete an incident tabletop. Current records show backups off and no retained restore result.</td></tr>
+            <tr><th scope="row">Vulnerability management and release control</th><td>Operational evidence required</td><td>Reconcile current scans, assign and disposition findings, pass the strict managed-release gate, approve change records, and bind deployed bytes to the reviewed release.</td></tr>
+            <tr><th scope="row">Provider and cryptographic assurance</th><td>Third-party evidence required</td><td>Approve contracts, retention and deletion, subprocessors, account controls, encryption, key management, and the exact service scope of any provider attestation.</td></tr>
+            <tr><th scope="row">Independent assurance</th><td>Third-party evidence required</td><td>Complete authorized application/API and AI testing, any applicable network or segmentation tests, remediation, and retest. A separate test environment or explicitly approved substitute is required.</td></tr>
           </tbody>
         </table>
       </div>
+      <p>Grades distinguish passed acceptance checks (<strong>Verified</strong>), existing code without operational proof (<strong>Implemented, unverified</strong>), missing configuration, missing operating records, missing provider or assessor evidence, and an absent or ineffective control (<strong>Gap</strong>). <strong>Not applicable</strong> requires a named owner and written justification.</p>
+      <p>Supporting procedures: <a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/security/README.md">security evidence map</a>, <a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/security/backup-restore-runbook.md">recovery runbook</a>, <a href="https://github.com/ryanportfolio/Truenote/blob/main/docs/security/incident-response-plan.md">incident plan</a>, and <a href="/security/pci/#readiness">PCI review requirements</a>.</p>
     </section>
 
     <section id="checks">
       <h2>Security delivery checks</h2>
-      <p>The hosted workflow runs these checks on every pull request, every push to main, and weekly. All passed on the main branch on October 9, 2026.</p>
+      <p>The <a href="https://github.com/ryanportfolio/Truenote/actions/runs/37873695940">hosted security workflow for reviewed main commit e63293ca7d9d</a> passed these checks. This receipt covers that commit; later commits and deployed bytes require their own verification.</p>
       <div class="checks">
-        <article class="check"><h3>Type checking and production build</h3><p>Workspace TypeScript checks and the frontend production build.</p></article>
-        <article class="check"><h3>Automated test suites</h3><p>Frontend, API, and security-script test suites.</p></article>
-        <article class="check"><h3>Secret scanning</h3><p>Gitleaks scans each pull request and push for committed credentials.</p></article>
-        <article class="check"><h3>Dependency audit and SBOM</h3><p>The build fails on high or critical advisories in production dependencies, and each run generates a CycloneDX software bill of materials.</p></article>
-        <article class="check"><h3>CodeQL analysis</h3><p>CodeQL runs its security-extended JavaScript and TypeScript queries. Its findings are tracked in a triage register in the repository.</p></article>
-        <article class="check"><h3>Protected main branch</h3><p>Changes reach main only through pull requests, and the four checks above must pass before merge. Repository administrators can override the checks on a pull request.</p></article>
-        <article class="check"><h3>Security evidence integrity</h3><p>Machine checks validate evidence links, identifiers, hashes, and required security records.</p></article>
+        <article class="check"><h3>Type checking and production build</h3><p>Workspace TypeScript checks and the production frontend build completed successfully.</p></article>
+        <article class="check"><h3>Automated test suites</h3><p>Frontend, API, and security-script suites completed successfully.</p></article>
+        <article class="check"><h3>Secret scanning</h3><p>The hosted secret-scan job completed successfully.</p></article>
+        <article class="check"><h3>Dependency audit and SBOM</h3><p>The production dependency audit and CycloneDX software bill of materials step completed successfully.</p></article>
+        <article class="check"><h3>CodeQL analysis</h3><p>Hosted analysis and SARIF evidence generation completed successfully. Job success does not mean zero findings or approved finding dispositions.</p></article>
+        <article class="check"><h3>Security evidence integrity</h3><p>Machine checks validated evidence links, identifiers, hashes, and required security records.</p></article>
       </div>
+      <p>The strict managed-release vulnerability gate and supplemental branch-enforcement gate were skipped in this ordinary main run. Green CI verifies engineering checks; it does not approve a production release or close the vulnerability register.</p>
     </section>
 
     <section id="source">
       <h2>Source and vulnerability reporting</h2>
       <div class="source-panel">
-        <div><h3>Inspect the implementation or report privately</h3><p>The public repository contains the implementation, tests, security policy, and evidence records behind these claims. Suspected vulnerabilities can be submitted through GitHub’s private advisory intake.</p></div>
+        <div><h3>Inspect the implementation or report privately</h3><p>The public repository contains implementation, tests, and evidence records. Use GitHub's private advisory intake for suspected vulnerabilities and follow the security policy. Reporting discovery is verified; intake monitoring and an end-to-end response exercise still require operating evidence.</p></div>
         <div class="actions"><a class="button" href="https://github.com/ryanportfolio/Truenote" target="_blank" rel="noreferrer">View source</a><a class="button secondary" href="https://github.com/ryanportfolio/Truenote/security/advisories/new" target="_blank" rel="noreferrer">Report privately</a></div>
       </div>
+      <p><a href="/security/pci/#evidence">Open implementation and test evidence</a> · <a href="/.well-known/security.txt">Reporting discovery record</a> · <a href="https://github.com/ryanportfolio/Truenote/security/policy">Security reporting policy</a>. Use synthetic data; keep exploit details, credentials, payment-card data, and customer content out of public issues. Test only systems and accounts you are authorized to use.</p>
     </section>
 
     <section aria-label="Evidence boundary">
-      <div class="boundary"><strong>Evidence boundary:</strong> repository tests verify the code paths and conditions they exercise, and hosted-service checks describe the responses observed on the date shown. This page is not a certification, authorization, legal opinion, or independent assessment.</div>
+      <div class="boundary"><strong>Evidence boundary:</strong> repository tests verify the code paths and conditions they exercise. This page is not a certification, authorization, legal opinion, independent assessment, or deployed-configuration attestation.</div>
     </section>
   </main>
 

@@ -23,15 +23,22 @@ Comments, intended behavior, seeded data, and unchecked rollout steps do not rai
 ### Security capabilities brief
 
 [`truenote-security-capabilities.html`](./truenote-security-capabilities.html) is
-the public `/security/` source. It includes only completed safeguards with passed
-repository checks and keeps each claim inside its stated evidence scope.
+the public `/security/` source. It distinguishes repository-tested safeguards
+from deployed configuration, operational dependencies, and open requirements
+before customer use. Each claim stays inside its stated evidence scope.
 
 ### Public PCI safeguards brief
 
 [`truenote-pci-security-capabilities.html`](./truenote-pci-security-capabilities.html)
-is the public `/security/pci/` source. It explains PCI DSS secure-software
-expectations in plain language and lists only completed safeguards and passed
-checks. It is not a compliance, certification, or independent-assessment claim.
+is the public `/security/pci/` source. It explains the PCI DSS 4.0.1 review basis,
+payment-data and raw-file boundaries, software safeguards, draft procedures,
+all 12 requirement families, and approval requirements. It is not a compliance,
+certification, or independent-assessment claim.
+
+[`security-review-2026-10-09.md`](./security-review-2026-10-09.md) records the
+latest-main page review, scoped live observations, claim corrections, control
+grades, and five dependency-ordered actions. P0 remains incomplete; the report
+does not authorize customer use or production changes.
 
 ### Internal PCI session ledger
 
@@ -43,21 +50,22 @@ actions. The maintainer keeps it outside this public repository.
 
 - [`p0-p1-security-controls.sql`](./p0-p1-security-controls.sql) defines provenance, lifecycle, classification, approval, retention, distributed rate limits, and hash-chained security events.
 - [`p1-siem-delivery-outbox.sql`](./p1-siem-delivery-outbox.sql) defines transactional SIEM enqueueing, lease-fenced claims, retries, dead-letter state, and delivery health.
-- [`../compliance/pci/production-control-verification.sql`](../compliance/pci/production-control-verification.sql) and its runbook provide read-only production catalog/definition evidence without selecting application rows; no production result is retained yet.
+- [`../compliance/pci/production-control-verification.sql`](../compliance/pci/production-control-verification.sql) and its runbook provide read-only production catalog/definition evidence without selecting application rows. A [limited October 9 audit-catalog receipt](evidence/railway-audit-catalog-2026-10-09.json) is retained; the full formal verifier has not been executed.
 - [`malware-scanning-control.sql`](./malware-scanning-control.sql) adds the explicit database state used by the audited super-user temporary scanner override.
 - [`review-approval-control.sql`](./review-approval-control.sql) removes the legacy database-wide self-approval prohibition so authorized senior managers and super users can activate their own uploads.
 
 These migrations are forward-only operational changes. Review the embedded guardrails and verification queries before applying them. Repository presence does not prove they are installed in a given database.
 
-[`../../lib/db/sql/0000_baseline.sql`](../../lib/db/sql/0000_baseline.sql) is a schema-only dump of the Railway production database as of 2026-10-07 and includes the controls above that production had then. New schema changes, security DDL included, are numbered files in `lib/db/sql/` applied to production by `scripts/railway-apply-sql.mjs`, which records each file in `schema_migrations`. The production image is built from `Dockerfile.railway`.
+[`../../lib/db/sql/0000_baseline.sql`](../../lib/db/sql/0000_baseline.sql) is a schema-only dump of the Railway production database as of 2026-10-07. The October 9 live catalog check confirms the hash-chain append function exists, but audit mutation-blocking/lifecycle/source functions and triggers, plus SIEM delivery functions and its enqueue trigger, remain absent. Both application processes connect as a database superuser with audit update/delete/truncate privileges. These are confirmed gaps; the remaining full catalog and synthetic checks are still required. New schema changes, security DDL included, are numbered files in `lib/db/sql/` applied to production by `scripts/railway-apply-sql.mjs`, which records each file in `schema_migrations`. The production image is built from `Dockerfile.railway`.
 
 ## Evidence and operations
 
-- The base P0/P1 database controls passed owner-attested acceptance checks in the former Replit development database. Railway has no development database; its production database is a 2026-10-07 copy of Replit production with constraint definitions and the `append_security_event` body checked identical to the source (`.claude/reference/deployment.md`). Production verification of these controls on Railway is still pending. A read-only catalog check on 2026-10-09 found `append_security_event` (the hash chain) present, but the `block_security_event_mutation` function, the `security_events_append_only` trigger, and the document-version and content-source audit triggers from `p0-p1-security-controls.sql` absent. `security_events` is therefore hash-chained but not append-only on Railway, and the public pages no longer describe it as append-only.
+- The base P0/P1 database controls passed owner-attested acceptance checks in the former Replit development database. Railway has no development database; its production database is a 2026-10-07 copy of Replit production with constraint definitions and the `append_security_event` body checked identical to the source (`.claude/reference/deployment.md`). Limited October 9 live checks confirmed missing audit controls and excessive runtime privilege; full production acceptance remains pending.
 - The security workflow runs type checks, a production build, unit tests, dependency audit, SBOM generation, Gitleaks, and CodeQL.
 - OIDC and MFA, malware scanning, durable SIEM delivery, browser policy, and provider settings have defined configuration and verification paths. Backup/recovery procedures, RTO/RPO, and a retained restore exercise remain operational evidence requirements.
 - Hash-chained application events preserve tamper-evident receipts; the SIEM outbox provides durable external delivery with retry and dead-letter handling once installed and configured.
-- SIEM delivery is not active on Railway (checked 2026-10-07). The `siem_delivery_outbox` table exists, but the functions from `p1-siem-delivery-outbox.sql` (`enqueue_security_event_for_siem`, `claim_siem_deliveries`, `complete_siem_delivery`, `fail_siem_delivery`, `get_siem_delivery_health`) and the `security_events_siem_enqueue` trigger are absent, a gap inherited from the Replit database. `SIEM_WEBHOOK_URL` is unset.
+- SIEM delivery is not active on Railway (catalog rechecked 2026-10-09). The `siem_delivery_outbox` table exists, but the functions from `p1-siem-delivery-outbox.sql` (`enqueue_security_event_for_siem`, `claim_siem_deliveries`, `complete_siem_delivery`, `fail_siem_delivery`, `get_siem_delivery_health`) and the `security_events_siem_enqueue` trigger are absent, a gap inherited from the Replit database. The live web endpoint and signing-key settings are absent.
+- [Current CodeQL review](../compliance/pci/codeql-review-2026-10-09.md) and its [API receipt](evidence/github-codeql-status-2026-10-09.json) replace historical counts in current reporting: 31 open alerts, eight fixed and nine dismissed. Source review distinguishes seven false positives, one expected operator credential flow and 23 intentional demo-phase omissions of application rate limits. The July 51-result baseline remains unreconciled historical evidence, not a current vulnerability count.
 - [`incident-response-plan.md`](./incident-response-plan.md) defines severity levels, detection sources, containment steps mapped to the Railway services and CLI, proposed customer-notice windows, evidence preservation, and tabletop exercises. It is proposed and not yet exercised.
 - [`backup-restore-runbook.md`](./backup-restore-runbook.md) defines proposed RPO/RTO targets, a restore-to-non-production-first procedure for the Railway stack, verification checks, and the restore evidence record. Volume backups on the `pgvector` database are off (owner decision, 2026-10-07) and must be turned on before full production; until then an operator's logical dump is the only database recovery copy, and uploaded files have no backup. No restore test has been run yet.
 

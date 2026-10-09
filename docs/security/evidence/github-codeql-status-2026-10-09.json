@@ -1,0 +1,478 @@
+{
+  "capturedAt": "2026-10-09T16:24:50.769Z",
+  "repository": "ryanportfolio/Truenote",
+  "ref": "refs/heads/main",
+  "method": "Authenticated GitHub REST API reads; combined filtered responses deduplicated by alert number and counted by actual alert state",
+  "counts": {
+    "open": 31,
+    "fixed": 8,
+    "dismissed": 9
+  },
+  "alerts": [
+    {
+      "number": 68,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/68",
+      "state": "open",
+      "ruleId": "js/file-access-to-http",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 46,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/46",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 45,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/45",
+      "state": "open",
+      "ruleId": "js/user-controlled-bypass",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 44,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/44",
+      "state": "open",
+      "ruleId": "js/user-controlled-bypass",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 43,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/43",
+      "state": "open",
+      "ruleId": "js/path-injection",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 42,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/42",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 41,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/41",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 40,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/40",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 39,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/39",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 38,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/38",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 37,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/37",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 36,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/36",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 35,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/35",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 34,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/34",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 33,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/33",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 31,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/31",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 30,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/30",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 24,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/24",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 23,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/23",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 22,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/22",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 21,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/21",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 19,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/19",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 17,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/17",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 16,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/16",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 15,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/15",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 14,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/14",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 13,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/13",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 12,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/12",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 11,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/11",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 10,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/10",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 9,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/9",
+      "state": "open",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 32,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/32",
+      "state": "fixed",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "569f3b83d890021924a36ecb26a71adf9dbfbff7",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 29,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/29",
+      "state": "fixed",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "569f3b83d890021924a36ecb26a71adf9dbfbff7",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 28,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/28",
+      "state": "fixed",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "569f3b83d890021924a36ecb26a71adf9dbfbff7",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 27,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/27",
+      "state": "fixed",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "569f3b83d890021924a36ecb26a71adf9dbfbff7",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 26,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/26",
+      "state": "fixed",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "569f3b83d890021924a36ecb26a71adf9dbfbff7",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 25,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/25",
+      "state": "fixed",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "569f3b83d890021924a36ecb26a71adf9dbfbff7",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 20,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/20",
+      "state": "fixed",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "c0973b949e14c129446cb6cb3e4a5d28032d294a",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 18,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/18",
+      "state": "fixed",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "c0973b949e14c129446cb6cb3e4a5d28032d294a",
+      "dismissedReason": null,
+      "dismissedAt": null
+    },
+    {
+      "number": 6,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/6",
+      "state": "dismissed",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "c0973b949e14c129446cb6cb3e4a5d28032d294a",
+      "dismissedReason": "false positive",
+      "dismissedAt": "2026-07-17T18:54:46Z"
+    },
+    {
+      "number": 5,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/5",
+      "state": "dismissed",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "c0973b949e14c129446cb6cb3e4a5d28032d294a",
+      "dismissedReason": "false positive",
+      "dismissedAt": "2026-07-17T18:54:46Z"
+    },
+    {
+      "number": 4,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/4",
+      "state": "dismissed",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "c0973b949e14c129446cb6cb3e4a5d28032d294a",
+      "dismissedReason": "false positive",
+      "dismissedAt": "2026-07-17T18:54:45Z"
+    },
+    {
+      "number": 1,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/1",
+      "state": "dismissed",
+      "ruleId": "js/missing-token-validation",
+      "mostRecentCommit": "ffcc591c32fcdafdcd6f9b6395a7174918ffaa67",
+      "dismissedReason": "false positive",
+      "dismissedAt": "2026-07-17T18:54:44Z"
+    },
+    {
+      "number": 48,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/48",
+      "state": "dismissed",
+      "ruleId": "js/missing-token-validation",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": "false positive",
+      "dismissedAt": "2026-10-08T16:18:46Z"
+    },
+    {
+      "number": 47,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/47",
+      "state": "dismissed",
+      "ruleId": "js/bad-tag-filter",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": "false positive",
+      "dismissedAt": "2026-10-07T22:43:03Z"
+    },
+    {
+      "number": 8,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/8",
+      "state": "dismissed",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": "false positive",
+      "dismissedAt": "2026-07-17T18:54:48Z"
+    },
+    {
+      "number": 7,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/7",
+      "state": "dismissed",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": "false positive",
+      "dismissedAt": "2026-07-17T18:54:47Z"
+    },
+    {
+      "number": 3,
+      "url": "https://github.com/ryanportfolio/Truenote/security/code-scanning/3",
+      "state": "dismissed",
+      "ruleId": "js/missing-rate-limiting",
+      "mostRecentCommit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+      "dismissedReason": "false positive",
+      "dismissedAt": "2026-07-17T18:54:44Z"
+    }
+  ],
+  "latestMainAnalysis": {
+    "id": 1920497333,
+    "commit": "e63293ca7d9da75d9749a7aef109364acfe47423",
+    "createdAt": "2026-10-09T02:16:17Z",
+    "resultsCount": 36,
+    "rulesCount": 103,
+    "error": "",
+    "tool": "CodeQL"
+  },
+  "retainedAnalysisSarifSha256": "9ff835921343a3181533a010475a53d92f9fc9fb97f3f599abc349523ac120a6",
+  "sarifRuleCounts": {
+    "js/path-injection": 1,
+    "js/bad-tag-filter": 1,
+    "js/missing-rate-limiting": 30,
+    "js/missing-token-validation": 1,
+    "js/file-access-to-http": 1,
+    "js/user-controlled-bypass": 2
+  },
+  "limits": "Alert counts and raw SARIF result counts measure different sets. This receipt does not rebase the historical fingerprint register, establish exploitability, approve risk, or change GitHub alerts. Raw SARIF, paths, snippets and messages are excluded.",
+  "reconciliation": {
+    "checkedAt": "2026-10-09T17:59:41.579Z",
+    "identityVerificationRef": "refs/heads/main",
+    "identityVerificationMainCommit": "ac85d46ff2edf494e8e4110fb88f81547adb48f6",
+    "unfilteredUniqueAlertCount": 48,
+    "duplicateIdsRemoved": [
+      1,
+      4,
+      5,
+      6
+    ],
+    "allUniqueStatesMatched": true,
+    "explanation": "The original fixed-filter response also included four dismissed alerts. Filter response lengths were not mutually exclusive state totals. Original snapshot/analysis metadata remains retained; current unfiltered main identities and states independently match the corrected snapshot."
+  }
+}
