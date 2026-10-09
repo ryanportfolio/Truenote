@@ -9,6 +9,7 @@ import {
   scannerConfiguration
 } from "../../lib/security/malware-policy.js";
 import { actionableDocumentFindings } from "../../lib/security/document-policy.js";
+import { securitySettingWriteLimit } from "../../lib/security/route-rate-limit.js";
 import { getDemoAccounts } from "../../lib/auth/demo-accounts.js";
 import { forgetDemoLimits, getDemoLimitsPolicy, persistDemoLimitsPolicy } from "../../lib/auth/demo-limits.js";
 import {
@@ -224,7 +225,7 @@ securityRouter.patch("/malware-scanning", async (req, res, next) => {
 // The master switch for demo-account limits. Off lets the published demo
 // logins act like normal accounts of their role (password changes stay
 // blocked); see lib/auth/demo-limits.ts.
-securityRouter.patch("/demo-limits", async (req, res, next) => {
+securityRouter.patch("/demo-limits", securitySettingWriteLimit, async (req, res, next) => {
   const parsed = UpdateDemoLimitsBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Provide the demo limits state" });
