@@ -741,26 +741,26 @@ const FeedbackBody = z.object({
 });
 
 /**
- * Load a query_log row and check the caller may write to it. Programs are
- * a security boundary — a CSR may only touch their own program's queries.
- * Super users may touch any program's row (intentionally): these are
- * low-stakes writes, and a super_user who just switched the picker away
- * from program A should still be able to act on an answer they received
- * on program A. canAccessProgram-style scoping would either over-restrict
- * or be equivalent (super_user always passes), so a plain role check is
- * simpler and easier to audit.
+ * Load a query_log row and check the caller may write to it. Feedback and
+ * missing-content flags belong to the person who asked: nobody, whatever
+ * their role, may rate or flag another user's answer, since those signals
+ * feed Usage and the content-gaps queue. Programs are a security boundary
+ * too, so a non-super user must also still be in the row's program.
+ * Super users may act on their own rows in any program (intentionally): a
+ * super_user who just switched the picker away from program A should still
+ * be able to act on an answer they received on program A.
  */
 async function canWriteQueryLogRow(
   user: CurrentUser,
   queryLogId: string
 ): Promise<boolean> {
   const rows = await db
-    .select({ programId: queryLog.programId })
+    .select({ programId: queryLog.programId, userId: queryLog.userId })
     .from(queryLog)
     .where(eq(queryLog.id, queryLogId))
     .limit(1);
   const row = rows[0];
-  if (!row) return false;
+  if (!row || row.userId !== user.id) return false;
   return user.role === "super_user" || row.programId === user.programId;
 }
 
