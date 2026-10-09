@@ -278,7 +278,13 @@ Skip this section for a scheduled test.
    PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$PGHOST_PRIVATE" -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -X -c "SELECT 1"
    ```
 
-   The second command must return `1`. Then run every check in section 5 against production, with `web` and `worker` still stopped; if any fails, go to section 4.5.
+   The second command must return `1`. The volume also holds the application role's password as it was at the backup, while `web` and `worker` read the current one from the `pgvector` variable `TRUENOTE_APP_DB_PASSWORD` (deployment.md, "Database roles"). From a repository checkout on your machine, give the role a new password that matches the variable:
+
+   ```
+   node scripts/railway-set-app-db-password.mjs --apply
+   ```
+
+   It stores a new password in the variable with `--skip-deploys`, so neither `pgvector` nor the stopped services start, sets the role to the matching verifier, and must print `role truenote_app: verifier stored`. Both services pick the password up when step 6 starts them. Then run every check in section 5 against production, with `web` and `worker` still stopped; if any fails, go to section 4.5.
 
    **Path B, operator dump (available today).** Use a dump taken before the damage. If it is no longer on the volume, upload it:
 
@@ -333,6 +339,7 @@ Skip this section for a scheduled test.
      ```
 
      The first command prints the file's status (`no-table`, `not-applied`, or the recorded SHA-256) and its local SHA-256. The second runs the file with `psql --single-transaction` inside `pgvector` over `railway ssh` and records it in `schema_migrations` in the same transaction; it refuses a file already recorded (`scripts/railway-apply-sql.mjs`, deployment.md). It talks only to `pgvector`, so `web` and `worker` stay stopped. Read each file before running it.
+   - Check that the restored database has the job queue: in the production psql session, `SELECT to_regclass('pgboss.version');` must not return an empty value. Dumps taken before 2026-10-09 left out the `pgboss` schema, and `web` and `worker` connect as `truenote_app`, which cannot create it. If it is missing, apply the files above first (0007 creates an empty `pgboss` schema and its grants), then install pg-boss and its queues as `postgres` through the SSH tunnel to `pgvector` (step 5 below describes it, port 5434), from the repository root of the checkout at the deployed commit: `DATABASE_URL=postgresql://postgres@127.0.0.1:5434/<POSTGRES_DB> pnpm --filter @workspace/scripts run pgboss:install` (`scripts/src/pgboss-install.ts`; it starts no job handlers). It must print the schema version and the queues `__pgboss__send-it`, `ingest-document-version` and `run-evaluation`.
    - Run the comparison again. Continue only when the output matches the last production run.
    - Do not deploy an older commit to match the restored schema: `railway up` starts the service before step 5 is done. If forward DDL cannot be found or applied, keep both services stopped and record the blocker.
 5. Reconcile changes the restore removed. Do every part of this step while `web` and `worker` are still stopped.
@@ -447,7 +454,7 @@ If production fails the checks or the smoke test after cutover:
    railway redeploy -s pgvector -y
    ```
 
-   `-s` goes before `attach`: CLI 5.26 rejects `--service` after it (`error: unexpected argument '--service' found`), although the [Railway CLI: volume](https://docs.railway.com/cli/volume) page shows it there. `-s` takes the service ID, not its name: `attach` compares it with each service's ID without resolving names, so `-s pgvector` fails with `The service linked/provided doesn't exist` (CLI 5.26 source, `src/commands/volume.rs`). `0d1e7840-7d5e-4a20-a97e-d04f06a88649` is the `pgvector` service ID (deployment.md). Both commands call Railway's `volumeInstanceUpdate` API directly (CLI 5.26 source, `src/gql/mutations/strings/VolumeAttach.graphql` and `VolumeDetach.graphql`); they do not go through staged changes. Volumes "are mounted to your service's container when it is started" ([Railway: volumes](https://docs.railway.com/volumes), accessed 2026-10-07), hence the redeploy. Not verified: the owner accepted path A untested (section 8), so it is unknown whether `attach` redeploys `pgvector` by itself; the `railway redeploy` above covers either case. Then match the database password to the current one, as after a path A restore (section 4.4, step 3): the previous volume carries the password it had before the restore.
+   `-s` goes before `attach`: CLI 5.26 rejects `--service` after it (`error: unexpected argument '--service' found`), although the [Railway CLI: volume](https://docs.railway.com/cli/volume) page shows it there. `-s` takes the service ID, not its name: `attach` compares it with each service's ID without resolving names, so `-s pgvector` fails with `The service linked/provided doesn't exist` (CLI 5.26 source, `src/commands/volume.rs`). `0d1e7840-7d5e-4a20-a97e-d04f06a88649` is the `pgvector` service ID (deployment.md). Both commands call Railway's `volumeInstanceUpdate` API directly (CLI 5.26 source, `src/gql/mutations/strings/VolumeAttach.graphql` and `VolumeDetach.graphql`); they do not go through staged changes. Volumes "are mounted to your service's container when it is started" ([Railway: volumes](https://docs.railway.com/volumes), accessed 2026-10-07), hence the redeploy. Not verified: the owner accepted path A untested (section 8), so it is unknown whether `attach` redeploys `pgvector` by itself; the `railway redeploy` above covers either case. Then match the database passwords to the current ones, as after a path A restore (section 4.4, step 3): the previous volume carries the `postgres` and `truenote_app` passwords it had before the restore, so run both the `ALTER ROLE` block and `node scripts/railway-set-app-db-password.mjs --apply`.
 3. Path B: swap the databases back, in a shell in the `pgvector` container. First run the connection check from section 4.4, step 3, with `truenote_before_restore` in place of `truenote_restore`. Then swap:
 
    ```

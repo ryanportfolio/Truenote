@@ -70,7 +70,7 @@ const roleState = remote(
   [
     "set -eu",
     `${psql} <<'SQL'`,
-    `SELECT CASE WHEN r.oid IS NULL THEN 'role missing' ELSE format('role %s: login=%s superuser=%s createrole=%s createdb=%s password=%s', r.rolname, r.rolcanlogin, r.rolsuper, r.rolcreaterole, r.rolcreatedb, CASE WHEN a.rolpassword IS NULL THEN 'unset' ELSE 'set' END) END FROM (SELECT 1) AS one LEFT JOIN pg_roles AS r ON r.rolname = '${ROLE}' LEFT JOIN pg_authid AS a ON a.oid = r.oid;`,
+    `SELECT CASE WHEN r.oid IS NULL THEN 'role missing' ELSE format('role %s: login=%s superuser=%s createrole=%s createdb=%s password=%s', r.rolname, r.rolcanlogin::text, r.rolsuper::text, r.rolcreaterole::text, r.rolcreatedb::text, CASE WHEN a.rolpassword IS NULL THEN 'unset' ELSE 'set' END) END FROM (SELECT 1) AS one LEFT JOIN pg_roles AS r ON r.rolname = '${ROLE}' LEFT JOIN pg_authid AS a ON a.oid = r.oid;`,
     "SQL"
   ].join("\n")
 );

@@ -92,15 +92,27 @@ GRANT EXECUTE ON FUNCTION append_security_event(
 REVOKE ALL ON schema_migrations, security_control_metadata, siem_delivery_outbox
   FROM truenote_app;
 
--- pg-boss 10 (artifacts/api-server/src/lib/jobs/boss.ts). Its schema, tables
--- and queue partitions already exist, so start() only reads pgboss.version and
--- createQueue() on an existing queue is an INSERT ... ON CONFLICT DO NOTHING.
--- Installing or upgrading pg-boss, or adding a queue, creates tables and runs
--- as the migration role.
+-- pg-boss 10 (artifacts/api-server/src/lib/jobs/boss.ts). In production its
+-- schema, tables and queue partitions already exist, so start() only reads
+-- pgboss.version and createQueue() on an existing queue is an INSERT ... ON
+-- CONFLICT DO NOTHING. Installing or upgrading pg-boss, or adding a queue,
+-- creates tables, which truenote_app cannot do: scripts/src/pgboss-install.ts
+-- does it as the migration role. A database restored from a dump without the
+-- pgboss schema gets an empty one here, so the default privileges below cover
+-- the tables that script then creates.
+CREATE SCHEMA IF NOT EXISTS pgboss;
 GRANT USAGE ON SCHEMA pgboss TO truenote_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA pgboss TO truenote_app;
-GRANT EXECUTE ON FUNCTION pgboss.create_queue(text, json) TO truenote_app;
-REVOKE EXECUTE ON FUNCTION pgboss.delete_queue(text) FROM PUBLIC;
+DO $$
+BEGIN
+  IF to_regprocedure('pgboss.create_queue(text, json)') IS NOT NULL THEN
+    GRANT EXECUTE ON FUNCTION pgboss.create_queue(text, json) TO truenote_app;
+  END IF;
+  IF to_regprocedure('pgboss.delete_queue(text)') IS NOT NULL THEN
+    REVOKE EXECUTE ON FUNCTION pgboss.delete_queue(text) FROM PUBLIC;
+  END IF;
+END
+$$;
 
 -- Objects the migration role (the role running this file) creates later.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
