@@ -10,6 +10,7 @@
     "sweep-orphans": "tsx src/sweep-orphans.ts",
     "eval": "tsx src/eval.ts",
     "reingest": "tsx src/reingest.ts",
+    "pgboss:install": "tsx src/pgboss-install.ts",
     "verify:pci-evidence": "tsx src/verify-pci-evidence.ts",
     "verify:change-record": "tsx src/verify-pr-change-record.ts",
     "verify:pci-scope-decision": "tsx src/verify-pci-scope-decision.ts",
