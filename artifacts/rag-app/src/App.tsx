@@ -127,6 +127,9 @@ const loadAdminEvaluationsPage = once(() =>
 const loadAdminUsersPage = once(() =>
   import("@/pages/AdminUsers").then((module) => ({ default: module.AdminUsersPage }))
 );
+const loadAdminTeamsPage = once(() =>
+  import("@/pages/AdminTeams").then((module) => ({ default: module.AdminTeamsPage }))
+);
 const loadLoginPage = once(() =>
   import("@/pages/Login").then((module) => ({ default: module.LoginPage }))
 );
@@ -159,6 +162,7 @@ const AdminErrorsPage = preloadable(loadAdminErrorsPage);
 const AdminSecurityPage = preloadable(loadAdminSecurityPage);
 const AdminEvaluationsPage = preloadable(loadAdminEvaluationsPage);
 const AdminUsersPage = preloadable(loadAdminUsersPage);
+const AdminTeamsPage = preloadable(loadAdminTeamsPage);
 const LoginPage = preloadable(loadLoginPage);
 const ChangePasswordPage = preloadable(loadChangePasswordPage);
 const ForgotPasswordPage = preloadable(loadForgotPasswordPage);
@@ -187,6 +191,7 @@ export function preloadRoute(path: string): Promise<unknown> {
   if (pathname === "/admin/security") return loadAdminSecurityPage();
   if (pathname === "/admin/evaluations") return loadAdminEvaluationsPage();
   if (pathname === "/admin/users") return loadAdminUsersPage();
+  if (pathname === "/admin/teams") return loadAdminTeamsPage();
   if (pathname === "/forgot-password") return loadForgotPasswordPage();
   if (pathname === "/reset-password") return loadResetPasswordPage();
   if (pathname === "/change-password") return loadChangePasswordPage();
@@ -498,6 +503,9 @@ export function App(): JSX.Element {
         </Route>
         <Route path="/admin/users">
           <AdminUsersPage user={auth.user} />
+        </Route>
+        <Route path="/admin/teams">
+          <AdminTeamsPage user={auth.user} />
         </Route>
         <Route path="/login" component={() => <Redirect to="/" />} />
         <Route path="/change-password">

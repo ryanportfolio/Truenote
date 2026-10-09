@@ -13,6 +13,7 @@ import { programsRouter } from "./admin/programs.js";
 import { queriesRouter } from "./admin/queries.js";
 import { usersRouter } from "./admin/users.js";
 import { insightsRouter } from "./admin/insights.js";
+import { teamsRouter } from "./admin/teams.js";
 import { modelRoutingRouter } from "./admin/model-routing.js";
 import { evaluationsRouter } from "./admin/evaluations.js";
 import { observabilityRouter } from "./admin/observability.js";
@@ -36,6 +37,7 @@ export function registerRoutes(app: Express): void {
   app.use("/api/admin/queries", queriesRouter);
   app.use("/api/admin/users", usersRouter);
   app.use("/api/admin/insights", insightsRouter);
+  app.use("/api/admin/teams", teamsRouter);
   app.use("/api/admin/model-routing", modelRoutingRouter);
   app.use("/api/admin/evaluations", evaluationsRouter);
   app.use("/api/admin/observability", observabilityRouter);

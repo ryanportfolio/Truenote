@@ -22,7 +22,10 @@ import {
   formatPercent,
   plural,
   roleLabel,
-  type TeamComparison
+  scopeCopy,
+  type ScopeCopy,
+  type TeamComparison,
+  type UsageScope
 } from "@/lib/sourceUsage";
 import { buildCoachingNotes, copyText, suggestionReasonText } from "@/lib/sourceUsageNotes";
 import type {
@@ -37,7 +40,7 @@ import { cn } from "@/lib/utils";
 import { QuestionList } from "./QuestionList";
 import { CategoryPath, ErrorAlert, InlineBar, RoleBadge, SourceOpener } from "./shared";
 
-/** Everyone's numbers for the same window, for the team comparison. */
+/** Everyone's numbers for the same window (a supervisor: their team's), for the team comparison. */
 export interface TeamNumbers {
   totals: SourceUsageResponse["totals"];
   users: readonly SourceUsageUser[];
@@ -57,6 +60,8 @@ interface PersonFocusProps {
   /** Sources to suggest, from the server (up to 3, never one this person cited). */
   suggestions: readonly SourceUsageSuggestion[];
   team: TeamNumbers | null;
+  /** Whose numbers `team` holds: the program, or a supervisor's team. */
+  scope: UsageScope;
   categoryPaths: ReadonlyMap<string, string[]>;
   days: number;
   reloadKey: number;
@@ -86,12 +91,14 @@ export function PersonHeader({
   role,
   controls,
   action,
+  scope,
   onBack
 }: {
   name: string;
   role: string | null;
   controls: ReactNode;
   action?: ReactNode;
+  scope: UsageScope;
   onBack: () => void;
 }): JSX.Element {
   return (
@@ -102,7 +109,7 @@ export function PersonHeader({
         className="inline-flex items-center gap-1.5 self-start rounded-sm text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden />
-        Back to everyone
+        {scopeCopy(scope).backToEveryone}
       </button>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
@@ -142,6 +149,7 @@ export function PersonFocus({
   sources,
   suggestions,
   team,
+  scope,
   categoryPaths,
   days,
   reloadKey,
@@ -155,6 +163,7 @@ export function PersonFocus({
   const hasQuestions = totals.questions > 0;
   const shortName = firstName(name);
   const role = identity ? roleLabel(identity.role) : null;
+  const copy = scopeCopy(scope);
 
   useEffect(() => {
     if (!hasQuestions) return;
@@ -242,6 +251,7 @@ export function PersonFocus({
         name={name}
         role={role}
         controls={controls}
+        scope={scope}
         onBack={onClear}
         action={hasQuestions ? <CopyNotesButton ready={data !== null} build={notes} /> : null}
       />
@@ -286,6 +296,7 @@ export function PersonFocus({
               negative={negativeCount}
               comparison={comparison}
               teamAverage={teamAverage}
+              copy={copy}
               topSource={topSource}
               topPath={topSource ? pathOf(topSource.documentId) : null}
               onOpenSource={onOpenSource}
@@ -416,6 +427,7 @@ function GoingWell({
   negative,
   comparison,
   teamAverage,
+  copy,
   topSource,
   topPath,
   onOpenSource
@@ -424,6 +436,7 @@ function GoingWell({
   negative: number;
   comparison: TeamComparison;
   teamAverage: number | null;
+  copy: ScopeCopy;
   topSource: SourceUsageSource | null;
   topPath: string | null;
   onOpenSource: (documentId: string, title: string | null) => void;
@@ -457,23 +470,23 @@ function GoingWell({
         <p className="text-4xl font-semibold tabular-nums tracking-tight">{rate}</p>
         <p className="mt-1 text-sm">
           Answered {rate} of questions
-          {teamAnswered !== null ? `; the team answered ${teamAnswered}%.` : "."}
+          {teamAnswered !== null ? `; ${copy.team} answered ${teamAnswered}%.` : "."}
         </p>
         {comparison.refusedAbove && !comparison.answeredBelow && teamRefused !== null ? (
           <p className="mt-1 text-sm">
-            {refused}% of questions got no answer; for the team, {teamRefused}%.
+            {refused}% of questions got no answer; for {copy.team}, {teamRefused}%.
           </p>
         ) : null}
         {comparison.negativeAbove && teamNegative !== null ? (
           <p className="mt-1 text-sm">
-            Thumbs down on {negative} of {totals.questions} questions ({comparison.negative}%); for
-            the team, {teamNegative}%.
+            Thumbs down on {negative} of {totals.questions} questions ({comparison.negative}%); for{" "}
+            {copy.team}, {teamNegative}%.
           </p>
         ) : null}
         <p className="mt-1 text-sm text-muted-foreground">
           {totals.answered} of {totals.questions} got a cited answer.
           {teamAverage !== null
-            ? ` Team average: ${plural(teamAverage, "question", "questions")} per person.`
+            ? ` ${copy.teamAverage}: ${plural(teamAverage, "question", "questions")} per person.`
             : ""}
         </p>
       </div>

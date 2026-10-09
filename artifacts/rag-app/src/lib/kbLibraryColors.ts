@@ -41,10 +41,9 @@ export function kbLabelName(color: KbLibraryColor, labels: readonly KbColorLabel
   return labels?.find((l) => l.color === color)?.name ?? null;
 }
 
-/** "Red: Read before quoting fees" when the user named the color, else "Red". */
+/** The label's name ("Read before quoting fees"), or "Red (no name yet)" for a color the user never named. */
 export function kbLabelText(color: KbLibraryColor, labels: readonly KbColorLabel[] | undefined): string {
-  const name = kbLabelName(color, labels);
-  return name ? `${kbColorLabel(color)}: ${name}` : kbColorLabel(color);
+  return kbLabelName(color, labels) ?? `${kbColorLabel(color)} (no name yet)`;
 }
 
 /** Solid swatch for category dots, row stripes and color pickers. */

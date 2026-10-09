@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { BrandField } from "@/components/BrandField";
 import { fetchConfig, login } from "@/lib/api";
 import { defaultLandingPath } from "@/lib/landing";
+import { cn } from "@/lib/utils";
 import type { CurrentUser, DemoAccount } from "@/types/api";
 
 interface LoginPageProps {
@@ -37,10 +38,28 @@ interface LoginPageProps {
  *   - No "remember me" toggle — sessions are 7 days fixed
  */
 
-const DEMO_ROLE_PROMISES: Record<DemoAccount["role"], string> = {
-  manager: "Manage the program",
-  csr: "Ask and check sources"
-};
+/**
+ * The portal grid in index.css is two columns, which fits two or four
+ * accounts (the server allows 1 to 4). One account takes the full row.
+ * Three sit in one row from `sm` up, with the orbit lifted above the
+ * label so the narrower portal keeps room for its text, and stack below
+ * `sm`, where three columns would clip the labels.
+ */
+function demoPortalLayout(count: number): {
+  grid: string;
+  portal: string;
+  orbit: string;
+} {
+  if (count === 1) return { grid: "grid-cols-1", portal: "", orbit: "" };
+  if (count === 3) {
+    return {
+      grid: "grid-cols-1 sm:grid-cols-3",
+      portal: "min-h-[4.75rem] sm:min-h-[7rem] sm:pr-3",
+      orbit: "sm:top-6"
+    };
+  }
+  return { grid: "", portal: "", orbit: "" };
+}
 
 export function LoginPage({
   onAuthenticated,
@@ -104,6 +123,8 @@ export function LoginPage({
     setSelectedDemo(account.email);
     setError(null);
   }
+
+  const demoLayout = demoPortalLayout(demoAccounts.length);
 
   async function handleSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -179,7 +200,7 @@ export function LoginPage({
             {demoAccounts.length > 0 && localLoginMode !== "disabled" ? (
               <fieldset className="auth-demo">
                 <legend>Demo Accounts:</legend>
-                <div className="auth-demo-grid">
+                <div className={cn("auth-demo-grid", demoLayout.grid)}>
                   {demoAccounts.map((account) => {
                     const selected = selectedDemo === account.email;
                     return (
@@ -190,17 +211,17 @@ export function LoginPage({
                         aria-pressed={selected}
                         aria-label={`Use the ${account.label} demo`}
                         disabled={submitting}
-                        className={
-                          selected
-                            ? "auth-demo-role auth-demo-role-active"
-                            : "auth-demo-role"
-                        }
+                        className={cn(
+                          "auth-demo-role",
+                          selected && "auth-demo-role-active",
+                          demoLayout.portal
+                        )}
                       >
                         <span className="auth-demo-role-name">{account.label}</span>
-                        <span className="auth-demo-role-promise">
-                          {DEMO_ROLE_PROMISES[account.role]}
-                        </span>
-                        <span className="auth-demo-role-orbit" aria-hidden>
+                        <span
+                          className={cn("auth-demo-role-orbit", demoLayout.orbit)}
+                          aria-hidden
+                        >
                           <span />
                         </span>
                       </button>

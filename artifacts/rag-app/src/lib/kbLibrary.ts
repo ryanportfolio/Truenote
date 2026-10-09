@@ -458,10 +458,37 @@ export function libraryOrder(tree: KbTree): Map<string, number> {
   return order;
 }
 
+/** Program pins: what a manager recommends to everyone, in the manager's order. */
 export function teamPins(items: KbDocumentListItem[]): KbDocumentListItem[] {
   return items
     .filter((d) => d.featuredPosition !== null)
     .sort((a, b) => (a.featuredPosition ?? 0) - (b.featuredPosition ?? 0));
+}
+
+/**
+ * The viewer's team list in its order: for a CSR what their supervisor
+ * recommends, for a supervisor their own list.
+ */
+export function supervisorPins(items: KbDocumentListItem[]): KbDocumentListItem[] {
+  return items
+    .filter((d) => d.teamPinPosition !== null)
+    .sort((a, b) => (a.teamPinPosition ?? 0) - (b.teamPinPosition ?? 0));
+}
+
+/** Recommended to this viewer by a manager (for everyone) or by their supervisor. */
+export function isRecommended(doc: Pick<KbDocumentListItem, "featuredPosition" | "teamPinPosition">): boolean {
+  return doc.featuredPosition !== null || doc.teamPinPosition !== null;
+}
+
+/**
+ * The Recommended group: the manager's pins in the manager's order, then the
+ * supervisor's in the supervisor's order. A source on both lists appears
+ * once, in the manager's place.
+ */
+export function recommendedDocs(items: KbDocumentListItem[]): KbDocumentListItem[] {
+  const program = teamPins(items);
+  const seen = new Set(program.map((d) => d.documentId));
+  return [...program, ...supervisorPins(items).filter((d) => !seen.has(d.documentId))];
 }
 
 /**
@@ -473,6 +500,9 @@ export function myPins(items: KbDocumentListItem[]): KbDocumentListItem[] {
     .filter((d) => d.pinnedAt !== null)
     .sort((a, b) => time(a.pinnedAt) - time(b.pinnedAt) || byTitle(a, b));
 }
+
+/** Typed alone in the Sources search box, lists recently opened sources instead of searching. */
+export const KB_RECENT_QUERY = "/";
 
 /** My pins that get a number key (1 to 9), in strip order. */
 export const KB_NUMBERED_PINS = 9;
@@ -524,12 +554,12 @@ export type KbShortcutSource = "team" | "mine" | "recent";
 
 export interface KbShortcut {
   doc: KbDocumentListItem;
-  /** Why it is on the shelf: a team shortcut, starred by this user, or opened recently. */
+  /** Why it is on the shelf: recommended ("team"), starred by this user, or opened recently. */
   source: KbShortcutSource;
 }
 
 /**
- * The "Your shortcuts" shelf: team shortcuts in the manager's order, then the
+ * The "Your shortcuts" shelf: Recommended sources (recommendedDocs order), then the
  * user's own (oldest first, so a number never changes when they star
  * another), then recently opened sources that are in neither. No source
  * twice; at most `limit` (the 1 to 9 number keys follow this order).
@@ -542,7 +572,7 @@ export function shortcutShelf(items: KbDocumentListItem[], limit = KB_NUMBERED_P
     seen.add(doc.documentId);
     shelf.push({ doc, source });
   };
-  teamPins(items).forEach((doc) => add(doc, "team"));
+  recommendedDocs(items).forEach((doc) => add(doc, "team"));
   myPins(items).forEach((doc) => add(doc, "mine"));
   recentlyOpened(items, limit, seen).forEach((doc) => add(doc, "recent"));
   return shelf;
@@ -979,6 +1009,18 @@ export function applyFeatured(data: Data, documentIds: string[]): Data {
     items: data.items.map((d) => {
       const next = position.get(d.documentId) ?? null;
       return d.featuredPosition === next ? d : { ...d, featuredPosition: next };
+    })
+  };
+}
+
+/** A supervisor's own team list, replaced with this ordered list. */
+export function applyTeamShortcuts(data: Data, documentIds: string[]): Data {
+  const position = new Map(documentIds.map((id, i) => [id, i]));
+  return {
+    ...data,
+    items: data.items.map((d) => {
+      const next = position.get(d.documentId) ?? null;
+      return d.teamPinPosition === next ? d : { ...d, teamPinPosition: next };
     })
   };
 }

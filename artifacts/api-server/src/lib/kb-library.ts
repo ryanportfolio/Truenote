@@ -1,10 +1,11 @@
 import { z, type ZodError } from "zod";
+import type { UserRole } from "./auth/current-user.js";
 
 /**
  * Pure validation and serialization helpers for the source library
- * (personal pins, notes and colors, categories, tags, team pins). The SQL lives in
- * routes/kb.ts and routes/kb-library.ts; this module has no database import
- * so it can be unit-tested directly.
+ * (personal pins, notes and colors, categories, tags, team pins, team
+ * shortcuts). The SQL lives in routes/kb.ts and routes/kb-library.ts; this
+ * module has no database import so it can be unit-tested directly.
  */
 
 export const LIBRARY_COLORS = [
@@ -232,6 +233,21 @@ export const FEATURED_LIMIT_MESSAGE = `Team pins are limited to ${MAX_FEATURED}.
  */
 export function featuredOverCap(totalRows: number): boolean {
   return totalRows > MAX_FEATURED;
+}
+
+/**
+ * A supervisor's recommended list for their own team takes the same body,
+ * cap and messages as the program's team pins; the cap counts the
+ * supervisor's own rows.
+ */
+export const teamShortcutsSchema = featuredSchema;
+
+/**
+ * Only supervisors keep a team list. Managers and above recommend to the
+ * whole program through team pins instead; CSRs read their supervisor's list.
+ */
+export function canPinForTeam(role: UserRole): boolean {
+  return role === "supervisor";
 }
 
 /**

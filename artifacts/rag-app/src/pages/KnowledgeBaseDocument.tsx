@@ -43,6 +43,7 @@ import {
   ReaderOutline,
   ReaderRelated,
   goToHeading,
+  useStickySide,
   type ReaderHeading
 } from "@/components/kb-reader/ReaderSide";
 import "@/components/kb-reader/readerBody.css";
@@ -256,6 +257,7 @@ function ReaderArticle({
       : [];
   const labels = library?.labels ?? [];
   const [headings, setHeadings] = useState<ReaderHeading[]>([]);
+  const sideRef = useStickySide();
 
   // "On this page" lists the document's section headings as rendered, so
   // the links always match the ids on the page.
@@ -296,21 +298,35 @@ function ReaderArticle({
         otherPaths={others}
         personal={personal}
         labels={labels}
+        labelsReady={library !== null}
         onRenameLabel={renameLabel}
       />
       <KbDocPersonalError personal={personal} />
-      <div className="mt-2 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_20.5rem] xl:grid-rows-[auto_1fr] xl:gap-x-7">
-        <div className="flex min-w-0 flex-col gap-5 xl:col-start-2 xl:row-start-1">
-          <ReaderNoteCard personal={personal} />
-          <ReaderOutline
-            headings={headings}
-            className="rounded-lg border border-border bg-card px-4 py-3 xl:rounded-none xl:border-0 xl:bg-transparent xl:p-0"
+      <div className="mt-2 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_20.5rem] xl:items-start xl:gap-x-7">
+        {/* From 1280px the side column follows the reader down the page
+          * (useStickySide sets where it pins). Below that its parts flow
+          * around the document: note and outline first, related sources last. */}
+        <div
+          ref={sideRef}
+          data-kb-reader-side
+          className="contents xl:sticky xl:top-[var(--kb-reader-side-top,1rem)] xl:col-start-2 xl:row-start-1 xl:flex xl:flex-col xl:gap-5"
+        >
+          <div className="flex min-w-0 flex-col gap-5">
+            <ReaderNoteCard personal={personal} />
+            <ReaderOutline
+              headings={headings}
+              className="rounded-lg border border-border bg-card px-4 py-3 xl:rounded-none xl:border-0 xl:bg-transparent xl:p-0"
+            />
+            {doc.markdown && doc.isCurrentVersion ? <ReaderHighlightHint /> : null}
+          </div>
+          <ReaderRelated
+            items={related}
+            className="order-last rounded-lg border border-border bg-card px-4 py-3 xl:order-none xl:rounded-none xl:border-0 xl:border-t xl:bg-transparent xl:px-1 xl:pb-0 xl:pt-5"
           />
-          {doc.markdown && doc.isCurrentVersion ? <ReaderHighlightHint /> : null}
         </div>
         <article
           aria-labelledby="kb-doc-title"
-          className="kb-reader-doc relative min-w-0 rounded-lg border border-border bg-card px-4 py-6 shadow-card sm:px-8 sm:py-7 xl:col-start-1 xl:row-span-2 xl:row-start-1"
+          className="kb-reader-doc relative min-w-0 rounded-lg border border-border bg-card px-4 py-6 shadow-card sm:px-8 sm:py-7 xl:col-start-1 xl:row-start-1"
         >
           <header>
             <h1 id="kb-doc-title" className="font-display text-3xl font-semibold tracking-tight sm:text-[2.125rem] sm:leading-tight">
@@ -385,10 +401,6 @@ function ReaderArticle({
             <p className="mt-4 text-sm text-muted-foreground">This document has no readable content yet.</p>
           )}
         </article>
-        <ReaderRelated
-          items={related}
-          className="rounded-lg border border-border bg-card px-4 py-3 xl:col-start-2 xl:row-start-2 xl:self-start xl:rounded-none xl:border-0 xl:border-t xl:bg-transparent xl:px-1 xl:pb-0 xl:pt-5"
-        />
       </div>
     </div>
   );

@@ -3,18 +3,19 @@ import { Trash2 } from "lucide-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import {
   KB_CATEGORY_NAME_MAX,
+  KB_LABEL_NAME_MAX,
   KB_MAX_CATEGORY_DEPTH,
   KB_TAG_NAME_MAX,
   categoryPathLabel,
   nestBlockReason,
   sortTags
 } from "@/lib/kbLibrary";
-import { KB_LIBRARY_COLORS, kbColorLabel } from "@/lib/kbLibraryColors";
+import { KB_LIBRARY_COLORS, kbColorDot, kbLabelName } from "@/lib/kbLibraryColors";
 import { cn } from "@/lib/utils";
 import type { KbLibraryColor, KbTag } from "@/types/api";
 import { useKbLibraryContext, type KbDialogState } from "./KbContext";
 import { KbDialog, KbDialogActions, KbInlineError } from "./KbDialog";
-import { ColorDot, ColorPicker, NoteForm } from "./KbShared";
+import { NoteForm, namedLabelColors } from "./KbShared";
 
 const INDENT = ["pl-0", "pl-5", "pl-10", "pl-14"];
 const inputClass =
@@ -58,9 +59,115 @@ export function KbDialogs({
           onClose={onClose}
         />
       );
+    case "label-create":
+      return <LabelCreateDialog documentId={dialog.documentId} onClose={onClose} />;
     default:
       return null;
   }
+}
+
+/**
+ * Name a new label. Its color is picked for you from the ones not in use (a
+ * color already on a source but never named comes last) and can be changed.
+ * Opened from a source, the label goes on that source too.
+ */
+function LabelCreateDialog({ documentId, onClose }: { documentId: string | null; onClose: () => void }): JSX.Element | null {
+  const { data, actions } = useKbLibraryContext();
+  const doc = documentId ? data.items.find((d) => d.documentId === documentId) ?? null : null;
+  const named = namedLabelColors(data.labels);
+  // Gray last: it reads as no color at all.
+  const free = KB_LIBRARY_COLORS.filter((c) => !named.includes(c)).sort((x, y) => Number(x === "slate") - Number(y === "slate"));
+  const onSources = new Set(data.items.map((d) => d.myColor));
+  const ordered = [...free.filter((c) => !onSources.has(c)), ...free.filter((c) => onSources.has(c))];
+  const [name, setName] = useState("");
+  const [color, setColor] = useState<KbLibraryColor | undefined>(ordered[0]);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const nameId = useId();
+  const swatchName = useId();
+  if (documentId && !doc) return null;
+
+  async function onSubmit(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError("A label needs a name.");
+      return;
+    }
+    if (!color) return;
+    if (named.some((c) => kbLabelName(c, data.labels)?.toLowerCase() === trimmed.toLowerCase())) {
+      setError("You already have a label with that name.");
+      return;
+    }
+    setPending(true);
+    const result = await actions.setLabelName(color, trimmed);
+    setPending(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    if (doc) actions.setSourceColor(doc.documentId, color);
+    onClose();
+  }
+
+  return (
+    <KbDialog title="New label" description={doc ? doc.title : "Only you see your labels."} onClose={onClose}>
+      {color === undefined ? (
+        <p className="text-sm text-muted-foreground">
+          You have {KB_LIBRARY_COLORS.length} labels. Remove one under My labels to add another.
+        </p>
+      ) : (
+        <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-4" noValidate>
+          <div>
+            <label htmlFor={nameId} className="text-sm font-medium">
+              Name
+            </label>
+            <input
+              id={nameId}
+              data-autofocus
+              value={name}
+              maxLength={KB_LABEL_NAME_MAX}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="For example: Read before quoting fees"
+              className={cn(inputClass, "mt-1")}
+            />
+          </div>
+          <fieldset>
+            <legend className="text-sm font-medium">Color</legend>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {ordered.map((c, i) => (
+                <label key={c} className="cursor-pointer">
+                  <input
+                    type="radio"
+                    name={swatchName}
+                    value={c}
+                    checked={color === c}
+                    onChange={() => setColor(c)}
+                    className="peer sr-only"
+                  />
+                  <span className="sr-only">Color {i + 1}</span>
+                  <span
+                    aria-hidden
+                    className="block h-7 w-7 rounded-full border border-foreground/15 transition-shadow duration-100 ease-out peer-checked:ring-2 peer-checked:ring-foreground/70 peer-checked:ring-offset-2 peer-checked:ring-offset-card peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2"
+                    style={kbColorDot(c)}
+                  />
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <KbInlineError message={error} />
+          <KbDialogActions>
+            <button type="button" onClick={onClose} className="btn-whisper px-4 py-1.5 text-sm">
+              Cancel
+            </button>
+            <button type="submit" disabled={pending} className="btn-primary px-4 py-1.5 text-sm">
+              {pending ? "Saving…" : doc ? "Create and apply" : "Create label"}
+            </button>
+          </KbDialogActions>
+        </form>
+      )}
+    </KbDialog>
+  );
 }
 
 function useDoc(documentId: string) {
@@ -164,7 +271,6 @@ function DocCategoriesDialog({
                   }}
                   className="ml-2 h-4 w-4 accent-primary"
                 />
-                <ColorDot color={node.category.color} />
                 <span className="min-w-0 truncate">{node.category.name}</span>
               </label>
             ))}
@@ -237,7 +343,6 @@ function DocTagsDialog({ documentId, onClose }: { documentId: string; onClose: (
                     }}
                     className="h-4 w-4 accent-primary"
                   />
-                  <ColorDot color={tag.color} />
                   {tag.name}
                 </label>
               );
@@ -262,34 +367,6 @@ function DocTagsDialog({ documentId, onClose }: { documentId: string; onClose: (
         </KbDialogActions>
       </form>
     </KbDialog>
-  );
-}
-
-function ColorSelect({
-  value,
-  onChange,
-  label
-}: {
-  value: KbLibraryColor;
-  onChange: (color: KbLibraryColor) => void;
-  label: string;
-}): JSX.Element {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1.5">
-      <ColorDot color={value} />
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value as KbLibraryColor)}
-        className="select-quiet rounded-md border border-input bg-card py-1.5 pl-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-      >
-        {KB_LIBRARY_COLORS.map((c) => (
-          <option key={c} value={c}>
-            {kbColorLabel(c)}
-          </option>
-        ))}
-      </select>
-    </span>
   );
 }
 
@@ -345,13 +422,6 @@ function TagEditRow({ tag, onError }: { tag: KbTag; onError: (message: string | 
         }}
         className={cn(inputClass, "min-w-0 flex-1 py-1.5")}
       />
-      <ColorSelect
-        value={tag.color}
-        label={`Color of tag ${tag.name}`}
-        onChange={(color) =>
-          void actions.updateTag(tag.id, { color }).then((r) => onError(r.ok ? null : r.message))
-        }
-      />
       <span className="hidden w-16 shrink-0 text-right tabular-nums text-xs text-muted-foreground sm:inline">
         {used} {used === 1 ? "use" : "uses"}
       </span>
@@ -371,7 +441,6 @@ function TagEditRow({ tag, onError }: { tag: KbTag; onError: (message: string | 
 function ManageTagsDialog({ onClose }: { onClose: () => void }): JSX.Element {
   const { data, actions } = useKbLibraryContext();
   const [name, setName] = useState("");
-  const [color, setColor] = useState<KbLibraryColor>("slate");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameId = useId();
@@ -385,7 +454,7 @@ function ManageTagsDialog({ onClose }: { onClose: () => void }): JSX.Element {
       return;
     }
     setPending(true);
-    const result = await actions.createTag({ name: trimmed, color });
+    const result = await actions.createTag({ name: trimmed, color: "slate" });
     setPending(false);
     if (result.ok) {
       setName("");
@@ -415,7 +484,6 @@ function ManageTagsDialog({ onClose }: { onClose: () => void }): JSX.Element {
             className={cn(inputClass, "mt-1")}
           />
         </div>
-        <ColorSelect value={color} onChange={setColor} label="Color of the new tag" />
         <button type="submit" disabled={pending} className="btn-whisper shrink-0 px-4 py-2 text-sm">
           {pending ? "Adding…" : "Add tag"}
         </button>
@@ -451,7 +519,6 @@ function CategoryFormDialog({
   const { lookup, actions } = useKbLibraryContext();
   const existing = categoryId ? lookup.tree.byId.get(categoryId)?.category : undefined;
   const [name, setName] = useState(existing?.name ?? "");
-  const [color, setColor] = useState<KbLibraryColor>(existing?.color ?? "slate");
   const [parentId, setParentId] = useState<string | null>(initialParentId);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -469,11 +536,8 @@ function CategoryFormDialog({
     }
     setPending(true);
     const result = existing
-      ? await actions.updateCategory(existing.id, {
-          ...(trimmed !== existing.name ? { name: trimmed } : {}),
-          ...(color !== existing.color ? { color } : {})
-        })
-      : await actions.createCategory({ name: trimmed, color, parentId });
+      ? await actions.updateCategory(existing.id, trimmed !== existing.name ? { name: trimmed } : {})
+      : await actions.createCategory({ name: trimmed, color: "slate", parentId });
     setPending(false);
     if (result.ok) onClose();
     else setError(result.message);
@@ -506,12 +570,6 @@ function CategoryFormDialog({
             className={cn(inputClass, "mt-1")}
           />
         </div>
-        <ColorPicker
-          legend="Team color"
-          hint="Everyone in this program sees it, unless they pick their own."
-          value={color}
-          onChange={setColor}
-        />
         {!existing ? (
           <div>
             <label htmlFor={parentFieldId} className="text-sm font-medium">
@@ -556,7 +614,6 @@ interface RadioOption {
   depth: number;
   disabledReason?: string | null;
   note?: string;
-  color?: KbLibraryColor;
 }
 
 function RadioList({
@@ -594,7 +651,6 @@ function RadioList({
               onChange={() => onChange(option.id)}
               className="ml-2 h-4 w-4 accent-primary"
             />
-            {option.color ? <ColorDot color={option.color} /> : null}
             <span className="min-w-0 truncate">{option.label}</span>
             {option.note ? <span className="shrink-0 text-xs text-muted-foreground">{option.note}</span> : null}
             {option.disabledReason ? <span className="sr-only">{option.disabledReason}</span> : null}
@@ -618,7 +674,6 @@ function CategoryMoveDialog({ categoryId, onClose }: { categoryId: string; onClo
       id: n.category.id,
       label: n.category.name,
       depth: n.depth,
-      color: n.category.color,
       note: n.category.id === currentParent ? "Current" : undefined,
       disabledReason:
         n.category.id === categoryId
@@ -680,7 +735,6 @@ function DocMoveDialog({
     id: n.category.id,
     label: n.category.name,
     depth: n.depth,
-    color: n.category.color,
     note: n.category.id === fromCategoryId ? "Current" : doc.categoryIds.includes(n.category.id) ? "Also here" : undefined
   }));
 

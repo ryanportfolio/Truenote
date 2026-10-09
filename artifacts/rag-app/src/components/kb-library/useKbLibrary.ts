@@ -1,9 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createKbCategory,
   createKbTag,
-  currentAuthSession,
   deleteKbCategory,
+  deleteKbColorLabel,
   deleteKbTag,
   listKbDocuments,
   reorderKbCategories,
@@ -16,6 +16,7 @@ import {
   setKbNote,
   setKbPin,
   setKbSourceColor,
+  setKbTeamShortcuts,
   updateKbCategory,
   updateKbTag
 } from "@/lib/api";
@@ -33,6 +34,7 @@ import {
   applyPin,
   applySourceColor,
   applyTagDelete,
+  applyTeamShortcuts,
   applyTagUpsert,
   applyUserFields,
   buildCategoryTree,
@@ -41,12 +43,13 @@ import {
   moveItem,
   nestBlockReason,
   siblingIds,
+  supervisorPins,
   teamPins
 } from "@/lib/kbLibrary";
-import { updateKbLibraryCache, writeKbLibraryCache } from "@/lib/kbLibraryCache";
+import { invalidateKbLibraryCache, updateKbLibraryCache, writeKbLibraryCache } from "@/lib/kbLibraryCache";
 import { kbColorLabel, kbLabelText } from "@/lib/kbLibraryColors";
 import { getSelectedProgramIdRaw } from "@/lib/selectedProgram";
-import { createSerialQueue } from "@/lib/serialQueue";
+import { createSerialQueue, QueueClosedError, queuedListSaves } from "@/lib/serialQueue";
 import type {
   CreateKbCategoryRequest,
   CreateKbTagRequest,
@@ -81,7 +84,6 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
   const versionRef = useRef(0);
   const [actionError, setActionError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
-  const featuredQueueRef = useRef(createSerialQueue());
 
   const commit = useCallback(
     (next: Data) => {
@@ -108,7 +110,12 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
     async (
       apply: (d: Data) => Data,
       call: () => Promise<((d: Data) => Data) | void>,
-      options: { report?: boolean; success?: string } = {}
+      options: {
+        report?: boolean;
+        success?: string;
+        /** Reloads after a failure in place of `refresh`, e.g. once queued saves have settled. */
+        resync?: () => void;
+      } = {}
     ): Promise<ActionResult> => {
       const before = dataRef.current;
       const version = ++versionRef.current;
@@ -122,7 +129,8 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
         return { ok: true };
       } catch (err) {
         if (versionRef.current === version) commit(before);
-        void refresh();
+        if (options.resync) options.resync();
+        else void refresh();
         const message = errorMessage(err);
         if (options.report !== false) setActionError(message);
         return { ok: false, message };
@@ -182,7 +190,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
         },
         {
           success: color
-            ? `Labeled ${doc.title} ${kbLabelText(color, dataRef.current.labels)}.`
+            ? `Labeled ${doc.title} "${kbLabelText(color, dataRef.current.labels)}".`
             : `Removed your label from ${doc.title}.`
         }
       );
@@ -226,8 +234,30 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
         },
         {
           report: false,
-          success: next ? `Named ${kbColorLabel(color)} "${next}".` : `${kbColorLabel(color)} has no name now.`
+          success: next ? `Saved the label "${next}".` : `Removed the label${current ? ` "${current}"` : ""}.`
         }
+      );
+    },
+    [mutate]
+  );
+
+  /** Delete a label everywhere: off every source that has it and its name, in one request. */
+  const deleteLabel = useCallback(
+    (color: KbLibraryColor): Promise<ActionResult> => {
+      const name = (dataRef.current.labels ?? []).find((l) => l.color === color)?.name ?? null;
+      const clear = (d: Data): Data =>
+        applyColorLabel(
+          { ...d, items: d.items.map((item) => (item.myColor === color ? { ...item, myColor: null } : item)) },
+          color,
+          null
+        );
+      return mutate(
+        clear,
+        async () => {
+          await deleteKbColorLabel(color);
+          return clear;
+        },
+        { report: false, success: name ? `Deleted the label "${name}".` : "Deleted the label." }
       );
     },
     [mutate]
@@ -235,33 +265,51 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
 
   // Team pins -----------------------------------------------------------------
 
-  // Each save replaces the whole list, so saves go out one at a time, in the
-  // order they were made: an older list reaching the server last would undo a
-  // newer one the screen already shows. The program and sign-in are fixed when
-  // the change is made: a save still queued after a program switch writes to
-  // the program it was made in, and one still queued after a sign-out is
-  // dropped rather than sent under the next sign-in.
+  // Each save of a recommended list (here and a supervisor's below) replaces
+  // the whole list, so saves go out one at a time in the order made: sent
+  // together, an older list could reach the server last and win. The page
+  // still updates at once; only the requests wait. The reload after a failure
+  // waits in the same queue, so it cannot read the list from before a save
+  // still waiting its turn. Sign-out, session expiry and a program switch
+  // unmount the page without a reload; saves still waiting then are skipped,
+  // since they would go out with the next user's session or program.
+  // True while mounted; set in an effect so StrictMode's second mount reopens it.
+  const openRef = useRef(true);
+  useEffect(() => {
+    openRef.current = true;
+    return () => {
+      openRef.current = false;
+    };
+  }, []);
+  const featuredQueueRef = useRef(createSerialQueue());
+  const featuredSaves = useMemo(
+    () => queuedListSaves(featuredQueueRef.current, setKbFeatured, refresh, () => openRef.current),
+    [refresh]
+  );
+
   const setTeamPins = useCallback(
     (documentIds: string[], success?: string) => {
+      // Fixed now: a save that starts while a program switch is still
+      // remounting the page writes to the program it was made in.
       const programId = getSelectedProgramIdRaw();
-      const session = currentAuthSession();
-      const enqueue = featuredQueueRef.current;
       return mutate(
         (d) => applyFeatured(d, documentIds),
-        () =>
-          enqueue(async () => {
-            if (currentAuthSession() !== session) return;
-            await setKbFeatured(documentIds, programId);
-          }).catch(async (err: unknown) => {
-            // mutate reloads the list on failure; a reload racing a newer
-            // queued save could show the older list, so wait for those first.
-            await enqueue.idle();
+        async () => {
+          try {
+            await featuredSaves.save(documentIds, programId);
+          } catch (err) {
+            // Skipped at unmount: the cached library still shows this unsaved
+            // list, so drop it and let the next visit load the server's.
+            if (err instanceof QueueClosedError) invalidateKbLibraryCache();
             throw err;
-          }),
-        { success }
+          }
+          // Puts this list back if a reload put an older one in place, unless a newer change came since.
+          return (d: Data) => applyFeatured(d, documentIds);
+        },
+        { success, resync: () => void featuredSaves.resync() }
       );
     },
-    [mutate]
+    [mutate, featuredSaves]
   );
 
   const currentTeamPinIds = () => teamPins(dataRef.current.items).map((d) => d.documentId);
@@ -271,10 +319,10 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       const ids = currentTeamPinIds();
       if (ids.includes(documentId)) return;
       if (ids.length >= KB_MAX_TEAM_PINS) {
-        setActionError(`Team shortcuts hold at most ${KB_MAX_TEAM_PINS} sources. Remove one first.`);
+        setActionError(`You can recommend at most ${KB_MAX_TEAM_PINS} sources to everyone. Stop recommending one first.`);
         return;
       }
-      void setTeamPins([...ids, documentId], `Added ${find(documentId)?.title ?? "source"} to team shortcuts.`);
+      void setTeamPins([...ids, documentId], `Recommended ${find(documentId)?.title ?? "source"} to everyone.`);
     },
     [setTeamPins]
   );
@@ -283,7 +331,7 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
     (documentId: string) => {
       void setTeamPins(
         currentTeamPinIds().filter((id) => id !== documentId),
-        `Removed ${find(documentId)?.title ?? "source"} from team shortcuts.`
+        `Stopped recommending ${find(documentId)?.title ?? "source"} to everyone.`
       );
     },
     [setTeamPins]
@@ -298,6 +346,59 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       void setTeamPins(moveItem(ids, from, to), `Moved ${find(documentId)?.title ?? "source"} to position ${to + 1}.`);
     },
     [setTeamPins]
+  );
+
+  // A supervisor's recommendations to their own team ------------------------------
+
+  // Queued the same way as the program-wide list above.
+  const myTeamQueueRef = useRef(createSerialQueue());
+  const myTeamSaves = useMemo(
+    () => queuedListSaves(myTeamQueueRef.current, setKbTeamShortcuts, refresh, () => openRef.current),
+    [refresh]
+  );
+
+  const setMyTeamShortcuts = useCallback(
+    (documentIds: string[], success?: string) =>
+      mutate(
+        (d) => applyTeamShortcuts(d, documentIds),
+        async () => {
+          await myTeamSaves.save(documentIds);
+          // Puts this list back if a reload put an older one in place, unless a newer change came since.
+          return (d: Data) => applyTeamShortcuts(d, documentIds);
+        },
+        { success, resync: () => void myTeamSaves.resync() }
+      ),
+    [mutate, myTeamSaves]
+  );
+
+  const currentMyTeamIds = () => supervisorPins(dataRef.current.items).map((d) => d.documentId);
+
+  const addMyTeamPin = useCallback(
+    (documentId: string) => {
+      const ids = currentMyTeamIds();
+      if (ids.includes(documentId)) return;
+      if (ids.length >= KB_MAX_TEAM_PINS) {
+        setActionError(`You can recommend at most ${KB_MAX_TEAM_PINS} sources to your team. Stop recommending one first.`);
+        return;
+      }
+      void setMyTeamShortcuts(
+        [...ids, documentId],
+        `Recommended ${find(documentId)?.title ?? "source"} to your team.`
+      );
+    },
+    [setMyTeamShortcuts]
+  );
+
+  const removeMyTeamPin = useCallback(
+    (documentId: string) => {
+      const ids = currentMyTeamIds();
+      if (!ids.includes(documentId)) return;
+      void setMyTeamShortcuts(
+        ids.filter((id) => id !== documentId),
+        `Stopped recommending ${find(documentId)?.title ?? "source"} to your team.`
+      );
+    },
+    [setMyTeamShortcuts]
   );
 
   // Document membership and tags -----------------------------------------------
@@ -551,10 +652,13 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       setSourceColor,
       setCategoryColor,
       setLabelName,
+      deleteLabel,
       setTeamPins,
       addTeamPin,
       removeTeamPin,
       moveTeamPinBy,
+      addMyTeamPin,
+      removeMyTeamPin,
       setDocumentCategories,
       setDocumentTags,
       moveDocument,
@@ -576,10 +680,13 @@ export function useKbLibrary(initial: Data, cacheKey: string) {
       setSourceColor,
       setCategoryColor,
       setLabelName,
+      deleteLabel,
       setTeamPins,
       addTeamPin,
       removeTeamPin,
       moveTeamPinBy,
+      addMyTeamPin,
+      removeMyTeamPin,
       setDocumentCategories,
       setDocumentTags,
       moveDocument,

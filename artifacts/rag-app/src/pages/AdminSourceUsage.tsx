@@ -47,11 +47,16 @@ import {
   saveMoreDetailOpen,
   saveSourceColumns,
   saveSourceView,
+  scopeCopy,
   shownSuggestions,
+  TEAM_SCOPE_NOTE,
+  usageScope,
   type SourceColumn,
-  type SourceView
+  type SourceView,
+  type UsageScope
 } from "@/lib/sourceUsage";
 import { cn } from "@/lib/utils";
+import { useStuck } from "@/lib/useStuck";
 import type {
   CurrentUser,
   KbCategory,
@@ -65,10 +70,11 @@ interface AdminSourceUsagePageProps {
 }
 
 /**
- * Source usage (/admin/sources, manager+): which sources answers cite, which
+ * Source usage (/admin/sources, supervisor+): which sources answers cite, which
  * questions hit them, and who asks what. Managers use it for coaching
  * (one person's profile against the team) and curation (sources nobody
- * uses). Window and person live in the URL so a link to one person's view
+ * uses). A supervisor sees only their team (server-enforced), and the copy
+ * says so. Window and person live in the URL so a link to one person's view
  * can be shared.
  *
  * Wrapper + inner pattern matches AdminGapsPage: the role-gate early return
@@ -80,12 +86,12 @@ export function AdminSourceUsagePage({ user }: AdminSourceUsagePageProps): JSX.E
       <div className="mx-auto max-w-5xl px-6 py-8">
         <h1 className="font-display text-3xl font-semibold tracking-tight">Forbidden</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Source usage is restricted to managers and above.
+          Source usage is restricted to supervisors and above.
         </p>
       </div>
     );
   }
-  return <AdminSourceUsageInner viewerId={user.id} />;
+  return <AdminSourceUsageInner viewerId={user.id} scope={usageScope(user.role)} />;
 }
 
 /** Everyone's numbers for one window, kept for the team comparison while a person is selected. */
@@ -140,7 +146,14 @@ function focusOverviewStart(): boolean {
   return target !== null;
 }
 
-function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element {
+function AdminSourceUsageInner({
+  viewerId,
+  scope
+}: {
+  viewerId: string;
+  scope: UsageScope;
+}): JSX.Element {
+  const copy = scopeCopy(scope);
   const search = useSearch();
   const [, navigate] = useLocation();
   const { days, userId } = useMemo(() => parseUsageQuery(search), [search]);
@@ -166,6 +179,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
   // Names seen in any response, so a selected person keeps a label while loading.
   const knownNames = useRef(new Map<string, string>());
   const rootRef = useRef<HTMLDivElement>(null);
+  const { ref: filtersRef, stuck: filtersStuck } = useStuck();
   // Focus handoffs across the loading state between everyone and one person.
   const returnPoint = useRef<ReturnPoint | null>(null);
   const pendingFocus = useRef<"person" | "everyone" | null>(null);
@@ -485,6 +499,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
         selectedLabel={selectedName}
         onSelect={selectPerson}
         triggerLabel={userId !== null ? "Change person" : undefined}
+        scope={scope}
       />
     </>
   );
@@ -495,13 +510,13 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
     </div>
   ) : notFound ? (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-      <span>This person isn't in this program or no longer has an account.</span>
+      <span>{copy.notFound}</span>
       <button
         type="button"
         onClick={() => selectPerson(null)}
         className="btn-whisper px-3 py-1 text-xs"
       >
-        Show everyone
+        {copy.showEveryone}
       </button>
     </div>
   ) : failureKind === "load" ? (
@@ -520,7 +535,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
             onClick={() => selectPerson(null)}
             className="btn-whisper px-3 py-1 text-xs"
           >
-            Show everyone
+            {copy.showEveryone}
           </button>
         ) : null}
       </span>
@@ -540,16 +555,24 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
             name={selectedName ?? "Selected person"}
             role={data?.person ? roleLabel(data.person.role) : null}
             controls={controls}
+            scope={scope}
             onBack={() => selectPerson(null)}
           />
         )
       ) : (
-        <header className="flex flex-col gap-4">
-          {/* The sidebar already says where you are; the heading stays for
+        <header ref={filtersRef} data-stuck={filtersStuck || undefined} className="sticky-band sticky top-0 z-30 -my-3 flex flex-col gap-4 py-3">
+          {/* The date and person filters stay in view while the page scrolls;
+              their band shows only once they are pinned.
+              The sidebar already says where you are; the heading stays for
               screen readers. Focus handoffs go to the first control instead. */}
           <h1 id="source-usage-title" tabIndex={-1} className="sr-only">
             Source usage
           </h1>
+          {scope === "team" ? (
+            <p className="text-sm text-muted-foreground" data-usage-scope="team">
+              {TEAM_SCOPE_NOTE}
+            </p>
+          ) : null}
           {noProgramSelected ? null : (
             <div data-usage-controls className="flex flex-wrap items-center gap-3">{controls}</div>
           )}
@@ -569,6 +592,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
           sources={data.sources}
           suggestions={shownSuggestions(data.suggestions ?? [])}
           team={teamNumbers}
+          scope={scope}
           categoryPaths={categoryPaths}
           days={days}
           reloadKey={reloadKey}
@@ -581,7 +605,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
         <EmptyState
           icon={BarChart3}
           title={`No questions in the last ${days} days`}
-          hint="Usage appears after people ask questions in Ask."
+          hint={copy.noUsageHint}
         >
           {days < 90 ? (
             <button
@@ -595,7 +619,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
         </EmptyState>
       ) : (
         <div className="flex flex-col gap-8">
-          <AtAGlance totals={data.totals} days={days} />
+          <AtAGlance totals={data.totals} />
           <AttentionCards
             cards={attention}
             days={days}
@@ -723,8 +747,8 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
                       By person
                     </h3>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Select a name for that person's coaching guide: their numbers against the
-                      team, the sources they rely on, and their questions.
+                      Select a name for that person's coaching guide: their numbers against{" "}
+                      {copy.team}, the sources they rely on, and their questions.
                     </p>
                   </div>
                   <PeopleTable
@@ -748,6 +772,7 @@ function AdminSourceUsageInner({ viewerId }: { viewerId: string }): JSX.Element 
           userId={userId}
           personName={selectedName}
           reloadKey={reloadKey}
+          scope={scope}
           onClose={closePanel}
           onSelectPerson={selectPerson}
           onOpenSource={openSource}

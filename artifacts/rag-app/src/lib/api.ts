@@ -48,6 +48,8 @@ import type {
   SessionDetailResponse,
   SessionListResponse,
   ResetUserPasswordResponse,
+  TeamsCsr,
+  TeamsResponse,
   UpdateUserRequest,
   UploadResponse,
   UserListItem,
@@ -111,19 +113,7 @@ export class UnauthorizedError extends Error {
  */
 export const SESSION_EXPIRED_EVENT = "rag-csr:session-expired";
 
-let authSession = 0;
-
-/**
- * Changes whenever this tab's sign-in ends (logout, a 401) or a new one
- * starts. A save queued before the change checks it, so it never goes out
- * under someone else's sign-in.
- */
-export function currentAuthSession(): number {
-  return authSession;
-}
-
 function notifySessionExpired(): void {
-  authSession += 1;
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
   }
@@ -182,7 +172,6 @@ export async function login(
   email: string,
   password: string
 ): Promise<CurrentUser> {
-  authSession += 1;
   const response = await fetch(
     "/api/auth/login",
     withDefaults({
@@ -202,7 +191,6 @@ export async function login(
 }
 
 export async function logout(): Promise<void> {
-  authSession += 1;
   await fetch("/api/auth/logout", withDefaults({ method: "POST" }));
 }
 
@@ -412,7 +400,22 @@ export async function getSession(sessionId: string): Promise<SessionDetailRespon
 /** CSR-facing knowledge base: browsable list of live (active + parsed) docs. */
 export async function listKbDocuments(): Promise<KbDocumentListResponse> {
   const response = await fetch("/api/kb/documents", withDefaults());
-  return asJson<KbDocumentListResponse>(response);
+  return withKbTeamPinDefaults(await asJson<KbDocumentListResponse>(response));
+}
+
+/**
+ * A server from before team recommendations sends neither teamPinPosition
+ * nor canPinForTeam; read them as null and false.
+ */
+export function withKbTeamPinDefaults(data: KbDocumentListResponse): KbDocumentListResponse {
+  if (!Array.isArray(data.items)) return { ...data, canPinForTeam: data.canPinForTeam === true };
+  return {
+    ...data,
+    canPinForTeam: data.canPinForTeam === true,
+    items: data.items.map((d) =>
+      typeof d.teamPinPosition === "number" ? d : { ...d, teamPinPosition: null }
+    )
+  };
 }
 
 /** Full parsed markdown of one live document. Throws on 404 (wrong program / not live). */
@@ -571,6 +574,12 @@ export async function setKbColorLabel(
   return json.item;
 }
 
+/** Delete one of your labels everywhere: off every source that has it (all programs), then its name. */
+export async function deleteKbColorLabel(color: KbLibraryColor): Promise<void> {
+  const response = await fetch(`/api/kb/labels/${encodeURIComponent(color)}`, withDefaults({ method: "DELETE" }));
+  await asJson<{ cleared: number }>(response);
+}
+
 export async function setKbSourceColor(
   documentId: string,
   color: KbLibraryColor | null
@@ -713,6 +722,15 @@ export async function setKbFeatured(documentIds: string[], programId: string | n
   const init = jsonRequest("PUT", { documentIds });
   if (programId !== null) (init.headers as Headers).set("X-Program-Id", programId);
   const response = await fetch("/api/kb/library/featured", init);
+  await asJson<{ ok: true }>(response);
+}
+
+/** Supervisors: replace the list recommended to their own team with this ordered list (empty clears it). Max 12. */
+export async function setKbTeamShortcuts(documentIds: string[]): Promise<void> {
+  const response = await fetch(
+    "/api/kb/library/team-shortcuts",
+    jsonRequest("PUT", { documentIds })
+  );
   await asJson<{ ok: true }>(response);
 }
 
@@ -1032,6 +1050,33 @@ export async function resetUserPassword(
     withDefaults({ method: "POST" })
   );
   return readJsonOrThrow<ResetUserPasswordResponse>(response);
+}
+
+/**
+ * Supervisors and their CSRs in the current program (supervisor+). A
+ * supervisor gets only their own team and `canEdit: false`; the server
+ * decides, the UI mirrors it. Program scope rides X-Program-Id via
+ * withDefaults().
+ */
+export async function fetchTeams(): Promise<TeamsResponse> {
+  const response = await fetch("/api/admin/teams", withDefaults());
+  return asJson<TeamsResponse>(response);
+}
+
+/**
+ * Move CSRs onto a supervisor's team, or unassign them with
+ * `supervisorId: null` (manager+). Returns every active CSR in the
+ * program after the write.
+ */
+export async function assignTeam(
+  csrIds: string[],
+  supervisorId: string | null
+): Promise<{ csrs: TeamsCsr[] }> {
+  const response = await fetch(
+    "/api/admin/teams/assignments",
+    jsonRequest("PUT", { csrIds, supervisorId })
+  );
+  return asJson<{ csrs: TeamsCsr[] }>(response);
 }
 
 /** Super-user evaluation questions for the currently selected program. */

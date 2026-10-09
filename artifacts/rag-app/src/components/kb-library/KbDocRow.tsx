@@ -1,22 +1,16 @@
 import { Link, useLocation } from "wouter";
 import { Ellipsis, ExternalLink, FolderInput, Lock, NotebookPen, Star, Tags, Users } from "lucide-react";
-import { docCategoryPaths } from "@/lib/kbLibrary";
+import { docCategoryPaths, isRecommended } from "@/lib/kbLibrary";
 import { cn } from "@/lib/utils";
 import type { KbDocumentListItem } from "@/types/api";
 import { useKbLibraryContext } from "./KbContext";
 import { KbMenu, type KbMenuEntry } from "./KbMenu";
-import {
-  NOTE_STICKY_STYLE,
-  SourceColorLabel,
-  SourceColorStripe,
-  StarToggle,
-  StatusPill,
-  labelEntries
-} from "./KbShared";
+import { LabelChip, NOTE_STICKY_STYLE, StarToggle, StatusPill, labelEntries } from "./KbShared";
 
 /**
  * Everything a row does besides open and star, in one menu: the private note,
- * the label, and for managers team shortcuts, folders and tags.
+ * the label, for supervisors recommending to their team, and for managers
+ * recommending to everyone, folders and tags.
  */
 export function useDocMenuEntries(doc: KbDocumentListItem): KbMenuEntry[] {
   const { data, actions, canOrganize, openDialog } = useKbLibraryContext();
@@ -33,19 +27,40 @@ export function useDocMenuEntries(doc: KbDocumentListItem): KbMenuEntry[] {
       onSelect: () => actions.togglePin(doc.documentId)
     },
     "separator",
-    ...labelEntries(doc.myColor, data.labels, (color) => actions.setSourceColor(doc.documentId, color))
+    ...labelEntries(
+      doc.myColor,
+      data.labels,
+      (color) => actions.setSourceColor(doc.documentId, color),
+      () => openDialog({ kind: "label-create", documentId: doc.documentId })
+    )
   ];
+  if (data.canPinForTeam) {
+    entries.push(
+      "separator",
+      doc.teamPinPosition !== null
+        ? {
+            label: "Stop recommending to my team",
+            icon: Users,
+            onSelect: () => actions.removeMyTeamPin(doc.documentId)
+          }
+        : {
+            label: "Recommend to my team",
+            icon: Users,
+            onSelect: () => actions.addMyTeamPin(doc.documentId)
+          }
+    );
+  }
   if (canOrganize) {
     entries.push(
       "separator",
       doc.featuredPosition !== null
         ? {
-            label: "Remove from team shortcuts",
+            label: "Stop recommending to everyone",
             icon: Users,
             onSelect: () => actions.removeTeamPin(doc.documentId)
           }
         : {
-            label: "Add to team shortcuts",
+            label: "Recommend to everyone",
             icon: Users,
             onSelect: () => actions.addTeamPin(doc.documentId)
           },
@@ -76,8 +91,8 @@ export function pathsLabel(paths: string[]): string {
 }
 
 /**
- * One source in any browse view, kept quiet: an optional label stripe, the
- * title (a stretched link, so the whole row opens the reader), one muted
+ * One source in any browse view, kept quiet: the title (a stretched link, so
+ * the whole row opens the reader) with the user's label chip, one muted
  * line with its folder path, the private note as a one-line sticky, and on
  * the right at most one status pill, "Used often", the star and one menu.
  */
@@ -98,7 +113,7 @@ export function KbDocRow({
   const { data, lookup, actions, openDialog } = useKbLibraryContext();
   const menu = useDocMenuEntries(doc);
   const paths = docCategoryPaths(doc, lookup.tree);
-  const fromTeam = doc.featuredPosition !== null;
+  const recommended = isRecommended(doc);
 
   return (
     <li
@@ -110,7 +125,6 @@ export function KbDocRow({
         roundedEdges && "first:rounded-t-lg last:rounded-b-lg"
       )}
     >
-      <SourceColorStripe color={doc.myColor} />
       <div className="col-start-1 row-start-1 min-w-0">
         <Link
           href={`/kb/${doc.documentId}`}
@@ -119,7 +133,7 @@ export function KbDocRow({
         >
           {doc.title}
         </Link>
-        <SourceColorLabel color={doc.myColor} labels={data.labels} />
+        <LabelChip color={doc.myColor} labels={data.labels} className="ml-2" />
         {doc.note ? (
           // As wide as the title column (up to the status column); two lines on phones, one from 640px.
           <button
@@ -138,7 +152,7 @@ export function KbDocRow({
         <p data-kb-path className="mt-0.5 text-sm text-muted-foreground">
           <span className="sr-only">In </span>
           {paths.length > 0 ? pathsLabel(paths) : "Not in a folder"}
-          {fromTeam ? <span data-kb-from-team> · From your team</span> : null}
+          {recommended ? <span data-kb-recommended> · Recommended</span> : null}
         </p>
       </div>
       {usedOften ? (

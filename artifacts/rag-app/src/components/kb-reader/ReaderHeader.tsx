@@ -1,7 +1,8 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { Link } from "wouter";
 import { Star } from "lucide-react";
 import type { KbDocPersonal } from "@/components/kb-library/KbDocPersonalBar";
+import { useStuck } from "@/lib/useStuck";
 import { cn } from "@/lib/utils";
 import type { KbColorLabel } from "@/types/api";
 import { ReaderLabelMenu, type SaveLabelName } from "./ReaderLabelMenu";
@@ -27,7 +28,9 @@ function scrollParent(el: HTMLElement): HTMLElement | null {
  * While the reader is open, the scroll pane keeps a top padding equal to the
  * sticky header plus 16px. Browsers honor it for keyboard focus, "On this
  * page" jumps and cited passages, so nothing lands under the header. Below
- * 768px the header is not sticky and the padding is just the gap.
+ * 768px the header is not sticky and the padding is just the gap. The
+ * header's height is also kept in `--kb-reader-header` for the sticky side
+ * column.
  */
 function useScrollPaddingBelow(headerRef: RefObject<HTMLElement>): void {
   useEffect(() => {
@@ -35,11 +38,13 @@ function useScrollPaddingBelow(headerRef: RefObject<HTMLElement>): void {
     const pane = header ? scrollParent(header) : null;
     if (!header || !pane) return;
     const before = pane.style.scrollPaddingTop;
+    const beforeHeight = pane.style.getPropertyValue("--kb-reader-header");
     function update(): void {
       if (!header || !pane) return;
       const sticky = getComputedStyle(header).position === "sticky";
       const height = sticky ? Math.ceil(header.getBoundingClientRect().height) : 0;
       pane.style.scrollPaddingTop = `${height + SCROLL_GAP_PX}px`;
+      pane.style.setProperty("--kb-reader-header", `${height}px`);
     }
     update();
     const observer = new ResizeObserver(update);
@@ -49,6 +54,7 @@ function useScrollPaddingBelow(headerRef: RefObject<HTMLElement>): void {
       observer.disconnect();
       window.removeEventListener("resize", update);
       pane.style.scrollPaddingTop = before;
+      pane.style.setProperty("--kb-reader-header", beforeHeight);
     };
   }, [headerRef]);
 }
@@ -61,13 +67,15 @@ function useScrollPaddingBelow(headerRef: RefObject<HTMLElement>): void {
  * the actions shrink to short pills ("Shortcut", "Label") whose accessible
  * names keep the full wording. While the note editor is open, "Save note" is
  * the one filled button, so the shortcut button turns quiet until the editor
- * closes.
+ * closes. Once pinned it gets the same frosted, fading band as the Sources
+ * search bar.
  */
 export function ReaderHeader({
   crumbs,
   otherPaths,
   personal,
   labels,
+  labelsReady,
   onRenameLabel
 }: {
   crumbs: ReaderCrumb[];
@@ -75,18 +83,29 @@ export function ReaderHeader({
   otherPaths: ReaderCrumb[];
   personal: KbDocPersonal;
   labels: KbColorLabel[];
+  /** False while the user's labels are still loading. */
+  labelsReady: boolean;
   onRenameLabel: SaveLabelName;
 }): JSX.Element {
-  const headerRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement | null>(null);
   useScrollPaddingBelow(headerRef);
+  const { ref: stuckRef, stuck } = useStuck();
+  const setHeader = useCallback(
+    (el: HTMLDivElement | null) => {
+      headerRef.current = el;
+      stuckRef(el);
+    },
+    [stuckRef]
+  );
   const { item, editing } = personal;
   const inShortcuts = item.pinnedAt !== null;
   const shortcutName = inShortcuts ? "In my shortcuts" : "Add to my shortcuts";
   return (
     <div
-      ref={headerRef}
+      ref={setHeader}
       data-kb-reader-header
-      className="z-20 -mx-3 bg-background px-3 pb-3 pt-1 sm:-mx-6 sm:px-6 md:sticky md:top-0 md:border-b md:border-border/70 md:pt-4"
+      data-stuck={stuck || undefined}
+      className="sticky-band relative z-20 -mx-3 px-3 pb-3 pt-1 sm:-mx-6 sm:px-6 md:sticky md:top-0 md:pt-4"
     >
       <nav aria-label="Breadcrumb" data-kb-breadcrumb className="text-sm text-muted-foreground">
         <ol className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -156,6 +175,7 @@ export function ReaderHeader({
         <ReaderLabelMenu
           value={item.myColor}
           labels={labels}
+          labelsReady={labelsReady}
           onSelect={(color) => void personal.setColor(color)}
           onRename={onRenameLabel}
         />

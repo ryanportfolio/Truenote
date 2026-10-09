@@ -1,13 +1,11 @@
 import { answeredRate, formatPercent } from "@/lib/sourceUsage";
 import type { SourceUsageResponse } from "@/types/api";
 
-/** Two plain sentences with the window's headline numbers. */
+/** The window's headline numbers. The date filter above shows the window. */
 export function AtAGlance({
-  totals,
-  days
+  totals
 }: {
   totals: SourceUsageResponse["totals"];
-  days: number;
 }): JSX.Element {
   const rate = formatPercent(answeredRate(totals.answered, totals.questions));
   return (
@@ -24,13 +22,13 @@ export function AtAGlance({
           <span className="text-4xl font-semibold tabular-nums tracking-tight text-primary">
             {totals.questions}
           </span>{" "}
-          {totals.questions === 1 ? "question" : "questions"} in the last {days} days.
+          {totals.questions === 1 ? "question" : "questions"}
         </p>
         <p className="text-lg leading-snug md:pl-6" data-glance="answered">
           <span className="text-4xl font-semibold tabular-nums tracking-tight text-primary">
             {rate}
           </span>{" "}
-          got an answer with a source.
+          got an answer with a source
         </p>
       </div>
     </section>

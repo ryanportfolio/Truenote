@@ -1,11 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { personLabel, plural, roleLabel } from "@/lib/sourceUsage";
+import { personLabel, plural, roleLabel, scopeCopy, type UsageScope } from "@/lib/sourceUsage";
 import type { SourceUsagePerson } from "@/types/api";
 
 interface PersonPickerProps {
-  /** Every program member, including people with no questions in the window. */
+  /** Every program member (a supervisor: their team), including people with no questions in the window. */
   people: readonly SourceUsagePerson[];
   selectedId: string | null;
   /** Shown on the trigger when the selected person is not in `people` (no questions this window). */
@@ -13,6 +13,8 @@ interface PersonPickerProps {
   onSelect: (userId: string | null) => void;
   /** Visible trigger text instead of the selected name (the person view says "Change person"). */
   triggerLabel?: string;
+  /** "Everyone" for the program, "Your team" for a supervisor. */
+  scope: UsageScope;
 }
 
 /**
@@ -26,7 +28,8 @@ export function PersonPicker({
   selectedId,
   selectedLabel,
   onSelect,
-  triggerLabel
+  triggerLabel,
+  scope
 }: PersonPickerProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -34,6 +37,7 @@ export function PersonPicker({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const copy = scopeCopy(scope);
   const panelId = useId();
   const searchId = useId();
 
@@ -99,7 +103,7 @@ export function PersonPicker({
     ? selected
       ? personLabel(selected)
       : selectedLabel ?? "Selected person"
-    : "Everyone";
+    : copy.everyone;
 
   return (
     <div ref={rootRef} className="relative">
@@ -164,8 +168,8 @@ export function PersonPicker({
             {query.trim() === "" ? (
               <li>
                 <PersonOption
-                  label="Everyone"
-                  detail="All people in this program"
+                  label={copy.everyone}
+                  detail={copy.everyoneDetail}
                   selected={selectedId === null}
                   onClick={() => choose(null)}
                 />
@@ -189,7 +193,7 @@ export function PersonPicker({
             {matches.length === 0 ? (
               <li className="px-2 py-2 text-sm text-muted-foreground">
                 {people.length === 0
-                  ? "No people in this program yet."
+                  ? copy.noPeople
                   : "No one matches that search."}
               </li>
             ) : null}

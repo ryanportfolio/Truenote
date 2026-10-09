@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { currentAuthSession, logout, setKbFeatured } from "../api";
-import { createSerialQueue } from "../serialQueue";
+import { describe, expect, it } from "vitest";
+import { createSerialQueue, gatedQueue, QueueClosedError, queuedListSaves, serialSaves } from "../serialQueue";
 
-function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (err: unknown) => void } {
+/** A promise the test settles by hand, standing in for a request in flight. */
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (err: Error) => void } {
   let resolve!: (value: T) => void;
-  let reject!: (err: unknown) => void;
+  let reject!: (err: Error) => void;
   const promise = new Promise<T>((res, rej) => {
     resolve = res;
     reject = rej;
@@ -12,114 +12,247 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reje
   return { promise, resolve, reject };
 }
 
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+/** Let every queued microtask run. */
+async function flush(): Promise<void> {
+  for (let i = 0; i < 10; i += 1) await Promise.resolve();
+}
 
-const ok = () =>
-  new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+/** A stand-in for a whole-list save: records each list sent and waits for the test to answer it. */
+function fakeListSave() {
+  const sent: string[][] = [];
+  const answers: Array<ReturnType<typeof deferred<void>>> = [];
+  const save = (documentIds: string[]): Promise<void> => {
+    sent.push(documentIds);
+    const answer = deferred<void>();
+    answers.push(answer);
+    return answer.promise;
+  };
+  /** The pending answer to the request sent at `index`. */
+  const answer = (index: number) => {
+    const found = answers[index];
+    if (!found) throw new Error(`No request ${index} was sent.`);
+    return found;
+  };
+  return { sent, answer, save };
+}
 
-afterEach(() => {
-  vi.unstubAllGlobals();
+describe("serialSaves", () => {
+  it("sends the second list only after the first save has resolved", async () => {
+    const { sent, answer, save } = fakeListSave();
+    const saveInOrder = serialSaves(save);
+    const first = saveInOrder(["a"]);
+    const second = saveInOrder(["a", "b"]);
+    await flush();
+    expect(sent).toEqual([["a"]]);
+    answer(0).resolve();
+    await expect(first).resolves.toBeUndefined();
+    await flush();
+    expect(sent).toEqual([["a"], ["a", "b"]]);
+    answer(1).resolve();
+    await expect(second).resolves.toBeUndefined();
+  });
+
+  it("still sends the next list after a rejection and passes the rejection to its caller", async () => {
+    const { sent, answer, save } = fakeListSave();
+    const saveInOrder = serialSaves(save);
+    const first = saveInOrder(["a"]);
+    const second = saveInOrder(["a", "b"]);
+    await flush();
+    expect(sent).toEqual([["a"]]);
+    answer(0).reject(new Error("Demo accounts cannot change shared sources."));
+    await expect(first).rejects.toThrow("Demo accounts cannot change shared sources.");
+    await flush();
+    expect(sent).toEqual([["a"], ["a", "b"]]);
+    answer(1).resolve();
+    await expect(second).resolves.toBeUndefined();
+  });
+
+  it("keeps a separate queue per wrapped save", async () => {
+    const one = fakeListSave();
+    const two = fakeListSave();
+    const saveOne = serialSaves(one.save);
+    const saveTwo = serialSaves(two.save);
+    void saveOne(["a"]);
+    void saveTwo(["b"]);
+    await flush();
+    expect(one.sent).toEqual([["a"]]);
+    expect(two.sent).toEqual([["b"]]);
+    one.answer(0).resolve();
+    two.answer(0).resolve();
+  });
 });
 
-describe("createSerialQueue", () => {
-  it("starts each task only after the one before it settles", async () => {
-    const enqueue = createSerialQueue();
-    const first = deferred<string>();
-    const order: string[] = [];
-    const a = enqueue(() => {
-      order.push("a start");
-      return first.promise;
-    });
-    const b = enqueue(async () => {
-      order.push("b start");
-      return "b";
-    });
-    await flush();
-    expect(order).toEqual(["a start"]);
-    first.resolve("a");
-    await expect(a).resolves.toBe("a");
-    await expect(b).resolves.toBe("b");
-    expect(order).toEqual(["a start", "b start"]);
-  });
-
-  it("keeps going after a task rejects, and passes the rejection to its caller", async () => {
-    const enqueue = createSerialQueue();
-    const failed = enqueue(() => Promise.reject(new Error("no")));
-    const next = enqueue(async () => "next");
-    await expect(failed).rejects.toThrow("no");
-    await expect(next).resolves.toBe("next");
-  });
-
-  it("idle waits for every queued task, including ones queued while it waits", async () => {
-    const enqueue = createSerialQueue();
-    const first = deferred<void>();
-    const second = deferred<void>();
-    const done: string[] = [];
-    void enqueue(() => first.promise.then(() => void done.push("first")));
-    let idle = false;
-    const waiting = enqueue.idle().then(() => {
-      idle = true;
-    });
-    void enqueue(() => second.promise.then(() => void done.push("second")));
-    first.resolve();
-    await flush();
-    expect(idle).toBe(false);
-    second.resolve();
-    await waiting;
-    expect(done).toEqual(["first", "second"]);
-  });
-});
-
-describe("currentAuthSession", () => {
-  it("changes when the user signs out", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ok())
+describe("queuedListSaves", () => {
+  it("reloads after a failed save only once the save queued behind it has settled", async () => {
+    const { sent, answer, save } = fakeListSave();
+    const log: string[] = [];
+    // The server's list: what a reload would read.
+    let server: string[] = [];
+    const reads: string[][] = [];
+    const saves = queuedListSaves(
+      createSerialQueue(),
+      async (documentIds: string[]) => {
+        log.push(`save ${documentIds.join(",")} start`);
+        await save(documentIds);
+        server = documentIds;
+        log.push(`save ${documentIds.join(",")} done`);
+      },
+      async () => {
+        log.push("reload");
+        reads.push(server);
+      }
     );
-    const before = currentAuthSession();
-    await logout();
-    expect(currentAuthSession()).not.toBe(before);
+    const first = saves.save(["a"]);
+    const second = saves.save(["a", "b"]);
+    await flush();
+    answer(0).reject(new Error("That change didn't save. Try again."));
+    await expect(first).rejects.toThrow("That change didn't save. Try again.");
+    // The caller of the failed save asks for a reload at once.
+    const reload = saves.resync();
+    await flush();
+    expect(sent).toEqual([["a"], ["a", "b"]]);
+    expect(reads).toEqual([]);
+    answer(1).resolve();
+    await expect(second).resolves.toBeUndefined();
+    await reload;
+    expect(reads).toEqual([["a", "b"]]);
+    expect(log).toEqual(["save a start", "save a,b start", "save a,b done", "reload"]);
+  });
+
+  it("reloads after a failed save that is the last one, without waiting on anything else", async () => {
+    const { answer, save } = fakeListSave();
+    let reloads = 0;
+    const saves = queuedListSaves(createSerialQueue(), save, async () => {
+      reloads += 1;
+    });
+    const only = saves.save(["a"]);
+    await flush();
+    answer(0).reject(new Error("Demo accounts cannot change shared sources."));
+    await expect(only).rejects.toThrow("Demo accounts cannot change shared sources.");
+    await saves.resync();
+    expect(reloads).toBe(1);
+  });
+
+  it("sends a save made after a queued reload only once that reload has finished", async () => {
+    const { sent, answer, save } = fakeListSave();
+    const log: string[] = [];
+    const saves = queuedListSaves(createSerialQueue(), save, async () => {
+      log.push(`reload with ${sent.length} sent`);
+    });
+    const first = saves.save(["a"]);
+    const reload = saves.resync();
+    const second = saves.save(["a", "b"]);
+    await flush();
+    expect(sent).toEqual([["a"]]);
+    answer(0).resolve();
+    await first;
+    await reload;
+    await flush();
+    expect(log).toEqual(["reload with 1 sent"]);
+    expect(sent).toEqual([["a"], ["a", "b"]]);
+    answer(1).resolve();
+    await expect(second).resolves.toBeUndefined();
   });
 });
 
-describe("queued team pin saves", () => {
-  it("reach the server in the order they were made, so the newer list wins", async () => {
-    // The server keeps whichever full list it applied last.
-    let serverList: string[] = [];
-    const slowFirst = deferred<void>();
-    const sent: string[][] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string, init: RequestInit) => {
-        const { documentIds } = JSON.parse(String(init.body)) as { documentIds: string[] };
-        sent.push(documentIds);
-        // The first save is slow on the network; unqueued, the second would land first.
-        if (sent.length === 1) await slowFirst.promise;
-        serverList = documentIds;
-        return ok();
-      })
-    );
-
-    const enqueue = createSerialQueue();
-    const older = enqueue(() => setKbFeatured(["a", "b"], null));
-    const newer = enqueue(() => setKbFeatured(["b", "a"], null));
+describe("gatedQueue", () => {
+  it("skips tasks not yet started once closed, settles them all, and lets the running one finish", async () => {
+    let open = true;
+    const enqueue = gatedQueue(createSerialQueue(), () => open);
+    const log: string[] = [];
+    const running = deferred<string>();
+    const first = enqueue(() => {
+      log.push("first start");
+      return running.promise;
+    });
+    const second = enqueue(async () => {
+      log.push("second start");
+      return "second";
+    });
+    const third = enqueue(async () => {
+      log.push("third start");
+      return "third";
+    });
     await flush();
-    expect(sent).toEqual([["a", "b"]]);
-
-    slowFirst.resolve();
-    await Promise.all([older, newer]);
-    expect(sent).toEqual([
-      ["a", "b"],
-      ["b", "a"]
-    ]);
-    expect(serverList).toEqual(["b", "a"]);
+    expect(log).toEqual(["first start"]);
+    // The page unmounts while the first request is in flight.
+    open = false;
+    running.resolve("first");
+    await expect(first).resolves.toBe("first");
+    await expect(second).rejects.toBeInstanceOf(QueueClosedError);
+    await expect(third).rejects.toBeInstanceOf(QueueClosedError);
+    expect(log).toEqual(["first start"]);
   });
 
-  it("sends a save to the program it was made in", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ok());
-    vi.stubGlobal("fetch", fetchMock);
-    await setKbFeatured(["a"], "program-1");
-    const headers = fetchMock.mock.calls[0]?.[1].headers as Headers;
-    expect(headers.get("X-Program-Id")).toBe("program-1");
+  it("runs new tasks again once reopened, as on StrictMode's second mount", async () => {
+    let open = true;
+    const enqueue = gatedQueue(createSerialQueue(), () => open);
+    open = false;
+    const skipped = enqueue(async () => "skipped");
+    await expect(skipped).rejects.toBeInstanceOf(QueueClosedError);
+    open = true;
+    await expect(enqueue(async () => "runs")).resolves.toBe("runs");
+  });
+});
+
+describe("queuedListSaves after the page closes", () => {
+  it("sends no queued save or reload, settles every caller, and finishes the save in flight", async () => {
+    const { sent, answer, save } = fakeListSave();
+    let open = true;
+    let reloads = 0;
+    const saves = queuedListSaves(
+      createSerialQueue(),
+      save,
+      async () => {
+        reloads += 1;
+      },
+      () => open
+    );
+    const first = saves.save(["a"]);
+    const second = saves.save(["a", "b"]);
+    const reload = saves.resync();
+    const third = saves.save(["a", "b", "c"]);
+    await flush();
+    expect(sent).toEqual([["a"]]);
+    // Sign-out unmounts the page while the first save is in flight.
+    open = false;
+    answer(0).resolve();
+    await expect(first).resolves.toBeUndefined();
+    await expect(second).rejects.toBeInstanceOf(QueueClosedError);
+    // A skipped reload resolves: there is no page left to correct.
+    await expect(reload).resolves.toBeUndefined();
+    await expect(third).rejects.toBeInstanceOf(QueueClosedError);
+    expect(sent).toEqual([["a"]]);
+    expect(reloads).toBe(0);
+  });
+
+  it("sends saves again once reopened", async () => {
+    const { sent, answer, save } = fakeListSave();
+    let open = false;
+    let reloads = 0;
+    const saves = queuedListSaves(
+      createSerialQueue(),
+      save,
+      async () => {
+        reloads += 1;
+      },
+      () => open
+    );
+    await expect(saves.save(["a"])).rejects.toBeInstanceOf(QueueClosedError);
+    open = true;
+    const next = saves.save(["b"]);
+    await flush();
+    expect(sent).toEqual([["b"]]);
+    answer(0).resolve();
+    await expect(next).resolves.toBeUndefined();
+    await saves.resync();
+    expect(reloads).toBe(1);
+  });
+
+  it("passes on a reload's own failure", async () => {
+    const saves = queuedListSaves(createSerialQueue(), async () => undefined, async () => {
+      throw new Error("Network down");
+    });
+    await expect(saves.resync()).rejects.toThrow("Network down");
   });
 });

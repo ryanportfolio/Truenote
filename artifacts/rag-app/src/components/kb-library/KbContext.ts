@@ -11,7 +11,9 @@ export type KbDialogState =
   | { kind: "category-create"; parentId: string | null; returnTo?: KbDialogState }
   | { kind: "category-edit"; categoryId: string }
   | { kind: "category-move"; categoryId: string }
-  | { kind: "doc-move"; documentId: string; fromCategoryId: string | null };
+  | { kind: "doc-move"; documentId: string; fromCategoryId: string | null }
+  /** Name a new label; with a source, the label is applied to it too. */
+  | { kind: "label-create"; documentId: string | null };
 
 export interface KbLibraryContextValue {
   data: KbDocumentListResponse;
