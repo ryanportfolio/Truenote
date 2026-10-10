@@ -644,70 +644,70 @@
     gap: 0.65rem;
   }
 
+  /* Demo portals (components/DemoPortal.tsx): each card holds a miniature
+   * of the Luminous Archive hero in inline SVG. Layout vars place the art
+   * (--art size, centered --art-r from the right and --art-t from the top)
+   * and aim the reading beam and pencil gap at the label (--align). --k
+   * scales each ring's rest offset: 1 at rest, 0.45 on hover/focus, 0 when
+   * selected, so the gaps lock onto --align. Geometry keeps every ring and
+   * register bar clear of the label box at Verdana widths. */
   .auth-demo-role {
+    --k: 1;
+    --px: 0;
+    --py: 0;
+    --mx: 50%;
+    --my: 0%;
+    --lift: 0px;
+    --press: 1;
+    --beam: 0;
+    --art: 140px;
+    --art-r: 30px;
+    --art-t: 30px;
+    --align: 150deg;
     position: relative;
+    isolation: isolate;
     display: grid;
-    min-height: 5.15rem;
+    min-height: 7rem;
     align-content: end;
     overflow: hidden;
     cursor: pointer;
     border: 1px solid oklch(var(--border));
     border-radius: 0.85rem;
-    background: oklch(var(--card) / 0.9);
-    padding: 0.85rem 4rem 0.8rem 0.9rem;
+    background: oklch(var(--card) / 0.94);
+    padding: 0.85rem 0.9rem 0.8rem;
     text-align: left;
     box-shadow: inset 0 1px 0 oklch(var(--card)),
       0 5px 16px oklch(var(--archive-ink) / 0.06);
-    transition: border-color 180ms cubic-bezier(0.25, 1, 0.5, 1),
-      background-color 180ms cubic-bezier(0.25, 1, 0.5, 1),
-      box-shadow 180ms cubic-bezier(0.25, 1, 0.5, 1),
-      transform 180ms cubic-bezier(0.25, 1, 0.5, 1);
   }
 
-  .auth-demo-role::before {
-    position: absolute;
-    top: -1.5rem;
-    right: 1.25rem;
-    width: 2.9rem;
-    height: 7.25rem;
-    border: 1px solid oklch(var(--archive-green) / 0.45);
-    border-radius: 70% 30% 68% 32%;
-    background: oklch(var(--archive-green) / 0.15);
-    content: "";
-    pointer-events: none;
-    transform: rotate(28deg);
-    transition: transform 240ms cubic-bezier(0.25, 1, 0.5, 1);
+  .auth-demo-grid[data-count="1"] .auth-demo-role {
+    --art-r: 64px;
+    --art-t: 41px;
+    --align: 176deg;
+    min-height: 5.15rem;
   }
 
-  .auth-demo-role:nth-child(even)::before {
-    border-color: oklch(var(--archive-coral) / 0.48);
-    background: oklch(var(--archive-coral) / 0.14);
-    transform: rotate(-28deg);
+  .auth-demo-grid[data-count="3"] .auth-demo-role {
+    --art-r: 56px;
+    --art-t: 38px;
+    --align: 175deg;
   }
 
-  .auth-demo-role:hover:not(:disabled) {
-    border-color: oklch(var(--primary) / 0.38);
-    box-shadow: inset 0 1px 0 oklch(var(--card)),
-      0 9px 22px oklch(var(--archive-ink) / 0.11);
-    transform: translateY(-2px);
-  }
-
-  .auth-demo-role:hover:not(:disabled)::before,
-  .auth-demo-role-active::before {
-    transform: rotate(34deg) scale(1.06);
-  }
-
-  .auth-demo-role:nth-child(even):hover:not(:disabled)::before,
-  .auth-demo-role-active:nth-child(even)::before {
-    transform: rotate(-34deg) scale(1.06);
+  @media (min-width: 640px) {
+    .auth-demo-grid[data-count="3"] .auth-demo-role {
+      --art-r: 28px;
+      --art-t: 28px;
+      --align: 135deg;
+    }
   }
 
   .auth-demo-role-active {
-    border-color: oklch(var(--primary) / 0.55);
-    background: oklch(var(--primary) / 0.075);
-    color: oklch(var(--primary));
-    box-shadow: inset 0 0 0 1px oklch(var(--primary) / 0.08),
-      0 8px 20px oklch(var(--primary) / 0.1);
+    --k: 0;
+    --beam: 1;
+    border-color: oklch(var(--primary) / 0.5);
+    background: color-mix(in oklab, oklch(var(--card)) 95%, oklch(var(--accent)));
+    box-shadow: inset 0 0 0 1px oklch(var(--primary) / 0.1),
+      0 8px 22px oklch(var(--primary) / 0.13);
   }
 
   .auth-demo-role:disabled {
@@ -722,68 +722,515 @@
     outline-offset: 2px;
   }
 
-  .auth-demo-role-name {
-    position: relative;
-    z-index: 1;
+  .auth-demo-role:focus-visible {
+    --k: 0.45;
+  }
+
+  .auth-demo-role-active:focus-visible {
+    --k: 0;
   }
 
   .auth-demo-role-name {
+    position: relative;
+    z-index: 2;
+    justify-self: start;
     color: oklch(var(--foreground));
     font-size: 1rem;
     font-weight: 600;
     letter-spacing: -0.02em;
     line-height: 1.2;
+    text-shadow: 0 0 2px oklch(var(--card)), 0 0 7px oklch(var(--card));
   }
 
   .auth-demo-role-active .auth-demo-role-name {
     color: oklch(var(--primary));
   }
 
-  .auth-demo-role-orbit {
+  /* Light that follows the pointer: a rim on the border and a glass sheen. */
+  .pp-rim,
+  .pp-sheen {
     position: absolute;
-    top: 50%;
-    right: -0.45rem;
-    width: 4.3rem;
-    height: 2.7rem;
-    border: 1px solid oklch(var(--primary) / 0.24);
-    border-radius: 50%;
+    border-radius: inherit;
     pointer-events: none;
-    transform: translateY(-50%) rotate(-16deg);
+    opacity: 0;
   }
 
-  .auth-demo-role:nth-child(even) .auth-demo-role-orbit {
-    transform: translateY(-50%) rotate(16deg);
+  .pp-rim {
+    inset: -1px;
+    z-index: 3;
+    padding: 1px;
+    background: radial-gradient(
+      7rem circle at var(--mx) var(--my),
+      oklch(var(--accent) / 0.85),
+      oklch(var(--primary) / 0.25) 45%,
+      oklch(var(--primary) / 0) 75%
+    );
+    -webkit-mask: linear-gradient(black, black) content-box, linear-gradient(black, black);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(black, black) content-box exclude, linear-gradient(black, black);
   }
 
-  .auth-demo-role-orbit span {
+  .pp-sheen {
+    inset: 0;
+    z-index: 1;
+    overflow: hidden;
+    background: radial-gradient(
+      9rem circle at var(--mx) var(--my),
+      oklch(var(--card) / 0.3),
+      oklch(var(--card) / 0) 70%
+    );
+  }
+
+  .pp-sheen::after {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 1.35rem;
-    height: 1.35rem;
-    border-radius: 42% 58% 48% 52%;
-    background: oklch(var(--archive-ink));
-    box-shadow: 0 0 0 0.35rem oklch(var(--primary) / 0.08),
-      -0.75rem 0.55rem 0 oklch(var(--archive-coral) / 0.72);
-    transform: translate(-50%, -50%) rotate(12deg);
-    transition: box-shadow 240ms cubic-bezier(0.25, 1, 0.5, 1),
-      transform 240ms cubic-bezier(0.25, 1, 0.5, 1);
+    top: -40%;
+    left: 0;
+    width: 38%;
+    height: 180%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      oklch(var(--card) / 0.5) 45%,
+      oklch(var(--archive-green) / 0.16) 60%,
+      transparent
+    );
+    content: "";
+    opacity: 0;
+    transform: translateX(-140%) rotate(18deg);
   }
 
-  .auth-demo-role:nth-child(even) .auth-demo-role-orbit span {
-    box-shadow: 0 0 0 0.35rem oklch(var(--primary) / 0.08),
-      0.7rem -0.5rem 0 oklch(var(--archive-green) / 0.72);
+  .pp-art {
+    position: absolute;
+    z-index: 0;
+    opacity: 0.86;
+    top: calc(var(--art-t) - var(--art) / 2);
+    right: calc(var(--art-r) - var(--art) / 2);
+    width: var(--art);
+    height: var(--art);
+    overflow: visible;
+    pointer-events: none;
   }
 
-  .auth-demo-role-active .auth-demo-role-orbit span {
-    box-shadow: 0 0 0 0.5rem oklch(var(--primary) / 0.12),
-      -0.75rem 0.55rem 0 oklch(var(--archive-coral) / 0.82);
-    transform: translate(-50%, -50%) rotate(12deg) scale(1.08);
+  .pp-art * {
+    transform-box: view-box;
+    transform-origin: 50% 50%;
   }
 
-  .auth-demo-role-active:nth-child(even) .auth-demo-role-orbit span {
-    box-shadow: 0 0 0 0.5rem oklch(var(--primary) / 0.12),
-      0.7rem -0.5rem 0 oklch(var(--archive-green) / 0.82);
+  .pp-spin {
+    transform: rotate(calc(var(--align) + var(--off) * var(--k)));
+  }
+
+  .pp-pencil-axis,
+  .pp-beam-axis {
+    transform: rotate(var(--align));
+  }
+
+  .pp-pencil {
+    fill: none;
+    stroke: oklch(var(--foreground) / 0.17);
+    stroke-width: 0.7;
+    stroke-dasharray: 1 1;
+    stroke-dashoffset: 0.55;
+  }
+
+  .pp-ticks {
+    fill: none;
+    stroke: oklch(var(--foreground) / 0.2);
+    stroke-width: 0.6;
+  }
+
+  .pp-shadow-offset {
+    transform: translate(0.9px, 1.9px);
+  }
+
+  .pp-shadow {
+    fill: oklch(var(--archive-ink) / 0.1);
+    stroke: oklch(var(--archive-ink) / 0.05);
+    stroke-width: 1.8;
+    stroke-linejoin: round;
+  }
+
+  .pp-edge {
+    fill: none;
+    stroke: oklch(var(--archive-ink) / 0.24);
+    stroke-width: 0.45;
+  }
+
+  .pp-grid {
+    fill: none;
+    stroke: oklch(var(--archive-ink) / 0.14);
+    stroke-width: 0.3;
+  }
+
+  .pp-grid-mineral {
+    stroke: oklch(var(--card) / 0.3);
+  }
+
+  .pp-stop-card {
+    stop-color: oklch(var(--card));
+  }
+
+  .pp-stop-paper {
+    stop-color: color-mix(
+      in oklab,
+      color-mix(in oklab, oklch(var(--card)) 90%, oklch(var(--warning))),
+      oklch(var(--archive-coral)) 5%
+    );
+  }
+
+  .pp-stop-paper-deep {
+    stop-color: color-mix(
+      in oklab,
+      color-mix(in oklab, oklch(var(--background)) 88%, oklch(var(--warning))),
+      oklch(var(--archive-coral)) 6%
+    );
+  }
+
+  .pp-stop-mineral-light {
+    stop-color: color-mix(in oklab, oklch(var(--archive-green)) 34%, oklch(var(--background)));
+  }
+
+  .pp-stop-mineral {
+    stop-color: color-mix(in oklab, oklch(var(--archive-green)) 55%, oklch(var(--background)));
+  }
+
+  .pp-stop-mineral-deep {
+    stop-color: color-mix(
+      in oklab,
+      color-mix(in oklab, oklch(var(--archive-green)) 68%, oklch(var(--background))),
+      oklch(var(--archive-ink)) 10%
+    );
+  }
+
+  .pp-stop-mottle {
+    stop-color: oklch(var(--card) / 0.42);
+  }
+
+  .pp-stop-mottle-clear {
+    stop-color: oklch(var(--card) / 0);
+  }
+
+  .pp-stop-glass-hot {
+    stop-color: color-mix(in oklab, oklch(var(--accent)) 78%, oklch(var(--card)));
+  }
+
+  .pp-stop-glass {
+    stop-color: oklch(var(--accent));
+  }
+
+  .pp-stop-glass-deep {
+    stop-color: oklch(var(--primary));
+  }
+
+  .pp-stop-glass-edge {
+    stop-color: color-mix(in oklab, oklch(var(--archive-ink)) 75%, oklch(var(--foreground)));
+  }
+
+  .pp-stop-flash {
+    stop-color: oklch(var(--card) / 0.95);
+  }
+
+  .pp-stop-flash-mid {
+    stop-color: oklch(var(--accent) / 0.55);
+  }
+
+  .pp-stop-flash-clear {
+    stop-color: oklch(var(--accent) / 0);
+  }
+
+  .pp-stop-streak {
+    stop-color: color-mix(in oklab, oklch(var(--accent)) 45%, oklch(var(--card))) ;
+    stop-opacity: 0.5;
+  }
+
+  .pp-stop-halo {
+    stop-color: oklch(var(--accent) / 0.32);
+  }
+
+  .pp-stop-halo-clear {
+    stop-color: oklch(var(--accent) / 0);
+  }
+
+  .pp-stop-streak-clear {
+    stop-color: oklch(var(--card) / 0);
+  }
+
+  .pp-stop-beam {
+    stop-color: oklch(var(--accent) / 0.95);
+  }
+
+  .pp-stop-beam-mid {
+    stop-color: oklch(var(--accent) / 0.5);
+  }
+
+  .pp-stop-beam-clear {
+    stop-color: oklch(var(--primary) / 0);
+  }
+
+  .pp-bar {
+    fill: oklch(var(--archive-coral));
+    stroke: color-mix(in oklab, oklch(var(--archive-coral)) 70%, oklch(var(--archive-ink)));
+    stroke-width: 0.35;
+  }
+
+  .pp-bezel {
+    stroke: oklch(var(--archive-ink) / 0.2);
+    stroke-width: 0.45;
+  }
+
+  .pp-bezel-light {
+    fill: none;
+    stroke: oklch(var(--card));
+    stroke-linecap: round;
+    stroke-width: 1.1;
+  }
+
+  .pp-recess {
+    fill: none;
+    stroke: oklch(var(--archive-ink) / 0.6);
+    stroke-width: 1.5;
+  }
+
+  .pp-orbits {
+    fill: none;
+    stroke: oklch(var(--card) / 0.32);
+    stroke-width: 0.35;
+  }
+
+  .pp-star {
+    fill: oklch(var(--card) / 0.85);
+  }
+
+  .pp-crescent {
+    fill: oklch(var(--card) / 0.9);
+  }
+
+  .pp-halo {
+    opacity: 0;
+  }
+
+  .auth-demo-role-active .pp-halo,
+  .auth-demo-role:focus-visible .pp-halo {
+    opacity: 1;
+  }
+
+  .pp-glint {
+    fill: oklch(var(--card));
+  }
+
+  .pp-flare {
+    fill: none;
+    stroke: oklch(var(--card) / 0.85);
+    stroke-linecap: round;
+    stroke-width: 0.4;
+  }
+
+  .pp-flash {
+    opacity: 0;
+  }
+
+  .pp-beam {
+    transform: scaleX(var(--beam));
+  }
+
+  .pp-beam-line {
+    fill: none;
+    stroke: oklch(var(--card) / 0.85);
+    stroke-linecap: round;
+    stroke-width: 0.7;
+  }
+
+  .pp-fleck {
+    fill: oklch(var(--card));
+    stroke: oklch(var(--archive-ink) / 0.35);
+    stroke-width: 0.4;
+    opacity: 0;
+    transform-origin: 0 0;
+  }
+
+  .pp-fleck-cobalt {
+    fill: oklch(var(--primary));
+    stroke: none;
+  }
+
+  .pp-fleck-coral {
+    fill: oklch(var(--archive-coral));
+  }
+
+  .pp-fleck-green {
+    fill: oklch(var(--archive-green));
+  }
+
+  .pp-wave {
+    fill: none;
+    stroke: oklch(var(--accent) / 0.9);
+    stroke-width: 1.6;
+    vector-effect: non-scaling-stroke;
+    opacity: 0;
+  }
+
+  .pp-wave-late {
+    stroke: oklch(var(--archive-green) / 0.8);
+  }
+
+  .pp-depth-0 {
+    --depth: 1.5;
+  }
+
+  .pp-depth-2 {
+    --depth: 3;
+  }
+
+  .pp-depth-3 {
+    --depth: 4.5;
+  }
+
+  .pp-depth-4 {
+    --depth: 6;
+  }
+
+  .pp-depth-5 {
+    --depth: 7.5;
+  }
+
+  .pp-depth-core {
+    --depth: -2.5;
+  }
+
+  .auth-demo-role-active .pp-core {
+    transform: scale(1.04);
+  }
+
+  .auth-demo-role-active .pp-art,
+  .auth-demo-role:focus-visible .pp-art {
+    opacity: 1;
+  }
+
+  /* Hover and keyboard focus: light on, pencil drawn, rings part-aligned.
+   * Static state changes, so they hold under reduced motion too. */
+  @media (hover: hover) and (pointer: fine) {
+    .auth-demo-role:hover:not(:disabled) {
+      --k: 0.45;
+      border-color: oklch(var(--primary) / 0.32);
+      box-shadow: inset 0 1px 0 oklch(var(--card)),
+        0 14px 30px oklch(var(--archive-ink) / 0.13);
+    }
+
+    .auth-demo-role-active:hover:not(:disabled) {
+      --k: 0;
+      border-color: oklch(var(--primary) / 0.6);
+      box-shadow: inset 0 0 0 1px oklch(var(--primary) / 0.12),
+        0 14px 30px oklch(var(--primary) / 0.16);
+    }
+
+    .auth-demo-role:hover:not(:disabled) .pp-rim,
+    .auth-demo-role:hover:not(:disabled) .pp-sheen,
+    .auth-demo-role:hover:not(:disabled) .pp-art,
+    .auth-demo-role:hover:not(:disabled) .pp-halo {
+      opacity: 1;
+    }
+
+    .auth-demo-role:hover:not(:disabled) .pp-pencil {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  .auth-demo-role:focus-visible .pp-rim {
+    opacity: 1;
+  }
+
+  .auth-demo-role:focus-visible .pp-pencil {
+    stroke-dashoffset: 0;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .auth-demo-role {
+      transform: translateY(var(--lift)) scale(var(--press));
+      transition: border-color 240ms cubic-bezier(0.25, 1, 0.5, 1),
+        background-color 240ms cubic-bezier(0.25, 1, 0.5, 1),
+        box-shadow 240ms cubic-bezier(0.25, 1, 0.5, 1),
+        transform 200ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .auth-demo-role:active:not(:disabled) {
+      --press: 0.975;
+      --lift: 0px;
+    }
+
+    .auth-demo-role:active:not(:disabled) .pp-core {
+      transform: scale(0.9);
+    }
+
+    .pp-layer {
+      transform: translate(
+        calc(var(--px) * var(--depth) * 1px),
+        calc(var(--py) * var(--depth) * 1px)
+      );
+      transition: transform 420ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .pp-spin {
+      transition: transform 820ms cubic-bezier(0.25, 1, 0.5, 1) var(--delay);
+      animation: pp-register 1.5s cubic-bezier(0.25, 1, 0.5, 1) backwards;
+      animation-delay: calc(var(--delay) + 120ms);
+    }
+
+    .pp-pencil {
+      transition: stroke-dashoffset 900ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .pp-beam {
+      transition: transform 200ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .auth-demo-role-active .pp-beam {
+      transition: transform 560ms cubic-bezier(0.25, 1, 0.5, 1) 520ms;
+    }
+
+    .pp-core {
+      transition: transform 320ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .pp-rim,
+    .pp-sheen,
+    .pp-art,
+    .pp-halo {
+      transition: opacity 240ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .pp-fleck {
+      animation: pp-gather 620ms cubic-bezier(0.5, 0, 0.2, 1) calc(var(--i) * 18ms) both;
+    }
+
+    .pp-burst .pp-flash {
+      animation: pp-flash 1s linear both;
+    }
+
+    .pp-wave {
+      animation: pp-wave 900ms cubic-bezier(0.25, 1, 0.5, 1) 600ms both;
+    }
+
+    .pp-wave-late {
+      animation-delay: 720ms;
+    }
+
+    .auth-demo-role-active .pp-orbits {
+      animation: pp-orbit 22s linear infinite;
+    }
+
+    :root[data-perf="low"] .auth-demo-role-active .pp-orbits {
+      animation: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+    .auth-demo-role:hover:not(:disabled) {
+      --lift: -3px;
+    }
+
+    .auth-demo-role:hover:not(:disabled) .pp-sheen::after {
+      animation: pp-sweep 1s cubic-bezier(0.25, 1, 0.5, 1) both;
+    }
   }
 
   .auth-field {
@@ -1413,6 +1860,80 @@
   animation: none;
 }
 
+/* Demo portals (components/DemoPortal.tsx). */
+@keyframes pp-register {
+  from {
+    opacity: 0;
+    transform: rotate(calc(var(--align) + var(--off) * var(--k) - 70deg));
+  }
+}
+
+@keyframes pp-gather {
+  0% {
+    opacity: 0;
+    transform: translate(100px, 100px) rotate(calc(var(--a) - 40deg)) translateX(var(--r0))
+      rotate(70deg) scale(1.4);
+  }
+  14%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(100px, 100px) rotate(var(--a)) translateX(22px) rotate(0deg) scale(0.5);
+  }
+}
+
+@keyframes pp-flash {
+  0%,
+  50% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  62% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+@keyframes pp-wave {
+  0% {
+    opacity: 0.95;
+    transform: scale(1);
+  }
+  45% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(3.6);
+  }
+}
+
+@keyframes pp-sweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-140%) rotate(18deg);
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(330%) rotate(18deg);
+  }
+}
+
+@keyframes pp-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes archive-rear-settle {
   from {
     opacity: 0.7;
@@ -1679,7 +2200,10 @@
     grid-template-columns: 1fr;
   }
 
-  .auth-demo-role {
+  .auth-demo-grid .auth-demo-role {
+    --art-r: 56px;
+    --art-t: 38px;
+    --align: 175deg;
     min-height: 4.75rem;
   }
 }
