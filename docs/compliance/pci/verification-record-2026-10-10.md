@@ -7,7 +7,7 @@
 | Check | Result |
 |---|---|
 | Production verifier source identity | `production-control-verification.sql` SHA-256 `A6ECF082FD5F358A17F2A9CCCCD81495C28600A8699AABDFC2560732A9C77EC9`; source only, not an execution receipt |
-| Threat-model source identity | `threat-model.md` SHA-256 `C1E93FA9350A6358D120A412988775C1EBFC13BA2E6ED9F529651F8E3BFF7FC3`; engineering source only, not a signed review or risk acceptance |
+| Threat-model source identity | `threat-model.md` SHA-256 `FA37352BD99B3A2EE7B3FE5DB9510967DABE399762B2C2403E7EF0719D3D9E7E`; engineering source only, not a signed review or risk acceptance |
 
 This record supersedes
 [`verification-record-2026-10-07.md`](./verification-record-2026-10-07.md) as the
@@ -54,7 +54,7 @@ first mention of those file names.
 Every item under "Verification still required" in the 2026-10-07 record remains
 open, except SIEM delivery, which is replaced by:
 
-- five of eleven alert rules not yet tested in production
+- six of eleven alert rules not yet tested in production
   (`docs/security/monitoring.md`, "Alert test record");
 - the daily log export to `ryanportfolio/truenote-ops`, which waits for its
   Railway token;

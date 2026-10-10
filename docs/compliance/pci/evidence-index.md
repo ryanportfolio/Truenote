@@ -58,7 +58,7 @@ public repository:
 | Local firewall OpenAI/Cohere/OpenRouter downstream canaries | Product Security/Platform | Portable repository cases and latest-main hosted suite passed; exact release/deployment binding and deployed downstream receipts remain missing |
 | Provider DPAs, retention/ZDR, subprocessor, and PCI/CDE suitability evidence | Vendor-risk | Missing |
 | IdP/MFA and break-glass evidence | IAM | Missing |
-| Security alert exercise, one test per rule (`docs/security/monitoring.md`, "Alert test record") | SecOps | Partial: 6 of 11 rules tested in production on 2026-10-10 |
+| Security alert exercise, one test per rule (`docs/security/monitoring.md`, "Alert test record") | SecOps | Partial: 5 of 11 rules tested in production on 2026-10-10 |
 | Backup/restore test with RTO/RPO result | Platform/database | Missing |
 | Incident-response tabletop | Security/operations | Missing |
 | Independent app/API penetration, AI red team, segmentation test, and retest | PCI/Security | Missing |
