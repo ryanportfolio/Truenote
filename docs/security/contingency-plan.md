@@ -22,6 +22,8 @@ Truenote has one essential function: a CSR asks a question during a call and get
 | Source code | For any rebuild | GitHub | Local clones, plus the code bundle in each off-site copy |
 | Off-site copy | For recovery only | Backblaze B2, separate account | Railway volume backups still cover database failure |
 
+Alternate storage site: the off-site copy is in B2 region `us-east-005`, in the same Virginia area as production (Railway `us-east4`, bucket region `iad`). A separate provider and account protect it from the loss of the Railway account or project, but not from a disaster affecting that whole region. The owner accepted this on 2026-10-10 rather than opening a second B2 account in a western region.
+
 ## 2. Roles
 
 Truenote has one maintainer, who holds every role in this plan: decides to invoke it, runs every recovery step, and tells the customer. No alternate person is named. If the maintainer is unavailable, nobody can run a recovery; record this as an accepted risk until a second person is trained (section 6).

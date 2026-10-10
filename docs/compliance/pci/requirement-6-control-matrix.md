@@ -28,7 +28,7 @@ Grades follow [`docs/security/README.md`](../../security/README.md).
    occurred, or reconciled zero-event evidence plus an approved tabletop if none
    occurred. GitHub branch hardening is owner-deferred and is not the current
    Requirement 6.5 acceptance path.
-3. Production database functions/constraints, SIEM delivery, provider settings,
+3. Production database functions/constraints, security alerting, provider settings,
    IdP/MFA, backup/restore, and incident evidence are not retained in this pack.
 4. No independent penetration or AI red-team report exists in reviewed evidence.
 5. The latest retained CodeQL artifact contains 50 high-scored results; individual

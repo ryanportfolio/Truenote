@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { PgDialect } from "drizzle-orm/pg-core";
 import {
   applyVersionActivity,
   loadVersionActivity,
@@ -8,6 +9,8 @@ import {
   isMissingCitationSnapshotsColumn,
   linkedSourceFromChunk,
   parseCitationSnapshots,
+  purgeCitationSnapshotsForDocument,
+  PURGED_CITATION_SNAPSHOTS,
   withoutDurableCitation
 } from "../citations.js";
 
@@ -244,6 +247,35 @@ describe("applyVersionActivity", () => {
   });
 });
 
+
+describe("purgeCitationSnapshotsForDocument", () => {
+  const program = "00000000-0000-4000-8000-000000000001";
+
+  it("writes a non-null tombstone the NOT NULL column accepts", async () => {
+    database.execute.mockResolvedValueOnce({ rows: [{ id: "a" }, { id: "b" }] });
+    const purged = await purgeCitationSnapshotsForDocument({
+      programId: program,
+      documentId: ids.document
+    });
+    expect(purged).toBe(2);
+
+    const query = new PgDialect().sqlToQuery(database.execute.mock.calls.at(-1)?.[0]);
+    expect(query.sql).toMatch(/SET citation_snapshots = \$1::jsonb/);
+    expect(query.sql).not.toMatch(/=\s*NULL/i);
+    expect(query.params).toEqual([
+      PURGED_CITATION_SNAPSHOTS,
+      program,
+      JSON.stringify([{ doc_id: ids.document }])
+    ]);
+  });
+
+  it("leaves no readable or backfillable receipt behind", () => {
+    const tombstone: unknown = JSON.parse(PURGED_CITATION_SNAPSHOTS);
+    expect(tombstone).not.toBeNull();
+    expect(Array.isArray(tombstone)).toBe(false);
+    expect(parseCitationSnapshots(tombstone)).toBeNull();
+  });
+});
 
 describe("version activity database lookup", () => {
   it("withholds receipts after a database failure", async () => {
