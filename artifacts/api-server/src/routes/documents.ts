@@ -82,12 +82,19 @@ function normalizeMimeType(mimetype: string, originalName: string): string {
 const MAX_BYTES = 20 * 1024 * 1024; // 20MB; services/scanner refuses larger bodies too
 
 /**
- * Quarantined and failed versions re-run ingestion; parsed versions that
- * skipped the external malware scan get a scan-only pass.
+ * Quarantined and failed versions that were never approved re-run ingestion;
+ * parsed versions that skipped the external malware scan get a scan-only
+ * pass. A version quarantined after it was published (the scan-only pass found
+ * malware) is never re-ingested: that would overwrite its published text and
+ * could auto-activate it over a newer version. It needs a new upload.
  */
-function canRescanVersion(lifecycleState: string, scanStatus: string): boolean {
+function canRescanVersion(
+  lifecycleState: string,
+  scanStatus: string,
+  wasApproved: boolean
+): boolean {
   return (
-    ["quarantined", "failed"].includes(lifecycleState) ||
+    (["quarantined", "failed"].includes(lifecycleState) && !wasApproved) ||
     isScanOnlyRescanEligible(lifecycleState, scanStatus)
   );
 }
@@ -189,6 +196,7 @@ documentsRouter.get("/", documentReadLimit, async (req, res, next) => {
         latest.source_owner,
         latest.uploaded_by,
         latest.scan_findings,
+        latest.approved_at IS NOT NULL AS was_approved,
         source.name AS source_name,
         uploader.name AS uploaded_by_name,
         approver.name AS approved_by_name
@@ -258,7 +266,11 @@ documentsRouter.get("/", documentReadLimit, async (req, res, next) => {
         canReject:
           reviewer && ["pending_review", "quarantined"].includes(lifecycleState),
         canRevoke: reviewer && lifecycleState === "active",
-        canRescan: canRescanVersion(lifecycleState, String(row["scan_status"] ?? ""))
+        canRescan: canRescanVersion(
+          lifecycleState,
+          String(row["scan_status"] ?? ""),
+          row["was_approved"] === true
+        )
       };
     });
     let sourcesResult = await db.execute(sql`
@@ -598,6 +610,7 @@ documentsRouter.get("/:versionId/preview", documentReadLimit, async (req, res, n
         dv.source_owner,
         dv.uploaded_by,
         dv.is_active,
+        dv.approved_at IS NOT NULL AS was_approved,
         d.program_id::text,
         d.title,
         source.name AS source_name,
@@ -663,7 +676,8 @@ documentsRouter.get("/:versionId/preview", documentReadLimit, async (req, res, n
         hasAtLeastRole(user, "senior_manager") && row["lifecycle_state"] === "active",
       canRescan: canRescanVersion(
         String(row["lifecycle_state"]),
-        String(row["scan_status"] ?? "")
+        String(row["scan_status"] ?? ""),
+        row["was_approved"] === true
       )
     });
   } catch (err) {
@@ -895,6 +909,7 @@ documentsRouter.post("/:versionId/rescan", workloadRateLimitMiddleware("document
         AND d.program_id = ${programId}::uuid
         AND ${classificationSqlPredicate(sql.raw("dv.classification"), maxClassification)}
         AND dv.lifecycle_state IN ('quarantined', 'failed')
+        AND dv.approved_at IS NULL
       RETURNING dv.id::text
     `);
     if (result.rows.length === 0) {
