@@ -152,6 +152,8 @@ size=$(wc -c < backup.tar.age | tr -d ' ')
 sha=$(sha256sum backup.tar.age | cut -d' ' -f1)
 
 # 7. Upload, then the plain manifest. The first run of a month also goes to monthly/.
+#    A retry after a lost response can store the same bytes twice under one
+#    key; check-offsite.mjs ignores a second version with the same content.
 keys="$prefix/$run_id.tar.age"
 day=$(date -u +%d)
 if [ "$prefix" = weekly ] && [ "$day" -le 7 ]; then

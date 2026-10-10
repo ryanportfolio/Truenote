@@ -7,8 +7,9 @@
 #
 # With an "as of" time, every off-site read uses the object versions that were
 # current at that time (rclone --s3-version-at). Use it when check-offsite.mjs
-# reports an overwritten key: Object Lock keeps the original version, but a
-# newer one uploaded under the same name is what a plain read returns.
+# reports a key changed after upload: Object Lock keeps the original version,
+# but a plain read returns a newer one uploaded under the same name, or nothing
+# when the key was hidden.
 #
 # Reads manifests/<run id>.json and the object it names from the off-site
 # store with a read-only key, checks size and SHA-256 against the manifest,
