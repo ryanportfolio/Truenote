@@ -14,6 +14,8 @@ import {
   stopBoss
 } from "../../artifacts/api-server/src/lib/ingestion/queue.js";
 import { startEvaluationWorker } from "../../artifacts/api-server/src/lib/eval/queue.js";
+import { startWorkerHeartbeat } from "../../artifacts/api-server/src/lib/monitoring/heartbeat.js";
+import { startSecurityMonitor } from "../../artifacts/api-server/src/lib/monitoring/security-monitor.js";
 import {
   installProcessErrorLogging,
   recordAppError
@@ -43,10 +45,16 @@ async function main(): Promise<void> {
   // client, and each path explicitly registers its own queue before work().
   await startIngestionWorker();
   const stopEvaluationReconciler = await startEvaluationWorker();
+  // Started after the job workers so /health/ready reports the worker only
+  // once it can take jobs.
+  const stopHeartbeat = startWorkerHeartbeat();
+  const stopSecurityMonitor = startSecurityMonitor();
   console.log("[worker] ready");
 
   const shutdown = async (signal: string): Promise<void> => {
     console.log(`[worker] received ${signal}, draining…`);
+    stopHeartbeat();
+    stopSecurityMonitor();
     stopEvaluationReconciler();
     // Stop pg-boss first so no new jobs start; this also caps the wait via
     // the 30s timeout inside stopBoss. Then drain the Drizzle pool.

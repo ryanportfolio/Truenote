@@ -33,6 +33,8 @@ Set per service (values never in git or chat; the owner's source file is `Deskto
 
 `railway variable set KEY --stdin --skip-deploys -p <project> -e <env> -s <service>` batches changes without a redeploy; `railway variable delete` always redeploys.
 
+Pending with the monitoring change (`docs/security/monitoring.md`, "Turning it on"): `SECURITY_ALERT_EMAIL` on both services, after `lib/db/sql/0011_monitoring_state.sql` is applied.
+
 ### Database roles
 
 Two roles, defined by `lib/db/sql/0007_app_runtime_role.sql`:
@@ -65,7 +67,7 @@ railway up --detach -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4de
 railway up --detach -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4deb-9434-e9b63a309bd9 -s worker -m "<what ships>"
 ```
 
-Deploy both services from the same commit; they share code. Poll `railway deployment list -p <project> -e <env> -s <service> --json` until `SUCCESS`, then check: `/health` returns `{"ok":true}`, `/` and the changed pages return 200, `railway logs -p <project> -e <env> -s web` shows `[api-server] listening on http://0.0.0.0:8080`, and `railway logs -p <project> -e <env> -s worker` shows `[worker] ready`. For retrieval or answer changes, run one cited question (`.tmp`-style script: demo CSR login, `POST /api/ask`, expect `refused=false` with at least one source).
+Deploy both services from the same commit; they share code. Poll `railway deployment list -p <project> -e <env> -s <service> --json` until `SUCCESS`, then check: `/health` returns `{"ok":true}`, `/` and the changed pages return 200, `railway logs -p <project> -e <env> -s web` shows `[api-server] listening on http://0.0.0.0:8080`, and `railway logs -p <project> -e <env> -s worker` shows `[worker] ready`. Once 0011 is applied, `/health/ready` must also return 200 within a minute of the worker's start (it reports `worker: stale` or `missing` otherwise; `docs/security/monitoring.md`). For retrieval or answer changes, run one cited question (`.tmp`-style script: demo CSR login, `POST /api/ask`, expect `refused=false` with at least one source).
 
 The image runs TypeScript through `tsx`: `scripts/railway-start.sh` execs `artifacts/api-server/src/index.ts` or `scripts/src/worker.ts`. The build runs `pnpm install --frozen-lockfile`, the typecheck of every workspace (`pnpm -r run check`) and the rag-app build; a type error fails the image. `tsx` is a dev dependency, so the image keeps dev dependencies.
 
