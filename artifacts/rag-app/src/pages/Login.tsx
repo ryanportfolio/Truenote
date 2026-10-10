@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { BrandField } from "@/components/BrandField";
 import { DemoPortal } from "@/components/DemoPortal";
@@ -116,12 +116,14 @@ export function LoginPage({
     };
   }, []);
 
-  function applyDemoAccount(account: DemoAccount): void {
+  // Stable identity, so the memoized portals skip re-rendering on every
+  // keystroke in the email and password fields.
+  const applyDemoAccount = useCallback((account: DemoAccount): void => {
     setEmail(account.email);
     setPassword(account.password);
     setSelectedDemo(account.email);
     setError(null);
-  }
+  }, []);
 
   const demoLayout = demoPortalLayout(demoAccounts.length);
 

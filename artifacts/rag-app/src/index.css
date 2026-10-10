@@ -653,10 +653,6 @@
    * register bar clear of the label box at Verdana widths. */
   .auth-demo-role {
     --k: 1;
-    --px: 0;
-    --py: 0;
-    --mx: 50%;
-    --my: 0%;
     --lift: 0px;
     --press: 1;
     --beam: 0;
@@ -761,11 +757,35 @@
     color: oklch(var(--primary));
   }
 
-  /* Long labels wrap up into the art, so they sit on a paper index plate. */
-  .auth-demo-role-long .auth-demo-role-name {
-    border-radius: 0.3rem;
-    background: oklch(var(--card) / 0.92);
-    box-shadow: 0 0 0 0.2rem oklch(var(--card) / 0.92);
+  /* Long labels wrap, so the card makes room instead of letting them run
+   * into the art: narrow cards push the label below the rings (the row
+   * grows), wide cards cap its width short of the rings. 0.42 x --art is
+   * the outer ring's reach, pulled-out tabs included. */
+  .auth-demo-role-long {
+    --pencil: 110deg;
+    padding-top: calc(var(--art-t) + var(--art) * 0.42);
+  }
+
+  .auth-demo-grid[data-count="1"] .auth-demo-role-long,
+  .auth-demo-grid[data-count="3"] .auth-demo-role-long {
+    --pencil: 90deg;
+    padding-top: 0.85rem;
+  }
+
+  .auth-demo-grid[data-count="1"] .auth-demo-role-long .auth-demo-role-name,
+  .auth-demo-grid[data-count="3"] .auth-demo-role-long .auth-demo-role-name {
+    max-width: calc(100% - var(--art-r) - var(--art) * 0.42 + 0.4rem);
+  }
+
+  @media (min-width: 640px) {
+    .auth-demo-grid[data-count="3"] .auth-demo-role-long {
+      --pencil: 110deg;
+      padding-top: calc(var(--art-t) + var(--art) * 0.42);
+    }
+
+    .auth-demo-grid[data-count="3"] .auth-demo-role-long .auth-demo-role-name {
+      max-width: none;
+    }
   }
 
   /* Light that follows the pointer: a rim on the border and a glass sheen. */
@@ -782,7 +802,7 @@
     z-index: 3;
     padding: 1.5px;
     background: radial-gradient(
-      6rem circle at var(--mx) var(--my),
+      6rem circle at var(--mx, 50%) var(--my, 0%),
       oklch(var(--accent)),
       oklch(var(--accent) / 0.35) 45%,
       oklch(var(--primary) / 0) 80%
@@ -797,7 +817,7 @@
     z-index: 1;
     overflow: hidden;
     background: radial-gradient(
-      9rem circle at var(--mx) var(--my),
+      9rem circle at var(--mx, 50%) var(--my, 0%),
       oklch(var(--card) / 0.3),
       oklch(var(--card) / 0) 70%
     );
@@ -824,7 +844,7 @@
   .pp-art {
     position: absolute;
     z-index: 0;
-    opacity: 0.86;
+    opacity: 0.94;
     top: calc(var(--art-t) - var(--art) / 2);
     right: calc(var(--art-r) - var(--art) / 2);
     width: var(--art);
@@ -873,21 +893,21 @@
   }
 
   .pp-shadow {
-    fill: oklch(var(--archive-ink) / 0.1);
-    stroke: oklch(var(--archive-ink) / 0.05);
+    fill: oklch(var(--foreground) / 0.11);
+    stroke: oklch(var(--foreground) / 0.05);
     stroke-width: 1.8;
     stroke-linejoin: round;
   }
 
   .pp-edge {
     fill: none;
-    stroke: oklch(var(--archive-ink) / 0.24);
+    stroke: oklch(var(--foreground) / 0.24);
     stroke-width: 0.45;
   }
 
   .pp-grid {
     fill: none;
-    stroke: oklch(var(--archive-ink) / 0.14);
+    stroke: oklch(var(--foreground) / 0.14);
     stroke-width: 0.3;
   }
 
@@ -923,7 +943,7 @@
   }
 
   .pp-stop-mottle {
-    stop-color: oklch(var(--card) / 0.42);
+    stop-color: oklch(var(--card) / 0.28);
   }
 
   .pp-stop-mottle-clear {
@@ -959,7 +979,7 @@
   }
 
   .pp-stop-streak {
-    stop-color: oklch(var(--accent) / 0.55);
+    stop-color: oklch(var(--accent) / 0.4);
   }
 
   .pp-stop-streak-clear {
@@ -996,16 +1016,24 @@
     .pp-stop-paper {
       stop-color: color-mix(
         in oklab,
-        color-mix(in oklab, oklch(var(--card)) 95%, oklch(var(--archive-coral))),
-        oklch(var(--archive-green)) 5%
+        color-mix(
+          in oklab,
+          color-mix(in oklab, oklch(var(--card)) 88%, oklch(var(--archive-coral))),
+          oklch(var(--archive-green)) 11%
+        ),
+        oklch(var(--foreground)) 3%
       );
     }
 
     .pp-stop-paper-deep {
       stop-color: color-mix(
         in oklab,
-        color-mix(in oklab, oklch(var(--background)) 95%, oklch(var(--archive-coral))),
-        oklch(var(--archive-green)) 6%
+        color-mix(
+          in oklab,
+          color-mix(in oklab, oklch(var(--background)) 89%, oklch(var(--archive-coral))),
+          oklch(var(--archive-green)) 11%
+        ),
+        oklch(var(--foreground)) 3%
       );
     }
 
@@ -1014,8 +1042,12 @@
     .pp-stop-mineral-light {
       stop-color: color-mix(
         in oklab,
-        color-mix(in oklab, oklch(var(--background)) 70%, oklch(var(--archive-green))),
-        oklch(var(--archive-coral)) 6%
+        color-mix(
+          in oklab,
+          color-mix(in oklab, oklch(var(--background)) 62%, oklch(var(--archive-green))),
+          oklch(var(--archive-coral)) 20%
+        ),
+        oklch(var(--foreground)) 4%
       );
     }
 
@@ -1024,10 +1056,10 @@
         in oklab,
         color-mix(
           in oklab,
-          color-mix(in oklab, oklch(var(--background)) 58%, oklch(var(--archive-green))),
-          oklch(var(--archive-coral)) 9%
+          color-mix(in oklab, oklch(var(--background)) 48%, oklch(var(--archive-green))),
+          oklch(var(--archive-coral)) 20%
         ),
-        oklch(var(--foreground)) 3%
+        oklch(var(--foreground)) 10%
       );
     }
 
@@ -1036,15 +1068,15 @@
         in oklab,
         color-mix(
           in oklab,
-          color-mix(in oklab, oklch(var(--background)) 48%, oklch(var(--archive-green))),
-          oklch(var(--archive-coral)) 9%
+          color-mix(in oklab, oklch(var(--background)) 42%, oklch(var(--archive-green))),
+          oklch(var(--archive-coral)) 25%
         ),
-        oklch(var(--foreground)) 9%
+        oklch(var(--foreground)) 18%
       );
     }
 
     .pp-stop-glass-deep {
-      stop-color: color-mix(in oklab, oklch(var(--primary)) 55%, oklch(var(--archive-ink)));
+      stop-color: color-mix(in oklab, oklch(var(--primary)) 50%, oklch(var(--archive-ink)));
     }
 
     .pp-stop-glass-edge {
@@ -1054,12 +1086,12 @@
 
   .pp-bar {
     fill: oklch(var(--archive-coral));
-    stroke: oklch(var(--archive-ink) / 0.35);
+    stroke: oklch(var(--foreground) / 0.3);
     stroke-width: 0.35;
   }
 
   .pp-bezel {
-    stroke: oklch(var(--archive-ink) / 0.2);
+    stroke: oklch(var(--foreground) / 0.2);
     stroke-width: 0.45;
   }
 
@@ -1097,6 +1129,13 @@
   .auth-demo-role-active .pp-halo,
   .auth-demo-role:focus-visible .pp-halo {
     opacity: 1;
+  }
+
+  .pp-crescent-glow {
+    fill: none;
+    stroke: oklch(var(--card) / 0.32);
+    stroke-linecap: round;
+    stroke-width: 3.4;
   }
 
   .pp-glint {
@@ -1220,7 +1259,8 @@
     }
   }
 
-  .auth-demo-role:focus-visible .pp-rim {
+  .auth-demo-role:focus-visible .pp-rim,
+  .auth-demo-role:focus-visible .pp-sheen {
     opacity: 1;
   }
 
@@ -1247,8 +1287,8 @@
 
     .pp-layer {
       transform: translate(
-        calc(var(--px) * var(--depth) * 1px),
-        calc(var(--py) * var(--depth) * 1px)
+        calc(var(--px, 0) * var(--depth) * 1px),
+        calc(var(--py, 0) * var(--depth) * 1px)
       );
       transition: transform 420ms cubic-bezier(0.25, 1, 0.5, 1);
     }
@@ -1257,6 +1297,10 @@
       transition: transform 820ms cubic-bezier(0.25, 1, 0.5, 1) var(--delay);
       animation: pp-register 1.5s cubic-bezier(0.25, 1, 0.5, 1) backwards;
       animation-delay: calc(var(--delay) + 120ms);
+    }
+
+    .pp-spin-register {
+      animation-name: pp-register-bars;
     }
 
     .pp-pencil {
@@ -1291,7 +1335,7 @@
     }
 
     .pp-wave {
-      animation: pp-wave 900ms cubic-bezier(0.25, 1, 0.5, 1) 600ms both;
+      animation: pp-wave 900ms cubic-bezier(0.25, 1, 0.5, 1) 600ms forwards;
     }
 
     .pp-wave-late {
@@ -1314,6 +1358,16 @@
 
     .auth-demo-role:hover:active:not(:disabled) {
       --lift: 0px;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .auth-demo-role:focus-visible {
+      --lift: -3px;
+    }
+
+    .auth-demo-role:focus-visible .pp-sheen::after {
+      animation: pp-sweep 1s cubic-bezier(0.25, 1, 0.5, 1) both;
     }
 
     .auth-demo-role:hover:not(:disabled) .pp-sheen::after {
@@ -1956,6 +2010,14 @@
   }
 }
 
+/* The bars come in from above the core, away from the label. */
+@keyframes pp-register-bars {
+  from {
+    opacity: 0;
+    transform: rotate(calc(var(--reg) + var(--off) * var(--k) + 60deg));
+  }
+}
+
 @keyframes pp-gather {
   0% {
     opacity: 0;
@@ -2292,7 +2354,18 @@
     --art-r: 56px;
     --art-t: 38px;
     --align: 175deg;
+    --pencil: 90deg;
+    --reg: 202deg;
     min-height: 4.75rem;
+  }
+
+  .auth-demo-grid .auth-demo-role-long {
+    --pencil: 90deg;
+    padding-top: 0.85rem;
+  }
+
+  .auth-demo-grid .auth-demo-role-long .auth-demo-role-name {
+    max-width: calc(100% - var(--art-r) - var(--art) * 0.42 + 0.4rem);
   }
 }
 

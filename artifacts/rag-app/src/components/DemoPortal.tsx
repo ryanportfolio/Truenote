@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { memo, useId, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { cn } from "@/lib/utils";
 import type { DemoAccount } from "@/types/api";
 
@@ -8,7 +8,7 @@ import type { DemoAccount } from "@/types/api";
  * sit around a recessed cobalt core, each ring with one main gap.
  *
  *   rest      gaps scattered; the rings sit at role-specific offsets
- *   hover     the card tilts toward the pointer, layers parallax by depth,
+ *   hover     the card lifts, layers parallax toward the pointer by depth,
  *             and the rings turn part of the way toward alignment
  *   selected  evidence flecks gather into the core, it flashes, and every
  *             gap locks onto one axis that points at the label; a cobalt
@@ -17,7 +17,9 @@ import type { DemoAccount } from "@/types/api";
  * The rotations live in CSS (`--k` scales each ring's offset: 1 at rest,
  * a fraction on hover, 0 when selected), so reduced motion and low-power
  * rules stay in index.css. Pointer position reaches CSS as `--px`/`--py`
- * (-1..1) without a React render.
+ * (-1..1) and `--mx`/`--my` without a React render, written only on the
+ * layers and light spans that read them, so a pointer move restyles those
+ * few elements instead of the whole SVG.
  */
 
 type Role = DemoAccount["role"];
@@ -65,9 +67,9 @@ const R = {
   outer: [60, 78] as const,
   tab: 81,
   bars: [
-    [86, 89.5],
-    [91.5, 95],
-    [97, 100.5]
+    [80.5, 85.5],
+    [87, 92],
+    [93.5, 98.5]
   ] as const
 };
 
@@ -127,6 +129,47 @@ function ring(r0: number, r1: number, gap: number, seams: number[], step: number
   return { parts, grid: polarGrid(r0, r1, parts, step) };
 }
 
+interface RoleGeometry {
+  inner: RingGeometry;
+  mineral: RingGeometry;
+  outer: RingGeometry;
+  /** Outline of each ring's sectors as one path: shadow copy and edge. */
+  outlines: { inner: string; mineral: string; outer: string };
+}
+
+function outline(parts: Array<[number, number]>, r0: number, r1: number, tabs: number[] = []): string {
+  return parts.map(([a0, a1], i) => sector(r0, tabs.includes(i) ? R.tab : r1, a0, a1)).join("");
+}
+
+function roleGeometry(art: RoleArt): RoleGeometry {
+  const inner = ring(R.inner[0], R.inner[1], GAP.inner, art.seams.inner, 6);
+  const mineral = ring(R.mineral[0], R.mineral[1], GAP.mineral, art.seams.mineral, 5);
+  const outer = ring(R.outer[0], R.outer[1], GAP.outer, art.seams.outer, 4.5);
+  return {
+    inner,
+    mineral,
+    outer,
+    outlines: {
+      inner: outline(inner.parts, R.inner[0], R.inner[1]),
+      mineral: outline(mineral.parts, R.mineral[0], R.mineral[1]),
+      outer: outline(outer.parts, R.outer[0], R.outer[1], art.tabs)
+    }
+  };
+}
+
+// Built once per role at module load; renders reuse the path strings.
+const GEOMETRY = Object.fromEntries(
+  (Object.keys(ROLE_ART) as Role[]).map((role) => [role, roleGeometry(ROLE_ART[role])])
+) as Record<Role, RoleGeometry>;
+
+/** Lens rings inside the core: concentric arcs with breaks, as in the hero. */
+const LENS = [
+  arc(8.5, 20, 330),
+  arc(12.8, 120, 400),
+  arc(16.6, 210, 470),
+  arc(16.6, 488, 540)
+].join("");
+
 const STARS: Array<[number, number, number]> = [
   [-9, -6, 0.55],
   [6, -11, 0.4],
@@ -147,7 +190,7 @@ interface DemoPortalProps {
   onSelect: (account: DemoAccount) => void;
 }
 
-export function DemoPortal({
+export const DemoPortal = memo(function DemoPortal({
   account,
   selected,
   disabled,
@@ -156,15 +199,22 @@ export function DemoPortal({
 }: DemoPortalProps): JSX.Element {
   const ref = useRef<HTMLButtonElement>(null);
   const frame = useRef(0);
+  const targets = useRef<{ layers: Array<SVGGElement>; lights: Array<HTMLSpanElement> } | null>(null);
   // Each selection replays the gather + shockwave by remounting them.
   const [burst, setBurst] = useState(0);
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const id = (name: string): string => `pp${uid}${name}`;
-  const art = ROLE_ART[account.role] ?? ROLE_ART.csr;
+  const role: Role = account.role in ROLE_ART ? account.role : "csr";
+  const art = ROLE_ART[role];
+  const { inner, mineral, outer, outlines } = GEOMETRY[role];
 
-  const inner = ring(R.inner[0], R.inner[1], GAP.inner, art.seams.inner, 6);
-  const mineral = ring(R.mineral[0], R.mineral[1], GAP.mineral, art.seams.mineral, 5);
-  const outer = ring(R.outer[0], R.outer[1], GAP.outer, art.seams.outer, 4.5);
+  function lightTargets(el: HTMLButtonElement) {
+    targets.current ??= {
+      layers: Array.from(el.querySelectorAll<SVGGElement>(".pp-layer")),
+      lights: Array.from(el.querySelectorAll<HTMLSpanElement>(".pp-rim, .pp-sheen"))
+    };
+    return targets.current;
+  }
 
   function track(e: PointerEvent<HTMLButtonElement>): void {
     if (e.pointerType === "touch" || disabled) return;
@@ -176,10 +226,17 @@ export function DemoPortal({
       const r = el.getBoundingClientRect();
       const x = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
       const y = Math.min(1, Math.max(0, (clientY - r.top) / r.height));
-      el.style.setProperty("--px", (x * 2 - 1).toFixed(3));
-      el.style.setProperty("--py", (y * 2 - 1).toFixed(3));
-      el.style.setProperty("--mx", `${(x * 100).toFixed(1)}%`);
-      el.style.setProperty("--my", `${(y * 100).toFixed(1)}%`);
+      const { layers, lights } = lightTargets(el);
+      const px = (x * 2 - 1).toFixed(3);
+      const py = (y * 2 - 1).toFixed(3);
+      for (const layer of layers) {
+        layer.style.setProperty("--px", px);
+        layer.style.setProperty("--py", py);
+      }
+      for (const light of lights) {
+        light.style.setProperty("--mx", `${(x * 100).toFixed(1)}%`);
+        light.style.setProperty("--my", `${(y * 100).toFixed(1)}%`);
+      }
     });
   }
 
@@ -187,8 +244,10 @@ export function DemoPortal({
     cancelAnimationFrame(frame.current);
     const el = ref.current;
     if (!el) return;
-    el.style.setProperty("--px", "0");
-    el.style.setProperty("--py", "0");
+    for (const layer of lightTargets(el).layers) {
+      layer.style.setProperty("--px", "0");
+      layer.style.setProperty("--py", "0");
+    }
   }
 
   function paperSectors(
@@ -204,10 +263,6 @@ export function DemoPortal({
         fill={`url(#${id(i % 2 ? "paperB" : "paperA")})`}
       />
     ));
-  }
-
-  function shadowCopy(parts: Array<[number, number]>, r0: number, r1: number, tabs: number[] = []): string {
-    return parts.map(([a0, a1], i) => sector(r0, tabs.includes(i) ? R.tab : r1, a0, a1)).join("");
   }
 
   const spin = (offset: number, delay: number) =>
@@ -324,13 +379,13 @@ export function DemoPortal({
         <g className="pp-layer pp-depth-4">
           <g className="pp-shadow-offset">
             <g className="pp-spin" style={spin(art.offsets.outer, 100)}>
-              <path className="pp-shadow" d={shadowCopy(outer.parts, R.outer[0], R.outer[1], art.tabs)} />
+              <path className="pp-shadow" d={outlines.outer} />
             </g>
           </g>
           <g className="pp-spin" style={spin(art.offsets.outer, 100)}>
             {paperSectors(outer.parts, R.outer[0], R.outer[1], art.tabs)}
             <path className="pp-grid" d={outer.grid} />
-            <path className="pp-edge" d={shadowCopy(outer.parts, R.outer[0], R.outer[1], art.tabs)} />
+            <path className="pp-edge" d={outlines.outer} />
           </g>
         </g>
 
@@ -338,7 +393,7 @@ export function DemoPortal({
         <g className="pp-layer pp-depth-3">
           <g className="pp-shadow-offset">
             <g className="pp-spin" style={spin(art.offsets.mineral, 50)}>
-              <path className="pp-shadow" d={shadowCopy(mineral.parts, R.mineral[0], R.mineral[1])} />
+              <path className="pp-shadow" d={outlines.mineral} />
             </g>
           </g>
           <g className="pp-spin" style={spin(art.offsets.mineral, 50)}>
@@ -352,7 +407,7 @@ export function DemoPortal({
               <circle cx="70" cy="140" r="14" fill={`url(#${id("mottle")})`} />
             </g>
             <path className="pp-grid pp-grid-mineral" d={mineral.grid} />
-            <path className="pp-edge" d={shadowCopy(mineral.parts, R.mineral[0], R.mineral[1])} />
+            <path className="pp-edge" d={outlines.mineral} />
           </g>
         </g>
 
@@ -360,13 +415,13 @@ export function DemoPortal({
         <g className="pp-layer pp-depth-2">
           <g className="pp-shadow-offset">
             <g className="pp-spin" style={spin(art.offsets.inner, 0)}>
-              <path className="pp-shadow" d={shadowCopy(inner.parts, R.inner[0], R.inner[1])} />
+              <path className="pp-shadow" d={outlines.inner} />
             </g>
           </g>
           <g className="pp-spin" style={spin(art.offsets.inner, 0)}>
             {paperSectors(inner.parts, R.inner[0], R.inner[1])}
             <path className="pp-grid" d={inner.grid} />
-            <path className="pp-edge" d={shadowCopy(inner.parts, R.inner[0], R.inner[1])} />
+            <path className="pp-edge" d={outlines.inner} />
           </g>
         </g>
 
@@ -389,17 +444,14 @@ export function DemoPortal({
             <circle cx={C} cy={C} r={R.core} fill={`url(#${id("glass")})`} />
             <g clipPath={`url(#${id("glassClip")})`}>
               <rect x="70" y="70" width="60" height="60" fill={`url(#${id("streak")})`} className="pp-streak" />
-              <g className="pp-orbits">
-                <ellipse cx={C} cy={C} rx="17" ry="8.5" style={{ transform: "rotate(-24deg)" }} />
-                <ellipse cx={C} cy={C} rx="12.5" ry="12.5" />
-                <ellipse cx={C} cy={C} rx="8" ry="15" style={{ transform: "rotate(32deg)" }} />
-              </g>
+              <path className="pp-orbits" d={LENS} />
               {STARS.map(([x, y, o], i) => (
                 <circle key={i} cx={C + x} cy={C + y} r={o} className="pp-star" />
               ))}
             </g>
             <circle cx={C} cy={C} r={R.core - 0.6} className="pp-recess" />
             <g className="pp-spec">
+              <path d={arc(18.6, 4, 116)} className="pp-crescent-glow" />
               <path
                 d={`M${polar(20, 14)}A20 20 0 0 1 ${polar(20, 106)}A34 34 0 0 0 ${polar(20, 14)}Z`}
                 className="pp-crescent"
@@ -442,4 +494,4 @@ export function DemoPortal({
       <span className="auth-demo-role-name">{account.label}</span>
     </button>
   );
-}
+});
