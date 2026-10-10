@@ -10,9 +10,9 @@ Use the public capabilities brief as the baseline claim inventory. Repository, r
 ## Sources
 
 1. Read `docs/security/truenote-security-capabilities.html`, `docs/security/truenote-pci-security-capabilities.html`, and `docs/security/README.md` completely.
-2. Read the DDL in `docs/security/` (`p0-p1-security-controls.sql`, `p1-siem-delivery-outbox.sql`, `malware-scanning-control.sql`, `review-approval-control.sql`), the numbered migrations in `lib/db/sql/`, `docs/compliance/pci/production-control-verification.sql`, `CLAUDE.md`, `.claude/reference/deployment.md`, and the other relevant `.claude/reference/` files.
+2. Read the DDL in `docs/security/` (`p0-p1-security-controls.sql`, `malware-scanning-control.sql`, `review-approval-control.sql`) and `docs/security/monitoring.md`, the numbered migrations in `lib/db/sql/`, `docs/compliance/pci/production-control-verification.sql`, `CLAUDE.md`, `.claude/reference/deployment.md`, and the other relevant `.claude/reference/` files.
 3. Inspect implementation, tests, CI, configuration defaults, `.env.example`, DDL, diffs, and verification output. Find fail-open behavior and conflicts with published claims.
-4. Request missing hosting (Railway), configuration, IdP/MFA, scanner, SIEM, vendor, branch-protection, incident, recovery, and assessment evidence. Known evidence gap: the Railway database inherited the `siem_delivery_outbox` table from Replit, but the functions and trigger from `p1-siem-delivery-outbox.sql` are missing there. Grade SIEM delivery from the live definitions (`\d+`, `pg_get_functiondef`), not from the SQL file.
+4. Request missing hosting (Railway), configuration, IdP/MFA, scanner, SIEM, vendor, branch-protection, incident, recovery, and assessment evidence. Grade security monitoring from production evidence, not from the code: the alert test record in `docs/security/monitoring.md`, `GET /api/admin/observability/security-audit`, `/health/ready`, and the export history of the private `ryanportfolio/truenote-ops` repository. The SIEM outbox was retired on 2026-10-10 and never ran on Railway.
 5. Recheck time-sensitive claims using official regulatory/provider sources. Record URL and access date; label unavailable verification explicitly.
 
 ## Evidence grades

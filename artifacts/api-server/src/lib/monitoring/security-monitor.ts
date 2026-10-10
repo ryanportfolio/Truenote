@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db, withPgAdvisoryLock } from "../db-client.js";
 import { safeErrorMessage } from "../observability/error-log.js";
+import { isMissingSecuritySchema } from "../security/errors.js";
 import {
   deliverSecurityAlerts,
   logJsonLine,
@@ -356,4 +357,65 @@ export function startSecurityMonitor(
     stopped = true;
     clearInterval(timer);
   };
+}
+
+export interface SecurityMonitorStatus {
+  storageReady: boolean;
+  lastSequence: number | null;
+  latestSequence: number | null;
+  pendingEvents: number | null;
+  advancedAt: string | null;
+  workerBeatAt: string | null;
+}
+
+function isoOrNull(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const ms = new Date(value as string | Date).getTime();
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+function numberOrNull(value: unknown): number | null {
+  return value === null || value === undefined ? null : Number(value);
+}
+
+/**
+ * Super-user view of the monitor (GET /api/admin/observability/security-audit):
+ * how far the cursor is behind the newest security event, when it last
+ * advanced, and the worker's last heartbeat. storageReady is false until
+ * lib/db/sql/0011 is applied.
+ */
+export async function getSecurityMonitorStatus(
+  executor: SqlExecutor = db as unknown as SqlExecutor
+): Promise<SecurityMonitorStatus> {
+  try {
+    const result = await executor.execute(sql`
+      SELECT
+        (SELECT last_sequence FROM security_monitor_state WHERE id) AS last_sequence,
+        (SELECT updated_at FROM security_monitor_state WHERE id) AS advanced_at,
+        (SELECT max(sequence) FROM security_events) AS latest_sequence,
+        (SELECT beat_at FROM service_heartbeats WHERE service = 'worker') AS worker_beat_at
+    `);
+    const row = (result.rows[0] ?? {}) as Record<string, unknown>;
+    const lastSequence = numberOrNull(row["last_sequence"]);
+    const latestSequence = numberOrNull(row["latest_sequence"]);
+    return {
+      storageReady: true,
+      lastSequence,
+      latestSequence,
+      pendingEvents:
+        latestSequence === null ? 0 : latestSequence - (lastSequence ?? 0),
+      advancedAt: isoOrNull(row["advanced_at"]),
+      workerBeatAt: isoOrNull(row["worker_beat_at"])
+    };
+  } catch (error) {
+    if (!isMissingSecuritySchema(error)) throw error;
+    return {
+      storageReady: false,
+      lastSequence: null,
+      latestSequence: null,
+      pendingEvents: null,
+      advancedAt: null,
+      workerBeatAt: null
+    };
+  }
 }

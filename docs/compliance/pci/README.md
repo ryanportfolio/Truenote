@@ -91,13 +91,15 @@ and evidence sufficiency.
 14. [`verification-record-2026-07-16.md`](./verification-record-2026-07-16.md)
    records exact local checks and the current-main integration limitation.
    [`verification-record-2026-10-07.md`](./verification-record-2026-10-07.md)
-   is the current record the evidence gate reads; it pins the Railway-era threat
-   model.
+   pinned the Railway-era threat model.
+   [`verification-record-2026-10-10.md`](./verification-record-2026-10-10.md)
+   is the current record the evidence gate reads; it pins the threat model and
+   catalog verifier after the SIEM outbox was retired.
 15. [`change-record-2026-07-16-security-readiness.md`](./change-record-2026-07-16-security-readiness.md)
    is the populated pre-release Requirement 6.5 record for this tranche; its
    unchecked approval, hosted-check, deployment, and runtime gates block closure.
 16. [`production-evidence-capture-runbook.md`](./production-evidence-capture-runbook.md)
-   defines the controlled production catalog, workload, SIEM, and OpenRouter
+   defines the controlled production catalog, workload, security alert, and OpenRouter
    evidence exercise without exporting application data.
 17. [`production-control-verification.sql`](./production-control-verification.sql)
     and its

@@ -11,7 +11,7 @@ The owner's decisions on 2026-10-10:
 - No new log vendor. Railway keeps logs for 30 days on the Pro plan. A daily job in the private repository `ryanportfolio/truenote-ops` exports them and commits them there, so a copy exists outside Railway.
 - Alerts are sent from Truenote itself, by email through Resend, which the app already uses.
 - An uptime check in the same private repository opens an issue there when Truenote is down. GitHub emails the owner about the new issue. The Truenote repository is public, so outage issues do not go there.
-- The SIEM delivery outbox (`docs/security/p1-siem-delivery-outbox.sql`) is not finished. Security events reach the log through the security monitor below instead. Removing the outbox code and updating the documents that describe it is a separate change.
+- The SIEM delivery outbox is retired. Its code and `docs/security/p1-siem-delivery-outbox.sql` were removed; `lib/db/sql/0013_drop_siem_delivery_outbox.sql` drops its empty table. Security events reach the log through the security monitor below.
 - The retention period (AU-11) stays open until the employer names the framework it assesses against. NIST 800-53 Moderate leaves the period to the organization; FedRAMP Moderate (OMB M-21-31) and PCI DSS 10.5.1 require 12 months. Until then, nothing deletes the exported logs.
 
 ## Where records live

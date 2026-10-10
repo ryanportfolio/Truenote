@@ -35,7 +35,7 @@ Reports are especially useful when they show that Truenote can:
 - activate content without required scanning and role-authorized activation or review;
 - disclose secrets, payment-card data, SSNs, prompts, or unredacted provider errors;
 - bypass OIDC validation, session controls, CSRF defenses, rate limits, retention gates, or audit recording;
-- lose, duplicate, or falsely mark SIEM delivery during retries and worker races.
+- suppress, skip, or forge security alerts or the `[security-event]` log lines, for example around worker restarts or failed alert emails.
 
 Use synthetic programs, documents, users, and credentials for proof of concept work. Do not access data that is not yours, degrade a shared service, or test third-party providers without their permission.
 
