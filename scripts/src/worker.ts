@@ -14,6 +14,7 @@ import {
   stopBoss
 } from "../../artifacts/api-server/src/lib/ingestion/queue.js";
 import { startEvaluationWorker } from "../../artifacts/api-server/src/lib/eval/queue.js";
+import { startEvidenceWorker } from "../../artifacts/api-server/src/lib/evidence/queue.js";
 import {
   installProcessErrorLogging,
   recordAppError
@@ -43,6 +44,7 @@ async function main(): Promise<void> {
   // client, and each path explicitly registers its own queue before work().
   await startIngestionWorker();
   const stopEvaluationReconciler = await startEvaluationWorker();
+  await startEvidenceWorker();
   console.log("[worker] ready");
 
   const shutdown = async (signal: string): Promise<void> => {

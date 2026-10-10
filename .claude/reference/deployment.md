@@ -58,9 +58,10 @@ The owner authorized an agent account for operating and testing the site (2026-1
 
 ## Deploying
 
-Merging to `main` deploys nothing. Each production deploy waits for the owner's go. From a worktree checked out at freshly fetched `origin/main`:
+Merging to `main` deploys nothing. Each production deploy waits for the owner's go. From a worktree checked out at freshly fetched `origin/main`, first record the commit being shipped; the evidence harness puts it on every receipt (`artifacts/api-server/src/lib/evidence/receipts.ts`), and `railway up` uploads no `.git`. The file is gitignored and whitelisted in `.railwayignore` and `.dockerignore`:
 
 ```text
+node -e "const {execSync:x}=require('child_process');const c=x('git rev-parse HEAD').toString().trim();const d=x('git status --porcelain').toString().trim()?'+dirty':'';require('fs').writeFileSync('.release-commit',c+d+'\n')"
 railway up --detach -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4deb-9434-e9b63a309bd9 -s web -m "<what ships>"
 railway up --detach -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4deb-9434-e9b63a309bd9 -s worker -m "<what ships>"
 ```

@@ -45,3 +45,9 @@ export const userAdminWriteLimit = perUserLimit(30, 60_000);
 
 /** Security page setting changes (the demo-limits switch): 30 a minute per user. */
 export const securitySettingWriteLimit = perUserLimit(30, 60_000);
+
+/** Evidence harness reads (receipts, controls, failures): 60 a minute per user. */
+export const evidenceReadLimit = perUserLimit(60, 60_000);
+
+/** Evidence harness writes (known-gap links, manual runs): 10 a minute per user. */
+export const evidenceWriteLimit = perUserLimit(10, 60_000);
