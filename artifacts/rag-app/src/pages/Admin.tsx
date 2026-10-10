@@ -72,13 +72,16 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
   // as every doc reaches a review or terminal state so an idle page
   // costs nothing. The setTimeout is scheduled fresh on each items change,
   // so a successful refresh that resolves all in-flight docs naturally
-  // breaks the chain. After a failed refresh the next poll waits longer,
-  // up to 30 seconds, instead of stopping.
+  // breaks the chain. A failed refresh (a 429 from the per-user limit, a
+  // network blip) is retried even with nothing in flight, since the list
+  // may be empty or stale; each retry waits longer, up to 30 seconds, and
+  // retries without in-flight documents stop after five failures.
   useEffect(() => {
     const hasInFlight = items.some((item) =>
       ["submitted", "scanning", "parsing"].includes(item.lifecycleState)
     );
-    if (!hasInFlight) return;
+    const retryFailure = failedRefreshes > 0 && failedRefreshes <= 5;
+    if (!hasInFlight && !retryFailure) return;
     const delay = Math.min(POLL_INTERVAL_MS * 2 ** failedRefreshes, 30_000);
     const timer = setTimeout(() => {
       void refresh();
