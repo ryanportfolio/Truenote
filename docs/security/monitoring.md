@@ -2,7 +2,7 @@
 
 Truenote's log review, alerting and availability monitoring. It addresses NIST SP 800-53 Rev. 5 Moderate AU-5, AU-6, AU-6(1), AU-6(3) and SI-4, and the readiness part of CA-7 (POA&M items POAM-2026-012 and POAM-2026-013).
 
-Status, 2026-10-10: the code is in the repository but not deployed. The steps under "Turning it on" need the owner's go. The off-Railway log copy and the uptime check live in a separate private repository, `ryanportfolio/truenote-ops`, which is a separate change.
+Status, 2026-10-10: the code is in the repository but not deployed. The steps under "Turning it on" need the owner's go. The off-Railway log copy and the uptime check live in the private repository `ryanportfolio/truenote-ops` (created 2026-10-10). Its uptime check runs against `/health` until `/health/ready` is deployed; its log export waits for the `RAILWAY_TOKEN` secret.
 
 ## Design decisions
 
@@ -22,7 +22,7 @@ The owner's decisions on 2026-10-10:
 | web and worker output, including one `[security-event]` line per security event | Railway logs | 30 days (Pro plan) |
 | Railway HTTP logs (method, path, status, client IP; no query string) | Railway logs | 30 days |
 | `pgvector` connection logs | Railway logs | 30 days |
-| Daily export of the four log streams above | Private repository `ryanportfolio/truenote-ops` | Until the AU-11 decision (planned) |
+| Daily export of the four log streams above, every deployment of each service (`railway logs` returns one deployment at a time) | Private repository `ryanportfolio/truenote-ops`, `logs/YYYY/MM/DD/` | Until the AU-11 decision; nothing deletes them |
 
 On 2026-10-10 the four Railway log streams added up to about 0.9 MB a day, mostly `pgvector` connection lines.
 
@@ -52,7 +52,7 @@ Rows that occurred more than one hour before the cursor last advanced are printe
 | `denied_spike` | 50 or more security events with outcome `denied` in 15 minutes | Email; at most once an hour |
 | `audit_write_failure` | `append_security_event` failed in `web` or `worker` | Email at once from the failing process, without the database; later failures in the next 15 minutes are counted into the next email |
 | `security_monitor_failing` | Five passes in a row failed | Email once until a pass succeeds |
-| Health failure | `GET /health/ready` failed twice in a row | Issue in `ryanportfolio/truenote-ops`, which GitHub emails to the owner (planned) |
+| Health failure | `GET /health/ready` did not return 200 with the JSON body `{"ok":true}` on two attempts 60 seconds apart; checked at :07 and :37 each hour | Issue labeled `outage` in `ryanportfolio/truenote-ops`, which GitHub emails to the owner; comment and close on recovery |
 
 A denied login is any 4xx answer to `POST /api/auth/login`: wrong password, unknown account, blocked role, or the per-IP limit. These rows record the source address but not the attempted account. Route ids are compared without regard to case or a trailing slash, because Express routes `/api/auth/LOGIN` and `/api/auth/login/` to the same handler and the audit row keeps the request's spelling.
 
@@ -104,4 +104,4 @@ Each step needs the owner's go.
 | `denied_spike` | Covered by a 50-attempt run of the test above | | Pending |
 | `audit_write_failure` | Needs a failing append; method to be agreed with the owner | | Pending |
 | `security_monitor_failing` | Needs five failed passes; method to be agreed with the owner | | Pending |
-| Health failure | Point the uptime check at a URL that returns 503 | | Pending |
+| Health failure | Uptime check pointed at `https://truenote.org/health/ready` before that route was deployed, then back at `/health` | 2026-10-10 | Passed after one fix. The first run counted the URL as up because the SPA fallback answers unknown paths with 200 and HTML; the check now requires the JSON body `{"ok":true}`. The rerun opened `ryanportfolio/truenote-ops` issue 1; the recovery run commented and closed it at 04:53 UTC |
