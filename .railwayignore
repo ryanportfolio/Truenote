@@ -1,6 +1,7 @@
 # `railway up` upload whitelist. Keep identical to .dockerignore.
 *
 !Dockerfile.railway
+!Dockerfile.backup
 !package.json
 !pnpm-lock.yaml
 !pnpm-workspace.yaml

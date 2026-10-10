@@ -1,6 +1,7 @@
 # Docker build context whitelist. Keep identical to .railwayignore.
 *
 !Dockerfile.railway
+!Dockerfile.backup
 !package.json
 !pnpm-lock.yaml
 !pnpm-workspace.yaml
