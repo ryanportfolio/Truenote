@@ -1,5 +1,6 @@
 /**
- * Install or migrate the pg-boss schema and create every queue the app uses,
+ * Install or migrate the pg-boss schema, create every queue the app uses and
+ * write the evidence queue's current policy over its stored options,
  * connected as the migration role (`postgres`).
  *
  * web and worker connect as truenote_app (lib/db/sql/0007_app_runtime_role.sql),
@@ -41,9 +42,21 @@ async function main(): Promise<void> {
   await ensureQueue(boss, INGEST_DOCUMENT_VERSION_QUEUE, INGEST_QUEUE_POLICY);
   await ensureQueue(boss, RUN_EVALUATION_QUEUE, EVAL_QUEUE_POLICY);
   await ensureQueue(boss, EVIDENCE_RUN_QUEUE, EVIDENCE_QUEUE_POLICY);
+  // pg-boss stores a queue's retry and expiry options when the queue is
+  // created, and createQueue on an existing queue changes nothing. The
+  // evidence queue was created with expireInSeconds 1,800, shorter than a
+  // worst-case run (evidence/queue.ts), so write the current policy over the
+  // stored one. Jobs already queued keep the expiry they were sent with.
+  await boss.updateQueue(EVIDENCE_RUN_QUEUE, { name: EVIDENCE_RUN_QUEUE, ...EVIDENCE_QUEUE_POLICY });
   const version = await boss.schemaVersion();
-  const queues = (await boss.getQueues()).map((q) => q.name).sort();
+  const queueRows = await boss.getQueues();
+  const queues = queueRows.map((q) => q.name).sort();
+  const evidence = queueRows.find((q) => q.name === EVIDENCE_RUN_QUEUE);
   console.log(`[pgboss-install] schema version ${version}; queues: ${queues.join(", ")}`);
+  console.log(
+    `[pgboss-install] ${EVIDENCE_RUN_QUEUE}: retryLimit ${evidence?.retryLimit}, retryDelay ${evidence?.retryDelay}, ` +
+      `expireInSeconds ${evidence?.expireInSeconds}`
+  );
 }
 
 try {

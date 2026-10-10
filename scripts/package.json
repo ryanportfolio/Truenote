@@ -13,6 +13,7 @@
     "pgboss:install": "tsx src/pgboss-install.ts",
     "evidence:nist-ids": "tsx src/evidence-nist-ids.ts",
     "evidence:outside": "tsx src/evidence-outside.ts",
+    "evidence:synthetic-provision": "tsx src/evidence-synthetic-provision.ts",
     "verify:pci-evidence": "tsx src/verify-pci-evidence.ts",
     "verify:change-record": "tsx src/verify-pr-change-record.ts",
     "verify:pci-scope-decision": "tsx src/verify-pci-scope-decision.ts",
@@ -32,10 +33,12 @@
   "dependencies": {
     "@workspace/api-server": "workspace:*",
     "@workspace/db": "workspace:*",
-    "drizzle-orm": "catalog:"
+    "drizzle-orm": "catalog:",
+    "pg": "^8.13.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/pg": "^8.11.10",
     "tsx": "catalog:",
     "typescript": "catalog:"
   }

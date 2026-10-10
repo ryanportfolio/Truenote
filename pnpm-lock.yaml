@@ -249,10 +249,16 @@ importers:
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@types/pg@8.20.0)(pg@8.21.0)
+      pg:
+        specifier: ^8.13.0
+        version: 8.21.0
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.41
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
       tsx:
         specifier: 'catalog:'
         version: 4.22.2
