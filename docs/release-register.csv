@@ -1,1 +1,2 @@
 deployed_at_utc,commit,ci_run_id,service,railway_deployment_id,status,image_digest,message
+2026-10-10T12:08:29.810Z,7c31732723303e2555e0b51477f4dd79372f7d4c,38029772473,backup,817f4f17-f9e9-478c-9136-31bc3fcd0719,SUCCESS,sha256:efe2e8c11828f0b9d5d24799849e4b32980d477ba298eecd53b126c3a2dc783a,7c3173272330 backup: first deploy and first off-site run
