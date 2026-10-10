@@ -11,6 +11,8 @@
     "eval": "tsx src/eval.ts",
     "reingest": "tsx src/reingest.ts",
     "pgboss:install": "tsx src/pgboss-install.ts",
+    "evidence:nist-ids": "tsx src/evidence-nist-ids.ts",
+    "evidence:outside": "tsx src/evidence-outside.ts",
     "verify:pci-evidence": "tsx src/verify-pci-evidence.ts",
     "verify:change-record": "tsx src/verify-pr-change-record.ts",
     "verify:pci-scope-decision": "tsx src/verify-pci-scope-decision.ts",
