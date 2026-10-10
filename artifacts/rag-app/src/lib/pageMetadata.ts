@@ -18,6 +18,7 @@ const EXACT_TITLES: Readonly<Record<string, string>> = {
   "/admin/evaluations": "Evaluations | Truenote",
   "/admin/users": "Users | Truenote",
   "/admin/teams": "Teams | Truenote",
+  "/compliance": "Compliance Documents | Truenote",
   "/forgot-password": "Forgot Password | Truenote",
   "/reset-password": "Reset Password | Truenote",
   "/change-password": "Change Password | Truenote"
@@ -26,5 +27,6 @@ const EXACT_TITLES: Readonly<Record<string, string>> = {
 export function pageTitleForPath(path: string): string {
   const [pathname = "/"] = path.split(/[?#]/);
   if (pathname.startsWith("/kb/")) return "Knowledge Base | Truenote";
+  if (pathname.startsWith("/compliance/")) return "Compliance Documents | Truenote";
   return EXACT_TITLES[pathname] ?? "Page Not Found | Truenote";
 }

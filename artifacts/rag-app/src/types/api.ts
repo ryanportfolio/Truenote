@@ -1098,3 +1098,28 @@ export interface SecurityDashboardResponse {
     details: unknown;
   }>;
 }
+
+/** GET /api/compliance/documents (super users only). */
+export interface ComplianceDocumentSummary {
+  slug: string;
+  title: string;
+  version: string;
+  /** YYYY-MM-DD */
+  date: string;
+  sha256: string;
+  size: number;
+}
+
+export interface ComplianceDocumentListResponse {
+  documents: ComplianceDocumentSummary[];
+}
+
+/** GET /api/compliance/documents/:slug (super users only). */
+export interface ComplianceDocumentResponse {
+  slug: string;
+  title: string;
+  version: string;
+  date: string;
+  sha256: string;
+  markdown: string;
+}
