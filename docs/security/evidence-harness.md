@@ -88,7 +88,7 @@ A super_user's all-program views leave synthetic programs out: the query log wit
 
 ### Operator check and export (phase 3)
 
-Catalog entry `operator.monthly-verification`. The application role cannot show that the append-only triggers also refuse the owner, so once a month the owner runs `scripts/src/evidence-operator.ts` (`pnpm --filter @workspace/scripts run evidence:operator`) on their own machine. It connects through the SSH tunnel to `pgvector` (`docs/security/backup-restore-runbook.md`, section 4.4, step 5) as the migration role, with `DATABASE_URL` set to `postgresql://postgres@127.0.0.1:5434/railway` ("Turning on phase 3", step 5, has the PowerShell commands), and does everything over that one connection:
+Catalog entry `operator.monthly-verification`. The application role cannot show that the append-only triggers also refuse the owner, so once a month the owner runs `scripts/src/evidence-operator.ts` (`corepack pnpm --filter @workspace/scripts run evidence:operator`) on their own machine. It connects through the SSH tunnel to `pgvector` (`docs/security/backup-restore-runbook.md`, section 4.4, step 5) as the migration role, with `DATABASE_URL` set to `postgresql://postgres@127.0.0.1:5434/railway` ("Turning on phase 3", step 5, has the PowerShell commands), and does everything over that one connection:
 
 1. Role check. It stops unless the session user is a superuser or a member of the owner of `evidence_receipts`.
 2. Verifier. It sets `truenote.evidence_runtime_role` to the runtime role (`truenote_app`; `--runtime-role <role>` overrides it) and runs `docs/compliance/pci/production-control-verification.sql` as a whole; the file opens and commits its own READ ONLY transaction. The receipt records the controls that failed and the sha256 of each object definition the verifier returns, not the definitions, plus the sha256 of the verifier file (line ends as Git stores them) and the commit the script ran from (`+dirty` when its files have local changes).
@@ -101,7 +101,7 @@ Catalog entry `operator.monthly-verification`. The application role cannot show 
 
    No file holds the export time, so the same chain state gives the same bytes and an unchanged re-export makes no commit.
 
-The export target is checked before the database is touched. A directory outside every Git work tree gets the files and no commit, and `--push` is refused there. The only Git target allowed is the top level of a repository whose `origin` URL ends in `truenote-evidence` (or `truenote-evidence.git`) and which is not the Truenote code repository the script runs from or one of its worktrees. There the script stages and commits only the three files it writes, named by explicit paths ("Evidence export for <month>", with the range and chain head in the body), and with `--push` runs `git push origin HEAD`. Other files in the month folder and anything the owner already staged elsewhere stay out of the commit and keep their state. Any other target is refused and nothing is written. A failed commit unstages those three files only and leaves them in the working tree. The script does not check the repository's ruleset; the owner sets it up once ("Turning on phase 3").
+The export target is checked before the database is touched. A directory outside every Git work tree gets the files and no commit, and `--push` is refused there. The only Git target allowed is the top level of a repository whose `origin` URL ends in `truenote-evidence` (or `truenote-evidence.git`) and which is not the Truenote code repository the script runs from or one of its worktrees. There the script stages and commits only the three files it writes, named by explicit paths ("Evidence export for <month>", with the range and chain head in the body), and with `--push` runs `git push origin HEAD`. Other files in the month folder and anything the owner already staged elsewhere stay out of the commit and keep their state. Any other target is refused and nothing is written. If the month folder already holds an entry whose name differs from one of the three file names only in case (`Receipts.jsonl`, for example), the script refuses, names that entry and writes nothing, because a case-insensitive file system would overwrite it. A failed commit unstages those three files only and leaves them in the working tree. The script does not check the repository's ruleset; the owner sets it up once ("Turning on phase 3").
 
 The operator receipt appended by an `--apply` run belongs to the current month, so the export of the previous month does not contain it; the next month's export does. The script exits non-zero on any error and never prints `DATABASE_URL`, its password, or credentials embedded in a URL (`https://user:token@host/...`), also when it shows git's error output.
 
@@ -156,7 +156,12 @@ The deployed commit comes from `.release-commit`, written before `railway up` (`
 Each step changes production and waits for the owner's go.
 
 1. Apply the schema: `node scripts/railway-apply-sql.mjs lib/db/sql/0012_evidence_receipts.sql` (dry run), then with `--apply`.
-2. Create the queue as the migration role: `pnpm --filter @workspace/scripts run pgboss:install` through the SSH tunnel (`docs/security/backup-restore-runbook.md`, section 4.4, step 5). Without it the worker logs `[evidence] worker not started` and keeps ingesting.
+2. Create the queue as the migration role through the SSH tunnel (`docs/security/backup-restore-runbook.md`, section 4.4, step 5), in Windows PowerShell. Without it the worker logs `[evidence] worker not started` and keeps ingesting.
+
+   ```powershell
+   $env:DATABASE_URL = 'postgresql://postgres@127.0.0.1:5434/railway'
+   corepack pnpm --filter @workspace/scripts run pgboss:install
+   ```
 3. Create the GitHub token and set `EVIDENCE_GITHUB_TOKEN` on the worker (alerts use `SECURITY_ALERT_EMAIL` unless `EVIDENCE_ALERT_EMAIL` is set).
 4. Deploy web and worker from the same commit, with `.release-commit` written first.
 5. Trigger a run (`POST /api/admin/evidence/runs` as a super_user) and check: 18 receipts, every one with a `release.commit`; `GET /api/admin/evidence/chain` shows both integrity checks passing and a timestamp token; `/api/evidence/heartbeat` reports `stale: false`.
@@ -174,16 +179,24 @@ Each step changes production and waits for the owner's go, in this order. Run th
    ```
 
    The SQL is quoted twice because `railway ssh` hands the words to a remote shell (`.claude/reference/pitfalls.md`). Then `node scripts/railway-apply-sql.mjs lib/db/sql/0019_synthetic_fence.sql` (dry run), and with `--apply`.
-2. Rerun `pnpm --filter @workspace/scripts run pgboss:install` as the migration role through the SSH tunnel (`.claude/reference/deployment.md`, "Database roles"). It writes the evidence queue's new expiry over the stored one and prints `evidence-run: retryLimit 1, retryDelay 600, expireInSeconds 5400`. Until then a run longer than 30 minutes is marked failed and retried.
-3. Deploy web and worker from the same commit through the "Deploy production" workflow: `gh workflow run deploy-production.yml --repo ryanportfolio/Truenote --ref main -f message="<what ships>" -f service=both`, then approve the job. A daily run between this deploy and step 5 records `error` ("Not configured") for the four account checks; a second one in a row emails the owner.
-4. Provision the accounts and canaries through the SSH tunnel, first as a dry run, then with `--apply`:
+2. Rerun `pgboss:install` as the migration role through the SSH tunnel (`.claude/reference/deployment.md`, "Database roles"), in Windows PowerShell:
 
-   ```text
-   DATABASE_URL=postgresql://postgres@127.0.0.1:5434/railway pnpm --filter @workspace/scripts run evidence:synthetic-provision
-   DATABASE_URL=postgresql://postgres@127.0.0.1:5434/railway pnpm --filter @workspace/scripts run evidence:synthetic-provision -- --apply
+   ```powershell
+   $env:DATABASE_URL = 'postgresql://postgres@127.0.0.1:5434/railway'
+   corepack pnpm --filter @workspace/scripts run pgboss:install
    ```
 
-   It needs the agent's credentials in `~/.claude/secrets/truenote-agent.json` and writes `~/.claude/secrets/truenote-synthetic-accounts.json`.
+   It writes the evidence queue's new expiry over the stored one and prints `evidence-run: retryLimit 1, retryDelay 600, expireInSeconds 5400`. Until then a run longer than 30 minutes is marked failed and retried.
+3. Deploy web and worker from the same commit through the "Deploy production" workflow: `gh workflow run deploy-production.yml --repo ryanportfolio/Truenote --ref main -f message="<what ships>" -f service=both`, then approve the job. A daily run between this deploy and step 5 records `error` ("Not configured") for the four account checks; a second one in a row emails the owner.
+4. Provision the accounts and canaries through the SSH tunnel, in Windows PowerShell, first as a dry run, then with `--apply`:
+
+   ```powershell
+   $env:DATABASE_URL = 'postgresql://postgres@127.0.0.1:5434/railway'
+   corepack pnpm --filter @workspace/scripts run evidence:synthetic-provision
+   corepack pnpm --filter @workspace/scripts run evidence:synthetic-provision -- --apply
+   ```
+
+   It needs the agent's credentials in `~/.claude/secrets/truenote-agent.json` and writes `~/.claude/secrets/truenote-synthetic-accounts.json`. Run `Remove-Item Env:DATABASE_URL` afterwards, so later commands in that window do not reach the database.
 5. Set `EVIDENCE_SYNTHETIC_ACCOUNTS` on the worker from that file over stdin, so the value never appears on a command line or in the terminal. Without `--skip-deploys` this redeploys the worker, which then reads the value.
 
    ```text
@@ -224,9 +237,9 @@ Each step changes production or the owner's accounts and waits for the owner's g
    Then run it first as a dry run, then with `--apply`, then the export with `--push` (the month defaults to the previous UTC month):
 
    ```powershell
-   pnpm --filter @workspace/scripts run evidence:operator
-   pnpm --filter @workspace/scripts run evidence:operator -- --apply
-   pnpm --filter @workspace/scripts run evidence:operator -- --export-dir <clone> --push
+   corepack pnpm --filter @workspace/scripts run evidence:operator
+   corepack pnpm --filter @workspace/scripts run evidence:operator -- --apply
+   corepack pnpm --filter @workspace/scripts run evidence:operator -- --export-dir <clone> --push
    ```
 
    The export run repeats the verifier and the negative tests as a dry run and appends no second receipt. It commits only the three files it writes in the clone. Close the PowerShell window afterwards, or run `Remove-Item Env:DATABASE_URL`, so later commands in that window do not reach the database.

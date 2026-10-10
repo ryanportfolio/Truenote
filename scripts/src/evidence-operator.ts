@@ -11,9 +11,9 @@
  * export:
  *
  *   $env:DATABASE_URL = 'postgresql://postgres@127.0.0.1:5434/railway'
- *   pnpm --filter @workspace/scripts run evidence:operator
- *   pnpm --filter @workspace/scripts run evidence:operator -- --apply
- *   pnpm --filter @workspace/scripts run evidence:operator -- --apply --export-dir ~/truenote-evidence [--month 2026-09] [--push]
+ *   corepack pnpm --filter @workspace/scripts run evidence:operator
+ *   corepack pnpm --filter @workspace/scripts run evidence:operator -- --apply
+ *   corepack pnpm --filter @workspace/scripts run evidence:operator -- --apply --export-dir ~/truenote-evidence [--month 2026-09] [--push]
  *
  * Steps, all over one database connection:
  *
@@ -59,7 +59,11 @@
  *    month included; a mismatch writes nothing and names the first bad
  *    sequence. <dir>/<YYYY-MM>/ then gets receipts.jsonl, attachments.json and
  *    chain-head.json, with no export time in them, so the same chain state
- *    gives the same bytes and an unchanged re-export makes no commit. Git
+ *    gives the same bytes and an unchanged re-export makes no commit. If the
+ *    month folder already holds a name that differs from one of these three
+ *    only in case (Receipts.jsonl), the run refuses before the database is
+ *    touched and again before writing, since a case-insensitive file system
+ *    would overwrite that file. Git
  *    stages and commits exactly these three paths, so other files in the
  *    month folder and anything already staged elsewhere stay out of the
  *    commit and keep their state. A failed commit unstages the three files
@@ -70,7 +74,7 @@
  * also inside git's stderr); see redact().
  */
 import { execFile } from "node:child_process";
-import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -542,6 +546,30 @@ function exportPaths(month: string): string[] {
   return EXPORT_FILES.map((file) => `${month}/${file}`);
 }
 
+/**
+ * On a case-insensitive file system, writing receipts.jsonl would replace the
+ * owner's Receipts.jsonl and the commit would then miss its pathspec. Refuse
+ * when the month folder holds an entry whose name equals an export file name
+ * case-insensitively but not exactly. A missing folder passes.
+ */
+async function refuseCaseVariants(dir: string, month: string): Promise<void> {
+  const monthDir = path.join(dir, month);
+  const entries = await readdir(monthDir).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") return [] as string[];
+    throw error;
+  });
+  for (const entry of entries) {
+    const lower = entry.toLowerCase();
+    if (EXPORT_FILES.some((file) => file === lower && file !== entry)) {
+      throw new Error(
+        `refusing to export to ${monthDir}: it holds ${entry}, whose name differs from the export file ` +
+          `${lower} only in case, and writing would overwrite it on a case-insensitive file system. ` +
+          `Rename or move ${entry}; nothing was written`
+      );
+    }
+  }
+}
+
 /** Undo `git add` of the export's own files after a failed commit; nothing else changes. */
 async function unstage(dir: string, paths: string[]): Promise<boolean> {
   const reset = await git(dir, ["reset", "-q", "--", ...paths]);
@@ -624,6 +652,8 @@ async function exportMonth(client: Client, opts: Options, target: ExportTarget):
     exported: monthRows.length
   };
   const monthDir = path.join(target.dir, opts.month);
+  // Again here: the folder may have changed while the checks ran.
+  await refuseCaseVariants(target.dir, opts.month);
   await mkdir(monthDir, { recursive: true });
   await writeFile(path.join(monthDir, "receipts.jsonl"), lines.length ? `${lines.join("\n")}\n` : "", "utf8");
   await writeFile(path.join(monthDir, "attachments.json"), `${JSON.stringify(attachments, null, 2)}\n`, "utf8");
@@ -697,6 +727,7 @@ async function main(): Promise<void> {
   const opts = readOptions(process.argv.slice(2));
   // Refuse a bad export target before the database is touched or anything is written.
   const exportTarget = opts.exportDir ? await resolveExportTarget(opts.exportDir, opts.push) : null;
+  if (exportTarget) await refuseCaseVariants(exportTarget.dir, opts.month);
   const check = getCheck(CHECK_ID);
   if (!check || check.kind !== "operator") throw new Error(`${CHECK_ID} of kind operator is missing from the catalog`);
 
