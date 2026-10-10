@@ -69,7 +69,7 @@ function emptyResponse(hours: number, storageReady: boolean) {
  * spot system-wide provider or stage degradation.
  *
  * Synthetic programs (evidence harness test questions,
- * 0018_synthetic_fence.sql) are left out. `IS NOT TRUE` keeps rows with a
+ * 0019_synthetic_fence.sql) are left out. `IS NOT TRUE` keeps rows with a
  * null program_id or no matching program, which the LEFT JOIN leaves null.
  */
 observabilityRouter.get("/", async (req, res, next) => {

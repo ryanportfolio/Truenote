@@ -74,7 +74,7 @@ queriesRouter.get("/", adminReadLimit, async (req, res, next) => {
     const scopeProgramId = await resolveEffectiveProgramId(actor, req);
 
     // A super_user's all-program view leaves out synthetic programs (the
-    // evidence harness's daily test questions, 0018_synthetic_fence.sql).
+    // evidence harness's daily test questions, 0019_synthetic_fence.sql).
     // Rows with a null program_id have no synthetic program and stay in.
     // Selecting a synthetic program explicitly still shows its rows.
     const scopeCondition =

@@ -10,7 +10,8 @@ import type { CheckOutcome } from "../receipts.js";
  * access controls against canary documents in two synthetic programs:
  * program isolation, the classification ceiling, the demo-account write
  * block and refusal of a wrong password. A fifth check reads the audit log
- * and confirms that every synthetic login happened inside a harness run.
+ * and confirms that every synthetic login and recorded login attempt
+ * happened inside a harness run.
  *
  * Outcomes record emails, document ids, status codes, source doc ids, session
  * ids and the names of response fields that held a canary. Passwords and
@@ -34,7 +35,8 @@ export interface AccountFacts { maxClassification: string; isSynthetic: boolean;
 export interface SyntheticDeps {
   accountFacts(email: string): Promise<AccountFacts | null>;
   documentFacts(documentId: string): Promise<DocumentFacts | null>;
-  syntheticLogins(since: Date): Promise<Array<{ occurredAt: string; email: string | null }>>;
+  /** Login events of synthetic accounts, any outcome (success or denied). */
+  syntheticLogins(since: Date): Promise<Array<{ occurredAt: string; email: string | null; outcome?: string | null }>>;
   syntheticRunWindows(since: Date): Promise<Array<{ startedAt: string; finishedAt: string }>>;
   now(): Date;
 }
@@ -42,7 +44,13 @@ export class SyntheticConfigError extends Error {}
 
 export const DEFAULT_SYNTHETIC_BASE_URL = "https://truenote.org";
 export const SESSION_COOKIE = "kbase_session";
-/** Every successful login path: password, break-glass and SSO (routes/auth.ts, routes/oidc.ts). */
+/**
+ * The login actions of every path: password, break-glass and SSO
+ * (routes/auth.ts, routes/oidc.ts, lib/auth/mfa.ts). auth.local.login and
+ * auth.oidc.login record refusals too (outcome denied), such as a local login
+ * refused by LOCAL_LOGIN_MODE or by an account lock; a plain wrong password
+ * records none of them (it only counts toward the lock).
+ */
 export const LOGIN_ACTIONS = ["auth.local.login", "auth.break_glass.login", "auth.oidc.login"] as const;
 const ASK_TIMEOUT_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -77,7 +85,7 @@ function text(value: unknown, field: string): string {
 function credentials(value: unknown, field: string): SyntheticCredentials {
   const o = object(value, field);
   const email = text(o.email, `${field}.email`).trim().toLowerCase();
-  // Synthetic users always have .invalid emails (0018_synthetic_fence.sql),
+  // Synthetic users always have .invalid emails (0019_synthetic_fence.sql),
   // so the harness can never log in as a real person.
   if (!email.endsWith(".invalid")) {
     throw new SyntheticConfigError(`EVIDENCE_SYNTHETIC_ACCOUNTS: ${field}.email must end in .invalid`);
@@ -628,12 +636,49 @@ export async function checkDemoWriteBlock(cfg: SyntheticConfig, _deps: Synthetic
 
 // ---------------------------------------------------- bad password refusal
 
+/**
+ * Positive control first: csr-a logs in with the right password and out
+ * again. Without it a server that refuses every csr-a login (LOCAL_LOGIN_MODE
+ * break_glass or disabled answers 401 to any password) would pass. The
+ * success also resets csr-a's failed-login count, so the one wrong password
+ * after it never comes near the account lock. A control logout that fails
+ * (non-2xx or no response) ends the check with `error`.
+ */
 export async function checkBadPasswordRefused(cfg: SyntheticConfig, _deps: SyntheticDeps, signal?: AbortSignal): Promise<CheckOutcome> {
   const f = new Findings();
-  const inputs = { baseUrl: cfg.baseUrl, account: cfg.csrA.email, attempts: 1, password: "random, not recorded" };
+  const inputs = {
+    baseUrl: cfg.baseUrl,
+    account: cfg.csrA.email,
+    control: "one login with the right password, then logout",
+    attempts: 1,
+    password: "random, not recorded"
+  };
   const wrongPassword = `wrong-${randomBytes(24).toString("base64url")}`;
   const sessions = new Sessions(cfg, signal);
+  // Logouts up to this index belong to the control and go in controlLogouts.
+  let controlLogoutCount = 0;
   try {
+    const control = await sessions.login(cfg.csrA.email, cfg.csrA.password);
+    f.outputs.controlLogin = statusText(control);
+    await sessions.closeAll();
+    controlLogoutCount = sessions.logouts.length;
+    f.outputs.controlLogouts = sessions.logouts.slice(0, controlLogoutCount);
+    if (control.status !== 200 || !control.cookie) {
+      f.errors.push(
+        `csr-a login with the right password answered ${statusText(control)}${control.status === 200 ? " without a session cookie" : ""}, ` +
+          "so a refused wrong password would prove nothing"
+      );
+      return f.outcome("", inputs);
+    }
+    // Status 0 is a network error or timeout; a non-2xx is a refused logout.
+    const badLogouts = sessions.logouts.slice(0, controlLogoutCount).filter((status) => status < 200 || status >= 300);
+    if (badLogouts.length > 0) {
+      f.errors.push(
+        `csr-a logout after the control login answered ${badLogouts.map((status) => (status === 0 ? "no response" : String(status))).join(", ")}, ` +
+          "so the positive control did not complete"
+      );
+      return f.outcome("", inputs);
+    }
     const login = await sessions.login(cfg.csrA.email, wrongPassword);
     f.outputs.login = statusText(login);
     if (login.status === 401) {
@@ -645,9 +690,13 @@ export async function checkBadPasswordRefused(cfg: SyntheticConfig, _deps: Synth
     }
   } finally {
     await sessions.closeAll();
-    f.outputs.logouts = sessions.logouts;
+    // Only the logouts after the control; the control's are in controlLogouts.
+    f.outputs.logouts = sessions.logouts.slice(controlLogoutCount);
   }
-  return f.outcome("One login with a random wrong password was refused with 401.", inputs);
+  return f.outcome(
+    "csr-a logged in with the right password (200), then one login with a random wrong password was refused with 401.",
+    inputs
+  );
 }
 
 // ---------------------------------------------------------- login windows
@@ -669,14 +718,18 @@ export async function checkSyntheticLoginWindows(_cfg: SyntheticConfig | null, d
   });
   f.outputs.logins = logins.length;
   f.outputs.runWindows = windows.length;
-  f.outputs.outside = outside.map((login) => ({ occurredAt: login.occurredAt, email: login.email }));
+  f.outputs.outside = outside.map((login) => ({ occurredAt: login.occurredAt, email: login.email, outcome: login.outcome ?? null }));
   for (const login of outside) {
-    f.failures.push(`synthetic login at ${login.occurredAt} (${login.email ?? "unknown email"}) is outside every harness run`);
+    f.failures.push(
+      `synthetic login event at ${login.occurredAt} (${login.email ?? "unknown email"}, outcome ${login.outcome ?? "unknown"}) ` +
+        "is outside every harness run"
+    );
   }
   return f.outcome(
     logins.length === 0
-      ? "No synthetic logins in the last 8 days."
-      : `All ${logins.length} synthetic login(s) in the last 8 days fall inside ${windows.length} recorded harness run window(s).`,
+      ? "No synthetic logins or recorded login attempts in the last 8 days."
+      : `All ${logins.length} synthetic login event(s) (logins and refused attempts) in the last 8 days fall inside ` +
+          `${windows.length} recorded harness run window(s).`,
     inputs
   );
 }
@@ -734,7 +787,8 @@ export function syntheticDepsFromDb(): SyntheticDeps {
     async syntheticLogins(since) {
       const result = await executor.execute(sql`
         SELECT to_char(e.occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "occurredAt",
-               COALESCE(e.actor_email, u.email) AS email
+               COALESCE(e.actor_email, u.email) AS email,
+               e.outcome
         FROM security_events e
         JOIN users u ON u.id = e.actor_user_id
         WHERE e.action IN ${[...LOGIN_ACTIONS]}
@@ -742,7 +796,7 @@ export function syntheticDepsFromDb(): SyntheticDeps {
           AND e.occurred_at >= ${since.toISOString()}::timestamptz
         ORDER BY e.occurred_at
       `);
-      return result.rows as Array<{ occurredAt: string; email: string | null }>;
+      return result.rows as Array<{ occurredAt: string; email: string | null; outcome: string | null }>;
     },
     async syntheticRunWindows(since) {
       const result = await executor.execute(sql`

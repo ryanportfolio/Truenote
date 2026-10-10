@@ -138,7 +138,7 @@ function toListItem(row: {
 
 /**
  * Emails ending in .invalid belong to synthetic test accounts, which only
- * the migration role creates (lib/db/sql/0018_synthetic_fence.sql). The
+ * the migration role creates (lib/db/sql/0019_synthetic_fence.sql). The
  * database refuses a real user with one (users_synthetic_email_check,
  * 23514); checking here returns a clear 400 before any database work.
  */

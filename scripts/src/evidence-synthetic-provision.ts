@@ -5,7 +5,7 @@
  *
  * Creates, or brings back in line, two synthetic programs (zz-synthetic-a,
  * zz-synthetic-b) and one synthetic CSR in each, connected as the migration
- * role: lib/db/sql/0018_synthetic_fence.sql lets only that role insert
+ * role: lib/db/sql/0019_synthetic_fence.sql lets only that role insert
  * synthetic rows, and no API sets users.max_classification. The three canary
  * documents go through the real upload and ingestion path, uploaded over HTTPS
  * by the agent super_user. The result is written as the JSON
@@ -237,7 +237,7 @@ async function checkRole(client: Client): Promise<void> {
      WHERE table_schema = 'public' AND column_name = 'is_synthetic' AND table_name IN ('programs', 'users')`
   );
   if (fence.rows[0]?.n !== 2) {
-    throw new Error("programs.is_synthetic or users.is_synthetic is missing; apply lib/db/sql/0018_synthetic_fence.sql first");
+    throw new Error("programs.is_synthetic or users.is_synthetic is missing; apply lib/db/sql/0019_synthetic_fence.sql first");
   }
 }
 
@@ -256,11 +256,18 @@ function newToken(): string {
  * transaction is READ ONLY and every change is only described. With --apply,
  * a user whose password cannot be kept fails the run; the users are read and
  * their passwords checked before anything is written, so such a run also
- * only describes the changes, writes nothing and says so.
+ * only describes the changes, writes nothing and says so. When it writes, the
+ * per-program and per-user results are printed only after COMMIT. Under
+ * --apply, any failure before COMMIT is sent (read phase, password problem,
+ * failed query) reports that the transaction was rolled back and nothing was
+ * changed in the database.
  */
 async function provisionDatabase(client: Client, opts: Options, previous: Previous): Promise<DbResult | null> {
   // A READ ONLY transaction refuses row locks.
   const lock = opts.apply ? " FOR UPDATE" : "";
+  let write = false;
+  let commitSent = false;
+  const pending: string[] = [];
   const problems: string[] = [];
   const created: Array<{ type: string; id: string | null; name: string }> = [];
   const changed: Array<{ type: string; id: string; fields: string[] }> = [];
@@ -307,7 +314,9 @@ async function provisionDatabase(client: Client, opts: Options, previous: Previo
 
     // A password problem fails the run, so nothing is written and every
     // change below is only described, also with --apply.
-    const write = opts.apply && problems.length === 0;
+    write = opts.apply && problems.length === 0;
+    // Results of a write are held until COMMIT succeeds; descriptions print now.
+    const result = (line: string) => (write ? pending.push(line) : say(line));
     const verb = write ? "" : "would ";
     const notChanged = opts.apply && !write ? " (not changed: a password problem stops this run, see below)" : "";
 
@@ -323,7 +332,7 @@ async function provisionDatabase(client: Client, opts: Options, previous: Previo
       }
       if (row) {
         programIds[key] = row.id;
-        say(`program ${name}: exists (${row.id})`);
+        result(`program ${name}: exists (${row.id})`);
       } else if (write) {
         const inserted = await client.query<{ id: string }>(
           "INSERT INTO programs (name, is_synthetic) VALUES ($1, true) RETURNING id::text",
@@ -331,9 +340,9 @@ async function provisionDatabase(client: Client, opts: Options, previous: Previo
         );
         programIds[key] = inserted.rows[0]!.id;
         created.push({ type: "program", id: programIds[key]!, name });
-        say(`program ${name}: created (${programIds[key]})`);
+        result(`program ${name}: created (${programIds[key]})`);
       } else {
-        say(`program ${name}: would create${notChanged}`);
+        result(`program ${name}: would create${notChanged}`);
       }
     }
 
@@ -354,9 +363,9 @@ async function provisionDatabase(client: Client, opts: Options, previous: Previo
           );
           userIds[key] = inserted.rows[0]!.id;
           created.push({ type: "user", id: userIds[key]!, name: spec.email });
-          say(`user ${spec.email}: created (${userIds[key]}) in ${PROGRAMS[spec.program]} with a new password`);
+          result(`user ${spec.email}: created (${userIds[key]}) in ${PROGRAMS[spec.program]} with a new password`);
         } else {
-          say(`user ${spec.email}: would create in ${PROGRAMS[spec.program]} with a new password${notChanged}`);
+          result(`user ${spec.email}: would create in ${PROGRAMS[spec.program]} with a new password${notChanged}`);
         }
         continue;
       }
@@ -379,7 +388,7 @@ async function provisionDatabase(client: Client, opts: Options, previous: Previo
       }
 
       if (fields.length === 0) {
-        say(
+        result(
           passwordProblem.has(key)
             ? `user ${spec.email}: exists (${row.id}), no field to change, but its password cannot be kept (see below)`
             : `user ${spec.email}: exists (${row.id}), unchanged, password kept`
@@ -397,11 +406,11 @@ async function provisionDatabase(client: Client, opts: Options, previous: Previo
         );
         changed.push({ type: "user", id: row.id, fields });
       }
-      say(`user ${spec.email}: exists (${row.id}); ${verb}change ${fields.join(", ")}${notChanged}`);
+      result(`user ${spec.email}: exists (${row.id}); ${verb}change ${fields.join(", ")}${notChanged}`);
     }
 
     if (problems.length > 0) {
-      if (opts.apply) problems.push("nothing was changed in the database");
+      // With --apply, the catch below adds that the transaction was rolled back.
       throw new Error(problems.join("\n"));
     }
 
@@ -427,8 +436,11 @@ async function provisionDatabase(client: Client, opts: Options, previous: Previo
         })
       ]
     );
+    commitSent = true;
     await client.query("COMMIT");
-    say(`security event evidence.synthetic.provisioned appended (${event.rows[0]?.id ?? "?"}); transaction committed`);
+    say("transaction committed");
+    for (const line of pending) say(line);
+    say(`security event evidence.synthetic.provisioned appended (${event.rows[0]?.id ?? "?"})`);
     return {
       programIds: programIds as Record<ProgramKey, string>,
       userIds: userIds as Record<UserKey, string>,
@@ -436,7 +448,22 @@ async function provisionDatabase(client: Client, opts: Options, previous: Previo
     };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
+    // A dry run's READ ONLY transaction could not change anything.
+    if (!opts.apply) throw error;
+    // Under --apply every failure before COMMIT was sent, including one in the
+    // read phase before any write, leaves nothing changed: Postgres discards an
+    // uncommitted transaction on ROLLBACK or when the connection drops. A
+    // server error (it carries a severity) means Postgres rolled the
+    // transaction back, also when COMMIT itself was refused. A connection lost
+    // after COMMIT was sent leaves the outcome unknown.
+    const serverAnswered = error instanceof Error && typeof (error as { severity?: unknown }).severity === "string";
+    if (commitSent && !serverAnswered) {
+      throw new Error(
+        `${errorMessage(error)}\nthe connection failed during COMMIT, so it is unknown whether the transaction ` +
+          "was saved; run the dry run to see the database state"
+      );
+    }
+    throw new Error(`${errorMessage(error)}\nthe transaction was rolled back; nothing was changed in the database`);
   }
 }
 

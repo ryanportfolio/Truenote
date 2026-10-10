@@ -330,13 +330,16 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
     cadence: "daily",
     cadenceStatus: "proposed",
     passCondition:
-      "Exactly one POST /api/auth/login per run for synthetic csr-a with a random wrong password answers 401. " +
-      "A 200 fails (the session is logged out); any other status (such as 400, 429 or 5xx) or no response " +
-      "records error.",
+      "Positive control first: synthetic csr-a logs in with its right password and must get 200 with a session " +
+      "cookie, then logs out. Anything else (such as the 401 every csr login gets when LOCAL_LOGIN_MODE refuses " +
+      "local login for CSRs) records error, because a refused wrong password would then prove nothing. Then " +
+      "exactly one POST /api/auth/login for csr-a with a random wrong password must answer 401. A 200 fails (the " +
+      "session is logged out); any other status (such as 400, 429 or 5xx) or no response records error.",
     limits:
       "Proves refusal of one wrong password only. It does not prove account lockout or throttling after " +
-      "repeated failures (AC-7), password strength rules (IA-5(1)) or multi-factor authentication. " +
-      "Checks run as the system under test."
+      "repeated failures (AC-7): the per-account lock needs 5 consecutive failures by default, and the " +
+      "control login's success resets the count before the single wrong password. Nor does it prove password " +
+      "strength rules (IA-5(1)) or multi-factor authentication. Checks run as the system under test."
   },
   {
     id: "synthetic.login-windows",
@@ -348,10 +351,13 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
     cadenceStatus: "proposed",
     passCondition:
       "Every security_events row from the last 8 days with action auth.local.login, auth.break_glass.login " +
-      "or auth.oidc.login whose actor is a user with is_synthetic falls between startedAt minus 2 minutes and " +
-      "finishedAt plus 2 minutes of some synthetic evidence receipt recorded in the same period. Any login " +
-      "outside every window fails and is listed by time and email. No synthetic logins passes. Reads only " +
-      "the database, so it runs without the synthetic account configuration.",
+      "or auth.oidc.login whose actor is a user with is_synthetic, whatever its outcome, falls between " +
+      "startedAt minus 2 minutes and finishedAt plus 2 minutes of some synthetic evidence receipt recorded in " +
+      "the same period. That covers logins (outcome success) and refused login attempts recorded under those " +
+      "actions (outcome denied, such as a refusal by LOCAL_LOGIN_MODE or by an account lock); a refused " +
+      "attempt with a synthetic account outside a run is flagged too. A plain wrong password records no such " +
+      "row and is not counted. Any row outside every window fails and is listed by time, email and outcome. " +
+      "No such rows passes. Reads only the database, so it runs without the synthetic account configuration.",
     limits:
       "Relies on the audit log and the receipts written by the same system. Use of the synthetic credentials " +
       "during a harness run cannot be told apart from the harness itself."

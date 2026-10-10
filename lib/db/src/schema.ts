@@ -64,7 +64,7 @@ export const programs = pgTable("programs", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-  // Evidence harness test program (lib/db/sql/0018_synthetic_fence.sql).
+  // Evidence harness test program (lib/db/sql/0019_synthetic_fence.sql).
   // Set only by the migration role at insert; fixed afterwards.
   isSynthetic: boolean("is_synthetic").notNull().default(false)
 });
@@ -245,7 +245,7 @@ export const users = pgTable("users", {
     (): AnyPgColumn => users.id,
     { onDelete: "set null" }
   ),
-  // Evidence harness test account (lib/db/sql/0018_synthetic_fence.sql):
+  // Evidence harness test account (lib/db/sql/0019_synthetic_fence.sql):
   // belongs to a synthetic program and has a .invalid email. Set only by the
   // migration role at insert; fixed afterwards.
   isSynthetic: boolean("is_synthetic").notNull().default(false)
