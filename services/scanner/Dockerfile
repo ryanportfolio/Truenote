@@ -11,6 +11,10 @@
 FROM node:22-trixie-slim@sha256:154ba2f4d6fec323d28e4f4bb86bba4677f1223391a1979cf521304e03a98dfa AS node
 
 FROM clamav/clamav-debian:1.4.6@sha256:6d0680780fd29855cb7018f68272cb520821f614259e2066f8ec669069ac91b3
+# Debian security fixes released after the base image was built.
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY services/scanner/clamd.conf services/scanner/freshclam.conf services/scanner/entrypoint.sh services/scanner/server.mjs /opt/scanner/
 # The database directory is the clamav user's home (uid 1000) in the base image.
