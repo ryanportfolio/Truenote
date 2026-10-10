@@ -214,7 +214,7 @@ function callbackHandler(): Handler {
     stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: Handler }> } }>;
   }).stack;
   const handler = stack.find((layer) => layer.route?.path === "/callback" && layer.route.methods.get)
-    ?.route?.stack[0]?.handle;
+    ?.route?.stack.at(-1)?.handle;
   expect(handler).toBeDefined();
   return handler!;
 }

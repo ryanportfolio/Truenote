@@ -30,6 +30,7 @@ import {
   recordSecurityEvent,
   recordSecurityEventBestEffort
 } from "../lib/security/audit.js";
+import { oidcIpLimit } from "../lib/security/route-rate-limit.js";
 
 export const oidcRouter = Router();
 
@@ -79,7 +80,7 @@ function redirectWithError(res: import("express").Response): void {
   res.redirect(302, "/login?sso_error=1");
 }
 
-oidcRouter.get("/start", async (req, res) => {
+oidcRouter.get("/start", oidcIpLimit, async (req, res) => {
   try {
     const config = getOidcConfig();
     if (!config.enabled) {
@@ -111,7 +112,7 @@ oidcRouter.get("/start", async (req, res) => {
   }
 });
 
-oidcRouter.get("/callback", async (req, res) => {
+oidcRouter.get("/callback", oidcIpLimit, async (req, res) => {
   const sealed = typeof req.cookies?.[STATE_COOKIE] === "string"
     ? req.cookies[STATE_COOKIE]
     : "";

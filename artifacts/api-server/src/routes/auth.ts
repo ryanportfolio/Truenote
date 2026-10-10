@@ -53,6 +53,7 @@ import { resolveAppBaseUrl } from "../lib/email/links.js";
 import { recordAppError } from "../lib/observability/error-log.js";
 import { renderResetEmail } from "../lib/email/templates.js";
 import { recordSecurityEventBestEffort } from "../lib/security/audit.js";
+import { loginPasswordIpLimit } from "../lib/security/route-rate-limit.js";
 
 export const authRouter = Router();
 
@@ -130,7 +131,7 @@ function getDummyHash(): Promise<string> {
  * rejection; a hostile script can't
  * enumerate accounts from the response shape.
  */
-authRouter.post("/login", async (req, res, next) => {
+authRouter.post("/login", loginPasswordIpLimit, async (req, res, next) => {
   try {
     // Per-IP throttle BEFORE any Argon2 work, so a flood can't force
     // unbounded verifications from one source. Very generous (see

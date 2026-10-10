@@ -8,8 +8,9 @@ import { clientIpFrom } from "../auth/rate-limit.js";
  * limiter: production runs one `web` replica (.claude/reference/deployment.md).
  * The limits sit well above what a person clicking through the UI produces;
  * they stop a script or a stuck client from hammering the database.
- * The exception is mfaLoginIpLimit at the end: its routes run before
- * sign-in, so it counts per client IP.
+ * The exceptions are the sign-in limiters at the end (loginPasswordIpLimit,
+ * oidcIpLimit, mfaLoginIpLimit): their routes run before sign-in, so they
+ * count per client IP.
  */
 function perUserLimit(limit: number, windowMs: number): RateLimitRequestHandler {
   return rateLimit({
@@ -81,6 +82,50 @@ export const complianceReadLimit = perUserLimit(60, 60_000);
 
 /** Emergency sign-in card (passkeys, recovery codes, status): 30 a minute per user. */
 export const mfaManageLimit = perUserLimit(30, 60_000);
+
+/**
+ * Password login (POST /api/auth/login), keyed by client IP (clientIpFrom).
+ * 2000 per 10 minutes, the same budget as the in-handler loginIpLimiter,
+ * which stays in place; this limiter is the one CodeQL recognizes. It has
+ * its own counter, separate from mfaLoginIpLimit, because one sign-in uses
+ * both routes. The per-account lockout bounds guessing on one account. The
+ * 429 body is the in-handler limiter's, so a refusal says nothing about any
+ * account.
+ */
+export const loginPasswordIpLimit = rateLimit({
+  windowMs: 10 * 60_000,
+  limit: 2000,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: (req) => clientIpFrom(req),
+  validate: false,
+  handler: (_req, res) => {
+    res.status(429).json({ error: "Too many login attempts. Try again in a few minutes." });
+  }
+});
+
+/**
+ * Company SSO (GET /api/auth/oidc/start and /callback), keyed by client IP.
+ * 2000 per 10 minutes, shared by both routes: a call center behind one
+ * address signs in hundreds of users at shift start, two requests each.
+ * Both routes are browser navigations, so a refusal answers the way their
+ * failure path does (redirectWithError in routes/oidc.ts): a 302 to
+ * /login?sso_error=1, where the login page shows its generic SSO error. A
+ * JSON 429 would leave the user on a raw error page. The redirect carries
+ * nothing about any account. A refused callback leaves the state cookie in
+ * place; it expires after 10 minutes and the next start replaces it.
+ */
+export const oidcIpLimit = rateLimit({
+  windowMs: 10 * 60_000,
+  limit: 2000,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: (req) => clientIpFrom(req),
+  validate: false,
+  handler: (_req, res) => {
+    res.redirect(302, "/login?sso_error=1");
+  }
+});
 
 /**
  * Second login step (POST /api/auth/mfa/passkey and /recovery-code), which

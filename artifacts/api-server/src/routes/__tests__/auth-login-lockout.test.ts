@@ -131,7 +131,7 @@ const envNames = [
 type Handler = (req: Request, res: Response, next: NextFunction) => unknown;
 const handler = (authRouter as unknown as {
   stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: Handler }> } }>;
-}).stack.find((layer) => layer.route?.path === "/login" && layer.route.methods.post)?.route?.stack[0]?.handle;
+}).stack.find((layer) => layer.route?.path === "/login" && layer.route.methods.post)?.route?.stack.at(-1)?.handle;
 
 async function login(password: string) {
   expect(handler).toBeDefined();

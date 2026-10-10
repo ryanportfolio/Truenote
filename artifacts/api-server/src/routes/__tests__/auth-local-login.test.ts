@@ -93,7 +93,7 @@ async function login() {
   const stack = (authRouter as unknown as {
     stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: Handler }> } }>;
   }).stack;
-  const handler = stack.find((layer) => layer.route?.path === "/login" && layer.route.methods.post)?.route?.stack[0]?.handle;
+  const handler = stack.find((layer) => layer.route?.path === "/login" && layer.route.methods.post)?.route?.stack.at(-1)?.handle;
   expect(handler).toBeDefined();
   let status = 200;
   let body: unknown;
