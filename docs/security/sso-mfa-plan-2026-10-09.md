@@ -6,7 +6,7 @@ Scope: how call-center CSRs, supervisors and managers sign in to Truenote throug
 
 ## Recommendation
 
-Build on the existing OIDC code and connect directly to Microsoft Entra ID for the first customers. Keep WorkOS as the planned route for the first customer that needs SAML, Okta or another non-Entra provider, and design the connection layer so a WorkOS connection can be added without reworking accounts or sessions.
+Build on the existing OIDC code and connect directly to Microsoft Entra ID for the first customers, starting with the owner's employer, whose IT team registers Truenote in its own Entra tenant. Keep WorkOS as the planned route for the first customer that needs SAML, Okta or another non-Entra provider, and design the connection layer so a WorkOS connection can be added without reworking accounts or sessions.
 
 The deciding reason is MFA evidence. With Entra's `amr` optional claim turned on, Truenote can check on every login that the user completed MFA and refuse the login if not. WorkOS's SSO profile has no documented MFA field, so with WorkOS Truenote would rely on each customer's written statement that their IdP enforces MFA. Direct Entra also keeps identity data out of an additional US-hosted processor and reuses code that already exists. Cost is not the deciding reason: WorkOS charges nothing until the first production connection.
 
@@ -37,7 +37,7 @@ What works:
 
 - `artifacts/api-server/src/lib/auth/oidc.ts` runs an authorization-code flow with PKCE, a signed state cookie, nonce, discovery with exact issuer match, RS256 signature check against JWKS with key refresh, audience and `azp` checks, and expiry checks.
 - It refuses login unless `amr` contains `mfa` when `OIDC_REQUIRE_MFA` is true. That variable defaults to true whenever any OIDC variable is set.
-- `LOCAL_LOGIN_MODE` (`enabled`, `break_glass`, `disabled`) fails closed: an unknown value, or SSO that is half configured, disables local login.
+- `LOCAL_LOGIN_MODE` (`enabled`, `break_glass`, `disabled`) fails closed when it is unset or unrecognized: an unknown value, or SSO that is half configured with no mode set, disables local login. An explicit recognized mode always wins (`lib/auth/oidc.ts` lines 58-67), so `LOCAL_LOGIN_MODE=enabled` keeps password login open even while OIDC is half configured. Set the mode deliberately at each setup step.
 - Successful SSO logins write an `auth.oidc.login` security event and mark the session `auth_method = 'oidc'`.
 
 Gaps found:
@@ -61,7 +61,7 @@ A new `sso_connections` table, managed by the super_user:
 - `provider` (`entra` now, `workos` later), `tenant_id`, `issuer` (`https://login.microsoftonline.com/{tenant_id}/v2.0`), email domains used to find the connection on the login page, `require_mfa` (default true, cannot be turned off without a recorded exception), `jit_enabled` (default false), `status`.
 - A separate allow-list of programs the connection may reach. One connection can serve several programs, and one program can accept several connections. This covers outsourcers whose CSRs from one tenant work several client programs, and a client whose own staff sign in from a different tenant.
 
-One multi-tenant Entra app registration, owned by Truenote's tenant and limited to work accounts ("Accounts in any organizational directory"), serves every customer. Each customer's admin grants consent once. Truenote never uses the `/common` endpoint: the login page asks for a work email, finds the connection by domain, and sends the user to that tenant's own authority. The existing exact issuer check then applies per connection, and the callback also checks that `tid` equals the connection's tenant.
+The first connection is the employer's own single-tenant app registration, so a connection row can carry its own client ID and a reference to its secret. From the second customer on, one multi-tenant Entra app registration, owned by Truenote's tenant and limited to work accounts ("Accounts in any organizational directory"), serves every customer. Each customer's admin grants consent once. Truenote never uses the `/common` endpoint: the login page asks for a work email, finds the connection by domain, and sends the user to that tenant's own authority. The existing exact issuer check then applies per connection, and the callback also checks that `tid` equals the connection's tenant.
 
 ### Identity binding
 
@@ -100,19 +100,21 @@ If WorkOS is added later, its customers cannot be checked by layer 2. Before tha
 
 ## Controls this affects
 
-The repository has no NIST 800-53 control mapping and no POA&M file on `main`. The nearest records are the October 9 security review rows "OIDC and MFA" (Configuration required) and "Idle reauthentication" (Gap), and the P0 gate in `.claude/skills/review-security-posture/SKILL.md`, which lists SSO/MFA. The mapping below is proposed and should become POA&M entries once a POA&M exists.
+The repository has no NIST 800-53 control mapping and no POA&M file on `main`. The nearest records are the October 9 security review rows "OIDC and MFA" (Configuration required) and "Idle reauthentication" (Gap), and the P0 gate in `.claude/skills/review-security-posture/SKILL.md`, which lists SSO/MFA. The mapping below is proposed and should become POA&M entries once a POA&M exists. The first customer's security reviewer asked for the Moderate baseline, which includes IA-2(1), IA-2(2), IA-2(8), IA-2(12), AC-2 enhancements (1) to (5) and (13), AC-7, AC-11, AC-12 and IA-11.
 
 | NIST 800-53 Rev 5 | What this plan does | Remaining after the plan |
 |---|---|---|
 | IA-2, IA-2(1), IA-2(2) | MFA for all customer users through the IdP, checked by Truenote; MFA for the break-glass account | MFA itself is the customer's responsibility (shared control); needs a customer responsibility statement |
 | IA-2(8) | Replay-resistant methods depend on the customer's allowed methods (Authenticator push with number matching, FIDO2) | Truenote cannot see which method was used beyond `amr` values |
+| IA-2(12) | Not applicable unless the customer issues PIV credentials | Written justification for the package |
 | IA-4 | Accounts bound to immutable `tid` plus `oid` | |
 | IA-5, IA-5(1) | Passwords limited to one account; existing 15-character minimum stays | Break-glass credential handling procedure |
 | IA-8 | If customer users are treated as non-organizational users, the same controls apply | Classification decision |
 | IA-11 | Idle timeout sends users back through the IdP | |
-| AC-2, AC-2(2), AC-2(3) | Invitation records, emergency account defined and kept inactive or MFA-protected, short sessions after Entra disable | AC-2(1) automated account management needs SCIM |
+| AC-2, AC-2(2), AC-2(3), AC-2(4), AC-2(13) | Invitation records, emergency account defined and kept inactive or MFA-protected, short sessions after Entra disable, security events for account changes | AC-2(1) automated account management needs SCIM; AC-2(3) inactive-account disabling needs a scheduled job |
 | AC-7 | IdP lockout for SSO users; new lockout for local accounts | |
-| AC-12, SC-23 | Idle and absolute session limits; session invalidation on mode change | |
+| AC-2(5), AC-12, SC-23 | Idle and absolute session limits; session invalidation on mode change | |
+| AC-11 | Truenote's idle timeout ends the application session | Screen lock on CSR workstations is the customer's control |
 | AU-2, AU-12 | Existing login security events, plus new events for connection changes, identity binding, lockout and refused MFA | External delivery still depends on the SIEM gap |
 
 PCI DSS v4 rows in the existing review that move: 8.4.2 (MFA for access), 8.2.8 (idle timeout), 8.3.4 (lockout, for the local account), 8.2.6 (inactive accounts, partly, until SCIM).
@@ -134,11 +136,12 @@ Estimates are engineering days for one developer, including tests. Nothing start
 |---|---|---|
 | 1 | Local login order fix; session lookup refuses local sessions the current mode disallows; per-account lockout | 1 day |
 | 2 | `user_identities` table (SQL migration), bind on first login, look up by issuer and subject, tenant check, refuse SSO users in password reset and invitation flows | 2 days |
-| 3 | `sso_connections` and program allow-list tables (SQL migration), login page asks for work email and routes to the tenant, per-connection issuer, super_user admin screen for connections | 3-4 days |
+| 3a | `sso_connections` and program allow-list tables (SQL migration) holding the employer's single connection; callback checks `tid` and the program allow-list | 1 day |
 | 4 | Idle and absolute SSO session limits, configurable | 1-1.5 days |
 | 5 | Break-glass passkey plus recovery codes (or TOTP, about 1.5 days) | 2-3 days |
-| 6 | Real Entra tests (below), customer setup runbook, security docs and evidence update | 2 days |
-| | **Total before go-live** | **11-13.5 days** |
+| 6 | Real Entra tests with the employer's tenant (below), security docs and Moderate package evidence | 2 days |
+| | **Total before go-live** | **9-10.5 days** |
+| 3b | Before the second customer: login page asks for work email and routes to the tenant, per-connection issuer and credentials, Truenote multi-tenant app, super_user admin screen for connections, hostile-tenant tests | 3 days |
 | Later | Optional JIT per connection | 1 day |
 | Later | SCIM 2.0 endpoint, or WorkOS Directory Sync | 4-6 days, or 2-3 with WorkOS |
 | Later | WorkOS SSO connection type | 2-3 days |
@@ -147,26 +150,40 @@ Estimates are engineering days for one developer, including tests. Nothing start
 
 Steps 2 and 3 include schema changes. Each follows the repository's procedure: a numbered file in `lib/db/sql/`, a dry run, and the owner's go before `--apply` on production.
 
-## What the owner does in Entra
+## First customer: request list for the employer's IT team
 
-In Truenote's own tenant (the app publisher):
+The first customer is the owner's employer, whose security reviewer asked for the NIST 800-53 Moderate package and approves on the customer's side (owner fact of October 9, relayed through another working session). The employer already uses Microsoft Authenticator, and its IT team sets every Entra-side setting.
 
-1. Create an app registration: "Accounts in any organizational directory", platform Web, redirect URI `https://truenote.org/api/auth/oidc/callback` (add the Railway URL for testing).
-2. Token configuration: add optional ID token claims `amr`, `email`, `preferred_username` and `xms_edov`.
-3. Create a client secret with a 12-month expiry and put a renewal date on the calendar. Give it to Truenote through Railway variables only after approving that change.
-4. Start publisher verification (needs a Microsoft AI Cloud Partner Program ID).
+For this customer the app registration lives in the employer's tenant (single tenant), owned by their IT. Truenote then needs no Entra tenant of its own, the existing environment-variable configuration fits one tenant as it is, and the employer keeps control of consent, assignment and MFA. The multi-tenant Truenote app described under "Customer connections" becomes the route for the second customer.
 
-In each customer's tenant (done by the customer's admin, following a Truenote runbook):
+Send this list to the employer's IT team:
 
-1. Grant admin consent to the Truenote app.
-2. On the Truenote enterprise app, set "Assignment required" to Yes and assign the CSR, supervisor and manager groups (group assignment needs P1).
-3. Create a Conditional Access policy requiring MFA for those users, targeting the Truenote app or all resources.
+1. **App registration.** Create one in your tenant named "Truenote". Supported account types: "Accounts in this organizational directory only". Platform: Web. Redirect URIs: `https://truenote.org/api/auth/oidc/callback`, and for pre-go-live testing only `https://web-production-62818.up.railway.app/api/auth/oidc/callback` (remove it after go-live). Leave the implicit grant "ID tokens" and "Access tokens" boxes unticked.
+2. **Token configuration.** Add optional claims to the ID token: `amr`, `email`, `preferred_username`, `xms_edov`. Accept the prompt to add the Microsoft Graph `email` permission.
+3. **API permissions.** Microsoft Graph delegated `openid`, `profile`, `email` only, with admin consent granted. No other permissions.
+4. **Credential.** Create a client secret with a 12-month expiry. Send the secret to the Truenote owner through a channel your security team approves (not plain email), and tell us the expiry date and who renews it.
+5. **Identifiers.** Send the Directory (tenant) ID, the Application (client) ID, and the email domains your users sign in with.
+6. **Enterprise application.** Under Properties set "Assignment required?" to Yes. Assign a small test group first; assign the CSR, supervisor and manager groups only at go-live.
+7. **Conditional Access.** A policy for the assigned groups, target resource the Truenote app (or all resources), grant "Require multifactor authentication" or the "Multifactor authentication" authentication strength (a phishing-resistant strength is stronger if your users have passkeys). Run it in report-only first, then turn it on. Tell us the sign-in frequency setting.
+8. **Test accounts.** One user in the test group with Authenticator; one user temporarily excluded from the Conditional Access policy (to prove Truenote refuses a login without MFA); one user not assigned to the app. Remove the exclusion after testing.
+9. **Evidence for the Moderate package.** After testing, export the Entra sign-in log entries for the test sign-ins showing the MFA result, and screenshots or exports of the app registration claims, assignment setting and Conditional Access policy.
+10. **Offboarding and guests.** Name a contact who tells Truenote when an assigned user leaves (until SCIM exists), and say whether any guest (B2B) users need access.
+
+Truenote's side after receiving items 4 and 5, with the owner's go for the Railway variable change: `OIDC_ISSUER_URL=https://login.microsoftonline.com/<tenant-id>/v2.0`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, a new 32-byte `OIDC_STATE_SECRET`, `OIDC_REQUIRE_MFA=true`, `OIDC_REQUIRED_ACR` empty, `OIDC_ALLOWED_DOMAINS` set to the employer's domains, and `LOCAL_LOGIN_MODE` set explicitly.
+
+## Later customers in Entra
+
+For the second customer, Truenote creates its own Entra tenant and one multi-tenant app registration ("Accounts in any organizational directory", the same Web redirect URI and optional claims, a 12-month secret or a certificate) and starts publisher verification, which needs a Microsoft AI Cloud Partner Program ID. Each customer's admin then:
+
+1. Grants admin consent to the Truenote app.
+2. On the Truenote enterprise app, sets "Assignment required" to Yes and assigns the CSR, supervisor and manager groups (group assignment needs P1).
+3. Creates a Conditional Access policy requiring MFA for those users, targeting the Truenote app or all resources.
 
 ## Test plan
 
 Unit tests extend `lib/auth/__tests__/oidc.test.ts` with locally signed tokens: wrong issuer, wrong `tid`, missing `amr`, `amr` without `mfa`, wrong audience, expired token, nonce mismatch, replayed state, unknown key id.
 
-Real Entra tests need two Entra tenants: tenant A acting as a customer, and tenant B acting as a hostile tenant. At least tenant A needs Entra ID P1 or a P2 trial so Conditional Access can be tested. Options: the owner's organization tenant with a dedicated test group, a new tenant through an Azure account, or the Microsoft 365 Developer Program sandbox if the owner qualifies (it requires a Visual Studio subscription or partner status). Railway has only the production environment, so these tests run on production before go-live, with only test accounts and demo data, after the owner approves the variables. A separate Railway staging environment is the cleaner option and is a paid change for the owner to decide.
+Real Entra tests for go-live use the employer's tenant with the test accounts from the IT request list. Step 3b adds a second, hostile tenant to prove that a token from another tenant cannot reach the employer's program; that tenant needs Entra ID P1 or a P2 trial only if Conditional Access is tested there too. Options for it: a new tenant through an Azure account, or the Microsoft 365 Developer Program sandbox if the owner qualifies (it requires a Visual Studio subscription or partner status). Railway has only the production environment, so these tests run on production before go-live, with only test accounts and demo data, after the owner approves the variables. A separate Railway staging environment is the cleaner option and is a paid change for the owner to decide.
 
 | Case | Expected result |
 |---|---|
@@ -174,10 +191,11 @@ Real Entra tests need two Entra tenants: tenant A acting as a customer, and tena
 | Tenant A user, Conditional Access excluded, password only | Refused (no `mfa` in `amr`); refusal recorded |
 | Tenant A user with a passkey or Windows Hello | Signed in (`amr` includes `mfa`) |
 | Tenant A user not assigned to the app | Stopped by Entra before reaching Truenote |
-| Tenant B user whose email matches a Truenote account in program A | Refused; no identity bound |
+| Tenant B user whose email matches a Truenote account in program A (step 3b) | Refused; no identity bound |
 | Tenant A user whose program is not on the connection's allow-list | Refused |
 | User's email changed in Entra after first login | Same Truenote account |
-| User disabled in Entra | Next sign-in refused; open session ends at the idle limit |
+| User disabled in Entra, then idle | Session ends at the idle limit; the next sign-in through Entra is refused |
+| User disabled in Entra, still active in Truenote | Session continues until the absolute limit (10 hours), then the next sign-in is refused. Accepted until SCIM exists |
 | Deactivated Truenote account | Refused |
 | Tampered state, reused callback, expired state | Refused |
 | SSO-only user enters the correct password on the local form | Same 401 and similar timing as a wrong password |
@@ -191,8 +209,9 @@ The eval harness is not affected; no retrieval or generation code changes.
 
 1. Approve direct Entra now with WorkOS deferred, or choose WorkOS now.
 2. Passkey or TOTP for the break-glass account.
-3. Which tenants to use for testing, and whether to add a Railway staging environment.
-4. Go-ahead for steps 1 to 6.
+3. Whether to add a Railway staging environment, or test on production before go-live with test accounts only.
+4. When to send the request list to the employer's IT team.
+5. Go-ahead for steps 1 to 6.
 
 ## Sources
 
