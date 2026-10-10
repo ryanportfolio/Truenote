@@ -11,7 +11,8 @@
  * Returns null when nothing usable is configured: no RP ID, no origin, an
  * origin that does not parse, a plain-http origin in production, or an origin
  * whose host is neither the RP ID nor a subdomain of it. Callers then refuse
- * enrollment and fail the login MFA step closed.
+ * enrollment (503) and passkey sign-in; the login MFA step offers recovery
+ * codes only (lib/auth/mfa.ts startLoginChallenge).
  */
 
 export const WEBAUTHN_RP_NAME = "Truenote";

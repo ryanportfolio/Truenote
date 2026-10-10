@@ -217,6 +217,84 @@ CREATE UNIQUE INDEX eval_runs_program_baseline_uidx ON eval_runs (program_id)
   WHERE is_baseline = true;
 ```
 
+## Sign-in tables (0011-0013)
+
+Lockout columns, SSO identity bindings and emergency-login second factors, from `lib/db/sql/0011_login_lockout.sql`, `0012_user_identities.sql` and `0013_break_glass_mfa.sql` (apply order and release steps: `deployment.md`, "SSO and emergency sign-in release (2026-10-10)"). `sessions.auth_method` (`'local'` or `'oidc'`, CHECK `sessions_auth_method_check`) and `sessions.auth_time` came earlier, from the P0/P1 DDL in the baseline.
+
+```sql
+-- 0011. Consecutive failed local sign-in attempts since the last success or
+-- lock; reset to 0 when the account locks. locked_until is NULL for an
+-- account that was never locked.
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS failed_login_count integer NOT NULL DEFAULT 0
+    CONSTRAINT users_failed_login_count_check CHECK (failed_login_count >= 0);
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS locked_until timestamp with time zone;
+
+-- 0012. One row ties a user to an IdP account (token iss + sub).
+CREATE TABLE user_identities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  issuer text NOT NULL,
+  subject text NOT NULL,
+  tenant_id text,          -- Entra `tid`, kept for investigation only
+  object_id text,          -- Entra `oid`, kept for investigation only
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_login_at timestamptz,
+  CONSTRAINT user_identities_issuer_subject_key UNIQUE (issuer, subject),
+  CONSTRAINT user_identities_user_issuer_key UNIQUE (user_id, issuer)
+);
+
+-- 0013. Passkeys, recovery codes and pending WebAuthn challenges.
+CREATE TABLE user_passkeys (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  credential_id text NOT NULL,           -- base64url credential ID
+  public_key bytea NOT NULL,             -- COSE public key
+  sign_count bigint NOT NULL DEFAULT 0,  -- CHECK (sign_count >= 0)
+  transports text[],
+  name text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_used_at timestamptz,
+  CONSTRAINT user_passkeys_credential_id_key UNIQUE (credential_id)
+);
+CREATE INDEX user_passkeys_user_id_idx ON user_passkeys (user_id);
+
+CREATE TABLE user_recovery_codes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code_hash text NOT NULL,               -- SHA-256 hex of the normalized code
+  created_at timestamptz NOT NULL DEFAULT now(),
+  used_at timestamptz,                   -- NULL = unused
+  CONSTRAINT user_recovery_codes_code_hash_key UNIQUE (code_hash)
+);
+CREATE INDEX user_recovery_codes_user_id_idx ON user_recovery_codes (user_id);
+
+CREATE TABLE mfa_challenges (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  purpose text NOT NULL,                 -- CHECK purpose IN ('login', 'register')
+  challenge text NOT NULL,
+  token_hash text,                       -- login rows: SHA-256 of the MFA cookie token
+  expires_at timestamptz NOT NULL,       -- 5 minutes after creation
+  consumed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT mfa_challenges_token_hash_key UNIQUE (token_hash)
+);
+CREATE INDEX mfa_challenges_user_id_idx ON mfa_challenges (user_id);
+CREATE INDEX mfa_challenges_expires_at_idx ON mfa_challenges (expires_at);
+```
+
+Who reads and writes them (all under `artifacts/api-server/src/`):
+
+- `users.failed_login_count`, `users.locked_until`: `lib/auth/lockout.ts`. A failure is one `UPDATE ... RETURNING` that either adds 1 or, on reaching `LOGIN_LOCKOUT_THRESHOLD`, resets the count to 0 and sets `locked_until`; it skips accounts whose lock is still in force. A success clears both. `routes/auth.ts` (`POST /login`) and `routes/mfa.ts` read `locked_until` and refuse a locked account before checking the credential. Demo accounts are never counted or locked.
+- `user_identities`: `lib/auth/identities.ts`, called from the OIDC callback in `routes/oidc.ts`. The first SSO login of an active user matches the account by email and inserts the row and its `auth.oidc.identity_linked` security event in one transaction (`ON CONFLICT DO NOTHING`; either unique key already held → refused). Later logins find the user by `(issuer, subject)` only, ignore the token's email, and update `last_login_at`.
+- `user_passkeys`: `lib/auth/mfa.ts` lists a user's passkeys after a correct password at `POST /api/auth/login`; any passkey starts the second step. `routes/mfa.ts` inserts and deletes rows (a signed-in `super_user`, own account, current password required) and updates `sign_count` and `last_used_at` after each verified assertion.
+- `user_recovery_codes`: `lib/auth/recovery-codes.ts`. Generating a set deletes the user's old rows and inserts 10 new hashes in one transaction; the plaintext is returned once. Using a code sets `used_at` in the same transaction that consumes the login challenge, so a code is spent only if the challenge is.
+- `mfa_challenges`: `lib/auth/mfa.ts`. A `login` row is created after the password verifies and found by `token_hash` from the httpOnly `truenote_mfa` cookie (path `/api/auth/mfa`); a `register` row (no `token_hash`) belongs to a super user adding a passkey. Both are consumed once with `UPDATE ... SET consumed_at = now() WHERE consumed_at IS NULL AND expires_at > now()`. Nothing deletes consumed or expired rows; they stay until the user is deleted.
+
+Only `users.failed_login_count`, `users.locked_until`, `sessions.auth_method` and `sessions.auth_time` are bound in `lib/db/src/schema.ts`. The four new tables are not; the code above queries them with raw SQL. Every new table cascades on user delete, and 0012 and 0013 grant `truenote_app` SELECT, INSERT, UPDATE, DELETE.
+
 ## Invariants
 
 - **`chunks.program_id` is denormalized** from `document_versions → documents → programs`. This is intentional. Retrieval queries filter on it directly to avoid joining at query time.

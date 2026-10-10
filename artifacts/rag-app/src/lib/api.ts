@@ -75,6 +75,19 @@ import { getSelectedProgramIdRaw } from "@/lib/selectedProgram";
  */
 
 /**
+ * Marks a request the user did not start, such as a dashboard's timer
+ * refresh. The api-server does not count it as session activity, so an
+ * open page that polls cannot keep an idle session alive. Must match
+ * BACKGROUND_REQUEST_HEADER in api-server/src/lib/auth/session-policy.ts.
+ */
+export const BACKGROUND_REQUEST_HEADER = "X-Truenote-Background";
+
+export interface RequestOptions {
+  /** Timer-driven refresh: send BACKGROUND_REQUEST_HEADER. */
+  background?: boolean;
+}
+
+/**
  * Build a RequestInit with cookies + the X-Program-Id header (when a
  * super_user has selected a program). Non-super_user roles also get
  * the header sent if something happens to write to the storage slot;
@@ -84,12 +97,16 @@ import { getSelectedProgramIdRaw } from "@/lib/selectedProgram";
  * win so a Content-Type override (e.g. multipart for upload) keeps
  * the right Content-Type the browser builds for FormData.
  */
-function withDefaults(init: RequestInit = {}): RequestInit {
+function withDefaults(
+  init: RequestInit = {},
+  options: RequestOptions = {}
+): RequestInit {
   const headers = new Headers(init.headers);
   const programId = getSelectedProgramIdRaw();
   if (programId !== null && !headers.has("X-Program-Id")) {
     headers.set("X-Program-Id", programId);
   }
+  if (options.background) headers.set(BACKGROUND_REQUEST_HEADER, "1");
   return {
     ...init,
     credentials: "include",
@@ -519,8 +536,10 @@ export async function submitFeedback(queryLogId: string, feedback: -1 | 0 | 1): 
   await asJson<{ ok: boolean }>(response);
 }
 
-export async function listDocuments(): Promise<DocumentListResponse> {
-  const response = await fetch("/api/documents", withDefaults());
+export async function listDocuments(
+  options: RequestOptions = {}
+): Promise<DocumentListResponse> {
+  const response = await fetch("/api/documents", withDefaults({}, options));
   return asJson<DocumentListResponse>(response);
 }
 
@@ -1035,7 +1054,7 @@ export async function updateModelRouting(
 
 export async function getObservability(
   hours: number,
-  limit = 100
+  { limit = 100, ...options }: RequestOptions & { limit?: number } = {}
 ): Promise<ObservabilityResponse> {
   const params = new URLSearchParams({
     hours: String(hours),
@@ -1043,7 +1062,7 @@ export async function getObservability(
   });
   const response = await fetch(
     `/api/admin/observability?${params.toString()}`,
-    withDefaults()
+    withDefaults({}, options)
   );
   return asJson<ObservabilityResponse>(response);
 }
@@ -1054,7 +1073,7 @@ export async function listErrors(input: {
   offset?: number;
   severity?: ErrorLogSeverity | "all";
   source?: string;
-}): Promise<ErrorLogResponse> {
+}, options: RequestOptions = {}): Promise<ErrorLogResponse> {
   const params = new URLSearchParams({
     hours: String(input.hours),
     limit: String(input.limit ?? 100),
@@ -1064,7 +1083,7 @@ export async function listErrors(input: {
   if (input.source) params.set("source", input.source);
   const response = await fetch(
     `/api/admin/errors?${params.toString()}`,
-    withDefaults()
+    withDefaults({}, options)
   );
   return asJson<ErrorLogResponse>(response);
 }
@@ -1276,10 +1295,12 @@ export async function deleteEvalQuestion(id: string): Promise<void> {
   if (!response.ok) await asJson<never>(response);
 }
 
-export async function listEvalRuns(limit = 20): Promise<EvalRunListResponse> {
+export async function listEvalRuns(
+  { limit = 20, ...options }: RequestOptions & { limit?: number } = {}
+): Promise<EvalRunListResponse> {
   const response = await fetch(
     `/api/admin/evaluations/runs?limit=${encodeURIComponent(limit)}`,
-    withDefaults()
+    withDefaults({}, options)
   );
   return asJson<EvalRunListResponse>(response);
 }

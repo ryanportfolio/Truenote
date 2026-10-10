@@ -69,7 +69,9 @@ describe("OIDC config: tenant and program gates", () => {
     ["China v2.0", `https://login.partner.microsoftonline.cn/${tenant}/v2.0`],
     ["China legacy login host", `https://login.chinacloudapi.cn/${tenant}/v2.0`],
     ["China v1.0", `https://sts.chinacloudapi.cn/${tenant}/`],
-    ["uppercase host with a trailing dot", `https://STS.WINDOWS.NET./${tenant}/`]
+    ["uppercase host with a trailing dot", `https://STS.WINDOWS.NET./${tenant}/`],
+    ["host with two trailing dots", `https://sts.windows.net../${tenant}/`],
+    ["v2.0 host with three trailing dots", `https://login.microsoftonline.com.../${tenant}/v2.0`]
   ])("Entra issuer host: %s", (_label, issuer) => {
     beforeEach(() => vi.stubEnv("OIDC_ISSUER_URL", issuer));
 

@@ -59,7 +59,13 @@ const fake = vi.hoisted(() => ({
   recordAuthSuccess: vi.fn(),
   verifyAuthentication: vi.fn(),
   verifyRegistration: vi.fn(),
-  sql: [] as string[]
+  sql: [] as string[],
+  // Row locks taken by SELECT ... FOR UPDATE, keyed on the first parameter
+  // (the user id) and held until the transaction ends.
+  rowLocks: new Map<string, Promise<void>>(),
+  // For each appendSecurityEvent call: did it run on a transaction executor?
+  auditInTx: [] as boolean[],
+  appendFailure: null as Error | null
 }));
 
 function now() {
@@ -132,6 +138,9 @@ function runSql(query: SQL): { rows: unknown[] } {
     t.passkeys.push(row);
     return { rows: [{ id: row.id }] };
   }
+  if (text.startsWith("SELECT id::text AS id FROM user_passkeys WHERE user_id = $1::uuid FOR UPDATE")) {
+    return { rows: t.passkeys.filter((r) => r.user_id === p[0]).map((r) => ({ id: r.id })) };
+  }
   if (text.startsWith("DELETE FROM user_passkeys")) {
     const before = t.passkeys.length;
     t.passkeys = t.passkeys.filter((r) => !(r.id === p[0] && r.user_id === p[1]));
@@ -175,13 +184,32 @@ vi.mock("../../lib/db-client.js", () => {
       insert: () => ({ values: async (values: unknown) => { fake.sessionInsert(values); } }),
       update: () => ({ set: () => ({ where: () => Promise.resolve(undefined) }) }),
       // Snapshot and restore, so a rolled-back transaction leaves no writes.
-      transaction: async <T>(work: (tx: { execute: typeof execute }) => Promise<T>): Promise<T> => {
+      // SELECT ... FOR UPDATE waits for and then holds a per-user lock until
+      // the transaction ends, as Postgres row locks do.
+      transaction: async <T>(work: (tx: { execute: typeof execute; isTx: true }) => Promise<T>): Promise<T> => {
         const snapshot = cloneTables(fake.tables);
+        const releases: Array<() => void> = [];
+        const txExecute = async (query: SQL) => {
+          const { sql: raw, params } = dialect.sqlToQuery(query);
+          if (/\bFOR UPDATE\b/.test(raw)) {
+            const key = String(params[0]);
+            while (fake.rowLocks.has(key)) await fake.rowLocks.get(key);
+            let release!: () => void;
+            fake.rowLocks.set(key, new Promise<void>((resolve) => { release = resolve; }));
+            releases.push(() => {
+              fake.rowLocks.delete(key);
+              release();
+            });
+          }
+          return runSql(query);
+        };
         try {
-          return await work({ execute });
+          return await work({ execute: txExecute, isTx: true });
         } catch (err) {
           fake.tables = snapshot;
           throw err;
+        } finally {
+          for (const release of releases) release();
         }
       }
     }
@@ -191,7 +219,15 @@ vi.mock("../../lib/auth/passwords.js", () => ({
   verifyPassword: fake.verifyPassword,
   hashPassword: async () => "dummy-password-hash"
 }));
-vi.mock("../../lib/security/audit.js", () => ({ recordSecurityEventBestEffort: fake.audit }));
+vi.mock("../../lib/security/audit.js", () => ({
+  recordSecurityEventBestEffort: fake.audit,
+  appendSecurityEvent: async (input: unknown, executor?: { isTx?: boolean }) => {
+    fake.audit(input);
+    fake.auditInTx.push(executor?.isTx === true);
+    if (fake.appendFailure) throw fake.appendFailure;
+    return {};
+  }
+}));
 vi.mock("../../lib/observability/error-log.js", () => ({ recordAppError: async () => true }));
 vi.mock("../../lib/auth/rate-limit.js", () => ({
   clientIpFrom: () => "203.0.113.9",
@@ -269,6 +305,9 @@ beforeEach(() => {
   fake.tables = { challenges: [], passkeys: [], codes: [] };
   fake.clockOffset = 0;
   fake.sql = [];
+  fake.rowLocks.clear();
+  fake.auditInTx = [];
+  fake.appendFailure = null;
   fake.verifyPassword.mockImplementation(async (password: string, hash: string) =>
     hash === "stored-password-hash" && password === PASSWORD);
   fake.recordAuthFailure.mockResolvedValue({ locked: false, lockedNow: false, lockedUntil: null });
@@ -484,15 +523,53 @@ describe("login with an enrolled passkey", () => {
     expect(fake.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "auth.local.login", outcome: "success" }));
   });
 
-  it("fails closed when WebAuthn is not configured in production", async () => {
+  // Rule: an unusable WebAuthn configuration must not lock the emergency
+  // account out. The second factor still applies, through recovery codes only.
+  it("offers only recovery codes when WebAuthn is not configured in production", async () => {
     vi.stubEnv("APP_BASE_URL", "");
+    const generated = await call("POST", "/api/auth/mfa/recovery-codes", { password: PASSWORD }, asSuper());
+    const codes = generated.body!.codes as string[];
     enrollPasskey();
-    const { reply } = await passwordStep();
-    expect(reply.status).toBe(401);
-    expect(reply.body).toEqual({ error: "Invalid credentials" });
-    expect(reply.cookies).toEqual([]);
-    expect(fake.tables.challenges).toHaveLength(0);
+
+    const { reply, cookie } = await passwordStep();
+    expect(reply.status).toBe(200);
+    expect(reply.body).toEqual({ mfaRequired: true, methods: ["recovery_code"] });
+    expect(reply.body).not.toHaveProperty("passkeyOptions");
+    expect(cookieValue(reply.cookies, SESSION_COOKIE_NAME)).toBeUndefined();
+    expect(cookie).not.toBe("");
+    expect(fake.tables.challenges).toHaveLength(1);
     expect(fake.sessionInsert).not.toHaveBeenCalled();
+    expect(fake.recordAuthSuccess).not.toHaveBeenCalled();
+    expect(fake.audit).toHaveBeenCalledWith(expect.objectContaining({
+      action: "auth.mfa.webauthn_unconfigured",
+      outcome: "failure",
+      actor: { id: SUPER.id, email: SUPER.email, role: "super_user" },
+      details: expect.objectContaining({ reason: "webauthn_unconfigured", methods: ["recovery_code"] })
+    }));
+
+    // The passkey endpoint stays refused and leaves the challenge usable.
+    const passkey = await call("POST", "/api/auth/mfa/passkey", assertion, { cookie });
+    expect(passkey).toMatchObject({ status: 401, body: { error: "Invalid credentials" } });
+    expect(fake.verifyAuthentication).not.toHaveBeenCalled();
+    expect(fake.tables.challenges[0]!.consumed_at).toBeNull();
+    expect(fake.sessionInsert).not.toHaveBeenCalled();
+    expect(fake.audit).toHaveBeenCalledWith(expect.objectContaining({
+      action: "auth.mfa.verify",
+      outcome: "denied",
+      details: { authMethod: "local", factor: "passkey", reason: "webauthn_unconfigured" }
+    }));
+
+    // A recovery code completes the sign-in.
+    const ok = await call("POST", "/api/auth/mfa/recovery-code", { code: codes[0] }, { cookie });
+    expect(ok.status).toBe(200);
+    expect(cookieValue(ok.cookies, SESSION_COOKIE_NAME)).toBeTruthy();
+    expect(fake.sessionInsert).toHaveBeenCalledTimes(1);
+    expect(fake.tables.challenges[0]!.consumed_at).not.toBeNull();
+    expect(fake.audit).toHaveBeenCalledWith(expect.objectContaining({
+      action: "auth.break_glass.login",
+      outcome: "success",
+      details: { authMethod: "local", mfa: "recovery_code" }
+    }));
   });
 });
 
@@ -596,6 +673,26 @@ describe("recovery codes", () => {
     expect(reply.status).toBe(401);
     expect(fake.tables.codes.every((r) => r.used_at === null)).toBe(true);
   });
+
+  it("appends the generation event in the replacement transaction; a failed append keeps the old codes", async () => {
+    const codes = await generateCodes();
+    expect(fake.auditInTx).toEqual([true]);
+    const hashes = fake.tables.codes.map((r) => r.code_hash).sort();
+    expect(hashes).toEqual(
+      codes.map((c) => createHash("sha256").update(c.replace(/-/g, "")).digest("hex")).sort()
+    );
+
+    fake.appendFailure = new Error("audit append failed");
+    const res = await fetch(`${base}/api/auth/mfa/recovery-codes`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...asSuper() },
+      body: JSON.stringify({ password: PASSWORD })
+    });
+    expect(res.status).toBe(500);
+    expect(await res.text()).not.toMatch(/[a-z2-7]{4}-[a-z2-7]{4}-[a-z2-7]{4}-[a-z2-7]{4}/);
+    expect(fake.auditInTx).toEqual([true, true]);
+    expect(fake.tables.codes.map((r) => r.code_hash).sort()).toEqual(hashes);
+  });
 });
 
 describe("enrollment", () => {
@@ -696,6 +793,42 @@ describe("enrollment", () => {
     expect((await call("DELETE", `/api/auth/mfa/passkeys/${id}`, { password: PASSWORD }, asSuper())).status).toBe(204);
     expect(fake.tables.passkeys).toHaveLength(0);
     expect(fake.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "auth.mfa.passkey.removed", resourceId: id }));
+  });
+
+  // Rule: in break_glass mode two concurrent deletes of the last two
+  // passkeys leave one. The check and the delete share a transaction that
+  // locks the user's passkey rows first.
+  it("keeps one passkey when two deletes race in break_glass mode", async () => {
+    enrollPasskey();
+    fake.tables.passkeys.push({
+      id: newId(), user_id: SUPER.id, credential_id: "c2Vjb25kLWNyZWRlbnRpYWw",
+      public_key: new Uint8Array([1, 2, 3]), sign_count: 0, transports: null,
+      name: "Backup key", created_at: new Date(), last_used_at: null
+    });
+    const [first, second] = fake.tables.passkeys.map((p) => p.id);
+
+    // Hold both requests at the password check, then release them together.
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => { open = resolve; });
+    let arrived = 0;
+    fake.verifyPassword.mockImplementation(async (password: string, hash: string) => {
+      arrived += 1;
+      await gate;
+      return hash === "stored-password-hash" && password === PASSWORD;
+    });
+    const a = call("DELETE", `/api/auth/mfa/passkeys/${first}`, { password: PASSWORD }, asSuper());
+    const b = call("DELETE", `/api/auth/mfa/passkeys/${second}`, { password: PASSWORD }, asSuper());
+    await vi.waitFor(() => expect(arrived).toBe(2));
+    open();
+    const statuses = (await Promise.all([a, b])).map((r) => r.status).sort();
+    expect(statuses).toEqual([204, 409]);
+    expect(fake.tables.passkeys).toHaveLength(1);
+
+    // The lock is taken before the delete.
+    const lockAt = fake.sql.findIndex((s) => s.includes("FROM user_passkeys WHERE user_id = $1::uuid FOR UPDATE"));
+    const deleteAt = fake.sql.findIndex((s) => s.startsWith("DELETE FROM user_passkeys"));
+    expect(lockAt).toBeGreaterThanOrEqual(0);
+    expect(deleteAt).toBeGreaterThan(lockAt);
   });
 
   it("refuses a registration that does not verify", async () => {

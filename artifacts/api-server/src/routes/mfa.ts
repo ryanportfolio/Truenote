@@ -41,7 +41,7 @@ import {
 import { getWebAuthnConfig } from "../lib/auth/webauthn-config.js";
 import { clientIpFrom, loginIpLimiter } from "../lib/auth/rate-limit.js";
 import { authedUser, requireAuth, requireSuperUser } from "../middleware/current-user.js";
-import { recordSecurityEventBestEffort } from "../lib/security/audit.js";
+import { appendSecurityEvent, recordSecurityEventBestEffort } from "../lib/security/audit.js";
 
 /**
  * Second factor for local password login, mounted at /api/auth/mfa.
@@ -501,23 +501,34 @@ mfaRouter.delete("/passkeys/:id", requireAuth, requireSuperUser, async (req, res
     }
     const user = await requireCurrentPassword(req, res);
     if (!user) return;
-    const passkeys = await listPasskeys(user.id);
-    if (!passkeys.some((p) => p.id === passkeyId.toLowerCase())) {
-      res.status(404).json({ error: "Passkey not found" });
-      return;
-    }
+    const keepLast = getOidcConfig().localLoginMode === "break_glass";
     // In break_glass mode the emergency account cannot sign in without a
-    // passkey, so its last one stays until another is added.
-    if (passkeys.length === 1 && getOidcConfig().localLoginMode === "break_glass") {
-      res.status(409).json({ error: "Add another passkey before removing the last one." });
+    // passkey, so its last one stays until another is added. The check and
+    // the delete run in one transaction that first locks every passkey row
+    // of the user (FOR UPDATE): a concurrent delete waits, then sees the row
+    // this one removed as gone, so two deletes cannot remove the last two.
+    const outcome = await db.transaction(async (tx) => {
+      const executor = tx as unknown as SqlExecutor;
+      const locked = await executor.execute(sql`
+        SELECT id::text AS id FROM user_passkeys
+        WHERE user_id = ${user.id}::uuid
+        FOR UPDATE
+      `);
+      const ids = locked.rows.map((row) => String((row as { id?: unknown }).id));
+      if (!ids.includes(passkeyId.toLowerCase())) return "missing" as const;
+      if (keepLast && ids.length === 1) return "last" as const;
+      const result = await executor.execute(sql`
+        DELETE FROM user_passkeys WHERE id = ${passkeyId}::uuid AND user_id = ${user.id}::uuid
+        RETURNING id
+      `);
+      return result.rows.length > 0 ? ("deleted" as const) : ("missing" as const);
+    });
+    if (outcome === "missing") {
+      res.status(404).json({ error: "Passkey not found" });
       return;
     }
-    const result = await db.execute(sql`
-      DELETE FROM user_passkeys WHERE id = ${passkeyId}::uuid AND user_id = ${user.id}::uuid
-      RETURNING id
-    `);
-    if (result.rows.length === 0) {
-      res.status(404).json({ error: "Passkey not found" });
+    if (outcome === "last") {
+      res.status(409).json({ error: "Add another passkey before removing the last one." });
       return;
     }
     auditChange(req, user, "auth.mfa.passkey.removed", "user_passkey", passkeyId);
@@ -531,10 +542,26 @@ mfaRouter.post("/recovery-codes", requireAuth, requireSuperUser, async (req, res
   try {
     const user = await requireCurrentPassword(req, res);
     if (!user) return;
-    const codes = await db.transaction((tx) =>
-      replaceRecoveryCodes(user.id, tx as unknown as SqlExecutor)
-    );
-    auditChange(req, user, "auth.mfa.recovery_codes.generated", "user", user.id, { count: RECOVERY_CODE_COUNT });
+    // The replacement and its audit event commit together: if the event
+    // cannot be appended, the old codes stay and the request fails.
+    const codes = await db.transaction(async (tx) => {
+      const executor = tx as unknown as SqlExecutor;
+      const replaced = await replaceRecoveryCodes(user.id, executor);
+      await appendSecurityEvent(
+        {
+          action: "auth.mfa.recovery_codes.generated",
+          outcome: "success",
+          actor: { id: user.id, email: user.email, role: user.role },
+          programId: user.programId,
+          resourceType: "user",
+          resourceId: user.id,
+          sourceIp: clientIpFrom(req),
+          details: { count: RECOVERY_CODE_COUNT }
+        },
+        executor
+      );
+      return replaced;
+    });
     res.json({ codes });
   } catch (err) {
     next(err);

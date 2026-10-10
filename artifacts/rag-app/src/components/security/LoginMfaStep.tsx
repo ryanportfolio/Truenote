@@ -21,7 +21,8 @@ interface LoginMfaStepProps {
 /**
  * Second sign-in step for an account with a passkey. The password was
  * accepted; no session exists until a passkey assertion or a single-use
- * recovery code verifies.
+ * recovery code verifies. When the server does not offer `passkey` (its
+ * WebAuthn configuration is unusable), only the recovery-code form shows.
  */
 export function LoginMfaStep({
   challenge,
@@ -30,9 +31,11 @@ export function LoginMfaStep({
   onExpired,
   onCancel
 }: LoginMfaStepProps): JSX.Element {
+  // The server omits passkeyOptions when it does not offer passkey sign-in.
+  const passkeyOffered = challenge.methods.includes("passkey") && Boolean(challenge.passkeyOptions);
   const [pending, setPending] = useState<"passkey" | "code" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showCode, setShowCode] = useState(!challenge.methods.includes("passkey"));
+  const [showCode, setShowCode] = useState(!passkeyOffered);
   const [code, setCode] = useState("");
   const passkeyButtonRef = useRef<HTMLButtonElement>(null);
   const codeInputRef = useRef<HTMLInputElement>(null);
@@ -95,11 +98,13 @@ export function LoginMfaStep({
         <h2 className="text-xl font-semibold tracking-tight">Confirm it's you</h2>
         <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
           Password accepted for <span className="break-all font-medium text-foreground">{email}</span>.
-          This account also needs its passkey or a recovery code.
+          {passkeyOffered
+            ? " This account also needs its passkey or a recovery code."
+            : " Passkey sign-in is unavailable on this server, so enter one of this account's recovery codes."}
         </p>
       </div>
 
-      {challenge.methods.includes("passkey") ? (
+      {passkeyOffered ? (
         <button
           ref={passkeyButtonRef}
           type="button"
@@ -158,7 +163,7 @@ export function LoginMfaStep({
       ) : null}
 
       <div className="auth-actions">
-        {!showCode ? (
+        {!showCode && passkeyOffered ? (
           <button
             type="button"
             className={LINK_BUTTON}

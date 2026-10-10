@@ -90,6 +90,65 @@ Applied: `0001_schema_migrations.sql` (2026-10-07, sha256 `f33bb30e…`), `0002_
 
 0004 adds `supervisor` to `user_role`; 0005 adds `team_members` with its guard and users cleanup triggers; 0006 adds `kb_team_shortcuts` for supervisor-recommended sources with its document and supervisor guards and users cleanup trigger. They ran in that order, in separate runs, because Postgres cannot use a new enum value in the transaction that adds it. All three are additive (one enum value, two new tables), so no pre-change dump was taken. The demo supervisor's two recommended sources were inserted by one-off SQL after `seed:showcase teams`, because the server refuses writes from demo accounts.
 
+## SSO and emergency sign-in release (2026-10-10)
+
+Steps for the release that adds per-account lockout, SSO identity binding, SSO session limits and passkeys for the emergency local login. Variables: `secrets.md`. Tables: `data-model.md`, "Sign-in tables (0011-0013)". The list of what to ask the customer's IT for (app registration, claims, MFA policy) is in `docs/security/sso-mfa-plan-2026-10-09.md`, on branch `claude/sso-mfa-plan` (PR ryanportfolio/Truenote#209).
+
+### 1. Apply 0011, 0012, 0013 before deploying the code
+
+The new code reads the new schema on every sign-in: `POST /api/auth/login` selects `users.locked_until` and, after a correct password, lists `user_passkeys`; the OIDC callback queries `user_identities`. Deployed without the files, local login and SSO fail. All three are additive (two nullable or defaulted columns on `users`, four new tables with `truenote_app` grants), and earlier additive files (0004 to 0009) went without a pre-change dump. In order, status first:
+
+```text
+node scripts/railway-apply-sql.mjs lib/db/sql/0011_login_lockout.sql
+node scripts/railway-apply-sql.mjs lib/db/sql/0012_user_identities.sql
+node scripts/railway-apply-sql.mjs lib/db/sql/0013_break_glass_mfa.sql
+```
+
+After the owner's go, rerun each with `--apply` in the same order, inspect `\d+ users`, `\d+ user_identities`, `\d+ user_passkeys`, `\d+ user_recovery_codes` and `\d+ mfa_challenges`, and add the three files to the "Applied" list above. Then deploy `web` and `worker` from the same commit ("Deploying").
+
+### 2. Enroll the emergency passkey while `LOCAL_LOGIN_MODE=enabled`
+
+In `break_glass` a super user without a passkey cannot log in locally (`POST /api/auth/login` answers 401 and records `auth.break_glass.mfa_missing`). Super users have no program, so they cannot use SSO either. The first passkey must therefore be enrolled before the switch:
+
+1. Set `LOCAL_LOGIN_MODE=enabled` on `web` explicitly. It is not in the variable list above, and unset means `enabled` only while no OIDC variable is set.
+2. Passkeys need a relying party. With neither `WEBAUTHN_RP_ID` nor `WEBAUTHN_ORIGINS` set, both come from `APP_BASE_URL` (`truenote.org`, `https://truenote.org`). `www.truenote.org` answers 308 to the apex today; if it ever serves the app, set `WEBAUTHN_ORIGINS=https://truenote.org,https://www.truenote.org`.
+3. Sign in as the super user, open `/admin/security`, card "Emergency sign-in". Add a passkey (asks for the current password), then generate recovery codes. The 10 codes are shown once; store them offline. Generating again replaces the whole set.
+4. Sign out and back in: the password step now asks for the passkey or a recovery code. This applies in every mode, `enabled` included, once the account has a passkey.
+
+The last passkey cannot be removed while the mode is `break_glass` (409).
+
+### 3. Enable SSO
+
+From the customer's IT team: tenant ID, client ID, client secret, and the program's users already created in Truenote with the emails the directory sends. Set on `web` with `railway variable set ... --stdin --skip-deploys`, then redeploy once:
+
+| Variable | Value |
+|---|---|
+| `LOCAL_LOGIN_MODE` | `enabled` (keep it explicit: with OIDC variables present but OIDC not usable, an unset mode means `disabled` and locks every local login) |
+| `OIDC_TENANT_ID` | the tenant ID |
+| `OIDC_ISSUER_URL` | `https://login.microsoftonline.com/<tenant ID>/v2.0` (its tenant segment must equal `OIDC_TENANT_ID`) |
+| `OIDC_CLIENT_ID` | the client ID |
+| `OIDC_CLIENT_SECRET` | the client secret (secret) |
+| `OIDC_REDIRECT_URI` | `https://truenote.org/api/auth/oidc/callback` |
+| `OIDC_STATE_SECRET` | random, at least 32 characters (secret) |
+| `OIDC_ALLOWED_PROGRAM_IDS` | the program's UUID; empty or malformed leaves SSO off |
+
+`OIDC_REQUIRE_MFA` defaults to on once OIDC is configured. After the redeploy, `GET /api/config` must show `"oidcEnabled":true` and `"localLoginMode":"enabled"`. A user's first SSO login matches the account by email once and stores the IdP's (issuer, `sub`) in `user_identities`; later logins use only that binding.
+
+### 4. Deploy checks
+
+- SSO login with MFA, as a user of an allowed program: lands on the app; the new `sessions` row has `auth_method = 'oidc'` and `expires_at` about 10 hours after `created_at` (`SSO_SESSION_MAX_HOURS`); one `user_identities` row exists for the user; security events `auth.oidc.identity_linked` and `auth.oidc.login` (success) are recorded.
+- SSO login whose token lacks `amr: ["mfa"]` (a user excluded from the IdP's MFA policy, if the IT team can provide one): redirect to `/login?sso_error=1`, no `sessions` row, `web` logs `[oidc] callback failed: OIDC token does not contain MFA evidence`.
+- A user outside `OIDC_ALLOWED_PROGRAM_IDS`: refused the same way, security event `auth.oidc.login` denied with reason `program_not_allowed`.
+- After the switch to `break_glass` (step 5): super-user password login asks for the passkey and succeeds with it (event `auth.break_glass.login`, `details.mfa = "passkey"`); a password login by any other role answers 401.
+
+### 5. Switch to `break_glass`
+
+Only after step 2 and the SSO checks pass. Set `LOCAL_LOGIN_MODE=break_glass`: local sessions of every role except `super_user` stop working on their next request, and the super user's local session ends after `SESSION_IDLE_MINUTES` (default 15) without activity. `DEMO_LOGIN_ACCOUNTS` roles are capped at `manager`, so no demo account is a super user and the public demo login stops working in `break_glass` and `disabled`.
+
+### Known limitation
+
+`POST /api/auth/change-password` and reset-link completion (`POST /api/auth/reset-password`) issue a 7-day session with `auth_method = 'local'`, even when the user arrived through SSO. In `break_glass` that session is refused on its first request for anyone but a super user, and in `disabled` for everyone, so the effect is limited to `enabled` mode, where an SSO user who changes their password gets a 7-day local session without the SSO idle and 10-hour limits.
+
 ## Data copy from Replit (2026-10-07)
 
 - Source: the Replit production database (Neon, Postgres 16.15, 11 MB). Confirmed as production by logging in to `truenote.org` as the demo CSR and seeing the new `sessions` row appear in it.

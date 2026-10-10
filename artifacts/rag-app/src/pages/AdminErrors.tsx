@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, Copy, RefreshCw, Trash2 } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
-import { clearErrorLog, listErrors } from "@/lib/api";
+import { clearErrorLog, listErrors, type RequestOptions } from "@/lib/api";
 import {
   errorDiagnostic,
   serializeErrorBundle,
@@ -83,7 +83,10 @@ function ErrorsDashboard(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const generationRef = useRef(0);
 
-  const load = useCallback(async (initial = false): Promise<void> => {
+  const load = useCallback(async (
+    initial = false,
+    options: RequestOptions = {}
+  ): Promise<void> => {
     const generation = ++generationRef.current;
     if (initial) setLoading(true);
     else setRefreshing(true);
@@ -93,7 +96,7 @@ function ErrorsDashboard(): JSX.Element {
         hours,
         severity,
         ...(source ? { source } : {})
-      });
+      }, options);
       if (generation === generationRef.current) setData(next);
     } catch (reason) {
       if (generation === generationRef.current) {
@@ -109,7 +112,12 @@ function ErrorsDashboard(): JSX.Element {
 
   useEffect(() => {
     void load(true);
-    const interval = window.setInterval(() => void load(false), 30_000);
+    // Timer refreshes are background requests, so an open dashboard does
+    // not keep an idle session alive.
+    const interval = window.setInterval(
+      () => void load(false, { background: true }),
+      30_000
+    );
     return () => {
       generationRef.current += 1;
       window.clearInterval(interval);

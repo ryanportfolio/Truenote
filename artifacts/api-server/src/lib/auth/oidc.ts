@@ -94,7 +94,8 @@ function entraTenantMatches(issuerUrl: string, tenantId: string | null): boolean
   } catch {
     return false;
   }
-  const host = url.hostname.toLowerCase().replace(/\.$/, "");
+  // Strip every trailing dot: `sts.windows.net..` must not escape the gate.
+  const host = url.hostname.toLowerCase().replace(/\.+$/, "");
   if (!ENTRA_ISSUER_HOSTS.has(host)) return true;
   const issuerTenant = url.pathname.split("/").filter(Boolean)[0]?.toLowerCase() ?? "";
   return Boolean(tenantId && UUID_PATTERN.test(tenantId) && issuerTenant === tenantId);

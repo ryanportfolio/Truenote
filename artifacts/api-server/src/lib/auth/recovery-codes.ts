@@ -54,8 +54,10 @@ export function hashRecoveryCode(normalized: string): string {
 
 /**
  * Replace every recovery code of the user with RECOVERY_CODE_COUNT new ones
- * and return the plaintext codes. Runs on the caller's executor so the
- * replacement and its audit event share one transaction.
+ * and return the plaintext codes. Runs on the caller's executor:
+ * POST /api/auth/mfa/recovery-codes (routes/mfa.ts) passes a transaction
+ * that also appends the `auth.mfa.recovery_codes.generated` audit event, so
+ * the replacement and its event commit or roll back together.
  */
 export async function replaceRecoveryCodes(
   userId: string,

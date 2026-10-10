@@ -247,20 +247,21 @@ authRouter.post("/login", async (req, res, next) => {
     const passkeys = await listPasskeys(row.id);
     if (passkeys.length > 0) {
       const challenge = await startLoginChallenge(res, row.id, passkeys);
-      if (!challenge) {
-        // WebAuthn is not usably configured (lib/auth/webauthn-config.ts):
-        // fail closed rather than skip the second factor.
+      if (!challenge.methods.includes("passkey")) {
+        // WebAuthn is not usably configured (lib/auth/webauthn-config.ts).
+        // The second factor still applies: the challenge offers recovery
+        // codes only, so the emergency account is not locked out by a
+        // configuration mistake. Record it so the mistake gets fixed.
+        console.warn("[auth] WebAuthn is not configured; login MFA offers recovery codes only");
         recordSecurityEventBestEffort({
-          action: "auth.local.login",
-          outcome: "denied",
+          action: "auth.mfa.webauthn_unconfigured",
+          outcome: "failure",
           actor,
           programId: row.programId,
           resourceType: "session",
           sourceIp: ip,
-          details: { authMethod: "local", reason: "webauthn_unconfigured" }
+          details: { authMethod: "local", reason: "webauthn_unconfigured", methods: challenge.methods }
         });
-        res.status(401).json({ error: "Invalid credentials" });
-        return;
       }
       res.json(challenge);
       return;

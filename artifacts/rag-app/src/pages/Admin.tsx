@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { listDocuments } from "@/lib/api";
+import { listDocuments, type RequestOptions } from "@/lib/api";
 import type { ContentSourceItem, CurrentUser, DocumentListItem } from "@/types/api";
 import { UploadForm } from "@/components/admin/UploadForm";
 import { DocumentList } from "@/components/admin/DocumentList";
@@ -27,10 +27,10 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
   // prompt instead of "no documents" (which is ambiguous).
   const [noProgramSelected, setNoProgramSelected] = useState(false);
 
-  const refresh = useCallback(async (): Promise<void> => {
+  const refresh = useCallback(async (options: RequestOptions = {}): Promise<void> => {
     setError(null);
     try {
-      const response = await listDocuments();
+      const response = await listDocuments(options);
       setItems(response.items);
       setSources(response.sources ?? []);
       setControlsReady(response.controlsReady !== false);
@@ -72,8 +72,9 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
       ["submitted", "scanning", "parsing"].includes(item.lifecycleState)
     );
     if (!hasInFlight) return;
+    // Background request: ingestion polling is not session activity.
     const timer = setTimeout(() => {
-      void refresh();
+      void refresh({ background: true });
     }, POLL_INTERVAL_MS);
     return () => clearTimeout(timer);
   }, [items, refresh]);

@@ -23,7 +23,9 @@ import { getWebAuthnConfig } from "./webauthn-config.js";
  * (5 minutes) and sets an httpOnly cookie holding a random token; only the
  * token's SHA-256 is stored. routes/mfa.ts finds the challenge by that hash
  * and issues the session once a passkey assertion or a recovery code
- * verifies.
+ * verifies. When WebAuthn is not usably configured the challenge offers
+ * recovery codes only, so a configuration mistake cannot lock the emergency
+ * account out.
  */
 
 export const MFA_COOKIE_NAME = "truenote_mfa";
@@ -57,7 +59,8 @@ export interface MfaChallenge {
 export interface LoginMfaResponse {
   mfaRequired: true;
   methods: MfaFactor[];
-  passkeyOptions: PublicKeyCredentialRequestOptionsJSON;
+  /** Absent when WebAuthn is not usably configured; methods is then ["recovery_code"]. */
+  passkeyOptions?: PublicKeyCredentialRequestOptionsJSON;
 }
 
 export function hashMfaToken(token: string): string {
@@ -132,36 +135,42 @@ export function clearMfaCookie(res: Response): void {
 }
 
 /**
- * Start the second factor after a verified password. Returns null, writing
- * nothing, when WebAuthn is not usably configured: a user with a passkey then
- * cannot finish local login (fail closed).
+ * Start the second factor after a verified password. When WebAuthn is not
+ * usably configured (lib/auth/webauthn-config.ts) the challenge is still
+ * created, but it offers recovery codes only and carries no passkey options.
+ * Its stored challenge is then random bytes no client sees, and
+ * POST /api/auth/mfa/passkey refuses while the configuration is unusable.
  */
 export async function startLoginChallenge(
   res: Response,
   userId: string,
   passkeys: readonly StoredPasskey[]
-): Promise<LoginMfaResponse | null> {
+): Promise<LoginMfaResponse> {
   const config = getWebAuthnConfig();
-  if (!config) return null;
-  const passkeyOptions = await generateAuthenticationOptions({
-    rpID: config.rpId,
-    allowCredentials: passkeys.map((p) => ({
-      id: p.credentialId,
-      ...(p.transports.length > 0 ? { transports: p.transports } : {})
-    })),
-    userVerification: "required",
-    timeout: MFA_CHALLENGE_TTL_MS
-  });
+  const passkeyOptions = config
+    ? await generateAuthenticationOptions({
+        rpID: config.rpId,
+        allowCredentials: passkeys.map((p) => ({
+          id: p.credentialId,
+          ...(p.transports.length > 0 ? { transports: p.transports } : {})
+        })),
+        userVerification: "required",
+        timeout: MFA_CHALLENGE_TTL_MS
+      })
+    : null;
+  const challenge = passkeyOptions?.challenge ?? randomBytes(32).toString("base64url");
   const token = randomBytes(32).toString("base64url");
   await db.execute(sql`
     INSERT INTO mfa_challenges (user_id, purpose, challenge, token_hash, expires_at)
     VALUES (
-      ${userId}::uuid, 'login', ${passkeyOptions.challenge}, ${hashMfaToken(token)},
+      ${userId}::uuid, 'login', ${challenge}, ${hashMfaToken(token)},
       now() + make_interval(secs => ${MFA_CHALLENGE_TTL_MS / 1000}::integer)
     )
   `);
   setMfaCookie(res, token);
-  return { mfaRequired: true, methods: [...MFA_METHODS], passkeyOptions };
+  return passkeyOptions
+    ? { mfaRequired: true, methods: [...MFA_METHODS], passkeyOptions }
+    : { mfaRequired: true, methods: ["recovery_code"] };
 }
 
 function toChallenge(row: unknown): MfaChallenge | null {
