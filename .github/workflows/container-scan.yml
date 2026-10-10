@@ -1,0 +1,136 @@
+name: Container scan
+
+# Grype scans of the image built from Dockerfile.railway (the web and worker
+# services run the same image) and of the pgvector database image. Results go
+# to the Security tab as SARIF. Pull requests and pushes fail on a High or
+# Critical finding that has a fix; the daily scheduled run reports only and
+# opens an issue when a job fails. Every action is pinned to a full commit SHA.
+on:
+  pull_request:
+    paths:
+      - Dockerfile.railway
+      - pnpm-lock.yaml
+      - scripts/railway-start.sh
+      - .github/workflows/container-scan.yml
+      - .github/workflows/scheduled-failure-issue.yml
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app-image:
+    name: Grype scan of the web and worker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the Railway image
+        run: |
+          base_image=$(awk '/^FROM / { print $2; exit }' Dockerfile.railway)
+          echo "BASE_IMAGE=${base_image}" >> "$GITHUB_ENV"
+          docker pull "$base_image"
+          docker build --file Dockerfile.railway --tag "truenote-app:${GITHUB_SHA}" .
+      - name: Record image identity
+        run: |
+          {
+            echo "### Scanned image"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Image ID: \`$(docker image inspect --format '{{.Id}}' "truenote-app:${GITHUB_SHA}")\`"
+            echo "- Base image: \`$(docker image inspect --format '{{index .RepoDigests 0}}' "$BASE_IMAGE")\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Grype report
+        id: report
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: truenote-app:${{ github.sha }}
+          fail-build: false
+          severity-cutoff: high
+          output-format: sarif
+      - name: Upload SARIF to code scanning
+        if: always() && steps.report.outputs.sarif != ''
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: ${{ steps.report.outputs.sarif }}
+          category: /container/web
+      - name: Retain SARIF evidence
+        if: always() && steps.report.outputs.sarif != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: grype-app-image-sarif
+          path: ${{ steps.report.outputs.sarif }}
+          retention-days: 90
+      - name: Fail on fixable High or Critical findings
+        if: github.event_name != 'schedule'
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: truenote-app:${{ github.sha }}
+          fail-build: true
+          only-fixed: true
+          severity-cutoff: high
+          output-format: table
+
+  # Report only on every trigger: pgvector/pgvector:pg18 is a third-party
+  # image no pull request here can change, so failing on its findings would
+  # block unrelated changes. Its findings reach code scanning and the daily
+  # run's evidence instead.
+  pgvector-image:
+    name: Grype scan of the pgvector image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      PGVECTOR_IMAGE: pgvector/pgvector:pg18
+    steps:
+      - name: Pull and record the image digest
+        run: |
+          docker pull "$PGVECTOR_IMAGE"
+          {
+            echo "### Scanned image"
+            echo "- \`$(docker image inspect --format '{{index .RepoDigests 0}}' "$PGVECTOR_IMAGE")\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Grype report
+        id: report
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: ${{ env.PGVECTOR_IMAGE }}
+          fail-build: false
+          severity-cutoff: high
+          output-format: sarif
+      - name: Upload SARIF to code scanning
+        if: always() && steps.report.outputs.sarif != ''
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: ${{ steps.report.outputs.sarif }}
+          category: /container/pgvector
+      - name: Retain SARIF evidence
+        if: always() && steps.report.outputs.sarif != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: grype-pgvector-image-sarif
+          path: ${{ steps.report.outputs.sarif }}
+          retention-days: 90
+
+  notify-failure:
+    name: Report a failed scheduled run
+    needs: [app-image, pgvector-image]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/scheduled-failure-issue.yml
