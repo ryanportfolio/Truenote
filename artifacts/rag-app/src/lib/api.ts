@@ -36,7 +36,11 @@ import type {
   KbHighlightColor,
   KbHighlightListResponse,
   LoginResponse,
+  LoginResult,
+  MfaRequiredResponse,
+  MfaStatusResponse,
   ModelRoutingConfig,
+  PasskeySummary,
   ObservabilityResponse,
   PreviewResponse,
   Program,
@@ -55,6 +59,8 @@ import type {
   UserListItem,
   UserListResponse
 } from "@/types/api";
+// Loaded on first use so the WebAuthn helper stays out of the main bundle.
+import type { PublicKeyCredentialCreationOptionsJSON } from "@simplewebauthn/browser";
 import { getSelectedProgramIdRaw } from "@/lib/selectedProgram";
 
 /**
@@ -168,10 +174,14 @@ export async function fetchMe(): Promise<CurrentUser | null> {
   return json.user;
 }
 
+/**
+ * Password step. An account with a passkey gets `mfa_required` instead of
+ * a session; finish it with verifyPasskeyLogin or verifyRecoveryCode.
+ */
 export async function login(
   email: string,
   password: string
-): Promise<CurrentUser> {
+): Promise<LoginResult> {
   const response = await fetch(
     "/api/auth/login",
     withDefaults({
@@ -186,8 +196,139 @@ export async function login(
     };
     throw new Error(body.error ?? "Invalid credentials");
   }
-  const json = await asJson<LoginResponse>(response);
-  return json.user;
+  const json = await asJson<LoginResponse | MfaRequiredResponse>(response);
+  if ("mfaRequired" in json && json.mfaRequired) {
+    return { status: "mfa_required", challenge: json };
+  }
+  return { status: "authenticated", user: (json as LoginResponse).user };
+}
+
+/** The pending MFA challenge expired or was used; start again from the password. */
+export class MfaExpiredError extends Error {
+  constructor(message = "Your sign-in expired. Enter your email and password again.") {
+    super(message);
+    this.name = "MfaExpiredError";
+  }
+}
+
+/**
+ * Error handling for the MFA endpoints. A 401 there usually means a wrong
+ * factor or password, not a lost session, so only the bare "Unauthorized"
+ * of requireAuth fires the session-expired event.
+ */
+async function mfaFailure(response: Response): Promise<never> {
+  const body = (await response.json().catch(() => ({}))) as {
+    error?: string;
+    code?: string;
+  };
+  if (body.code === "mfa_expired") throw new MfaExpiredError(body.error);
+  if (response.status === 401 && body.error === "Unauthorized") {
+    notifySessionExpired();
+    throw new UnauthorizedError();
+  }
+  throw new Error(body.error ?? `HTTP ${response.status}`);
+}
+
+/** WebAuthn errors from the browser, in words a person can act on. */
+function webAuthnMessage(err: unknown, action: "sign in" | "add"): string {
+  const name = err instanceof Error ? err.name : "";
+  if (name === "NotAllowedError" || name === "AbortError") {
+    return action === "sign in"
+      ? "The passkey prompt was closed or timed out. Try again."
+      : "The passkey prompt was closed or timed out. The passkey was not added.";
+  }
+  if (name === "InvalidStateError") {
+    return "This passkey is already registered to your account.";
+  }
+  return err instanceof Error && err.message
+    ? err.message
+    : "This browser could not use a passkey.";
+}
+
+async function postMfa(path: string, body: unknown, method = "POST"): Promise<Response> {
+  return fetch(
+    path,
+    withDefaults({
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    })
+  );
+}
+
+/** Second step with a passkey: run the browser prompt, then verify it. */
+export async function verifyPasskeyLogin(
+  challenge: MfaRequiredResponse
+): Promise<CurrentUser> {
+  let assertion: unknown;
+  try {
+    const { startAuthentication } = await import("@simplewebauthn/browser");
+    assertion = await startAuthentication({ optionsJSON: challenge.passkeyOptions });
+  } catch (err) {
+    throw new Error(webAuthnMessage(err, "sign in"));
+  }
+  const response = await postMfa("/api/auth/mfa/passkey", assertion);
+  if (!response.ok) return mfaFailure(response);
+  return ((await response.json()) as LoginResponse).user;
+}
+
+/** Second step with a single-use recovery code. */
+export async function verifyRecoveryCode(code: string): Promise<CurrentUser> {
+  const response = await postMfa("/api/auth/mfa/recovery-code", { code });
+  if (!response.ok) return mfaFailure(response);
+  return ((await response.json()) as LoginResponse).user;
+}
+
+export async function getMfaStatus(): Promise<MfaStatusResponse> {
+  const response = await fetch("/api/auth/mfa/status", withDefaults());
+  if (!response.ok) return mfaFailure(response);
+  return (await response.json()) as MfaStatusResponse;
+}
+
+/**
+ * Register a passkey for the signed-in super_user: ask the server for
+ * options (password checked), run the browser prompt, then store it
+ * (password checked again).
+ */
+export async function addPasskey(
+  password: string,
+  name: string
+): Promise<PasskeySummary> {
+  const optionsResponse = await postMfa("/api/auth/mfa/passkeys/options", { password });
+  if (!optionsResponse.ok) return mfaFailure(optionsResponse);
+  const { options } = (await optionsResponse.json()) as {
+    options: PublicKeyCredentialCreationOptionsJSON;
+  };
+  let registration: unknown;
+  try {
+    const { startRegistration } = await import("@simplewebauthn/browser");
+    registration = await startRegistration({ optionsJSON: options });
+  } catch (err) {
+    throw new Error(webAuthnMessage(err, "add"));
+  }
+  const response = await postMfa("/api/auth/mfa/passkeys", {
+    password,
+    name: name.trim() || undefined,
+    response: registration
+  });
+  if (!response.ok) return mfaFailure(response);
+  return ((await response.json()) as { passkey: PasskeySummary }).passkey;
+}
+
+export async function removePasskey(id: string, password: string): Promise<void> {
+  const response = await postMfa(
+    `/api/auth/mfa/passkeys/${encodeURIComponent(id)}`,
+    { password },
+    "DELETE"
+  );
+  if (!response.ok) return mfaFailure(response);
+}
+
+/** Replace every recovery code; the plaintext codes come back only here. */
+export async function generateRecoveryCodes(password: string): Promise<string[]> {
+  const response = await postMfa("/api/auth/mfa/recovery-codes", { password });
+  if (!response.ok) return mfaFailure(response);
+  return ((await response.json()) as { codes: string[] }).codes;
 }
 
 export async function logout(): Promise<void> {

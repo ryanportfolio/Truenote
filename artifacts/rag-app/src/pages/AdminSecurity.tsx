@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Lock, LockOpen, RefreshCw, ShieldCheck, ShieldOff } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
+import { EmergencyAccessCard } from "@/components/security/EmergencyAccessCard";
 import { RelativeTime } from "@/components/RelativeTime";
 import { getSecurityDashboard, updateDemoLimits, updateMalwareScanning } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -21,10 +22,10 @@ export function AdminSecurityPage({ user }: AdminSecurityPageProps): JSX.Element
       </div>
     );
   }
-  return <SecurityDashboard />;
+  return <SecurityDashboard email={user.email} />;
 }
 
-function SecurityDashboard(): JSX.Element {
+function SecurityDashboard({ email }: { email: string }): JSX.Element {
   const [data, setData] = useState<SecurityDashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -86,7 +87,7 @@ function SecurityDashboard(): JSX.Element {
           </p>
           <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight">Security</h1>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Review document scan findings and manage temporary malware-scanning enforcement.
+            Review document scan findings, manage temporary malware-scanning enforcement, and set up emergency sign-in.
           </p>
         </div>
         <button
@@ -311,6 +312,8 @@ function SecurityDashboard(): JSX.Element {
           ) : null}
         </>
       ) : null}
+
+      <EmergencyAccessCard email={email} />
     </div>
   );
 }

@@ -11,12 +11,17 @@ const fake = vi.hoisted(() => ({
   verifyPassword: vi.fn(),
   hashPassword: vi.fn(),
   audit: vi.fn(),
-  updateRows: [] as unknown[]
+  updateRows: [] as unknown[],
+  // Raw-SQL rows (lib/auth/mfa.ts): the user's passkeys, then the
+  // challenge INSERT, which reads nothing back.
+  passkeys: [] as unknown[],
+  execute: vi.fn()
 }));
 
 vi.mock("../../lib/db-client.js", () => ({
   db: {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => fake.rows }) }) }),
+    execute: fake.execute,
     insert: fake.insert,
     update: () => ({
       set: () => ({
@@ -102,6 +107,8 @@ beforeEach(() => {
   fake.insert.mockReturnValue({ values: fake.values });
   fake.values.mockResolvedValue(undefined);
   fake.updateRows = [{ failedLoginCount: 1, lockedUntil: null }];
+  fake.passkeys = [];
+  fake.execute.mockImplementation(async () => ({ rows: fake.passkeys }));
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -142,6 +149,49 @@ async function expectSession(action: string) {
   expect(fake.audit).toHaveBeenCalledWith(expect.objectContaining({ action, outcome: "success" }));
 }
 
+const passkeyRow = {
+  id: "00000000-0000-4000-8000-0000000000b1",
+  user_id: user.id,
+  credential_id: "c3ludGhldGljLWNyZWRlbnRpYWw",
+  public_key: new Uint8Array([1, 2, 3]),
+  sign_count: 0,
+  transports: ["internal"],
+  name: "Laptop",
+  created_at: new Date("2026-10-01T00:00:00Z"),
+  last_used_at: null
+};
+
+// The break_glass super_user needs a passkey (lib/db/sql/0013_break_glass_mfa.sql).
+// Without one, the correct password still gets the generic 401 and an
+// auth.break_glass.mfa_missing event. With one, the password is accepted but
+// no session is issued until routes/mfa.ts verifies the second factor;
+// routes/__tests__/mfa-login.test.ts covers that session and its
+// auth.break_glass.login event.
+async function expectBreakGlassNeedsPasskey() {
+  vi.stubEnv("APP_BASE_URL", "https://app.example.com");
+  fake.passkeys = [];
+  const missing = await login();
+  expect(missing.status).toBe(401);
+  expect(missing.body).toEqual({ error: "Invalid credentials" });
+  expect(missing.cookie).not.toHaveBeenCalled();
+  expect(fake.insert).not.toHaveBeenCalled();
+  expect(fake.verifyPassword).toHaveBeenCalledWith("supplied-password", user.passwordHash);
+  expect(fake.audit).toHaveBeenCalledWith(expect.objectContaining({
+    action: "auth.break_glass.mfa_missing",
+    outcome: "denied"
+  }));
+  expect(fake.audit).not.toHaveBeenCalledWith(expect.objectContaining({ outcome: "success" }));
+
+  fake.passkeys = [passkeyRow];
+  const enrolled = await login();
+  expect(enrolled.status).toBe(200);
+  expect(enrolled.body).toMatchObject({ mfaRequired: true, methods: ["passkey", "recovery_code"] });
+  expect(fake.insert).not.toHaveBeenCalled();
+  expect(enrolled.cookie).toHaveBeenCalledTimes(1);
+  expect(enrolled.cookie.mock.calls[0]![0]).toBe("truenote_mfa");
+  expect(fake.audit).not.toHaveBeenCalledWith(expect.objectContaining({ outcome: "success" }));
+}
+
 describe.each(["unset", "partial", "invalid-url", "short-state-secret", "valid"])("local login with %s OIDC", (state) => {
   beforeEach(() => configureOidc(state));
 
@@ -157,10 +207,10 @@ describe.each(["unset", "partial", "invalid-url", "short-state-secret", "valid"]
     await expectDenied();
   });
 
-  it("break_glass permits and audits a super_user", async () => {
+  it("break_glass accepts a super_user's password only with a passkey enrolled", async () => {
     fake.rows[0]!.role = "super_user";
     vi.stubEnv("LOCAL_LOGIN_MODE", "break_glass");
-    await expectSession("auth.break_glass.login");
+    await expectBreakGlassNeedsPasskey();
   });
 
   it("explicit enabled permits normal local login", async () => {
@@ -192,7 +242,7 @@ describe("local login defaults", () => {
     await expectDenied();
     fake.verifyPassword.mockClear();
     fake.rows[0]!.role = "super_user";
-    await expectSession("auth.break_glass.login");
+    await expectBreakGlassNeedsPasskey();
   });
 });
 

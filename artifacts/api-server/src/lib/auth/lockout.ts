@@ -102,7 +102,7 @@ export interface LockoutAccount {
   programId: string | null;
 }
 
-export type LockoutFactor = "password";
+export type LockoutFactor = "password" | "passkey" | "recovery_code";
 
 export interface LockoutContext {
   factor: LockoutFactor;

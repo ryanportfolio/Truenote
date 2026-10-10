@@ -49,6 +49,8 @@ vi.mock("../../lib/db-client.js", () => {
       select: () => ({
         from: () => ({ where: () => ({ limit: async () => [{ ...fake.account }] }) })
       }),
+      // No passkeys enrolled (lib/auth/mfa.ts listPasskeys).
+      execute: async () => ({ rows: [] }),
       insert: () => {
         fake.insert();
         return { values: async () => undefined };

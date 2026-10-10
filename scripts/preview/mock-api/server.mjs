@@ -1787,6 +1787,8 @@ route("POST", /^\/api\/auth\/login$/, ({ body, res }) => {
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
   const user = state.users.find((u) => u.email === email);
   if (!user) throw new HttpError(401, "Invalid email or password.");
+  // An account with a passkey gets the second step, not a session.
+  if (state.mfa.get(user.id)?.passkeys.length) return startMfaLogin(user, res);
   res.setHeader("Set-Cookie", `mock_user=${user.id}; Path=/; SameSite=Lax`);
   return { user: publicUser(user) };
 });
@@ -1797,6 +1799,197 @@ route("POST", /^\/api\/auth\/logout$/, ({ res }) => {
 route("POST", /^\/api\/auth\/forgot-password$/, () => undefined);
 route("POST", /^\/api\/auth\/reset-password$/, () => {
   throw badRequest("The fixture API does not support password resets.");
+});
+
+// ---------------------------------------------------------------------------
+// Break-glass second factor (routes/mfa.ts, lib/auth/mfa.ts).
+//
+// FIXTURE ONLY: no WebAuthn cryptography. The passkey endpoints accept any
+// browser response whose credential id is registered to the account; they
+// never check a signature, an attestation, the challenge or the origin. This
+// exercises the SPA flow (prompts, cookies, errors), nothing about the
+// server's verification, which routes/__tests__/mfa-login.test.ts covers.
+//
+// The RP ID is "localhost", so open the SPA on http://localhost:<port>, not
+// 127.0.0.1. Enrollment changes take any current password except
+// "wrong-password", which returns the server's 401 for the error state.
+
+const MFA_TTL_MS = 5 * 60 * 1000;
+const MFA_COOKIE = "mock_mfa";
+const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
+const pendingMfa = new Map();
+const base64url = (buf) => Buffer.from(buf).toString("base64url");
+const mfaExpired = () =>
+  Object.assign(new HttpError(401, "Your sign-in expired. Enter your email and password again."), {
+    code: "mfa_expired"
+  });
+
+function mfaRecord(userId) {
+  if (!state.mfa.has(userId)) state.mfa.set(userId, { passkeys: [], recoveryCodes: [] });
+  return state.mfa.get(userId);
+}
+
+function newRecoveryCode() {
+  const bytes = randomBytes(16);
+  const raw = Array.from(bytes, (b) => BASE32[b & 31]).join("");
+  return raw.match(/.{4}/g).join("-");
+}
+
+function passkeySummary(p) {
+  return { id: p.id, name: p.name, createdAt: p.createdAt, lastUsedAt: p.lastUsedAt };
+}
+
+/** Pending challenge for the request's mock_mfa cookie, or a 401 mfa_expired. */
+function pendingChallenge(req, purpose, userId) {
+  const entry = purpose === "login"
+    ? pendingMfa.get(readCookie(req, MFA_COOKIE) ?? "")
+    : [...pendingMfa.values()].reverse().find((c) => c.purpose === "register" && c.userId === userId);
+  if (!entry || entry.purpose !== purpose || entry.consumed || entry.expiresAt <= Date.now()) {
+    throw mfaExpired();
+  }
+  return entry;
+}
+
+function finishMfaLogin(res, entry) {
+  entry.consumed = true;
+  const user = state.users.find((u) => u.id === entry.userId);
+  res.setHeader("Set-Cookie", [
+    `mock_user=${user.id}; Path=/; SameSite=Lax`,
+    `${MFA_COOKIE}=; Path=/api/auth/mfa; Max-Age=0; HttpOnly; SameSite=Lax`
+  ]);
+  return { user: publicUser(user) };
+}
+
+/** POST /api/auth/login for an account with passkeys: no session, a challenge. */
+function startMfaLogin(user, res) {
+  const token = base64url(randomBytes(24));
+  const challenge = base64url(randomBytes(32));
+  pendingMfa.set(token, { purpose: "login", userId: user.id, challenge, expiresAt: Date.now() + MFA_TTL_MS });
+  res.setHeader(
+    "Set-Cookie",
+    `${MFA_COOKIE}=${token}; Path=/api/auth/mfa; Max-Age=${MFA_TTL_MS / 1000}; HttpOnly; SameSite=Lax`
+  );
+  return {
+    mfaRequired: true,
+    methods: ["passkey", "recovery_code"],
+    passkeyOptions: {
+      challenge,
+      timeout: MFA_TTL_MS,
+      rpId: "localhost",
+      allowCredentials: mfaRecord(user.id).passkeys.map((p) => ({
+        id: p.credentialId,
+        type: "public-key",
+        transports: p.transports
+      })),
+      userVerification: "required"
+    }
+  };
+}
+
+function checkCurrentPassword(body) {
+  const password = typeof body?.password === "string" ? body.password : "";
+  if (!password) throw badRequest("Enter your current password.");
+  if (password === "wrong-password") throw new HttpError(401, "Current password is incorrect");
+}
+
+route("POST", /^\/api\/auth\/mfa\/passkey$/, ({ req, res, body }) => {
+  const entry = pendingChallenge(req, "login");
+  const passkey = mfaRecord(entry.userId).passkeys.find((p) => p.credentialId === body?.id);
+  // Fixture only: a registered credential id is enough, no signature check.
+  if (!passkey) throw new HttpError(401, "Invalid credentials");
+  passkey.lastUsedAt = iso(Date.now());
+  return finishMfaLogin(res, entry);
+});
+route("POST", /^\/api\/auth\/mfa\/recovery-code$/, ({ req, res, body }) => {
+  const entry = pendingChallenge(req, "login");
+  const typed = String(body?.code ?? "").toLowerCase().replace(/[\s-]/g, "");
+  const code = mfaRecord(entry.userId).recoveryCodes.find(
+    (c) => c.usedAt === null && c.code.replace(/-/g, "") === typed
+  );
+  if (!code) throw new HttpError(401, "Invalid credentials");
+  code.usedAt = iso(Date.now());
+  return finishMfaLogin(res, entry);
+});
+route("GET", /^\/api\/auth\/mfa\/status$/, ({ user }) => {
+  requireRole(user, "super_user");
+  const record = mfaRecord(user.id);
+  return {
+    passkeyAvailable: true,
+    passkeys: record.passkeys.map(passkeySummary),
+    unusedRecoveryCodes: record.recoveryCodes.filter((c) => c.usedAt === null).length
+  };
+});
+route("POST", /^\/api\/auth\/mfa\/passkeys\/options$/, ({ user, body }) => {
+  requireRole(user, "super_user");
+  checkCurrentPassword(body);
+  const challenge = base64url(randomBytes(32));
+  pendingMfa.set(base64url(randomBytes(24)), {
+    purpose: "register",
+    userId: user.id,
+    challenge,
+    expiresAt: Date.now() + MFA_TTL_MS
+  });
+  return {
+    options: {
+      rp: { name: "Truenote", id: "localhost" },
+      user: { id: base64url(Buffer.from(user.id)), name: user.email, displayName: user.name },
+      challenge,
+      pubKeyCredParams: [
+        { alg: -8, type: "public-key" },
+        { alg: -7, type: "public-key" },
+        { alg: -257, type: "public-key" }
+      ],
+      timeout: MFA_TTL_MS,
+      attestation: "none",
+      excludeCredentials: mfaRecord(user.id).passkeys.map((p) => ({
+        id: p.credentialId,
+        type: "public-key",
+        transports: p.transports
+      })),
+      authenticatorSelection: { residentKey: "preferred", userVerification: "required", requireResidentKey: false }
+    }
+  };
+});
+route("POST", /^\/api\/auth\/mfa\/passkeys$/, ({ user, body, res }) => {
+  requireRole(user, "super_user");
+  checkCurrentPassword(body);
+  const credentialId = body?.response?.id;
+  if (typeof credentialId !== "string" || !credentialId) throw badRequest("Invalid request");
+  const entry = pendingChallenge({ headers: {} }, "register", user.id);
+  const record = mfaRecord(user.id);
+  if (record.passkeys.some((p) => p.credentialId === credentialId)) {
+    throw new HttpError(409, "This passkey is already registered, or the request expired.");
+  }
+  // Fixture only: the attestation is not verified.
+  entry.consumed = true;
+  const transports = Array.isArray(body.response.response?.transports) ? body.response.response.transports : [];
+  const passkey = {
+    id: nextId(),
+    credentialId,
+    transports,
+    name: typeof body.name === "string" && body.name.trim() ? body.name.trim().slice(0, 60) : "Passkey",
+    createdAt: iso(Date.now()),
+    lastUsedAt: null
+  };
+  record.passkeys.push(passkey);
+  res.statusCode = 201;
+  return { passkey: passkeySummary(passkey) };
+});
+route("DELETE", /^\/api\/auth\/mfa\/passkeys\/([^/]+)$/, ({ user, body, params }) => {
+  requireRole(user, "super_user");
+  checkCurrentPassword(body);
+  const record = mfaRecord(user.id);
+  const index = record.passkeys.findIndex((p) => p.id === params[0]);
+  if (index < 0) throw notFound();
+  record.passkeys.splice(index, 1);
+  return undefined;
+});
+route("POST", /^\/api\/auth\/mfa\/recovery-codes$/, ({ user, body }) => {
+  requireRole(user, "super_user");
+  checkCurrentPassword(body);
+  const codes = Array.from({ length: 10 }, newRecoveryCode);
+  mfaRecord(user.id).recoveryCodes = codes.map((code) => ({ code, usedAt: null }));
+  return { codes };
 });
 route("POST", /^\/api\/auth\/change-password$/, ({ req }) => {
   // Any password is accepted; changing it clears a reset from the Users page.
@@ -1929,7 +2122,9 @@ const PUBLIC_PATHS = new Set([
   "/api/auth/login",
   "/api/auth/logout",
   "/api/auth/forgot-password",
-  "/api/auth/reset-password"
+  "/api/auth/reset-password",
+  "/api/auth/mfa/passkey",
+  "/api/auth/mfa/recovery-code"
 ]);
 
 // ---------------------------------------------------------------------------
@@ -1958,6 +2153,7 @@ function mockControl(req, res, url, path) {
   }
   if (sub === "/reset") {
     state = buildSeed();
+    pendingMfa.clear();
     failPaths.clear();
     audit.length = 0;
     return send(res, 200, { ok: true, documents: state.documents.length, questions: state.queryLog.length });
@@ -2024,7 +2220,9 @@ const server = http.createServer(async (req, res) => {
     }
     return send(res, res.statusCode || 200, result);
   } catch (error) {
-    if (error instanceof HttpError) return send(res, error.status, { error: error.message });
+    if (error instanceof HttpError) {
+      return send(res, error.status, error.code ? { error: error.message, code: error.code } : { error: error.message });
+    }
     console.error(error);
     if (!res.headersSent) send(res, 500, { error: "The fixture server hit an error." });
     else res.end();

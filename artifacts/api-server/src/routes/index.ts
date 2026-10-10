@@ -20,6 +20,7 @@ import { observabilityRouter } from "./admin/observability.js";
 import { errorsRouter } from "./admin/errors.js";
 import { securityRouter } from "./admin/security.js";
 import { oidcRouter } from "./oidc.js";
+import { mfaRouter } from "./mfa.js";
 
 export function registerRoutes(app: Express): void {
   app.use("/health", healthRouter);
@@ -28,6 +29,7 @@ export function registerRoutes(app: Express): void {
   // requireAuth/requireFreshPassword guard would reject the actor.
   app.use("/api/auth", authRouter);
   app.use("/api/auth/oidc", oidcRouter);
+  app.use("/api/auth/mfa", mfaRouter);
   // Public, non-secret config (e.g. minPasswordLength). The change-
   // password page calls this before mount to mirror the server's
   // floor in the UI.

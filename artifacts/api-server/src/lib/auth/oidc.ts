@@ -28,7 +28,43 @@ export interface OidcConfig {
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const ENTRA_ISSUER_HOST = "login.microsoftonline.com";
+/**
+ * Every host a Microsoft Entra issuer can use. For each one the first path
+ * segment is the tenant: https://<host>/<tid>/v2.0 for v2.0 tokens and
+ * https://<host>/<tid>/ for v1.0 tokens. Matching is on the exact hostname
+ * (lowercased, one trailing dot removed), so a look-alike such as
+ * login.microsoftonline.com.evil.example or evilsts.windows.net is not Entra
+ * and needs no tenant.
+ *
+ * Sources (checked 2026-10-10):
+ * - National cloud endpoints (global .com, US Government .us, China
+ *   login.partner.microsoftonline.cn):
+ *   https://learn.microsoft.com/en-us/entra/identity-platform/authentication-national-cloud
+ * - Older China login host login.chinacloudapi.cn:
+ *   https://learn.microsoft.com/en-us/graph/deployments
+ * - Global aliases login.microsoft.com, login.windows.net and the US
+ *   Government login-us.microsoftonline.com (endpoint set 56):
+ *   https://learn.microsoft.com/en-us/microsoft-365/enterprise/urls-and-ip-address-ranges
+ * - iss carries the tenant GUID; v2.0 issuers end in /v2.0:
+ *   https://learn.microsoft.com/en-us/entra/identity-platform/access-token-claims-reference
+ *   https://learn.microsoft.com/en-us/entra/identity-platform/id-token-claims-reference
+ * - v1.0 issuer hosts sts.windows.net (global and US Government) and
+ *   sts.chinacloudapi.cn (China); the claims references do not name the v1
+ *   host, this community answer does:
+ *   https://learn.microsoft.com/en-us/answers/questions/1190472/what-are-the-token-issuers-for-the-sovereign-cloud
+ * Azure Germany (login.microsoftonline.de) closed on 2021-10-29 and is left out.
+ */
+const ENTRA_ISSUER_HOSTS = new Set([
+  "login.microsoftonline.com",
+  "login.microsoft.com",
+  "login.windows.net",
+  "sts.windows.net",
+  "login.microsoftonline.us",
+  "login-us.microsoftonline.com",
+  "login.partner.microsoftonline.cn",
+  "login.chinacloudapi.cn",
+  "sts.chinacloudapi.cn"
+]);
 
 /**
  * Parse OIDC_ALLOWED_PROGRAM_IDS (comma-separated UUIDs). One malformed entry
@@ -45,10 +81,11 @@ function parseAllowedProgramIds(value: string | undefined): string[] {
 }
 
 /**
- * An Entra issuer is tenant specific (https://login.microsoftonline.com/<tid>/v2.0).
+ * An Entra issuer is tenant specific (https://login.microsoftonline.com/<tid>/v2.0,
+ * https://sts.windows.net/<tid>/, or the same on a national-cloud host).
  * It is accepted only when OIDC_TENANT_ID is a tenant GUID naming that same
- * tenant, so a multi-tenant endpoint (/common, /organizations) or a
- * copy-paste from another tenant stays disabled.
+ * tenant, so a multi-tenant endpoint (/common, /organizations, /consumers) or
+ * a copy-paste from another tenant stays disabled.
  */
 function entraTenantMatches(issuerUrl: string, tenantId: string | null): boolean {
   let url: URL;
@@ -57,7 +94,8 @@ function entraTenantMatches(issuerUrl: string, tenantId: string | null): boolean
   } catch {
     return false;
   }
-  if (url.hostname.toLowerCase() !== ENTRA_ISSUER_HOST) return true;
+  const host = url.hostname.toLowerCase().replace(/\.$/, "");
+  if (!ENTRA_ISSUER_HOSTS.has(host)) return true;
   const issuerTenant = url.pathname.split("/").filter(Boolean)[0]?.toLowerCase() ?? "";
   return Boolean(tenantId && UUID_PATTERN.test(tenantId) && issuerTenant === tenantId);
 }

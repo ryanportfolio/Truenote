@@ -9,6 +9,8 @@
  * When the shape drifts on the backend, fix here too.
  */
 
+import type { PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser";
+
 export type UserRole = "super_user" | "senior_manager" | "manager" | "supervisor" | "csr";
 
 export interface CurrentUser {
@@ -41,6 +43,37 @@ export function hasAtLeastRole(user: CurrentUser, minimum: UserRole): boolean {
 
 export interface LoginResponse {
   user: CurrentUser;
+}
+
+export type MfaMethod = "passkey" | "recovery_code";
+
+/**
+ * POST /api/auth/login for an account with a passkey: the password was
+ * accepted, no session exists yet, and an httpOnly cookie scoped to
+ * /api/auth/mfa holds the pending challenge (5 minutes).
+ */
+export interface MfaRequiredResponse {
+  mfaRequired: true;
+  methods: MfaMethod[];
+  passkeyOptions: PublicKeyCredentialRequestOptionsJSON;
+}
+
+export type LoginResult =
+  | { status: "authenticated"; user: CurrentUser }
+  | { status: "mfa_required"; challenge: MfaRequiredResponse };
+
+export interface PasskeySummary {
+  id: string;
+  name: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface MfaStatusResponse {
+  /** False when the server has no usable WebAuthn relying-party config. */
+  passkeyAvailable: boolean;
+  passkeys: PasskeySummary[];
+  unusedRecoveryCodes: number;
 }
 
 export interface ChangePasswordResponse {

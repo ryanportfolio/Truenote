@@ -17,6 +17,7 @@ import {
 } from "../lib/auth/sessions.js";
 import { getOidcConfig } from "../lib/auth/oidc.js";
 import { isLocalLoginAllowed } from "../lib/auth/local-login-policy.js";
+import { listPasskeys, startLoginChallenge } from "../lib/auth/mfa.js";
 import {
   isAccountLocked,
   recordAuthFailure,
@@ -234,6 +235,46 @@ authRouter.post("/login", async (req, res, next) => {
           error: err,
           userId: row.id
         });
+      });
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
+
+    // Second factor (lib/auth/mfa.ts). A user with a passkey gets no
+    // session here: the response starts the MFA step, and routes/mfa.ts
+    // resets the lockout count and issues the session once a passkey or
+    // recovery code verifies.
+    const passkeys = await listPasskeys(row.id);
+    if (passkeys.length > 0) {
+      const challenge = await startLoginChallenge(res, row.id, passkeys);
+      if (!challenge) {
+        // WebAuthn is not usably configured (lib/auth/webauthn-config.ts):
+        // fail closed rather than skip the second factor.
+        recordSecurityEventBestEffort({
+          action: "auth.local.login",
+          outcome: "denied",
+          actor,
+          programId: row.programId,
+          resourceType: "session",
+          sourceIp: ip,
+          details: { authMethod: "local", reason: "webauthn_unconfigured" }
+        });
+        res.status(401).json({ error: "Invalid credentials" });
+        return;
+      }
+      res.json(challenge);
+      return;
+    }
+    if (oidc.localLoginMode === "break_glass" && row.role === "super_user") {
+      // The emergency account must hold a passkey before it can sign in.
+      recordSecurityEventBestEffort({
+        action: "auth.break_glass.mfa_missing",
+        outcome: "denied",
+        actor,
+        programId: row.programId,
+        resourceType: "session",
+        sourceIp: ip,
+        details: { authMethod: "local", reason: "no_passkey" }
       });
       res.status(401).json({ error: "Invalid credentials" });
       return;
