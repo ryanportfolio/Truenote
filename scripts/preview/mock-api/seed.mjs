@@ -1286,6 +1286,8 @@ export function buildSeed() {
     views,
     highlights: [],
     mfa,
+    // Fixture reset links (`mock-reset-<key>`) already used; see server.mjs.
+    usedResetTokens: new Set(),
     colors: COLORS
   };
 }

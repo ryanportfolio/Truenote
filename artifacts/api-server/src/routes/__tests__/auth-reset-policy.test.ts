@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { passwordResetTokens, sessions, users } from "@workspace/db/schema";
 import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 import { authRouter } from "../auth.js";
 import { hashToken, SESSION_COOKIE_NAME } from "../../lib/auth/sessions.js";
 
@@ -16,10 +17,15 @@ const fake = vi.hoisted(() => ({
   insert: vi.fn(),
   committed: [] as string[],
   consumeAllowed: true,
-  insertError: null as Error | null
+  insertError: null as Error | null,
+  // Rows of user_passkeys for the reset user, read inside the transaction.
+  passkeys: [] as Array<Record<string, unknown>>,
+  passkeyQuery: vi.fn(),
+  audit: vi.fn()
 }));
 
 vi.mock("../../lib/db-client.js", () => ({ db: { transaction: fake.transaction } }));
+vi.mock("../../lib/security/audit.js", () => ({ recordSecurityEventBestEffort: fake.audit }));
 vi.mock("../../lib/auth/passwords.js", () => ({
   hashPassword: fake.hashPassword,
   verifyPassword: vi.fn()
@@ -79,7 +85,7 @@ async function invokeFirstHandler(path = "/reset-password") {
   };
   const next = vi.fn();
   await route(path).stack[0]!.handle(
-    { body: { token: resetToken, newPassword }, user: null } as Request,
+    { body: { token: resetToken, newPassword }, user: null, ip: "203.0.113.7", header: () => undefined } as unknown as Request,
     response as unknown as Response, next
   );
   return { status, body, cookie, next };
@@ -93,6 +99,7 @@ beforeEach(() => {
   fake.committed = [];
   fake.consumeAllowed = true;
   fake.insertError = null;
+  fake.passkeys = [];
   fake.lookupResetTokenUserId.mockResolvedValue(user.id);
   fake.hashPassword.mockResolvedValue("new-password-hash");
   // Model transaction commit only after callback success; rejected callbacks
@@ -123,7 +130,12 @@ beforeEach(() => {
         fake.insert(values);
         if (fake.insertError) throw fake.insertError;
         pending.push("insert-session");
-      } })
+      } }),
+      execute: async (query: SQL) => {
+        const { sql: text, params } = new PgDialect().sqlToQuery(query);
+        fake.passkeyQuery(text.replace(/\s+/g, " ").trim(), params);
+        return { rows: fake.passkeys.filter((row) => row.user_id === params[0]) };
+      }
     };
     const result = await callback(tx);
     fake.committed.push(...pending);
@@ -168,6 +180,54 @@ async function expectSuccess() {
   expect(condition.sql).toContain('"password_reset_tokens"."token_hash" =');
   expect(condition.sql).toContain('"password_reset_tokens"."expires_at" >');
   expect(condition.sql).toContain('"password_reset_tokens"."used_at" is null');
+  expectPasskeyCheckedInTransaction();
+  expect(fake.audit).not.toHaveBeenCalled();
+}
+
+function expectPasskeyCheckedInTransaction() {
+  expect(fake.passkeyQuery).toHaveBeenCalledTimes(1);
+  const [text, params] = fake.passkeyQuery.mock.calls[0]!;
+  expect(text).toMatch(/FROM user_passkeys WHERE user_id = \$1::uuid/);
+  expect(params).toEqual([user.id]);
+}
+
+function enrollPasskey() {
+  fake.passkeys.push({
+    id: "00000000-0000-4000-8000-0000000000c1", user_id: user.id,
+    credential_id: "c3ludGhldGljLWNyZWRlbnRpYWw", public_key: new Uint8Array([1, 2, 3]),
+    sign_count: 0, transports: ["internal"], name: "Laptop",
+    created_at: new Date(), last_used_at: null
+  });
+}
+
+// The password changes, the link is consumed and old sessions are revoked,
+// but no session is issued: the user signs in through /login and its MFA step.
+async function expectSignInRequired(reason: "second_factor_required" | "break_glass_mfa_missing") {
+  const result = await invokeFirstHandler();
+  expect(result.next).not.toHaveBeenCalled();
+  expect(result.status).toBe(200);
+  expect(result.body).toEqual({ passwordReset: true, signInRequired: true });
+  expect(result.cookie).not.toHaveBeenCalled();
+  expect(fake.insert).not.toHaveBeenCalled();
+  expect(fake.committed).toEqual(["consume-token", "update-password", "revoke-sessions"]);
+  expect(fake.passwordUpdate).toHaveBeenCalledWith(
+    { passwordHash: "new-password-hash", mustResetPassword: false }, expect.anything()
+  );
+  expect(fake.revoke).toHaveBeenCalledTimes(1);
+  const condition = new PgDialect().sqlToQuery(fake.consume.mock.calls[0]![1]);
+  expect(condition.sql).toContain('"password_reset_tokens"."used_at" is null');
+  expectPasskeyCheckedInTransaction();
+  expect(fake.audit).toHaveBeenCalledTimes(1);
+  expect(fake.audit).toHaveBeenCalledWith({
+    action: "auth.password_reset.sign_in_required",
+    outcome: "success",
+    actor: { id: user.id, email: user.email, role: fake.rows[0]!.role },
+    programId: null,
+    resourceType: "user",
+    resourceId: user.id,
+    sourceIp: "203.0.113.7",
+    details: { authMethod: "local", reason }
+  });
 }
 
 describe.each(["unset", "partial", "invalid-url", "short-state-secret", "valid"])("reset/invite completion with %s OIDC", (state) => {
@@ -182,12 +242,33 @@ describe.each(["unset", "partial", "invalid-url", "short-state-secret", "valid"]
     vi.stubEnv("LOCAL_LOGIN_MODE", "break_glass");
     await expectDenied();
   });
-  it("break_glass permits super_user", async () => {
+  // Contract item 7: in break_glass mode a super_user with no passkey gets no
+  // session from /login, so a reset link must not issue one either. This
+  // case used to assert auto-login; it now asserts the password still resets
+  // and the user must sign in again.
+  it("break_glass resets a super_user without a passkey but requires sign-in", async () => {
     fake.rows[0]!.role = "super_user";
     vi.stubEnv("LOCAL_LOGIN_MODE", "break_glass");
-    await expectSuccess();
+    await expectSignInRequired("break_glass_mfa_missing");
+  });
+  it("break_glass resets a super_user with a passkey but requires sign-in", async () => {
+    fake.rows[0]!.role = "super_user";
+    enrollPasskey();
+    vi.stubEnv("LOCAL_LOGIN_MODE", "break_glass");
+    await expectSignInRequired("second_factor_required");
   });
   it("explicit enabled preserves atomic reset and auto-login", async () => {
+    vi.stubEnv("LOCAL_LOGIN_MODE", "enabled");
+    await expectSuccess();
+  });
+  it.each(["csr", "super_user"])("enabled resets %s with a passkey but requires sign-in", async (role) => {
+    fake.rows[0]!.role = role;
+    enrollPasskey();
+    vi.stubEnv("LOCAL_LOGIN_MODE", "enabled");
+    await expectSignInRequired("second_factor_required");
+  });
+  it("enabled still auto-logs-in a super_user without a passkey", async () => {
+    fake.rows[0]!.role = "super_user";
     vi.stubEnv("LOCAL_LOGIN_MODE", "enabled");
     await expectSuccess();
   });
@@ -205,11 +286,34 @@ describe("reset policy defaults and rejected links", () => {
     vi.stubEnv("LOCAL_LOGIN_MODE", "disable");
     await expectDenied();
   });
+  // The super_user branch used to assert auto-login; under the break_glass
+  // default it now requires sign-in (contract item 7, see above).
   it.each(["csr", "super_user"])("valid OIDC defaults to break_glass for %s", async (role) => {
     configureOidc("valid");
     fake.rows[0]!.role = role;
-    if (role === "super_user") await expectSuccess();
+    if (role === "super_user") await expectSignInRequired("break_glass_mfa_missing");
     else await expectDenied();
+  });
+  it("preserves entirely unset testing setup for a user with a passkey by requiring sign-in", async () => {
+    enrollPasskey();
+    await expectSignInRequired("second_factor_required");
+  });
+  it("policy denial rolls back before the passkey check and records no reset event", async () => {
+    enrollPasskey();
+    vi.stubEnv("LOCAL_LOGIN_MODE", "disabled");
+    await expectDenied();
+    expect(fake.passkeyQuery).not.toHaveBeenCalled();
+    expect(fake.audit).not.toHaveBeenCalled();
+  });
+  it("rolls back all writes if the passkey check fails", async () => {
+    const failure = new Error("synthetic passkey lookup failure");
+    fake.passkeyQuery.mockImplementationOnce(() => { throw failure; });
+    const result = await invokeFirstHandler();
+    expect(fake.committed).toEqual([]);
+    expect(result.cookie).not.toHaveBeenCalled();
+    expect(fake.insert).not.toHaveBeenCalled();
+    expect(fake.audit).not.toHaveBeenCalled();
+    expect(result.next).toHaveBeenCalledWith(failure);
   });
   it.each(["bad", "used", "expired"])("rejects %s token at preflight", async () => {
     fake.lookupResetTokenUserId.mockResolvedValue(null);

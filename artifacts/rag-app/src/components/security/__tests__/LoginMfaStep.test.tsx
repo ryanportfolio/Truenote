@@ -35,7 +35,7 @@ describe("LoginMfaStep", () => {
   // The server sends methods ["recovery_code"] and no passkeyOptions when
   // its WebAuthn configuration is unusable (lib/auth/mfa.ts).
   it("shows only the recovery-code form when passkey is not offered", () => {
-    const challenge = { mfaRequired: true, methods: ["recovery_code"] } as unknown as MfaRequiredResponse;
+    const challenge: MfaRequiredResponse = { mfaRequired: true, methods: ["recovery_code"] };
     const html = render(challenge);
     expect(html).not.toContain("Use passkey");
     expect(html).not.toContain("Use a recovery code");
@@ -45,7 +45,7 @@ describe("LoginMfaStep", () => {
   });
 
   it("treats passkey without options as not offered", () => {
-    const challenge = { mfaRequired: true, methods: ["passkey", "recovery_code"] } as unknown as MfaRequiredResponse;
+    const challenge: MfaRequiredResponse = { mfaRequired: true, methods: ["passkey", "recovery_code"] };
     const html = render(challenge);
     expect(html).not.toContain("Use passkey");
     expect(html).toContain('id="recovery-code"');

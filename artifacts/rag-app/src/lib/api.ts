@@ -48,6 +48,7 @@ import type {
   QueryLogFilter,
   QueryLogListResponse,
   ResetPasswordResponse,
+  ResetPasswordResult,
   SecurityDashboardResponse,
   SessionDetailResponse,
   SessionListResponse,
@@ -277,10 +278,13 @@ async function postMfa(path: string, body: unknown, method = "POST"): Promise<Re
 export async function verifyPasskeyLogin(
   challenge: MfaRequiredResponse
 ): Promise<CurrentUser> {
+  // LoginMfaStep never offers a passkey without options; refuse just in case.
+  const optionsJSON = challenge.passkeyOptions;
+  if (!optionsJSON) throw new Error("Passkey sign-in is unavailable. Use a recovery code.");
   let assertion: unknown;
   try {
     const { startAuthentication } = await import("@simplewebauthn/browser");
-    assertion = await startAuthentication({ optionsJSON: challenge.passkeyOptions });
+    assertion = await startAuthentication({ optionsJSON });
   } catch (err) {
     throw new Error(webAuthnMessage(err, "sign in"));
   }
@@ -382,14 +386,16 @@ export async function requestPasswordReset(email: string): Promise<void> {
 }
 
 /**
- * Consume a reset link and set a new password. On success the server
- * sets the session cookie and returns the user payload — the SPA can
- * route straight into the app without a follow-up login.
+ * Consume a reset link and set a new password. Usually the server sets
+ * the session cookie and returns the user, so the SPA routes straight
+ * into the app. For an account with a passkey (or the break_glass
+ * emergency account) it sets no session; the user signs in again
+ * through /login and its second factor.
  */
 export async function consumeResetToken(
   token: string,
   newPassword: string
-): Promise<CurrentUser> {
+): Promise<ResetPasswordResult> {
   const response = await fetch(
     "/api/auth/reset-password",
     withDefaults({
@@ -405,7 +411,10 @@ export async function consumeResetToken(
     throw new Error(body.error ?? `HTTP ${response.status}`);
   }
   const json = (await response.json()) as ResetPasswordResponse;
-  return json.user;
+  if ("signInRequired" in json && json.signInRequired) {
+    return { status: "sign_in_required" };
+  }
+  return { status: "authenticated", user: (json as { user: CurrentUser }).user };
 }
 
 export async function changePassword(

@@ -89,6 +89,13 @@ export function LoginPage({
   const [selectedDemo, setSelectedDemo] = useState<string | null>(null);
   // Set after the password step when the account has a passkey.
   const [mfaChallenge, setMfaChallenge] = useState<MfaRequiredResponse | null>(null);
+  // ResetPassword sends here (`?reset=done`) when the reset issued no
+  // session because the account signs in with a second factor.
+  const [passwordChanged] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("reset") === "done"
+  );
   const touchedRef = useRef(false);
 
   useEffect(() => {
@@ -200,6 +207,15 @@ export function LoginPage({
             />
           ) : (
           <form onSubmit={handleSubmit} className="auth-form">
+            {passwordChanged ? (
+              <p
+                role="status"
+                className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-success"
+              >
+                Password changed. Sign in with your new password.
+              </p>
+            ) : null}
+
             {oidcEnabled ? (
               <div className="flex flex-col gap-3">
                 <a

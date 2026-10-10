@@ -17,7 +17,7 @@ import {
 } from "../lib/auth/sessions.js";
 import { getOidcConfig } from "../lib/auth/oidc.js";
 import { isLocalLoginAllowed } from "../lib/auth/local-login-policy.js";
-import { listPasskeys, startLoginChallenge } from "../lib/auth/mfa.js";
+import { listPasskeys, startLoginChallenge, type SqlExecutor } from "../lib/auth/mfa.js";
 import {
   isAccountLocked,
   recordAuthFailure,
@@ -601,7 +601,10 @@ class ResetPasswordRejectedError extends Error {
  *   (2) mark token used
  *   (3) update password_hash + clear must_reset_password
  *   (4) delete every session for this user
- *   (5) issue a fresh session
+ *   (5) issue a fresh session, only when /login would issue one from the
+ *       password alone. A user with a passkey, or the break_glass
+ *       super_user, gets `{ passwordReset: true, signInRequired: true }`
+ *       and no cookie, and signs in through /login and its second factor.
  *
  * Same all-or-nothing rationale as change-password: if we updated the
  * password but failed to revoke sessions, stolen cookies on the old
@@ -685,7 +688,8 @@ authRouter.post("/reset-password", async (req, res, next) => {
         throw new ResetPasswordRejectedError(400, "This reset link is invalid or has expired");
       }
 
-      if (!isLocalLoginAllowed(getOidcConfig().localLoginMode, user.role)) {
+      const localLoginMode = getOidcConfig().localLoginMode;
+      if (!isLocalLoginAllowed(localLoginMode, user.role)) {
         // Reset and invite completion issue a local session, so the same
         // policy as /login applies. Throw to roll back token consumption;
         // returning a denial here would commit it and burn the reset link.
@@ -697,6 +701,22 @@ authRouter.post("/reset-password", async (req, res, next) => {
         .set({ passwordHash, mustResetPassword: false })
         .where(eq(users.id, userId));
       await tx.delete(sessions).where(eq(sessions.userId, userId));
+
+      // The reset link proves only email access. Issue a session only where
+      // /login would issue one from the password alone: no enrolled passkey,
+      // and not the break_glass emergency account (which must hold one).
+      // Otherwise the new password and the consumed link still commit, and
+      // the user signs in through /login and its second factor.
+      const passkeys = await listPasskeys(userId, tx as unknown as SqlExecutor);
+      const signInReason = passkeys.length > 0
+        ? "second_factor_required"
+        : localLoginMode === "break_glass" && user.role === "super_user"
+          ? "break_glass_mfa_missing"
+          : null;
+      if (signInReason) {
+        return { signInRequired: true as const, reason: signInReason, user };
+      }
+
       const newToken = generateToken();
       const newTokenHash = hashToken(newToken);
       const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
@@ -704,6 +724,7 @@ authRouter.post("/reset-password", async (req, res, next) => {
         .insert(sessions)
         .values({ userId, tokenHash: newTokenHash, expiresAt });
       return {
+        signInRequired: false as const,
         sessionToken: newToken,
         user: {
           id: user.id,
@@ -715,6 +736,22 @@ authRouter.post("/reset-password", async (req, res, next) => {
         }
       };
     });
+
+    if (result.signInRequired) {
+      const { user } = result;
+      recordSecurityEventBestEffort({
+        action: "auth.password_reset.sign_in_required",
+        outcome: "success",
+        actor: { id: user.id, email: user.email, role: user.role },
+        programId: user.programId,
+        resourceType: "user",
+        resourceId: user.id,
+        sourceIp: clientIpFrom(req),
+        details: { authMethod: "local", reason: result.reason }
+      });
+      res.json({ passwordReset: true, signInRequired: true });
+      return;
+    }
 
     setSessionCookie(res, result.sessionToken);
     res.json({ user: result.user });

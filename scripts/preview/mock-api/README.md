@@ -130,6 +130,16 @@ Mirrors `routes/mfa.ts` and the MFA branch of `POST /api/auth/login` for the SPA
 - The RP ID is `localhost`: open the SPA on `http://localhost:<port>`, not `127.0.0.1`. To try the passkey path, sign in with the recovery code, add a passkey on Security (`/admin/security`), sign out, then sign in again and choose "Use passkey". Headless checks can use a Chrome DevTools Protocol virtual authenticator (`WebAuthn.addVirtualAuthenticator`).
 - `/api/__mock/reset` restores the seeded passkey and recovery code.
 
+## Password reset links
+
+Mirrors `POST /api/auth/reset-password` for the SPA flow only. No email is sent (`emailResetAvailable` is false, so the login page hides "Forgot password?"); open the reset page directly with a fixture token.
+
+- Token: `mock-reset-<key>`, where `<key>` is anything `/api/__mock/as/<key>` takes. Each token works once until `/api/__mock/reset`. The new password needs at least 12 characters and is not stored (the fixture login takes any password).
+- http://localhost:5173/reset-password?token=mock-reset-sam: Sam Okafor has no passkey, so the reset returns `{ user }`, sets the `mock_user` cookie and the SPA signs straight in.
+- http://localhost:5173/reset-password?token=mock-reset-rowan: Rowan Hale has a passkey, so the reset returns `{ passwordReset: true, signInRequired: true }`, signs the browser out, records `auth.password_reset.sign_in_required` (reason `second_factor_required`) in the Security page's control events, and the SPA sends Rowan to `/login?reset=done` with the notice "Password changed. Sign in with your new password." The password step then asks for the second factor (Emergency sign-in above).
+- Demo accounts (Jordan, Renee, Maria, Elliot, Demo Manager), inactive users, unknown keys and used tokens get 400 `This reset link is invalid or has expired`.
+- The fixture runs in `enabled` local login mode, so the server's other sign-in-required reason (`break_glass_mfa_missing`, a break_glass super user without a passkey) is covered only by `artifacts/api-server/src/routes/__tests__/auth-reset-policy.test.ts`.
+
 Chat answers come from a keyword match over the fixture library; a question with no match gets the refusal. New questions show up in Source usage right away.
 
 ## Endpoints

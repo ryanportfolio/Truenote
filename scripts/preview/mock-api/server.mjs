@@ -1797,8 +1797,44 @@ route("POST", /^\/api\/auth\/logout$/, ({ res }) => {
   return { ok: true };
 });
 route("POST", /^\/api\/auth\/forgot-password$/, () => undefined);
-route("POST", /^\/api\/auth\/reset-password$/, () => {
-  throw badRequest("The fixture API does not support password resets.");
+// POST /api/auth/reset-password (routes/auth.ts). Fixture tokens are
+// `mock-reset-<key>`, where <key> is anything /__mock/as/<key> takes (a first
+// name, a role alias, an email); each works once until /__mock/reset. No
+// email is sent and the new password is not stored, because the fixture
+// login takes any password. An account with a passkey gets no session and
+// must sign in again with its second factor, as on the server; the fixture
+// runs in "enabled" local login mode, so the break_glass branch never applies.
+const RESET_TOKEN_PREFIX = "mock-reset-";
+const PUBLISHED_DEMO_EMAILS = new Set([ROLE_ALIASES.csr, ROLE_ALIASES.supervisor, ROLE_ALIASES.manager]);
+route("POST", /^\/api\/auth\/reset-password$/, ({ body, res }) => {
+  const token = typeof body?.token === "string" ? body.token : "";
+  const newPassword = typeof body?.newPassword === "string" ? body.newPassword : "";
+  if (newPassword.length < 12) throw badRequest("New password must be at least 12 characters");
+  const user = token.startsWith(RESET_TOKEN_PREFIX) ? userByKey(token.slice(RESET_TOKEN_PREFIX.length)) : null;
+  // Demo accounts never reset their published password (isDemoEmail on the server).
+  if (
+    !user || !user.isActive || user.isDemo || PUBLISHED_DEMO_EMAILS.has(user.email) ||
+    state.usedResetTokens.has(token)
+  ) {
+    throw badRequest("This reset link is invalid or has expired");
+  }
+  state.usedResetTokens.add(token);
+  user.mustResetPassword = false;
+  if (state.mfa.get(user.id)?.passkeys.length) {
+    // The server also revokes every session; the fixture's only session is
+    // the role cookie, so sign the browser out.
+    res.setHeader("Set-Cookie", "mock_user=out; Path=/; SameSite=Lax");
+    securityEvents.unshift({
+      id: `sec-${securityEvents.length + 1}`,
+      occurredAt: iso(Date.now()),
+      action: "auth.password_reset.sign_in_required",
+      actorEmail: user.email,
+      details: { authMethod: "local", reason: "second_factor_required" }
+    });
+    return { passwordReset: true, signInRequired: true };
+  }
+  res.setHeader("Set-Cookie", `mock_user=${user.id}; Path=/; SameSite=Lax`);
+  return { user: publicUser(user) };
 });
 
 // ---------------------------------------------------------------------------

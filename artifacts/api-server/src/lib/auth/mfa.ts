@@ -88,8 +88,11 @@ function toPasskey(row: unknown): StoredPasskey {
   };
 }
 
-export async function listPasskeys(userId: string): Promise<StoredPasskey[]> {
-  const result = await db.execute(sql`
+export async function listPasskeys(
+  userId: string,
+  executor: SqlExecutor = db as unknown as SqlExecutor
+): Promise<StoredPasskey[]> {
+  const result = await executor.execute(sql`
     SELECT id::text AS id, user_id::text AS user_id, credential_id, public_key,
       sign_count, transports, name, created_at, last_used_at
     FROM user_passkeys

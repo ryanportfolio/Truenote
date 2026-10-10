@@ -55,7 +55,8 @@ export type MfaMethod = "passkey" | "recovery_code";
 export interface MfaRequiredResponse {
   mfaRequired: true;
   methods: MfaMethod[];
-  passkeyOptions: PublicKeyCredentialRequestOptionsJSON;
+  /** Absent when the server offers recovery codes only; methods is then ["recovery_code"]. */
+  passkeyOptions?: PublicKeyCredentialRequestOptionsJSON;
 }
 
 export type LoginResult =
@@ -80,9 +81,18 @@ export interface ChangePasswordResponse {
   user: CurrentUser;
 }
 
-export interface ResetPasswordResponse {
-  user: CurrentUser;
-}
+/**
+ * POST /api/auth/reset-password. The password is set and the link consumed
+ * either way. A user with a passkey (or the break_glass emergency account)
+ * gets no session and must sign in through /login and its second factor.
+ */
+export type ResetPasswordResponse =
+  | { user: CurrentUser }
+  | { passwordReset: true; signInRequired: true };
+
+export type ResetPasswordResult =
+  | { status: "authenticated"; user: CurrentUser }
+  | { status: "sign_in_required" };
 
 export interface Source {
   chunk_id: string;
