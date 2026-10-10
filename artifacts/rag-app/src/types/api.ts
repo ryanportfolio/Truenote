@@ -1056,6 +1056,10 @@ export interface ErrorLogResponse {
 export interface SecurityDashboardResponse {
   malwareScanning: {
     enabled: boolean;
+    /** End of the running bypass (24 hours after it was set); null while enforced. */
+    disabledUntil: string | null;
+    /** When the last bypass lapsed on its own; null if none did. */
+    bypassExpiredAt: string | null;
     persistenceReady: boolean;
     disabledStatusReady: boolean;
     scannerConfigured: boolean;
@@ -1080,6 +1084,8 @@ export interface SecurityDashboardResponse {
     errors: number;
     infected: number;
     disabled: number;
+    /** Parsed versions that never got an external verdict (bypass or legacy). */
+    awaitingScan: number;
   };
   scans: Array<{
     versionId: string;

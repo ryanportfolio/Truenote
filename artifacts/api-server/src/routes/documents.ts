@@ -6,7 +6,11 @@ import { db } from "../lib/db-client.js";
 import { documents, documentVersions } from "@workspace/db/schema";
 import { getObjectStorage } from "../lib/storage/object-storage.js";
 import { sha256Hex } from "../lib/parsing/hash.js";
-import { enqueueIngestion } from "../lib/ingestion/queue.js";
+import { enqueueIngestion, enqueueMalwareRescan } from "../lib/ingestion/queue.js";
+import {
+  isScanOnlyRescanEligible,
+  scanOnlyEligibleSql
+} from "../lib/ingestion/malware-rescan.js";
 import {
   authedUser,
   blockDemoWrites,
@@ -75,7 +79,18 @@ function normalizeMimeType(mimetype: string, originalName: string): string {
   return mime;
 }
 
-const MAX_BYTES = 20 * 1024 * 1024; // 20MB
+const MAX_BYTES = 20 * 1024 * 1024; // 20MB; services/scanner refuses larger bodies too
+
+/**
+ * Quarantined and failed versions re-run ingestion; parsed versions that
+ * skipped the external malware scan get a scan-only pass.
+ */
+function canRescanVersion(lifecycleState: string, scanStatus: string): boolean {
+  return (
+    ["quarantined", "failed"].includes(lifecycleState) ||
+    isScanOnlyRescanEligible(lifecycleState, scanStatus)
+  );
+}
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -243,7 +258,7 @@ documentsRouter.get("/", documentReadLimit, async (req, res, next) => {
         canReject:
           reviewer && ["pending_review", "quarantined"].includes(lifecycleState),
         canRevoke: reviewer && lifecycleState === "active",
-        canRescan: ["quarantined", "failed"].includes(lifecycleState)
+        canRescan: canRescanVersion(lifecycleState, String(row["scan_status"] ?? ""))
       };
     });
     let sourcesResult = await db.execute(sql`
@@ -646,7 +661,10 @@ documentsRouter.get("/:versionId/preview", documentReadLimit, async (req, res, n
         ["pending_review", "quarantined"].includes(String(row["lifecycle_state"])),
       canRevoke:
         hasAtLeastRole(user, "senior_manager") && row["lifecycle_state"] === "active",
-      canRescan: ["quarantined", "failed"].includes(String(row["lifecycle_state"]))
+      canRescan: canRescanVersion(
+        String(row["lifecycle_state"]),
+        String(row["scan_status"] ?? "")
+      )
     });
   } catch (err) {
     if (isMissingSecuritySchema(err)) {
@@ -880,7 +898,23 @@ documentsRouter.post("/:versionId/rescan", workloadRateLimitMiddleware("document
       RETURNING dv.id::text
     `);
     if (result.rows.length === 0) {
-      throw new DocumentControlError(409, "Document is not eligible for another scan.");
+      // Parsed versions that skipped the external scan (bypass on, or legacy
+      // acceptance) get a scan-only pass; their text and approval stay.
+      const scanOnly = await db.execute(sql`
+        SELECT dv.id::text
+        FROM document_versions dv
+        JOIN documents d ON d.id = dv.document_id
+        WHERE dv.id = ${versionId}::uuid
+          AND d.program_id = ${programId}::uuid
+          AND ${classificationSqlPredicate(sql.raw("dv.classification"), maxClassification)}
+          AND ${scanOnlyEligibleSql}
+      `);
+      if (scanOnly.rows.length === 0) {
+        throw new DocumentControlError(409, "Document is not eligible for another scan.");
+      }
+      await enqueueMalwareRescan(versionId);
+      res.json({ ok: true, mode: "scan_only" });
+      return;
     }
     try {
       await enqueueIngestion(versionId);

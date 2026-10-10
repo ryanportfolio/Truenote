@@ -9,6 +9,8 @@ import {
   scannerConfiguration
 } from "../../lib/security/malware-policy.js";
 import { actionableDocumentFindings } from "../../lib/security/document-policy.js";
+import { enqueueMalwareRescan } from "../../lib/ingestion/queue.js";
+import { scanOnlyEligibleSql } from "../../lib/ingestion/malware-rescan.js";
 import { securitySettingWriteLimit } from "../../lib/security/route-rate-limit.js";
 import { getDemoAccounts } from "../../lib/auth/demo-accounts.js";
 import { forgetDemoLimits, getDemoLimitsPolicy, persistDemoLimitsPolicy } from "../../lib/auth/demo-limits.js";
@@ -77,8 +79,9 @@ async function dashboardResponse() {
         COUNT(*) FILTER (WHERE scan_status = 'unavailable')::int AS unavailable,
         COUNT(*) FILTER (WHERE scan_status = 'error')::int AS errors,
         COUNT(*) FILTER (WHERE scan_status = 'infected')::int AS infected,
-        COUNT(*) FILTER (WHERE scan_status = 'disabled')::int AS disabled
-      FROM document_versions
+        COUNT(*) FILTER (WHERE scan_status = 'disabled')::int AS disabled,
+        COUNT(*) FILTER (WHERE ${scanOnlyEligibleSql})::int AS awaiting_scan
+      FROM document_versions dv
     `),
     db.execute(sql`
       SELECT dv.id::text AS version_id,
@@ -104,7 +107,9 @@ async function dashboardResponse() {
         'security.malware_scanning.enabled',
         'security.malware_scanning.disabled',
         'security.demo_limits.enabled',
-        'security.demo_limits.disabled'
+        'security.demo_limits.disabled',
+        'security.malware_rescan.requested',
+        'document.malware_rescan.infected'
       )
       ORDER BY occurred_at DESC
       LIMIT 50
@@ -117,6 +122,7 @@ async function dashboardResponse() {
         errors?: number;
         infected?: number;
         disabled?: number;
+        awaiting_scan?: number;
       }
     | undefined;
   const scanner = scannerConfiguration();
@@ -139,7 +145,8 @@ async function dashboardResponse() {
       unavailable: summary?.unavailable ?? 0,
       errors: summary?.errors ?? 0,
       infected: summary?.infected ?? 0,
-      disabled: summary?.disabled ?? 0
+      disabled: summary?.disabled ?? 0,
+      awaitingScan: summary?.awaiting_scan ?? 0
     },
     scans: (scansResult.rows as unknown as ScanRow[]).map((row) => ({
       versionId: row.version_id,
@@ -199,7 +206,7 @@ securityRouter.patch("/malware-scanning", securitySettingWriteLimit, async (req,
       }
     }
     await db.transaction(async (tx) => {
-      await persistMalwareScanningPolicy(
+      const stored = await persistMalwareScanningPolicy(
         enabled,
         user.id,
         tx as unknown as Parameters<typeof persistMalwareScanningPolicy>[2]
@@ -211,12 +218,53 @@ securityRouter.patch("/malware-scanning", securitySettingWriteLimit, async (req,
           actor: user,
           resourceType: "app_setting",
           resourceId: "malware_scanning",
-          details: { enabled }
+          details: stored
         },
         tx as unknown as Parameters<typeof appendSecurityEvent>[1]
       );
     });
     res.json(await dashboardResponse());
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Queues a scan-only malware pass for every parsed version that skipped the
+// external scan (bypass uploads and legacy acceptances), across programs. The
+// response carries counts only. Refused while the scanner is unusable, since
+// every job would fail.
+const MALWARE_RESCAN_BATCH_LIMIT = 500;
+
+securityRouter.post("/malware-rescan", securitySettingWriteLimit, async (req, res, next) => {
+  try {
+    const user = authedUser(req);
+    const scanner = scannerConfiguration();
+    if (!scanner.configured || !scanner.transportSecure) {
+      res.status(409).json({ error: "Configure a usable malware scanner endpoint first" });
+      return;
+    }
+    const pending = await db.execute(sql`
+      SELECT dv.id::text AS id
+      FROM document_versions dv
+      WHERE ${scanOnlyEligibleSql}
+      ORDER BY dv.is_active DESC, dv.uploaded_at DESC
+      LIMIT ${MALWARE_RESCAN_BATCH_LIMIT}
+    `);
+    const ids = (pending.rows as Array<{ id: string }>).map((row) => row.id);
+    let queued = 0;
+    for (const id of ids) {
+      await enqueueMalwareRescan(id);
+      queued += 1;
+    }
+    await appendSecurityEvent({
+      action: "security.malware_rescan.requested",
+      outcome: "success",
+      actor: user,
+      resourceType: "app_setting",
+      resourceId: "malware_scanning",
+      details: { queued }
+    });
+    res.json({ ...(await dashboardResponse()), queued });
   } catch (error) {
     next(error);
   }
