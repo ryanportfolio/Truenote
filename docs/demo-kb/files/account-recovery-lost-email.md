@@ -1,10 +1,10 @@
 # Account Recovery When the Email Is Lost
 
-Larkspur Cloud Customer Support · Procedure CS-PRO-020 · Version 2 · Effective October 1, 2026 · Owner: Security Response
+Cloudshelf Customer Support · Procedure CS-PRO-020 · Version 2 · Effective October 1, 2026 · Owner: Security Response
 
 ## When to use this
 
-Use this procedure when a customer can no longer reach the email address on their Larkspur Cloud account (a closed work address, a deleted personal account, a former employer's domain) and needs the account email changed so they can sign in or receive messages again.
+Use this procedure when a customer can no longer reach the email address on their Cloudshelf account (a closed work address, a deleted personal account, a former employer's domain) and needs the account email changed so they can sign in or receive messages again.
 
 Changing the account email is the most common step in an account takeover. Follow every step, in order, even when the caller is friendly and the story makes sense.
 
@@ -52,4 +52,4 @@ If you see these signs, do not make the change. Lock the account and escalate to
 - Never accept a Social Security number, a full card number or the account password as proof.
 - Never confirm which factor was wrong.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.

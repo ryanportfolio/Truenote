@@ -18,10 +18,21 @@ requests are constructed:
 
 - OpenAI embedding batches;
 - Cohere rerank queries and candidate documents;
-- OpenRouter answer-generation system/user messages;
+- the OpenRouter answer-generation system message and the question inside the
+  user message;
 - OpenRouter follow-up rewrite and session-naming system/user messages; and
 - direct-OpenAI evaluation faithfulness-judge excerpt/answer prompts
   (added 2026-07-17 after an audit found this path previously unprotected).
+
+Since 2026-10-10, retrieved excerpts in the OpenRouter answer-generation user
+message get only the blocking classes (secrets, SSNs, payment cards) through
+`protectApprovedDocumentText()`, with the same fail-closed rescan (owner
+decision). Email, phone, and IP patterns in excerpts are sent as stored: they
+come from documents an administrator approved, and redacting them removed
+contact details from approved procedures, so the model could not answer
+questions about them. The blocking pass stays because document titles are
+prepended to chunks after the upload content scan. Excerpts sent to OpenAI embeddings, Cohere
+reranking, and the faithfulness judge still pass through the firewall.
 
 It redacts these deterministic classes:
 

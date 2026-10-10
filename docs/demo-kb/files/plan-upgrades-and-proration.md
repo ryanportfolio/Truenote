@@ -1,6 +1,6 @@
 # Plan Upgrades and Proration
 
-Larkspur Cloud Customer Support · Procedure CS-PRO-014 · Version 2 · Effective September 1, 2026 · Owner: Billing Operations
+Cloudshelf Customer Support · Procedure CS-PRO-014 · Version 2 · Effective September 1, 2026 · Owner: Billing Operations
 
 ## When to use this
 
@@ -52,4 +52,4 @@ Downgrades take effect at the next renewal date. There is no partial refund for 
 
 **"Can you give me the upgrade for free?"** No. Agents may not create or promise discounts.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.

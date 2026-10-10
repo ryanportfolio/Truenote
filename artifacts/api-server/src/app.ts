@@ -20,6 +20,10 @@ import {
 import { SecurityControlsNotReadyError } from "./lib/security/errors.js";
 import { compressedAssetFileName } from "./lib/security/static-assets.js";
 import {
+  listPublicCompliancePages,
+  publicCompliancePageFile
+} from "./lib/compliance/public-pages.js";
+import {
   addScriptNonceToHtml,
   contentSecurityPolicy,
   strictTransportSecurityPolicy,
@@ -98,6 +102,7 @@ export function createApp(): Express {
   // keep Express's revalidation behavior.
   if (process.env.NODE_ENV === "production") {
     const assetsDir = path.join(dist, "assets");
+    const compliancePages = listPublicCompliancePages(dist);
     app.get(
       ["/security/pci", "/security/pci/", "/security/pci/index.html"],
       (_req: Request, res: Response, next: NextFunction) => {
@@ -158,6 +163,31 @@ export function createApp(): Express {
     app.get(
       ["/security", "/security/", "/security/index.html"],
       serveHtml(path.join(dist, "security/index.html")),
+    );
+    // Public compliance summaries rendered from docs/security/compliance at
+    // build time (vite.config.ts). Unknown or malformed slugs fall through to
+    // the static files (styles.css) and then the SPA fallback.
+    app.get(
+      [
+        "/security/compliance",
+        "/security/compliance/",
+        "/security/compliance/index.html"
+      ],
+      serveHtml(path.join(dist, "security/compliance/index.html")),
+    );
+    app.get(
+      [
+        "/security/compliance/:slug",
+        "/security/compliance/:slug/index.html"
+      ],
+      (req: Request, res: Response, next: NextFunction): void => {
+        const file = publicCompliancePageFile(compliancePages, req.params.slug);
+        if (!file) {
+          next();
+          return;
+        }
+        void sendHtmlWithNonce(res, file).catch(next);
+      },
     );
 
     // HTML is transformed above or by the SPA fallback so its script nonces

@@ -24,6 +24,10 @@ import {
   INGEST_QUEUE_POLICY
 } from "../../artifacts/api-server/src/lib/ingestion/queue.js";
 import { EVAL_QUEUE_POLICY, RUN_EVALUATION_QUEUE } from "../../artifacts/api-server/src/lib/eval/queue.js";
+import {
+  EVIDENCE_QUEUE_POLICY,
+  EVIDENCE_RUN_QUEUE
+} from "../../artifacts/api-server/src/lib/evidence/queue.js";
 
 async function main(): Promise<void> {
   const who = await db.execute(sql`SELECT current_user AS name, rolsuper FROM pg_roles WHERE rolname = current_user`);
@@ -36,6 +40,7 @@ async function main(): Promise<void> {
   const boss = await getBoss();
   await ensureQueue(boss, INGEST_DOCUMENT_VERSION_QUEUE, INGEST_QUEUE_POLICY);
   await ensureQueue(boss, RUN_EVALUATION_QUEUE, EVAL_QUEUE_POLICY);
+  await ensureQueue(boss, EVIDENCE_RUN_QUEUE, EVIDENCE_QUEUE_POLICY);
   const version = await boss.schemaVersion();
   const queues = (await boss.getQueues()).map((q) => q.name).sort();
   console.log(`[pgboss-install] schema version ${version}; queues: ${queues.join(", ")}`);

@@ -13,7 +13,10 @@ import {
   type ApprovedModelRoute
 } from "./model-routing.js";
 import { scanTextForSensitiveContent } from "../security/content-scan.js";
-import { protectProviderText } from "../security/provider-input-firewall.js";
+import {
+  protectApprovedDocumentText,
+  protectProviderText
+} from "../security/provider-input-firewall.js";
 import { findUngroundedFigure } from "./figure-grounding.js";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -169,16 +172,14 @@ async function callGenerationModel(
     signal?: AbortSignal;
   }
 ): Promise<{ text: string | null; usage: ProviderTokenUsage | null }> {
-  const protectedSystemPrompt = protectProviderText(systemPrompt).text;
-  const protectedUserPrompt = protectProviderText(userPrompt).text;
   const request = {
     model,
     ...(options.reasoningEffort === "none"
       ? { temperature: 0 }
       : { reasoning_effort: options.reasoningEffort }),
     messages: [
-      { role: "system", content: protectedSystemPrompt },
-      { role: "user", content: protectedUserPrompt }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
     ]
   } satisfies OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
 
@@ -376,8 +377,14 @@ export async function generateAnswer(
     };
   }
 
-  const systemPrompt = buildSystemPrompt(input.programName);
-  const userPrompt = buildUserPrompt(input.question, input.chunks);
+  // The full provider firewall covers the system prompt and the typed
+  // question. Excerpts from approved documents get only the blocking classes
+  // (secrets, SSNs, cards): redacting their contact emails or phone numbers
+  // left the model unable to answer questions about them.
+  const systemPrompt = protectProviderText(buildSystemPrompt(input.programName)).text;
+  const userPrompt = protectApprovedDocumentText(
+    buildUserPrompt(protectProviderText(input.question).text, input.chunks)
+  );
 
   // Walk the admin-ordered ZDR-only OpenRouter chain. Any request error, empty
   // answer, or invalid/missing citation advances to the next route. A valid

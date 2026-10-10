@@ -23,8 +23,12 @@ on:
 permissions:
   contents: read
 
+# Pull-request runs group by PR number: an edit to a merged PR has no merge
+# ref left, so github.ref is the base branch, and grouping by ref let those
+# runs cancel the push run on main. The event name keeps push and scheduled
+# runs on main from cancelling each other.
 concurrency:
-  group: security-${{ github.workflow }}-${{ github.ref }}
+  group: security-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -139,3 +143,12 @@ jobs:
           path: codeql-results
           if-no-files-found: error
           retention-days: 30
+
+  notify-failure:
+    name: Report a failed scheduled run
+    needs: [verify, supply-chain, secrets, codeql]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/scheduled-failure-issue.yml

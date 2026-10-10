@@ -1,10 +1,10 @@
 # Data Export Requests
 
-Larkspur Cloud Customer Support · Procedure CS-PRO-022 · Version 2 · Effective August 15, 2026 · Owner: Legal and Privacy
+Cloudshelf Customer Support · Procedure CS-PRO-022 · Version 2 · Effective August 15, 2026 · Owner: Legal and Privacy
 
 ## When to use this
 
-Use this procedure when a customer asks for a copy of their files and account data, whether they are leaving Larkspur Cloud, making a privacy request, or keeping a backup. For account deletion, use the Privacy Requests guide.
+Use this procedure when a customer asks for a copy of their files and account data, whether they are leaving Cloudshelf, making a privacy request, or keeping a backup. For account deletion, use the Privacy Requests guide.
 
 Most customers only want their files. Downloading a folder from the app is faster than a full export and needs no request. Offer that first.
 
@@ -12,7 +12,7 @@ Most customers only want their files. Downloading a folder from the app is faste
 
 - Any verified account owner on Basic or Pro.
 - For an Enterprise organization, only the account administrator can request an export of the whole organization. A team member can export only their own files, from their own Settings page.
-- Requests from police, courts or lawyers are never handled by support. Do not confirm whether an account exists. Give the caller legal@larkspur.example and escalate to Legal and Privacy.
+- Requests from police, courts or lawyers are never handled by support. Do not confirm whether an account exists. Route the request to Legal and Privacy, queue LP-PRIV.
 
 ## Steps
 
@@ -27,8 +27,8 @@ Most customers only want their files. Downloading a folder from the app is faste
 
 | Part | Format | Includes |
 |---|---|---|
-| Files | ZIP archives of up to 50 GB each | Current version of every file and folder, in the same folder structure |
-| Account data | JSON file | Profile, sign-in history for the past 12 months, sharing links, billing history |
+| Files | ZIP archives of up to 50 gigabytes each | Current version of every file and folder, in the same folder structure |
+| Account data | JSON file | Account profile, sign-in history for the past 12 months, sharing links, billing history |
 | Version history | Not included | Customers download older versions from the app |
 | Trash | Not included | Customers restore files from Trash first if they want them |
 
@@ -52,4 +52,4 @@ If the customer has already asked for deletion, the account is locked from the m
 
 **"Can I get my files in a different format?"** No. Files are exported in their original formats.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.

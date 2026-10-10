@@ -93,8 +93,8 @@ const ENFORCEMENT_TEST_KEYS = new Set([
 const SIGNOFF_KEYS = new Set(["role", "identity", "decision", "reviewedAt", "evidenceReference"]);
 const PLACEHOLDER = /<[^>]+>|\b(?:tbd|todo|pending|unassigned|unknown|placeholder|n\/a|not yet determined)\b/i;
 const REQUIRED_API_ENDPOINTS = [
-  "/repos/ryanportfolio/kbase/rulesets",
-  "/repos/ryanportfolio/kbase/branches/main/protection"
+  "/repos/ryanportfolio/Truenote/rulesets",
+  "/repos/ryanportfolio/Truenote/branches/main/protection"
 ] as const;
 const REQUIRED_CODEOWNERS_PATH = ".github/CODEOWNERS";
 
@@ -187,7 +187,7 @@ export function verifyBranchEnforcementEvidence(
   if (root.schemaVersion !== 2) issues.push("branch enforcement schemaVersion must equal 2");
   const idMatch = nonBlank(root.recordId) ? /^TN-BRANCH-(\d{4})-(\d{3,})$/.exec(root.recordId) : null;
   if (!idMatch) issues.push("branch enforcement recordId must match TN-BRANCH-YYYY-NNN");
-  if (root.repository !== "ryanportfolio/kbase") issues.push("branch enforcement repository must equal ryanportfolio/kbase");
+  if (root.repository !== "ryanportfolio/Truenote") issues.push("branch enforcement repository must equal ryanportfolio/Truenote");
   if (root.defaultBranch !== "main") issues.push("branch enforcement defaultBranch must equal main");
   if (!timestamp(root.capturedAt)) {
     issues.push("branch enforcement capturedAt must be a canonical UTC ISO timestamp");

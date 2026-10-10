@@ -40,7 +40,7 @@ import {
 import { resolveAppBaseUrl } from "../../lib/email/links.js";
 import { renderInviteEmail } from "../../lib/email/templates.js";
 import { recordAppError } from "../../lib/observability/error-log.js";
-import { userAdminWriteLimit } from "../../lib/security/route-rate-limit.js";
+import { adminReadLimit, userAdminWriteLimit } from "../../lib/security/route-rate-limit.js";
 import { workloadRateLimitMiddleware } from "../../middleware/workload-rate-limit.js";
 
 // Read once at module load — same convention as routes/auth.ts so the
@@ -183,7 +183,7 @@ export function canSupervisorResetPassword(
  * Order: super_user first, then by role rank, then by name. Stable so the
  * UI doesn't reshuffle on each fetch.
  */
-usersRouter.get("/", async (req, res, next) => {
+usersRouter.get("/", adminReadLimit, async (req, res, next) => {
   try {
     const actor = authedUser(req);
 

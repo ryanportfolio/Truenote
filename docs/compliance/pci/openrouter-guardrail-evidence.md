@@ -33,6 +33,25 @@ This is material evidence that real-time input redaction has been configured for
 requests to which this OpenRouter guardrail is assigned. It directly rebuts a
 blanket statement that Truenote has no PII-redaction control.
 
+## Configuration change, 2026-10-10
+
+The owner turned off the person-name and street-address presets. The guardrail
+scans every input message, including the retrieved excerpts from approved
+documents, and those presets cannot be limited to the CSR's question. On the
+Railway demo they redacted the demo company name and a sample customer name in
+most answer requests (`query_log` row `d45296f8`, 2026-10-10 04:37 UTC: PERSON
+and LOCATION redacted from excerpts, the question contained neither), and the
+OpenRouter documentation states that these NLP presets add latency in
+proportion to input size.
+
+After the change the guardrail still redacts email addresses, phone numbers,
+Social Security numbers, credit-card numbers, and IP addresses, and keeps
+prompt-injection detection. Names and street addresses that a CSR types into a
+question are no longer redacted by any control; the local firewall never
+claimed them (see [`provider-input-firewall.md`](./provider-input-firewall.md)).
+A screenshot of the changed configuration has not yet been added to this
+record.
+
 ## What this evidence does not establish
 
 The screenshots do not prove:

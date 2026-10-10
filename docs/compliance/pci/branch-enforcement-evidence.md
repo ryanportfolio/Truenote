@@ -23,7 +23,7 @@ repository and retaining the authentic API response bundle.
 
 ## Required live state
 
-The completed record must show all of the following for `ryanportfolio/kbase` and
+The completed record must show all of the following for `ryanportfolio/Truenote` and
 `refs/heads/main`:
 
 1. enforcement is active and applies to the default branch;
@@ -41,8 +41,8 @@ The completed record must show all of the following for `ryanportfolio/kbase` an
 
 The record requires complete, authenticated API capture from both:
 
-- `/repos/ryanportfolio/kbase/rulesets`
-- `/repos/ryanportfolio/kbase/branches/main/protection`
+- `/repos/ryanportfolio/Truenote/rulesets`
+- `/repos/ryanportfolio/Truenote/branches/main/protection`
 
 For each response, record the exact official GitHub API endpoint, `GET`, HTTP 200,
 GitHub request ID, response-body hash, page count, and completed-pagination flag.

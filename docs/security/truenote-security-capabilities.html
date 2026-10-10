@@ -303,7 +303,7 @@
     <div class="shell hero-inner">
       <div class="site-nav">
         <a class="brand" href="/" aria-label="Truenote home"><span class="brand-mark" aria-hidden="true">T</span><span>Truenote</span></a>
-        <div class="site-links"><a href="/security/pci/">PCI safeguards</a><a href="/about/">About</a><a href="/">Sign in</a></div>
+        <div class="site-links"><a href="/security/pci/">PCI safeguards</a><a href="/security/compliance/">Compliance</a><a href="/about/">About</a><a href="/">Sign in</a></div>
       </div>
       <p class="eyebrow">Truenote security architecture</p>
       <h1>Security controls Truenote has today</h1>
@@ -313,7 +313,7 @@
   </header>
 
   <nav aria-label="Document sections">
-    <div class="shell"><a href="#overview">Overview</a><a href="#safeguards">Safeguards</a><a href="#data">Data and access</a><a href="#providers">Providers</a><a href="#readiness">Production review</a><a href="#checks">Passed checks</a><a href="#source">Source and reporting</a></div>
+    <div class="shell"><a href="#overview">Overview</a><a href="#safeguards">Safeguards</a><a href="#data">Data and access</a><a href="#providers">Providers</a><a href="#readiness">Production review</a><a href="#checks">Passed checks</a><a href="#source">Source and reporting</a><a href="#compliance">Compliance</a></div>
   </nav>
 
   <main class="shell">
@@ -333,7 +333,7 @@
         <article class="card"><p class="number">02</p><h3>Controlled content activation</h3><p>Source, file-signature, EICAR, parsed-content, lifecycle, and role checks constrain activation. Missing or failed malware scanning quarantines uploads when scanning is enabled.</p><span class="evidence-scope">Repository tests passed</span><p class="dependency">EICAR detection is a test-signature check. A super user can disable external scanning; authorized senior managers and super users can activate their own uploads. Independent approval is not universal.</p></article>
         <article class="card"><p class="number">03</p><h3>Hybrid retrieval boundary</h3><p>Vector, full-text, typo-tolerant, reranking, and neighbor retrieval preserve authorization and lifecycle limits through the complete pipeline.</p><span class="evidence-scope">Repository tests passed</span></article>
         <article class="card"><p class="number">04</p><h3>Zero Data Retention routing policy</h3><p>Approved answer routes request Zero Data Retention, deny data collection, pin one provider, disable OpenRouter provider fallback for each request, and reject arbitrary routes. Truenote can retry other routes within its approved model chain. Super users can reorder that chain but cannot add or remove a route; changing the approved list takes a code change.</p><span class="evidence-scope">Repository tests passed</span><p class="dependency">This is a routing policy. Actual provider eligibility, account settings, contracts, and retention require separate evidence. It does not cover every parser, embedding, or reranking service.</p></article>
-        <article class="card"><p class="number">05</p><h3>Pre-provider input firewall</h3><p>Supported secret, US Social Security number, Luhn-valid 13-to-19-digit card-number (space or hyphen separators), email, structured-phone, and IP-address patterns are redacted at embedding, reranking, answer, and utility-model text boundaries.</p><span class="evidence-scope">Boundary tests passed</span><p class="dependency">Names, street addresses, arbitrary credentials, standalone card-verification codes, and obfuscated or contextual personal data are not comprehensively detected. Raw uploaded files follow a separate path.</p></article>
+        <article class="card"><p class="number">05</p><h3>Pre-provider input firewall</h3><p>Supported secret, US Social Security number, Luhn-valid 13-to-19-digit card-number (space or hyphen separators), email, structured-phone, and IP-address patterns are redacted at embedding, reranking, answer, and utility-model text boundaries. In answer requests, excerpts from approved documents keep their email addresses, phone numbers, and IP addresses; secrets, Social Security numbers, and card numbers are still redacted.</p><span class="evidence-scope">Boundary tests passed</span><p class="dependency">Names, street addresses, arbitrary credentials, standalone card-verification codes, and obfuscated or contextual personal data are not comprehensively detected. Raw uploaded files follow a separate path.</p></article>
         <article class="card"><p class="number">06</p><h3>Cite or refuse</h3><p>Missing, malformed, unknown, and out-of-range citations produce a refusal. Generated text matching the supported secret, Social Security number, or card-number rules is also refused.</p><span class="evidence-scope">Generation tests passed</span><p class="dependency">A valid citation does not prove every statement is accurate. Output screening has a defined pattern scope; it does not guarantee complete personal-data protection or immunity to prompt injection.</p></article>
         <article class="card"><p class="number">07</p><h3>Version-bound citation receipts</h3><p>Ordered source snapshots preserve version and anchor context. Stored history rechecks current program, clearance, source approval, and lifecycle access before returning questions, answers, excerpts, or titles. Exchanges without complete authorized provenance, including zero-citation refusals, are withheld as a whole, so a past answer never appears with some of its sources missing. Refused questions and missing-content flags go to the Content gaps report instead: supervisors see their own team's, managers the whole program's. A title is hidden unless the exchange it was generated from is shown and every other withheld exchange is an uncited refusal; conversations with nothing to show are not listed. Eligible superseded receipts remain readable while their parent document and source stay authorized.</p><span class="evidence-scope">Repository tests passed</span></article>
         <article class="card"><p class="number">08</p><h3>Browser request defense</h3><p>Trusted same-origin mutations pass while foreign, opaque, malformed, cross-site, and sibling-origin requests are rejected. CSP restricts active content. Clients sending neither Origin nor Fetch Metadata headers pass this browser-origin check and still require authentication on protected routes.</p><span class="evidence-scope">Browser-security tests passed</span></article>
@@ -373,7 +373,7 @@
           <tr><th scope="row">Resend</th><td>Invitation and password-reset email</td><td>Recipient names, email addresses, and one-time links</td></tr>
           <tr><th scope="row">GitHub</th><td>Source hosting, automated checks, and security-report intake</td><td>Source code, check artifacts, and submitted reports; application customer content must stay out of reports and CI artifacts</td></tr>
         </tbody></table></div>
-      <p>Truenote's OpenRouter account also has a guardrail for answer and query-rewrite requests, configured to redact card numbers, Social Security numbers, email addresses, phone numbers, IP addresses, person names, street addresses, and prompt-injection patterns in user messages. Provider account settings, contracts, and retention still need separate approval.</p>
+      <p>Truenote's OpenRouter account also has a guardrail for answer and query-rewrite requests, configured to redact card numbers, Social Security numbers, email addresses, phone numbers, IP addresses, and prompt-injection patterns. Its person-name and street-address detection is turned off, because it cannot be limited to the question and it redacted names in approved documents. Provider account settings, contracts, and retention still need separate approval.</p>
     </section>
 
     <section id="readiness">
@@ -420,6 +420,11 @@
         <div class="actions"><a class="button" href="https://github.com/ryanportfolio/Truenote" target="_blank" rel="noreferrer">View source</a><a class="button secondary" href="https://github.com/ryanportfolio/Truenote/security/advisories/new" target="_blank" rel="noreferrer">Report privately</a></div>
       </div>
       <p><a href="/security/pci/#evidence">Open implementation and test evidence</a> · <a href="/.well-known/security.txt">Reporting discovery record</a> · <a href="https://github.com/ryanportfolio/Truenote/security/policy">Security reporting policy</a>. Use synthetic data; keep exploit details, credentials, payment-card data, and customer content out of public issues. Test only systems and accounts you are authorized to use.</p>
+    </section>
+
+    <section id="compliance" aria-labelledby="compliance-heading">
+      <h2 id="compliance-heading">Compliance documents</h2>
+      <div class="boundary"><strong>Two tiers:</strong> <a href="/security/compliance/">public compliance summaries</a> are open to everyone. <a href="/compliance">Detailed documents</a>, such as the full system security plan and the plan of action and milestones, describe security weaknesses and are available only to authorized reviewers who sign in.</div>
     </section>
 
     <section aria-label="Evidence boundary">
