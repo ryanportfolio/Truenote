@@ -49,7 +49,8 @@ export function ForgotPasswordPage(): JSX.Element {
             Reset your password
           </h1>
           <p className="text-sm text-muted-foreground">
-            Enter your email. We will send a link to set a new password.
+            Enter your email. We will send a link to set a new password, or
+            instructions for signing in if your account doesn't use one.
           </p>
         </header>
 
@@ -59,8 +60,9 @@ export function ForgotPasswordPage(): JSX.Element {
               role="status"
               className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm"
             >
-              If an account exists for that email, a reset link is on its way.
-              The link expires in an hour.
+              If an account exists for that email, we sent it an email. It has
+              either a reset link, which expires in an hour, or instructions
+              for signing in.
             </p>
             <Link
               href="/login"
