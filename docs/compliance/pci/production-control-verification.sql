@@ -17,7 +17,8 @@ expected_tables(table_name) AS (
     ('security_control_metadata'),
     ('security_rate_limits'),
     ('security_events'),
-    ('siem_delivery_outbox')
+    ('service_heartbeats'),
+    ('security_monitor_state')
 ),
 expected_columns(table_name, column_name, expected_type, require_not_null) AS (
   VALUES
@@ -88,18 +89,13 @@ expected_columns(table_name, column_name, expected_type, require_not_null) AS (
     ('security_events', 'details', 'jsonb', true),
     ('security_events', 'previous_hash', 'text', false),
     ('security_events', 'event_hash', 'text', true),
-    ('siem_delivery_outbox', 'security_event_id', 'uuid', true),
-    ('siem_delivery_outbox', 'status', 'text', true),
-    ('siem_delivery_outbox', 'attempts', 'integer', true),
-    ('siem_delivery_outbox', 'next_attempt_at', 'timestamp with time zone', false),
-    ('siem_delivery_outbox', 'lease_token', 'uuid', false),
-    ('siem_delivery_outbox', 'lease_expires_at', 'timestamp with time zone', false),
-    ('siem_delivery_outbox', 'last_attempt_at', 'timestamp with time zone', false),
-    ('siem_delivery_outbox', 'delivered_at', 'timestamp with time zone', false),
-    ('siem_delivery_outbox', 'dead_lettered_at', 'timestamp with time zone', false),
-    ('siem_delivery_outbox', 'last_error', 'text', false),
-    ('siem_delivery_outbox', 'created_at', 'timestamp with time zone', true),
-    ('siem_delivery_outbox', 'updated_at', 'timestamp with time zone', true)
+    ('service_heartbeats', 'service', 'text', true),
+    ('service_heartbeats', 'instance_id', 'text', true),
+    ('service_heartbeats', 'started_at', 'timestamp with time zone', true),
+    ('service_heartbeats', 'beat_at', 'timestamp with time zone', true),
+    ('security_monitor_state', 'id', 'boolean', true),
+    ('security_monitor_state', 'last_sequence', 'bigint', true),
+    ('security_monitor_state', 'updated_at', 'timestamp with time zone', true)
 ),
 expected_constraints(table_name, constraint_name) AS (
   VALUES
@@ -117,11 +113,8 @@ expected_constraints(table_name, constraint_name) AS (
     ('security_events', 'security_events_sequence_key'),
     ('security_events', 'security_events_outcome_check'),
     ('security_events', 'security_events_event_hash_key'),
-    ('siem_delivery_outbox', 'siem_delivery_outbox_pkey'),
-    ('siem_delivery_outbox', 'siem_delivery_outbox_status_check'),
-    ('siem_delivery_outbox', 'siem_delivery_outbox_attempts_check'),
-    ('siem_delivery_outbox', 'siem_delivery_outbox_lease_check'),
-    ('siem_delivery_outbox', 'siem_delivery_outbox_terminal_check')
+    ('service_heartbeats', 'service_heartbeats_pkey'),
+    ('security_monitor_state', 'security_monitor_state_pkey')
 ),
 expected_indexes(index_name) AS (
   VALUES
@@ -134,38 +127,26 @@ expected_indexes(index_name) AS (
     ('security_rate_limits_expiry_idx'),
     ('security_events_occurred_idx'),
     ('security_events_program_occurred_idx'),
-    ('security_events_action_occurred_idx'),
-    ('siem_delivery_outbox_due_idx'),
-    ('siem_delivery_outbox_dead_letter_idx')
+    ('security_events_action_occurred_idx')
 ),
 expected_functions(signature, require_security_definer, expected_search_path) AS (
   VALUES
     ('public.append_security_event(text,text,uuid,text,text,uuid,text,text,text,text,jsonb)', true, 'search_path=public, pg_catalog'),
     ('public.block_security_event_mutation()', false, NULL),
     ('public.audit_document_version_lifecycle()', true, 'search_path=public, pg_catalog'),
-    ('public.audit_content_source_change()', true, 'search_path=public, pg_catalog'),
-    ('public.enqueue_security_event_for_siem()', true, 'search_path=pg_catalog, public'),
-    ('public.claim_siem_deliveries(integer,integer)', true, 'search_path=pg_catalog, public'),
-    ('public.complete_siem_delivery(uuid,uuid)', true, 'search_path=pg_catalog, public'),
-    ('public.fail_siem_delivery(uuid,uuid,text,boolean,timestamp with time zone)', true, 'search_path=pg_catalog, public'),
-    ('public.get_siem_delivery_health()', true, 'search_path=pg_catalog, public')
+    ('public.audit_content_source_change()', true, 'search_path=public, pg_catalog')
 ),
 expected_triggers(table_name, trigger_name) AS (
   VALUES
     ('security_events', 'security_events_append_only'),
-    ('security_events', 'security_events_siem_enqueue'),
     ('document_versions', 'document_versions_audit_insert'),
     ('document_versions', 'document_versions_audit_lifecycle'),
     ('content_sources', 'content_sources_audit_insert'),
     ('content_sources', 'content_sources_audit_update')
 ),
-siem_functions(signature, app_execute_required) AS (
+audit_functions(signature, app_execute_required) AS (
   VALUES
-    ('public.enqueue_security_event_for_siem()', false),
-    ('public.claim_siem_deliveries(integer,integer)', true),
-    ('public.complete_siem_delivery(uuid,uuid)', true),
-    ('public.fail_siem_delivery(uuid,uuid,text,boolean,timestamp with time zone)', true),
-    ('public.get_siem_delivery_health()', true)
+    ('public.append_security_event(text,text,uuid,text,text,uuid,text,text,text,text,jsonb)', true)
 ),
 table_checks AS (
   SELECT
@@ -295,7 +276,7 @@ function_privilege_checks AS (
       ) THEN 'PUBLIC can execute'
       ELSE 'PUBLIC cannot execute'
     END AS observed
-  FROM siem_functions AS expected
+  FROM audit_functions AS expected
   LEFT JOIN pg_catalog.pg_proc AS function_row
     ON function_row.oid = to_regprocedure(expected.signature)
 
@@ -313,7 +294,7 @@ function_privilege_checks AS (
       WHEN has_function_privilege(runtime_context.runtime_role, function_row.oid, 'EXECUTE') THEN 'approved runtime role can execute'
       ELSE 'approved runtime role cannot execute'
     END AS observed
-  FROM siem_functions AS expected
+  FROM audit_functions AS expected
   CROSS JOIN runtime_context
   LEFT JOIN pg_catalog.pg_proc AS function_row
     ON function_row.oid = to_regprocedure(expected.signature)
@@ -322,7 +303,7 @@ function_privilege_checks AS (
 table_privilege_checks AS (
   SELECT
     'table privilege'::text AS category,
-    'public.siem_delivery_outbox PUBLIC privileges revoked' AS control,
+    'public.security_events PUBLIC privileges revoked' AS control,
     relation.oid IS NOT NULL
       AND NOT EXISTS (
         SELECT 1
@@ -338,7 +319,7 @@ table_privilege_checks AS (
       ) THEN 'PUBLIC has table privileges'
       ELSE 'PUBLIC has no table privileges'
     END AS observed
-  FROM (SELECT to_regclass('public.siem_delivery_outbox') AS oid) AS target
+  FROM (SELECT to_regclass('public.security_events') AS oid) AS target
   LEFT JOIN pg_catalog.pg_class AS relation ON relation.oid = target.oid
 ),
 all_checks AS (
@@ -382,11 +363,11 @@ WITH definitions AS (
       'security_events_sequence_key',
       'security_events_outcome_check',
       'security_events_event_hash_key',
-      'siem_delivery_outbox_pkey',
-      'siem_delivery_outbox_status_check',
-      'siem_delivery_outbox_attempts_check',
-      'siem_delivery_outbox_lease_check',
-      'siem_delivery_outbox_terminal_check'
+      'service_heartbeats_pkey',
+      'service_heartbeats_service_check',
+      'security_monitor_state_pkey',
+      'security_monitor_state_id_check',
+      'security_monitor_state_last_sequence_check'
     )
 
   UNION ALL
@@ -409,9 +390,7 @@ WITH definitions AS (
       'security_rate_limits_expiry_idx',
       'security_events_occurred_idx',
       'security_events_program_occurred_idx',
-      'security_events_action_occurred_idx',
-      'siem_delivery_outbox_due_idx',
-      'siem_delivery_outbox_dead_letter_idx'
+      'security_events_action_occurred_idx'
     )
 
   UNION ALL
@@ -427,12 +406,7 @@ WITH definitions AS (
       'append_security_event',
       'block_security_event_mutation',
       'audit_document_version_lifecycle',
-      'audit_content_source_change',
-      'enqueue_security_event_for_siem',
-      'claim_siem_deliveries',
-      'complete_siem_delivery',
-      'fail_siem_delivery',
-      'get_siem_delivery_health'
+      'audit_content_source_change'
     )
 
   UNION ALL
@@ -448,7 +422,6 @@ WITH definitions AS (
     AND NOT trigger_row.tgisinternal
     AND trigger_row.tgname IN (
       'security_events_append_only',
-      'security_events_siem_enqueue',
       'document_versions_audit_insert',
       'document_versions_audit_lifecycle',
       'content_sources_audit_insert',

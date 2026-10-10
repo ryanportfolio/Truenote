@@ -56,7 +56,7 @@ Security is part of Truenote's data path, not a separate checklist. The reposito
 | Grounded generation | Retrieval gates, untrusted-excerpt instructions, citation validation, sensitive-output blocking, and defensive refusal protect every answer. | The eval harness measures retrieval, refusal, citation, and claim-level faithfulness. |
 | Controlled ingestion | File signatures, EICAR checks, default-on scanner enforcement, content DLP, inactive versions, role-authorized activation or review, revocation, and retention gates protect source activation. | Lifecycle records preserve provenance, scan results, audited temporary scanner overrides, reviewer decisions, and document history. |
 | Authentication and browser defense | Argon2id local passwords, hashed session tokens, OIDC Authorization Code with PKCE, MFA or ACR validation, CSP, Origin checks, and Fetch Metadata checks protect access. | Automated tests exercise identity validation, foreign origins, security headers, and privileged routes. |
-| Audit and SIEM | Hash-chained security events, a transactional outbox, signed delivery, bounded retries, lease fencing, dead-letter state, and health reporting preserve security receipts. | Control DDL includes acceptance queries; tests cover queueing, delivery failure, retry, and recovery behavior. |
+| Audit and alerting | Hash-chained, append-only security events. A worker job prints each committed event to the log in order and emails the owner on break-glass and super user logins, account and role changes, security setting changes, failed-login and denial spikes, and failed audit writes. A readiness endpoint checks the database and the worker. | Alert rules and their production test record: `docs/security/monitoring.md`. |
 | Supply chain | Pull requests, `main`, weekly, and manual runs execute PCI/vulnerability evidence checks, type checks, the production build, unit tests, high-severity dependency audit, CycloneDX SBOM generation, Gitleaks, and CodeQL security-extended analysis. | A safe baseline accounts for all 51 retained CodeQL results; the strict managed-release gate honestly remains blocked by missing owners, dates, and dispositions. Alert upload, current hosted execution, and release-linked results still require live verification. |
 
 Read the [security documentation index](./docs/security/README.md), the [PCI DSS readiness evidence pack](./docs/compliance/pci/README.md), and the [technical security capabilities brief](./docs/security/truenote-security-capabilities.html). Report vulnerabilities through [SECURITY.md](./SECURITY.md).
@@ -155,7 +155,7 @@ psql -v ON_ERROR_STOP=1 -d truenote -f lib/db/sql/0001_schema_migrations.sql
 psql -v ON_ERROR_STOP=1 -d truenote -f lib/db/sql/0002_eval_questions_is_protected.sql
 ```
 
-Continue with `0003` and later files when they exist. The baseline creates the `vector`, `pg_trgm`, and `pgcrypto` extensions, so the database role needs permission to create them. Like production, the result has the `siem_delivery_outbox` table but not the SIEM outbox functions or trigger from [`docs/security/p1-siem-delivery-outbox.sql`](./docs/security/p1-siem-delivery-outbox.sql). pg-boss creates its own queue schema the first time the API or worker starts it.
+Continue with `0003` and later files when they exist. The baseline creates the `vector`, `pg_trgm`, and `pgcrypto` extensions, so the database role needs permission to create them. The baseline still creates the retired `siem_delivery_outbox` table; `0013` drops it. pg-boss creates its own queue schema the first time the API or worker starts it.
 
 Install locked dependencies and create a local environment file:
 
@@ -186,7 +186,7 @@ pnpm check
 pnpm test
 ```
 
-Changes to ingestion, retrieval, reranking, generation, or citation behavior also require the eval suite against a representative fixture or deployed test corpus. Runtime integrations such as OIDC, malware scanning, SIEM delivery, storage, and provider retention settings need tests in the environment where they are configured.
+Changes to ingestion, retrieval, reranking, generation, or citation behavior also require the eval suite against a representative fixture or deployed test corpus. Runtime integrations such as OIDC, malware scanning, security alert email, storage, and provider retention settings need tests in the environment where they are configured.
 
 ## Contributing
 

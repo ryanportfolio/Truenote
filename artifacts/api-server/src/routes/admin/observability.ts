@@ -10,7 +10,7 @@ import {
   type PipelineTimingBreakdown
 } from "../../lib/observability/pipeline-timing.js";
 import { isMissingTimingColumn } from "../../lib/observability/pipeline-timing-store.js";
-import { getSiemDeliveryHealth } from "../../lib/security/siem-outbox.js";
+import { getSecurityMonitorStatus } from "../../lib/monitoring/security-monitor.js";
 import {
   requireAuth,
   requireFreshPassword,
@@ -30,7 +30,7 @@ const MAX_AGGREGATE_SAMPLES = 2_000;
 
 observabilityRouter.get("/security-audit", async (_req, res, next) => {
   try {
-    res.json(await getSiemDeliveryHealth());
+    res.json(await getSecurityMonitorStatus());
   } catch (error) {
     next(error);
   }
