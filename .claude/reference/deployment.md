@@ -181,7 +181,7 @@ The last passkey cannot be removed while the mode is `break_glass` (409).
 
 ### 3. Enable SSO
 
-From the customer's IT team: tenant ID, client ID, client secret, and the program's users already created in Truenote with the emails the directory sends. Set on `web` with `railway variable set ... --stdin --skip-deploys`, then redeploy once:
+From the customer's IT team: tenant ID, client ID, client secret, and the program's users already created in Truenote with the emails the directory sends. Their app registration must add the ID token optional claims `amr` and `auth_time` (full list: `docs/security/sso-mfa-plan-2026-10-09.md`, request list item 2): without `amr` every login fails the MFA check, and without `auth_time` every sign-in after an idle expiry is refused. Set on `web` with `railway variable set ... --stdin --skip-deploys`, then redeploy once:
 
 | Variable | Value |
 |---|---|
@@ -201,6 +201,7 @@ From the customer's IT team: tenant ID, client ID, client secret, and the progra
 - SSO login with MFA, as a user of an allowed program: lands on the app; the new `sessions` row has `auth_method = 'oidc'` and `expires_at` about 10 hours after `created_at` (`SSO_SESSION_MAX_HOURS`); one `user_identities` row exists for the user; security events `auth.oidc.identity_linked` and `auth.oidc.login` (success) are recorded.
 - SSO login whose token lacks `amr: ["mfa"]` (a user excluded from the IdP's MFA policy, if the IT team can provide one): redirect to `/login?sso_error=1`, no `sessions` row, `web` logs `[oidc] callback failed: OIDC token does not contain MFA evidence`.
 - A user outside `OIDC_ALLOWED_PROGRAM_IDS`: refused the same way, security event `auth.oidc.login` denied with reason `program_not_allowed`.
+- Re-authentication after idle: sign in through SSO, leave the tab without activity for more than `SESSION_IDLE_MINUTES`, then reload. The app returns to `/login` and the browser holds a `truenote_oidc_reauth` cookie; "Sign in with SSO" goes to Entra with `prompt=login` in the authorize URL, and Entra asks for the password (and MFA, per the customer's policy) instead of signing in silently. After that sign-in the cookie is gone and a new `sessions` row exists. If `web` logs `[oidc] callback failed: OIDC id_token has no auth_time; ...` (event reason `reauth_auth_time_missing`), the app registration lacks the `auth_time` optional claim: ask the IT team to add it. Until then, users whose session ended at the idle limit cannot sign in through SSO for up to `SSO_SESSION_MAX_HOURS`, unless they clear the cookie.
 - After the switch to `break_glass` (step 5): super-user password login asks for the passkey and succeeds with it (event `auth.break_glass.login`, `details.mfa = "passkey"`); a password login by any other role answers 401.
 - After the switch, the recovery-code path: super-user password login followed by one recovery code succeeds (event `auth.break_glass.login`, `details.mfa = "recovery_code"`), and the "Emergency sign-in" card shows one fewer unused code. This uses up a code; generate a new set if fewer than you want remain.
 

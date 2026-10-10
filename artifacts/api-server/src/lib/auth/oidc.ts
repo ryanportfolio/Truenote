@@ -226,6 +226,11 @@ export interface OidcState {
   codeVerifier: string;
   returnTo: string;
   expiresAt: number;
+  /**
+   * Set when this sign-in follows an idle expiry (lib/auth/idle-reauth.ts):
+   * epoch seconds at /start. The id_token's auth_time must not be earlier.
+   */
+  authenticatedAfter?: number;
 }
 
 export function safeReturnTo(value: unknown): string {
@@ -241,13 +246,18 @@ export function safeReturnTo(value: unknown): string {
   return value;
 }
 
-export function createOidcState(returnTo: string): OidcState {
+export function createOidcState(
+  returnTo: string,
+  options: { reauthenticate?: boolean } = {}
+): OidcState {
+  const now = Date.now();
   return {
     state: randomBytes(32).toString("base64url"),
     nonce: randomBytes(32).toString("base64url"),
     codeVerifier: randomBytes(48).toString("base64url"),
     returnTo: safeReturnTo(returnTo),
-    expiresAt: Date.now() + 10 * 60 * 1000
+    expiresAt: now + 10 * 60 * 1000,
+    ...(options.reauthenticate ? { authenticatedAfter: Math.floor(now / 1000) } : {})
   };
 }
 
@@ -281,7 +291,9 @@ export function openOidcState(value: string, secret: string): OidcState | null {
       typeof parsed.codeVerifier !== "string" ||
       typeof parsed.returnTo !== "string" ||
       typeof parsed.expiresAt !== "number" ||
-      parsed.expiresAt < Date.now()
+      parsed.expiresAt < Date.now() ||
+      (parsed.authenticatedAfter !== undefined &&
+        typeof parsed.authenticatedAfter !== "number")
     ) {
       return null;
     }
@@ -290,7 +302,10 @@ export function openOidcState(value: string, secret: string): OidcState | null {
       nonce: parsed.nonce,
       codeVerifier: parsed.codeVerifier,
       returnTo: safeReturnTo(parsed.returnTo),
-      expiresAt: parsed.expiresAt
+      expiresAt: parsed.expiresAt,
+      ...(parsed.authenticatedAfter !== undefined
+        ? { authenticatedAfter: parsed.authenticatedAfter }
+        : {})
     };
   } catch {
     return null;
@@ -319,6 +334,21 @@ export interface OidcClaims {
   name?: unknown;
   acr?: unknown;
   amr?: unknown;
+  auth_time?: unknown;
+}
+
+/**
+ * A sign-in after an idle expiry whose id_token does not show a fresh
+ * authentication. `reason` is the short code recorded in the audit event.
+ */
+export class OidcReauthError extends Error {
+  constructor(readonly reason: "auth_time_missing" | "auth_time_stale") {
+    super(
+      reason === "auth_time_missing"
+        ? "OIDC id_token has no auth_time; add the auth_time optional claim to the ID token"
+        : "OIDC sign-in after an idle expiry did not re-authenticate"
+    );
+  }
 }
 
 let jwksCache: { uri: string; keys: Record<string, unknown>[]; expiresAt: number } | null = null;
@@ -355,6 +385,8 @@ export async function verifyOidcIdToken(input: {
   nonce: string;
   config: OidcConfig;
   discovery: OidcDiscovery;
+  /** OidcState.authenticatedAfter; when set, auth_time must not be earlier. */
+  authenticatedAfter?: number;
 }): Promise<{
   claims: OidcClaims;
   subject: string;
@@ -409,6 +441,16 @@ export async function verifyOidcIdToken(input: {
     throw new Error("OIDC id_token is not active yet");
   }
   if (claims.nonce !== input.nonce) throw new Error("OIDC nonce mismatch");
+  if (input.authenticatedAfter !== undefined) {
+    // prompt=login was sent; a silent SSO sign-in carries the auth_time of
+    // the earlier Entra sign-in. Same 60-second clock allowance as exp/nbf.
+    if (typeof claims.auth_time !== "number") {
+      throw new OidcReauthError("auth_time_missing");
+    }
+    if (claims.auth_time < input.authenticatedAfter - 60) {
+      throw new OidcReauthError("auth_time_stale");
+    }
+  }
   // `sub` is the stable per-app identifier the account binding keys on.
   if (typeof claims.sub !== "string" || claims.sub.trim() === "") {
     throw new Error("OIDC id_token has no subject");

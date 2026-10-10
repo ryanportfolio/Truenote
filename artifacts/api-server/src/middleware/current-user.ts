@@ -10,6 +10,7 @@ import {
 } from "../lib/auth/current-user.js";
 import { isLimitedDemo } from "../lib/auth/demo-limits.js";
 import { BACKGROUND_REQUEST_HEADER } from "../lib/auth/session-policy.js";
+import { markIdleReauth } from "../lib/auth/idle-reauth.js";
 
 /**
  * App-level middleware. Resolves `req.user` from the session cookie if one
@@ -20,7 +21,7 @@ import { BACKGROUND_REQUEST_HEADER } from "../lib/auth/session-policy.js";
  */
 export async function attachCurrentUser(
   req: Request,
-  _res: Response,
+  res: Response,
   next: NextFunction
 ): Promise<void> {
   try {
@@ -29,9 +30,13 @@ export async function attachCurrentUser(
         ? req.cookies[SESSION_COOKIE_NAME]
         : undefined;
     // Background requests (polling) authenticate but do not count as
-    // activity, so they never keep an idle session alive.
+    // activity, so they never keep an idle session alive. An SSO session
+    // ended by the idle limit makes the next SSO sign-in interactive.
     const session = await findSessionByToken(token, {
-      background: req.get(BACKGROUND_REQUEST_HEADER) === "1"
+      background: req.get(BACKGROUND_REQUEST_HEADER) === "1",
+      onIdleExpiry: (authMethod) => {
+        if (authMethod === "oidc") markIdleReauth(res);
+      }
     });
     req.user = session
       ? {
