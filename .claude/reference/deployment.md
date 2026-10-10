@@ -62,7 +62,11 @@ The owner authorized an agent account for operating and testing the site (2026-1
 
 ## Deploying
 
-Merging to `main` deploys nothing. Each production deploy waits for the owner's go, and goes through `scripts/railway-deploy.mjs` from a clean worktree at freshly fetched `origin/main`:
+Merging to `main` deploys nothing. Each production deploy waits for the owner's go and runs `scripts/railway-deploy.mjs` on reviewed `main`.
+
+Default path (owner decision 2026-10-10): the "Deploy production" GitHub Actions workflow (`.github/workflows/deploy-production.yml`). Run it on `main` from the Actions tab or with `gh workflow run deploy-production.yml --repo ryanportfolio/Truenote --ref main -f message="<what ships>" -f service=both`. The job targets the protected `production` environment, so it waits until the owner approves it in GitHub; only then does it receive the `RAILWAY_TOKEN` environment secret (a Railway project token for the `production` environment). It installs `@railway/cli@5.26.0` and runs the script with `--apply`. GitHub keeps the run in the environment's deployment history, and the job summary and the `release-register-rows` artifact (90 days) hold the register rows; add them to `docs/release-register.csv` through a pull request.
+
+Fallback from the owner's workstation, from a clean worktree at freshly fetched `origin/main`:
 
 ```text
 node scripts/railway-deploy.mjs                                  # dry run: prints commit and CI run, deploys nothing
@@ -90,20 +94,20 @@ railway up --detach -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4de
 
 `<commit>` must be one that ran in production before (a `docs/release-register.csv` row, or the `cliMessage` of an earlier deployment). Poll `railway deployment list -p <project> -e <env> -s <service> --json` until `SUCCESS`, remove the temporary worktree, and add one register row per service with status `RECOVERY`.
 
-### Deploy path options (owner decision pending)
+### Deploy path options (decided 2026-10-10: GitHub Actions deploy job)
 
-The script binds each deploy to a reviewed, CI-passed commit, but it still runs on the owner's workstation with the owner's Railway login. Two alternatives move the deploy off the workstation:
+The comparison behind the decision. The script alone binds each deploy to a reviewed, CI-passed commit, but runs on the owner's workstation with the owner's Railway login:
 
-| | `scripts/railway-deploy.mjs` (current) | Railway GitHub autodeploy with "Wait for CI" | GitHub Actions deploy job |
+| | `scripts/railway-deploy.mjs` from the workstation | Railway GitHub autodeploy with "Wait for CI" | GitHub Actions deploy job |
 |---|---|---|---|
 | What is built | Temporary LF checkout of the commit, uploaded by the CLI | Railway pulls the commit from GitHub | The runner's checkout at `github.sha`, uploaded by the CLI |
-| CI gate | Script checks the "Security and quality" push run | Railway waits for every GitHub Actions run on the commit; any failed workflow skips the deploy (the daily image scan failing on a fixable High finding would block deploys) | `needs:` on the CI jobs, or a `workflow_run` trigger on success |
+| CI gate | Script checks the "Security and quality" push run | Railway waits for every GitHub Actions run on the commit; any failed workflow skips the deploy (the daily image scan failing on a fixable High finding would block deploys) | The same script check, run inside the job |
 | Owner's go per deploy | Owner runs the script | Lost: every merge to `main` deploys | GitHub environment `production` with the owner as required reviewer |
 | Credentials | Owner's Railway CLI login on the workstation | Railway GitHub App on the repository; no token in GitHub | A Railway project token as an environment secret, released only to the approved job |
-| Record | `docs/release-register.csv` row through a pull request | Railway deployment shows the commit SHA; no register | GitHub Deployments history plus the Railway deployment id in the job log |
+| Record | `docs/release-register.csv` row through a pull request | Railway deployment shows the commit SHA; no register | GitHub environment deployment history, register rows in the job summary and artifact, then the register through a pull request |
 | Known issues | Workstation compromise reaches production | Forum reports of "Wait for CI" skipping or never starting deploys after passing CI | Third-party actions in the repository run beside the token; pin by SHA and scope the secret to the environment |
 
-Recommendation: the GitHub Actions deploy job with a protected `production` environment. It keeps the owner's explicit go, removes the workstation from the path, and the record lives in GitHub without a follow-up pull request. Nothing switches without the owner's decision.
+The deploy job keeps the owner's explicit go, takes the workstation out of the normal path, and records each deploy in GitHub. The workstation path stays for when Actions is unavailable and for recovery.
 
 ## Schema changes
 

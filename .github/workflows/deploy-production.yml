@@ -1,0 +1,80 @@
+name: Deploy production
+
+# Deploys web and worker to Railway production from main. Started by hand
+# (Actions, "Deploy production", Run workflow on main). The job waits for the
+# owner's approval on the protected "production" environment, which is the
+# only place the RAILWAY_TOKEN secret is available. scripts/railway-deploy.mjs
+# refuses unless the checkout is main at freshly fetched origin/main and the
+# "Security and quality" push run for that commit succeeded, then deploys web,
+# waits for SUCCESS, then worker. GitHub records the run as a deployment to
+# the environment; the register rows go to the job summary and an artifact.
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: "What ships (letters, digits, spaces and . , : ; ( ) # / + - only)"
+        required: true
+        type: string
+      service:
+        description: Services to deploy
+        required: true
+        type: choice
+        default: both
+        options: [both, web, worker]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy web and worker
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install the Railway CLI
+        run: npm install --global @railway/cli@5.26.0
+      - name: Deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          MESSAGE: ${{ inputs.message }}
+          SERVICE: ${{ inputs.service }}
+        run: |
+          if [ "$SERVICE" = "both" ]; then
+            node scripts/railway-deploy.mjs --apply -m "$MESSAGE"
+          else
+            node scripts/railway-deploy.mjs --apply -m "$MESSAGE" --service "$SERVICE"
+          fi
+      - name: Record the register rows
+        if: always()
+        run: |
+          git diff --no-color --unified=0 -- docs/release-register.csv | sed -n 's/^+\([0-9]\)/\1/p' > release-rows.csv
+          {
+            echo "### Release register rows"
+            echo '```csv'
+            head -n 1 docs/release-register.csv
+            cat release-rows.csv
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain the register rows
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-register-rows
+          path: release-rows.csv
+          retention-days: 90
