@@ -52,12 +52,11 @@ export function TopBar({
         onPointerEnter={() => onNavigateIntent(homeHref)}
         onFocus={() => onNavigateIntent(homeHref)}
         className="brand-home-link"
-        aria-label="Truenote home"
       >
         <BrandMark className="h-8 w-8" />
-        {/* Below 360px the mark alone carries the brand, so the theme
-          * switch and Sign out fit on one line. */}
-        <span className="hidden flex-col min-[360px]:flex">
+        {/* Below 360px the mark alone shows, so the theme switch and Sign
+          * out fit on one line; the wordmark stays as the link's name. */}
+        <span className="sr-only flex-col min-[360px]:not-sr-only min-[360px]:flex">
           <span className="font-display text-lg font-semibold leading-none tracking-tight">
             Truenote
           </span>
