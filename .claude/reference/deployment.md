@@ -17,7 +17,7 @@ The Railway CLI stores `railway link` per directory, so a fresh worktree is not 
 | Database | service `pgvector` (`0d1e7840-7d5e-4a20-a97e-d04f06a88649`), image `pgvector/pgvector:pg18`, volume `pgvector-volume` at `/var/lib/postgresql`. Extensions `vector`, `pg_trgm`, `pgcrypto`. The template opened a public TCP proxy on 5432; the owner closed it on 2026-10-08 at 01:08 UTC (`railway tcp-proxy delete`), because the server runs with `ssl` off. `pgvector`'s `DATABASE_URL`, `PGHOST`, and `PGPORT` referenced the proxy and now lead nowhere. The app uses `DATABASE_URL_PRIVATE`; from outside Railway, use `railway ssh -s pgvector` or an SSH tunnel (backup-restore-runbook.md, section 4.4, step 5) |
 | Object storage | bucket `truenote-storage` (`cefc54e5-6980-46d3-b3e6-bb31942c4eda`, physical `truenote-storage-w0ha8kzq`, region `iad`), endpoint `https://t3.storageapi.dev`, virtual-host style. Keys keep the Replit layout `uploads/<sha256>-<name>` |
 | Hosts | `web-production-62818.up.railway.app`; custom domains `truenote.org` and `www.truenote.org`, DNS pointed at Railway since 2026-10-07. The app answers `www` with a 308 to `APP_BASE_URL` |
-| Build | `Dockerfile.railway` (service setting `dockerfilePath`, plus `RAILWAY_DOCKERFILE_PATH`), uploaded with `railway up`; `.railwayignore` and `.dockerignore` whitelist the build inputs |
+| Build | `Dockerfile.railway` (service setting `dockerfilePath`, plus `RAILWAY_DOCKERFILE_PATH`), uploaded with `railway up` by `scripts/railway-deploy.mjs` ("Deploying"); `.railwayignore` and `.dockerignore` whitelist the build inputs |
 | Backups | none yet (open decision); the `pgvector` volume is the only copy of data written on Railway |
 
 Run one replica of `web` and scale vertically: the forgot-password and login IP limiters (`artifacts/api-server/src/lib/auth/rate-limit.ts`) live in process memory. The ask and workload limits are in Postgres and hold across replicas.
@@ -58,18 +58,35 @@ The owner authorized an agent account for operating and testing the site (2026-1
 
 ## Deploying
 
-Merging to `main` deploys nothing. Each production deploy waits for the owner's go. From a worktree checked out at freshly fetched `origin/main`:
+Merging to `main` deploys nothing. Each production deploy waits for the owner's go, and goes through `scripts/railway-deploy.mjs` from a clean worktree at freshly fetched `origin/main`:
 
 ```text
-railway up --detach -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4deb-9434-e9b63a309bd9 -s web -m "<what ships>"
-railway up --detach -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4deb-9434-e9b63a309bd9 -s worker -m "<what ships>"
+node scripts/railway-deploy.mjs                                  # dry run: prints commit and CI run, deploys nothing
+node scripts/railway-deploy.mjs --apply -m "<what ships>"        # after the owner's go
 ```
 
-Deploy both services from the same commit; they share code. Poll `railway deployment list -p <project> -e <env> -s <service> --json` until `SUCCESS`, then check: `/health` returns `{"ok":true}`, `/` and the changed pages return 200, `railway logs -p <project> -e <env> -s web` shows `[api-server] listening on http://0.0.0.0:8080`, and `railway logs -p <project> -e <env> -s worker` shows `[worker] ready`. For retrieval or answer changes, run one cited question (`.tmp`-style script: demo CSR login, `POST /api/ask`, expect `refused=false` with at least one source).
+The script refuses unless the checkout has no tracked or untracked changes, `HEAD` equals `origin/main` after a fresh fetch, and the latest "Security and quality" push run on `main` for that commit concluded `success`. It never uploads the working tree: it checks the same commit out with LF line endings into a temporary worktree (no ignored files such as `.env` or `*.tsbuildinfo`), runs `railway up --detach` from there for `web`, waits for `SUCCESS`, then does the same for `worker` (`--service web|worker` for one only). The deployment message starts with the short commit and CI run id (`<sha12> ci <run id>: <what ships>`), and the script finds each deployment by that exact message. It appends one row per service to `docs/release-register.csv`: time, full commit, CI run id, service, Railway deployment id, final status, image digest and message, failed attempts included. The register row leaves the checkout dirty, so the next deploy is refused until the row is merged through a pull request. Raw `railway up` from a local folder is no longer the deploy path: it cannot show that the running code matches reviewed `main`.
+
+Deploy both services from the same commit; they share code. The script stops on the first service that does not reach `SUCCESS` (status `FAILED`, `CRASHED`, `UPLOAD_FAILED`, `NOT_FOUND` or `TIMEOUT_*` after 25 minutes). After `SUCCESS`, check: `/health` returns `{"ok":true}`, `/` and the changed pages return 200, `railway logs -p <project> -e <env> -s web` shows `[api-server] listening on http://0.0.0.0:8080`, and `railway logs -p <project> -e <env> -s worker` shows `[worker] ready`. For retrieval or answer changes, run one cited question (`.tmp`-style script: demo CSR login, `POST /api/ask`, expect `refused=false` with at least one source).
 
 The image runs TypeScript through `tsx`: `scripts/railway-start.sh` execs `artifacts/api-server/src/index.ts` or `scripts/src/worker.ts`. The build runs `pnpm install --frozen-lockfile`, the typecheck of every workspace (`pnpm -r run check`) and the rag-app build; a type error fails the image. `tsx` is a dev dependency, so the image keeps dev dependencies.
 
-Rollback: Railway keeps earlier deployments. `railway redeploy` only redeploys the latest one; to go back, use the dashboard (Deployments, Redeploy on the good one) or the GraphQL mutation `deploymentRedeploy(id)`.
+Rollback: Railway keeps earlier deployments. `railway redeploy` only redeploys the latest one; to go back, use the dashboard (Deployments, Redeploy on the good one) or the GraphQL mutation `deploymentRedeploy(id)`. Add a `docs/release-register.csv` row by hand for the redeploy: the new deployment id, the commit of the deployment it copies, status `ROLLBACK`.
+
+### Deploy path options (owner decision pending)
+
+The script binds each deploy to a reviewed, CI-passed commit, but it still runs on the owner's workstation with the owner's Railway login. Two alternatives move the deploy off the workstation:
+
+| | `scripts/railway-deploy.mjs` (current) | Railway GitHub autodeploy with "Wait for CI" | GitHub Actions deploy job |
+|---|---|---|---|
+| What is built | Temporary LF checkout of the commit, uploaded by the CLI | Railway pulls the commit from GitHub | The runner's checkout at `github.sha`, uploaded by the CLI |
+| CI gate | Script checks the "Security and quality" push run | Railway waits for every GitHub Actions run on the commit; any failed workflow skips the deploy (the daily image scan failing on a fixable High finding would block deploys) | `needs:` on the CI jobs, or a `workflow_run` trigger on success |
+| Owner's go per deploy | Owner runs the script | Lost: every merge to `main` deploys | GitHub environment `production` with the owner as required reviewer |
+| Credentials | Owner's Railway CLI login on the workstation | Railway GitHub App on the repository; no token in GitHub | A Railway project token as an environment secret, released only to the approved job |
+| Record | `docs/release-register.csv` row through a pull request | Railway deployment shows the commit SHA; no register | GitHub Deployments history plus the Railway deployment id in the job log |
+| Known issues | Workstation compromise reaches production | Forum reports of "Wait for CI" skipping or never starting deploys after passing CI | Third-party actions in the repository run beside the token; pin by SHA and scope the secret to the environment |
+
+Recommendation: the GitHub Actions deploy job with a protected `production` environment. It keeps the owner's explicit go, removes the workstation from the path, and the record lives in GitHub without a follow-up pull request. Nothing switches without the owner's decision.
 
 ## Schema changes
 
