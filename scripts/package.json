@@ -22,6 +22,7 @@
     "verify:vulnerability-source-receipt": "tsx src/verify-vulnerability-source-receipt.ts",
     "import:codeql": "tsx src/import-codeql-sarif.ts",
     "security:ai-canary": "tsx src/ai-security-canary.ts",
+    "upload-compliance-docs": "tsx src/upload-compliance-docs.ts",
     "check": "tsc --noEmit",
     "test": "tsx --test src/*.test.ts",
     "test:provider-firewall": "tsx --test src/provider-input-firewall.test.ts"
