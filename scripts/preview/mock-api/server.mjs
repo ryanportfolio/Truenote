@@ -29,6 +29,8 @@ let state = buildSeed();
 let delayMs = Number(process.env.MOCK_DELAY_MS) || 0;
 /** LOCAL_LOGIN_MODE stand-in: /api/config and the invitation kind read it; /__mock/login-mode sets it. */
 let localLoginMode = "enabled";
+/** Whether SSO is usable for programs (OIDC enabled, every program allowed); /__mock/login-mode?sso=off clears it. */
+let mockSsoReady = true;
 /** Upper bound for the delay control, so a typo cannot stall the fixture. */
 const MAX_DELAY_MS = 10000;
 const failPaths = new Set();
@@ -1469,7 +1471,7 @@ function userList(user, req) {
       mustResetPassword: u.mustResetPassword,
       lastLoginAt: u.lastLoginAt,
       createdAt: u.createdAt,
-      localLoginAllowed: invitationKindFor(u.role) === "password_setup"
+      signInMethod: signInMethodFor(u.role, u.programId)
     }));
   return { items };
 }
@@ -1509,18 +1511,24 @@ function resetUserPassword(user, id) {
   if (!allowed) throw notFound();
   // routes/admin/users.ts demoTargetLocked: only a super user resets a demo account.
   if (target.isDemo && user.role !== "super_user") throw new HttpError(403, DEMO_MESSAGE);
-  if (invitationKindFor(target.role) === "sso") {
-    throw new HttpError(409, "This user signs in with company SSO and has no password to reset");
+  if (signInMethodFor(target.role, target.programId) !== "password") {
+    throw new HttpError(409, "Password sign-in is turned off for this user, so there is no password to reset");
   }
   target.mustResetPassword = true;
   return { tempPassword: randomBytes(12).toString("base64url") };
 }
 
+/** lib/auth/local-login-policy.ts signInMethodFor; every program counts as SSO-allowed while mockSsoReady. */
+function signInMethodFor(role, programId) {
+  if (localLoginMode === "enabled") return "password";
+  if (localLoginMode === "break_glass" && role === "super_user") return "password";
+  return mockSsoReady && programId ? "sso" : "none";
+}
+
 /** lib/auth/local-login-policy.ts invitationKindFor. */
-function invitationKindFor(role) {
-  if (localLoginMode === "enabled") return "password_setup";
-  if (localLoginMode === "break_glass" && role === "super_user") return "password_setup";
-  return "sso";
+function invitationKindFor(role, programId) {
+  const method = signInMethodFor(role, programId);
+  return method === "password" ? "password_setup" : method;
 }
 
 function addUser(actor, { email, name, role, programId }) {
@@ -1548,7 +1556,7 @@ function addUser(actor, { email, name, role, programId }) {
     mustResetPassword: created.mustResetPassword,
     lastLoginAt: created.lastLoginAt,
     createdAt: created.createdAt,
-    localLoginAllowed: invitationKindFor(created.role) === "password_setup"
+    signInMethod: signInMethodFor(created.role, created.programId)
   };
 }
 
@@ -1566,13 +1574,14 @@ function createUserFixture(user, body, res) {
   if (!email.includes("@") || !name || !(role in ROLE_RANK)) throw badRequest("Invalid request");
   if (state.users.some((u) => u.email === email)) throw new HttpError(409, "A user with that email already exists");
   const programId = role === "super_user" ? null : body?.programId ?? user.programId;
-  const kind = invitationKindFor(role);
-  if (kind === "sso" && body?.password !== undefined) {
-    throw badRequest("This user signs in with company SSO, so the account can't have a password");
+  const kind = invitationKindFor(role, programId);
+  if (kind !== "password_setup" && body?.password !== undefined) {
+    throw badRequest("Password sign-in is turned off for this role, so the account can't have a password");
   }
   const item = addUser(user, { email, name, role, programId });
   res.statusCode = 201;
   if (kind === "sso") return { item, invitation: { kind: "sso", emailSent: !name.includes("__mock_email_fail") } };
+  if (kind === "none") return { item, invitation: { kind: "none", emailSent: false } };
   return body?.password === undefined ? { item, tempPassword: randomBytes(12).toString("base64url") } : { item };
 }
 
@@ -1599,8 +1608,8 @@ function bulkCreateUsersFixture(user, req, body, res) {
   return {
     created,
     skippedEmails,
-    invitedCount: created.length,
-    invitationKind: invitationKindFor("csr"),
+    invitedCount: invitationKindFor("csr", programId) === "none" ? 0 : created.length,
+    invitationKind: invitationKindFor("csr", programId),
     forcedPasswordReset: true
   };
 }
@@ -1824,7 +1833,7 @@ const route = (method, pattern, handler) => routes.push({ method, pattern, handl
 route("GET", /^\/api\/config$/, () => ({
   minPasswordLength: 12,
   emailResetAvailable: false,
-  oidcEnabled: localLoginMode !== "enabled",
+  oidcEnabled: localLoginMode !== "enabled" && mockSsoReady,
   localLoginMode,
   demoAccounts: [
     { label: "CSR (Jordan Reyes)", email: ROLE_ALIASES.csr, password: "mock-password", role: "csr" },
@@ -2398,6 +2407,7 @@ function mockControl(req, res, url, path) {
   if (sub === "/reset") {
     state = buildSeed();
     localLoginMode = "enabled";
+    mockSsoReady = true;
     pendingMfa.clear();
     failPaths.clear();
     audit.length = 0;
@@ -2422,7 +2432,8 @@ function mockControl(req, res, url, path) {
       return send(res, 400, { error: "mode must be enabled, break_glass or disabled." });
     }
     localLoginMode = mode;
-    return send(res, 200, { localLoginMode });
+    mockSsoReady = url.searchParams.get("sso") !== "off";
+    return send(res, 200, { localLoginMode, ssoReady: mockSsoReady });
   }
   if (sub === "" || sub === "/") {
     return send(res, 200, {

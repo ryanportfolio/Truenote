@@ -236,3 +236,37 @@ export function renderSsoResetNoticeEmail(args: {
   ].join("\n");
   return { subject, html, text };
 }
+
+/**
+ * Sent instead of a reset link when LOCAL_LOGIN_MODE refuses the account a
+ * password sign-in and SSO cannot work for it either (signInMethodFor gave
+ * "none": OIDC not usable, or the account's program, or lack of one, is
+ * not allowed for SSO). No token and no sign-in link: neither would work.
+ * The forgot-password response is the same 204 either way.
+ */
+export function renderSignInUnavailableNoticeEmail(args: {
+  name: string;
+}): RenderedEmail {
+  const subject = "About your password reset request";
+  const safeName = escapeHtml(args.name);
+  const html = `
+<!doctype html>
+<html>
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #0f172a; background: #f8fafc; padding: 24px;">
+    <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
+      <h1 style="margin: 0 0 16px; font-size: 18px;">Password sign-in is turned off</h1>
+      <p>Hi ${safeName},</p>
+      <p>We received a request to reset your password. Password sign-in is turned off for your account, so there is no password to reset. Contact a Truenote administrator to get access.</p>
+      <p style="font-size: 13px; color: #64748b;">If you didn't request this, you can ignore this email.</p>
+    </div>
+  </body>
+</html>`.trim();
+  const text = [
+    `Hi ${args.name},`,
+    "",
+    "We received a request to reset your password. Password sign-in is turned off for your account, so there is no password to reset. Contact a Truenote administrator to get access.",
+    "",
+    "If you didn't request this, you can ignore this email."
+  ].join("\n");
+  return { subject, html, text };
+}

@@ -26,6 +26,7 @@ import {
   setSessionCookie
 } from "../lib/auth/sessions.js";
 import { clientIpFrom } from "../lib/auth/rate-limit.js";
+import { isSsoProgramAllowed } from "../lib/auth/local-login-policy.js";
 import { getSsoSessionMaxHours } from "../lib/auth/session-policy.js";
 import { clearIdleReauth, isIdleReauthRequired } from "../lib/auth/idle-reauth.js";
 import {
@@ -66,7 +67,7 @@ async function loadUser(where: SQL): Promise<OidcUser | undefined> {
  */
 function assertEligible(user: OidcUser, allowedProgramIds: string[]): void {
   if (!user.isActive) throw new OidcRefusal("inactive", user);
-  if (!user.programId || !allowedProgramIds.includes(user.programId.toLowerCase())) {
+  if (!isSsoProgramAllowed(allowedProgramIds, user.programId)) {
     throw new OidcRefusal("program_not_allowed", user);
   }
 }

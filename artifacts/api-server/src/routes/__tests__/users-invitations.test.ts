@@ -113,7 +113,18 @@ async function call(path: string, user: CurrentUser, body: unknown) {
   return result as { status: number; body: Record<string, unknown> };
 }
 
+/** A usable OIDC setup whose only SSO program is PROGRAM_ID. */
+function configureOidc() {
+  vi.stubEnv("OIDC_ISSUER_URL", "https://idp.example.com");
+  vi.stubEnv("OIDC_CLIENT_ID", "test-client");
+  vi.stubEnv("OIDC_CLIENT_SECRET", "synthetic-test-value");
+  vi.stubEnv("OIDC_REDIRECT_URI", "https://app.example.com/api/auth/oidc/callback");
+  vi.stubEnv("OIDC_STATE_SECRET", "synthetic-test-state-material-at-least-32-chars");
+  vi.stubEnv("OIDC_ALLOWED_PROGRAM_IDS", PROGRAM_ID);
+}
+
 beforeEach(() => {
+  configureOidc();
   fake.inserted = [];
   fake.hashPassword.mockReset().mockResolvedValue("argon2-hash");
   fake.send.mockReset().mockResolvedValue(undefined);
@@ -138,7 +149,7 @@ describe("POST /api/admin/users invitation by login mode", () => {
     expect(result.body.invitation).toBeUndefined();
     expect(fake.send).not.toHaveBeenCalled();
     expect(fake.createResetToken).not.toHaveBeenCalled();
-    expect((result.body.item as { localLoginAllowed: boolean }).localLoginAllowed).toBe(true);
+    expect((result.body.item as { signInMethod: string }).signInMethod).toBe("password");
   });
 
   it.each(["break_glass", "disabled"])(
@@ -149,7 +160,7 @@ describe("POST /api/admin/users invitation by login mode", () => {
       expect(result.status).toBe(201);
       expect(result.body.tempPassword).toBeUndefined();
       expect(result.body.invitation).toEqual({ kind: "sso", emailSent: true });
-      expect((result.body.item as { localLoginAllowed: boolean }).localLoginAllowed).toBe(false);
+      expect((result.body.item as { signInMethod: string }).signInMethod).toBe("sso");
       expect(fake.createResetToken).not.toHaveBeenCalled();
       expect(fake.send).toHaveBeenCalledTimes(1);
       const email = fake.send.mock.calls[0]![0] as { to: string; text: string; html: string };
@@ -172,6 +183,31 @@ describe("POST /api/admin/users invitation by login mode", () => {
     });
     expect(result.status).toBe(400);
     expect(fake.inserted).toHaveLength(0);
+    expect(fake.send).not.toHaveBeenCalled();
+  });
+
+  it("creates an account that cannot sign in yet without any email or password when SSO is not set up", async () => {
+    vi.stubEnv("LOCAL_LOGIN_MODE", "disabled");
+    vi.stubEnv("OIDC_ALLOWED_PROGRAM_IDS", "00000000-0000-4000-8000-0000000000b2");
+    const result = await call("/", actor("manager"), csrBody);
+    expect(result.status).toBe(201);
+    expect(result.body.tempPassword).toBeUndefined();
+    expect(result.body.invitation).toEqual({ kind: "none", emailSent: false });
+    expect((result.body.item as { signInMethod: string }).signInMethod).toBe("none");
+    expect(fake.send).not.toHaveBeenCalled();
+    expect(fake.createResetToken).not.toHaveBeenCalled();
+  });
+
+  it("gives a super user created under disabled mode no invitation", async () => {
+    vi.stubEnv("LOCAL_LOGIN_MODE", "disabled");
+    const result = await call("/", actor("super_user"), {
+      email: "second.super@example.com",
+      name: "Second Super",
+      role: "super_user",
+      programId: null
+    });
+    expect(result.status).toBe(201);
+    expect(result.body.invitation).toEqual({ kind: "none", emailSent: false });
     expect(fake.send).not.toHaveBeenCalled();
   });
 
@@ -228,6 +264,18 @@ describe("POST /api/admin/users/bulk invitation by login mode", () => {
     for (const [email] of fake.send.mock.calls as Array<[{ text: string }]>) {
       expect(email.text).toContain("https://app.example.com/reset-password?token=synthetic-invite-token");
     }
+  });
+
+  it("mints no token and sends nothing when SSO is not usable", async () => {
+    vi.stubEnv("LOCAL_LOGIN_MODE", "break_glass");
+    vi.stubEnv("OIDC_CLIENT_SECRET", "");
+    const result = await call("/bulk", actor("manager"), bulkBody);
+    expect(result.status).toBe(201);
+    expect(result.body.invitationKind).toBe("none");
+    expect(result.body.invitedCount).toBe(0);
+    expect(fake.createResetToken).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fake.send).not.toHaveBeenCalled();
   });
 
   it("mints no token and sends sign-in links under break_glass", async () => {

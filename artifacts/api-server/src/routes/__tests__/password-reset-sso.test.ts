@@ -131,7 +131,18 @@ function forgot(email: string) {
   });
 }
 
+/** A usable OIDC setup whose only SSO program is PROGRAM_ID. */
+function configureOidc() {
+  vi.stubEnv("OIDC_ISSUER_URL", "https://idp.example.com");
+  vi.stubEnv("OIDC_CLIENT_ID", "test-client");
+  vi.stubEnv("OIDC_CLIENT_SECRET", "synthetic-test-value");
+  vi.stubEnv("OIDC_REDIRECT_URI", "https://app.example.com/api/auth/oidc/callback");
+  vi.stubEnv("OIDC_STATE_SECRET", "synthetic-test-state-material-at-least-32-chars");
+  vi.stubEnv("OIDC_ALLOWED_PROGRAM_IDS", PROGRAM_ID);
+}
+
 beforeEach(() => {
+  configureOidc();
   fake.target = { id: TARGET_ID, email: "agent@example.com", role: "csr", programId: PROGRAM_ID };
   fake.updates = [];
   fake.deletes = 0;
@@ -189,7 +200,7 @@ describe("POST /api/admin/users/:id/reset-password for SSO-only users", () => {
 });
 
 describe("POST /api/auth/forgot-password for SSO-only users", () => {
-  const row = { id: TARGET_ID, email: "agent@example.com", name: "Agent", role: "csr", isActive: true };
+  const row = { id: TARGET_ID, email: "agent@example.com", name: "Agent", role: "csr", programId: PROGRAM_ID, isActive: true };
 
   it("emails a reset link when local login is enabled", async () => {
     vi.stubEnv("LOCAL_LOGIN_MODE", "enabled");
@@ -219,6 +230,32 @@ describe("POST /api/auth/forgot-password for SSO-only users", () => {
       expect(email.html).not.toContain("reset-password");
     }
   );
+
+  it("tells a super user under disabled mode to ask an administrator, not to use SSO", async () => {
+    vi.stubEnv("LOCAL_LOGIN_MODE", "disabled");
+    fake.forgotRows = [{ ...row, email: "super@example.com", role: "super_user", programId: null }];
+    const result = await forgot("super-disabled@example.com");
+    expect(result.status).toBe(204);
+    await vi.waitFor(() => expect(fake.send).toHaveBeenCalledTimes(1));
+    expect(fake.createResetToken).not.toHaveBeenCalled();
+    const email = fake.send.mock.calls[0]![0] as { text: string; html: string };
+    expect(email.text).toContain("Contact a Truenote administrator");
+    expect(email.text).not.toContain("Continue with company SSO");
+    expect(email.text).not.toContain("reset-password");
+    expect(email.html).not.toContain("/login");
+  });
+
+  it("gives the administrator notice when OIDC is not usable", async () => {
+    vi.stubEnv("LOCAL_LOGIN_MODE", "break_glass");
+    vi.stubEnv("OIDC_STATE_SECRET", "short");
+    fake.forgotRows = [row];
+    const result = await forgot("agent-no-oidc@example.com");
+    expect(result.status).toBe(204);
+    await vi.waitFor(() => expect(fake.send).toHaveBeenCalledTimes(1));
+    const email = fake.send.mock.calls[0]![0] as { text: string };
+    expect(email.text).toContain("Contact a Truenote administrator");
+    expect(email.text).not.toContain("Continue with company SSO");
+  });
 
   it("sends nothing for an unknown email under break_glass", async () => {
     vi.stubEnv("LOCAL_LOGIN_MODE", "break_glass");

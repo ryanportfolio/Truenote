@@ -157,7 +157,13 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 
-async function expectDenied(status = 403, error = "Use company SSO to sign in.") {
+// The fixture user has no program, so SSO cannot serve them either and the
+// denial gives administrator guidance; SSO-eligible cases pass SSO_DENIAL.
+const NO_SIGN_IN_DENIAL =
+  "Password sign-in is turned off for your account. Contact a Truenote administrator.";
+const SSO_DENIAL = "Use company SSO to sign in.";
+
+async function expectDenied(status = 403, error = NO_SIGN_IN_DENIAL) {
   const result = await invokeFirstHandler();
   expect.soft(result.status).toBe(status);
   expect.soft(result.body).toEqual({ error });
@@ -322,6 +328,24 @@ describe("reset policy defaults and rejected links", () => {
     fake.rows[0]!.role = role;
     if (role === "super_user") await expectSignInRequired("break_glass_mfa_missing");
     else await expectDenied();
+  });
+  it("points a user SSO can serve at SSO", async () => {
+    configureOidc("valid");
+    vi.stubEnv("LOCAL_LOGIN_MODE", "break_glass");
+    fake.rows[0]!.programId = "00000000-0000-4000-8000-0000000000a1";
+    await expectDenied(403, SSO_DENIAL);
+  });
+  it("gives administrator guidance when the user's program is not allowed for SSO", async () => {
+    configureOidc("valid");
+    vi.stubEnv("LOCAL_LOGIN_MODE", "break_glass");
+    fake.rows[0]!.programId = "00000000-0000-4000-8000-0000000000b2";
+    await expectDenied(403, NO_SIGN_IN_DENIAL);
+  });
+  it("gives administrator guidance when OIDC is not usable, even for an allowed program", async () => {
+    configureOidc("short-state-secret");
+    vi.stubEnv("LOCAL_LOGIN_MODE", "break_glass");
+    fake.rows[0]!.programId = "00000000-0000-4000-8000-0000000000a1";
+    await expectDenied(403, NO_SIGN_IN_DENIAL);
   });
   it("preserves entirely unset testing setup for a user with a passkey by requiring sign-in", async () => {
     enrollPasskey();
