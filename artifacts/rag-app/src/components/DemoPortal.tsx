@@ -1,4 +1,12 @@
-import { memo, useId, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import {
+  memo,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent
+} from "react";
 import { cn } from "@/lib/utils";
 import type { DemoAccount } from "@/types/api";
 
@@ -16,10 +24,14 @@ import type { DemoAccount } from "@/types/api";
  *
  * The rotations live in CSS (`--k` scales each ring's offset: 1 at rest,
  * a fraction on hover, 0 when selected), so reduced motion and low-power
- * rules stay in index.css. Pointer position reaches CSS as `--px`/`--py`
- * (-1..1) and `--mx`/`--my` without a React render, written only on the
- * layers and light spans that read them, so a pointer move restyles those
- * few elements instead of the whole SVG.
+ * rules stay in index.css. Pointer position reaches the page without a
+ * React render: each layer's `translate` (its depth times the pointer
+ * offset) and `--mx`/`--my` on the two light spans, so a pointer move
+ * restyles those few elements instead of the whole SVG.
+ *
+ * A label that would wrap, or run into the rings at rest, gets
+ * `auth-demo-role-long`; the decision is measured from the rendered card,
+ * not guessed from the label's length.
  */
 
 type Role = DemoAccount["role"];
@@ -182,6 +194,46 @@ const STARS: Array<[number, number, number]> = [
 
 const FLECKS = [6, 34, 63, 92, 118, 149, 178, 205, 236, 262, 293, 322];
 
+/** Ring paper and pulled-out tabs reach 0.42 x --art from the core; the
+ * margin covers parallax and the sector shadows. */
+const RING_REACH = 0.42;
+const RING_MARGIN = 4;
+
+/**
+ * True when the label, laid out at rest on one line at the card's bottom
+ * left, would wrap or come within reach of the rings. Reads the layout
+ * vars from index.css and the hidden one-line copy of the label, so the
+ * answer follows the real font and card width.
+ */
+function labelCollides(el: HTMLButtonElement): boolean {
+  const copy = el.querySelector<HTMLElement>(".auth-demo-role-measure");
+  const inner = el.clientWidth;
+  const width = copy?.getBoundingClientRect().width ?? 0;
+  if (!copy || !inner || !width) return false;
+  const card = getComputedStyle(el);
+  const px = (prop: string): number => parseFloat(card.getPropertyValue(prop)) || 0;
+  const x0 = px("padding-left");
+  const x1 = x0 + width;
+  if (x1 > inner - px("padding-right")) return true;
+  const y1 = px("min-height") - px("border-top-width") - px("border-bottom-width") - px("padding-bottom");
+  const y0 = y1 - (parseFloat(getComputedStyle(copy).lineHeight) || 0);
+  const art = px("--art");
+  const cx = inner - px("--art-r");
+  const cy = px("--art-t");
+  const dx = Math.max(x0 - cx, 0, cx - x1);
+  const dy = Math.max(y0 - cy, 0, cy - y1);
+  return Math.hypot(dx, dy) < art * RING_REACH + RING_MARGIN;
+}
+
+let finePointerQuery: MediaQueryList | undefined;
+
+/** Parallax and pointer light follow a mouse or pen on hover-capable devices only. */
+function finePointer(): boolean {
+  if (typeof window.matchMedia !== "function") return true;
+  finePointerQuery ??= window.matchMedia("(hover: hover) and (pointer: fine)");
+  return finePointerQuery.matches;
+}
+
 interface DemoPortalProps {
   account: DemoAccount;
   selected: boolean;
@@ -199,9 +251,24 @@ export const DemoPortal = memo(function DemoPortal({
 }: DemoPortalProps): JSX.Element {
   const ref = useRef<HTMLButtonElement>(null);
   const frame = useRef(0);
-  const targets = useRef<{ layers: Array<SVGGElement>; lights: Array<HTMLSpanElement> } | null>(null);
+  const targets = useRef<{
+    layers: Array<{ el: SVGGElement; depth: number }>;
+    lights: Array<HTMLSpanElement>;
+  } | null>(null);
   // Each selection replays the gather + shockwave by remounting them.
   const [burst, setBurst] = useState(0);
+  const [long, setLong] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = (): void => setLong(labelCollides(el));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [account.label]);
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const id = (name: string): string => `pp${uid}${name}`;
   const role: Role = account.role in ROLE_ART ? account.role : "csr";
@@ -210,14 +277,17 @@ export const DemoPortal = memo(function DemoPortal({
 
   function lightTargets(el: HTMLButtonElement) {
     targets.current ??= {
-      layers: Array.from(el.querySelectorAll<SVGGElement>(".pp-layer")),
+      layers: Array.from(el.querySelectorAll<SVGGElement>(".pp-layer"), (layer) => ({
+        el: layer,
+        depth: Number(layer.dataset.depth)
+      })),
       lights: Array.from(el.querySelectorAll<HTMLSpanElement>(".pp-rim, .pp-sheen"))
     };
     return targets.current;
   }
 
   function track(e: PointerEvent<HTMLButtonElement>): void {
-    if (e.pointerType === "touch" || disabled) return;
+    if (e.pointerType === "touch" || disabled || !finePointer()) return;
     const el = ref.current;
     if (!el) return;
     const { clientX, clientY } = e;
@@ -227,11 +297,10 @@ export const DemoPortal = memo(function DemoPortal({
       const x = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
       const y = Math.min(1, Math.max(0, (clientY - r.top) / r.height));
       const { layers, lights } = lightTargets(el);
-      const px = (x * 2 - 1).toFixed(3);
-      const py = (y * 2 - 1).toFixed(3);
-      for (const layer of layers) {
-        layer.style.setProperty("--px", px);
-        layer.style.setProperty("--py", py);
+      const px = x * 2 - 1;
+      const py = y * 2 - 1;
+      for (const { el: layer, depth } of layers) {
+        layer.style.translate = `${(px * depth).toFixed(2)}px ${(py * depth).toFixed(2)}px`;
       }
       for (const light of lights) {
         light.style.setProperty("--mx", `${(x * 100).toFixed(1)}%`);
@@ -244,10 +313,7 @@ export const DemoPortal = memo(function DemoPortal({
     cancelAnimationFrame(frame.current);
     const el = ref.current;
     if (!el) return;
-    for (const layer of lightTargets(el).layers) {
-      layer.style.setProperty("--px", "0");
-      layer.style.setProperty("--py", "0");
-    }
+    for (const { el: layer } of lightTargets(el).layers) layer.style.translate = "";
   }
 
   function paperSectors(
@@ -284,7 +350,7 @@ export const DemoPortal = memo(function DemoPortal({
       className={cn(
         "auth-demo-role",
         selected && "auth-demo-role-active",
-        account.label.length > 12 && "auth-demo-role-long",
+        long && "auth-demo-role-long",
         className
       )}
     >
@@ -351,15 +417,16 @@ export const DemoPortal = memo(function DemoPortal({
 
         {/* Pencil construction: drafting arcs, crosshair and ticks, open
           * toward the label (local 0deg is --align). */}
-        <g className="pp-layer pp-depth-0">
+        <g className="pp-layer" data-depth="1.5">
           <g className="pp-pencil-axis">
             <path className="pp-pencil" d={arc(112, 48, 312)} pathLength={1} />
             <path className="pp-pencil" d={arc(138, 52, 308)} pathLength={1} />
             <path className="pp-pencil" d={`M${polar(150, 45)}L${polar(150, 225)}`} pathLength={1} />
             <path className="pp-pencil" d={`M${polar(150, 315)}L${polar(150, 135)}`} pathLength={1} />
+            {/* Ticks run only along the part of the inner arc drawn at rest. */}
             <path
               className="pp-ticks"
-              d={Array.from({ length: 19 }, (_, i) => 50 + i * 14)
+              d={Array.from({ length: 9 }, (_, i) => 50 + i * 14)
                 .map((a, i) => `M${polar(108, a)}L${polar(i % 2 ? 112 : 116, a)}`)
                 .join("")}
             />
@@ -367,7 +434,7 @@ export const DemoPortal = memo(function DemoPortal({
         </g>
 
         {/* Persimmon register bars. */}
-        <g className="pp-layer pp-depth-5">
+        <g className="pp-layer" data-depth="7.5">
           <g className="pp-spin pp-spin-register" style={spin(art.offsets.register, 150)}>
             {R.bars.slice(0, art.bars).map(([r0, r1], i) => (
               <path key={i} className="pp-bar" d={sector(r0, r1, -13 + i * 2, 11 - i * 3)} />
@@ -376,7 +443,7 @@ export const DemoPortal = memo(function DemoPortal({
         </g>
 
         {/* Outer grid-paper ring, with pulled-out tabs. */}
-        <g className="pp-layer pp-depth-4">
+        <g className="pp-layer" data-depth="6">
           <g className="pp-shadow-offset">
             <g className="pp-spin" style={spin(art.offsets.outer, 100)}>
               <path className="pp-shadow" d={outlines.outer} />
@@ -390,7 +457,7 @@ export const DemoPortal = memo(function DemoPortal({
         </g>
 
         {/* Mineral band: watercolor tone with soft mottling. */}
-        <g className="pp-layer pp-depth-3">
+        <g className="pp-layer" data-depth="4.5">
           <g className="pp-shadow-offset">
             <g className="pp-spin" style={spin(art.offsets.mineral, 50)}>
               <path className="pp-shadow" d={outlines.mineral} />
@@ -412,7 +479,7 @@ export const DemoPortal = memo(function DemoPortal({
         </g>
 
         {/* Inner grid-paper ring. */}
-        <g className="pp-layer pp-depth-2">
+        <g className="pp-layer" data-depth="3">
           <g className="pp-shadow-offset">
             <g className="pp-spin" style={spin(art.offsets.inner, 0)}>
               <path className="pp-shadow" d={outlines.inner} />
@@ -426,7 +493,7 @@ export const DemoPortal = memo(function DemoPortal({
         </g>
 
         {/* Reading beam: runs out of the core through the aligned gaps. */}
-        <g className="pp-layer pp-depth-2">
+        <g className="pp-layer" data-depth="3">
           <g className="pp-beam-axis">
             <g className="pp-beam">
               <path d="M100 98.4L190 95.2V104.8L100 101.6Z" fill={`url(#${id("beam")})`} />
@@ -436,7 +503,7 @@ export const DemoPortal = memo(function DemoPortal({
         </g>
 
         {/* Recessed cobalt core in its paper bezel. */}
-        <g className="pp-layer pp-depth-core">
+        <g className="pp-layer" data-depth="-2.5">
           <circle cx={C} cy={C} r="44" fill={`url(#${id("halo")})`} className="pp-halo" />
           <circle cx={C} cy={C} r={R.bezel} fill={`url(#${id("bezel")})`} className="pp-bezel" />
           <path className="pp-bezel-light" d={arc(24.2, 196, 292)} />
@@ -492,6 +559,9 @@ export const DemoPortal = memo(function DemoPortal({
         ) : null}
       </svg>
       <span className="auth-demo-role-name">{account.label}</span>
+      <span className="auth-demo-role-measure" aria-hidden>
+        {account.label}
+      </span>
     </button>
   );
 });

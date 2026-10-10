@@ -17,7 +17,7 @@ The visual reference is docs.cohere.com's light theme (extracted from its deploy
 | `--muted` | `95.56% 0.0017 67.8` | `#F1F0EF` | Quiet fills, icon-button hover, neutral badges |
 | `--muted-foreground` | `46.63% 0.0159 97.7` | `#5C5A50` | Chrome text. **5.54:1** on bg, **6.80:1** on card (AA+) |
 | `--primary` | `41.41% 0.1807 261.2` | `#0040AB` | Parent-company brand blue. **7.24:1** on bg, **9.05:1** white-on (AAA both ways) |
-| `--accent` | `52.37% 0.2194 260.5` | `#005DE5` | Vivid brand blue — hover states only, never text |
+| `--accent` | `52.37% 0.2194 260.5` | `#005DE5` | Vivid brand blue — hover states only, never text. Exception: the login demo portals use it as an art tint (glass core, beam, shockwave, the selected card's 5% wash) |
 | `--success` | `43.52% 0.0428 168.8` | `#39594D` | Evergreen (Cohere's accent): ready pills, thumbs-up, copy-confirm. **7.61:1** on card |
 | `--warning` | `77.04% 0.1646 70.7` | `#F59F0A` | Amber — tint washes + badge chips only, never running text |
 | `--warning-foreground` | `28.01% 0.0563 94.1` | `#322801` | Text on warning tints |
@@ -218,7 +218,7 @@ Shipped motion vocabulary (enter-only — panels are conditional-render; exit an
 | Wait-stage label, `parsing` status pill | `animate-pulse` (the only in-progress states on task surfaces get the only ambient motion) |
 | Retrieval instrument | Two orbital rings rotate around an evidence core while the stage label changes; 2.8–3.4s linear |
 | Login archive plate | 1.8s band-registration sequence, then a 14s masked depth cycle with counter-moving paper and mineral bands, one mineral refraction, and a long rest; all disabled by `prefers-reduced-motion` and low-performance mode |
-| Login demo portals | Entrance: rings register in over 1.5s. Hover and keyboard focus: 2D lift, pointer-tracked rim light, sheen and depth parallax, rings turn part-way toward alignment (820ms), pencil arcs draw on, one 1s refraction sweep. Select: paper flecks gather into the core (620ms), core flash and two shockwave rings (0.6 to 1.6s), gaps lock onto the label channel and the beam draws (560ms after 520ms). Selected: core orbit lines turn (16s loop, parked in low-performance mode). No 3D tilt: it blurred the label raster. Reduced motion: static states only |
+| Login demo portals | Entrance: rings register in over 1.5s. Hover and keyboard focus: 2D lift, pointer-tracked rim light, sheen and depth parallax, rings turn part-way toward alignment (820ms), pencil arcs draw on, one 1s refraction sweep. Select: paper flecks gather into the core (620ms), core flash and two shockwave rings (0.6 to 1.6s), gaps lock onto the label channel and the beam draws (560ms after 520ms); a card deselected mid-burst fades its burst out in 160ms. A prefilled card's halo and beam wait for the rings (700ms and 900ms). Selected: core orbit lines turn (16s loop, parked in low-performance mode). No 3D tilt: it blurred the label raster. Reduced motion: static states only |
 | Empty-state evidence sheets | `blob-drift-a/b`: few-px translate+scale wanders on 26s/34s loops, allowed only on the pressure-free empty surface |
 | Auth BrandField | Adaptive 30fps watercolor on forgot/reset and at low opacity behind the login panel; reduced motion freezes one reviewed frame |
 

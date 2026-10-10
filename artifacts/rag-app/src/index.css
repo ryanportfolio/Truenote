@@ -641,6 +641,7 @@
   .auth-demo-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: 1fr;
     gap: 0.65rem;
   }
 
@@ -670,7 +671,7 @@
     overflow: hidden;
     cursor: pointer;
     border: 1px solid oklch(var(--border));
-    border-radius: 0.85rem;
+    border-radius: 0.65rem;
     background: oklch(var(--card) / 0.94);
     padding: 0.85rem 0.9rem 0.8rem;
     text-align: left;
@@ -722,8 +723,16 @@
     opacity: 0.55;
   }
 
+  /* Parallax is an inline translate from DemoPortal; disabled cards and
+   * reduced motion keep every layer still. */
   .auth-demo-role:disabled .pp-layer {
-    transform: none;
+    translate: none !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pp-layer {
+      translate: none !important;
+    }
   }
 
   .auth-demo-role:focus-visible,
@@ -741,16 +750,31 @@
     --k: 0;
   }
 
+  .auth-demo-role-name,
+  .auth-demo-role-measure {
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+
   .auth-demo-role-name {
     position: relative;
     z-index: 2;
     justify-self: start;
     color: oklch(var(--foreground));
-    font-size: 1rem;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    line-height: 1.2;
     text-shadow: 0 0 2px oklch(var(--card)), 0 0 7px oklch(var(--card));
+  }
+
+  /* One-line copy of the label that DemoPortal measures to decide whether
+   * the label needs room (auth-demo-role-long). Never painted. */
+  .auth-demo-role-measure {
+    position: absolute;
+    top: 0;
+    left: 0;
+    visibility: hidden;
+    white-space: nowrap;
+    pointer-events: none;
   }
 
   .auth-demo-role-active .auth-demo-role-name {
@@ -760,7 +784,8 @@
   /* Long labels wrap, so the card makes room instead of letting them run
    * into the art: narrow cards push the label below the rings (the row
    * grows), wide cards cap its width short of the rings. 0.42 x --art is
-   * the outer ring's reach, pulled-out tabs included. */
+   * the outer ring's reach, pulled-out tabs included; the width cap uses
+   * 0.5 x --art so it also clears the register bars. */
   .auth-demo-role-long {
     --pencil: 110deg;
     padding-top: calc(var(--art-t) + var(--art) * 0.42);
@@ -774,7 +799,7 @@
 
   .auth-demo-grid[data-count="1"] .auth-demo-role-long .auth-demo-role-name,
   .auth-demo-grid[data-count="3"] .auth-demo-role-long .auth-demo-role-name {
-    max-width: calc(100% - var(--art-r) - var(--art) * 0.42 + 0.4rem);
+    max-width: calc(100% - var(--art-r) - var(--art) * 0.5 + 0.4rem);
   }
 
   @media (min-width: 640px) {
@@ -818,7 +843,7 @@
     overflow: hidden;
     background: radial-gradient(
       9rem circle at var(--mx, 50%) var(--my, 0%),
-      oklch(var(--card) / 0.3),
+      oklch(var(--card) / 0.12),
       oklch(var(--card) / 0) 70%
     );
   }
@@ -1018,10 +1043,10 @@
         in oklab,
         color-mix(
           in oklab,
-          color-mix(in oklab, oklch(var(--card)) 88%, oklch(var(--archive-coral))),
-          oklch(var(--archive-green)) 11%
+          color-mix(in oklab, oklch(var(--card)) 78%, oklch(var(--archive-coral))),
+          oklch(var(--archive-green)) 10%
         ),
-        oklch(var(--foreground)) 3%
+        oklch(var(--foreground)) 2%
       );
     }
 
@@ -1030,10 +1055,10 @@
         in oklab,
         color-mix(
           in oklab,
-          color-mix(in oklab, oklch(var(--background)) 89%, oklch(var(--archive-coral))),
-          oklch(var(--archive-green)) 11%
+          color-mix(in oklab, oklch(var(--background)) 76%, oklch(var(--archive-coral))),
+          oklch(var(--archive-green)) 12%
         ),
-        oklch(var(--foreground)) 3%
+        oklch(var(--foreground)) 2%
       );
     }
 
@@ -1153,6 +1178,11 @@
     opacity: 0;
   }
 
+  /* A card that loses the selection mid-burst lets the burst go quietly. */
+  .auth-demo-role:not(.auth-demo-role-active) .pp-burst {
+    opacity: 0;
+  }
+
   .pp-beam {
     transform: scaleX(var(--beam));
   }
@@ -1195,30 +1225,6 @@
 
   .pp-wave-late {
     stroke: oklch(var(--archive-green) / 0.8);
-  }
-
-  .pp-depth-0 {
-    --depth: 1.5;
-  }
-
-  .pp-depth-2 {
-    --depth: 3;
-  }
-
-  .pp-depth-3 {
-    --depth: 4.5;
-  }
-
-  .pp-depth-4 {
-    --depth: 6;
-  }
-
-  .pp-depth-5 {
-    --depth: 7.5;
-  }
-
-  .pp-depth-core {
-    --depth: -2.5;
   }
 
   .auth-demo-role-active .pp-core {
@@ -1286,11 +1292,7 @@
     }
 
     .pp-layer {
-      transform: translate(
-        calc(var(--px, 0) * var(--depth) * 1px),
-        calc(var(--py, 0) * var(--depth) * 1px)
-      );
-      transition: transform 420ms cubic-bezier(0.25, 1, 0.5, 1);
+      transition: translate 420ms cubic-bezier(0.25, 1, 0.5, 1);
     }
 
     .pp-spin {
@@ -1309,6 +1311,11 @@
 
     .pp-beam {
       transition: transform 200ms cubic-bezier(0.25, 1, 0.5, 1);
+      animation: pp-beam-draw 560ms cubic-bezier(0.25, 1, 0.5, 1) 900ms backwards;
+    }
+
+    .pp-burst {
+      transition: opacity 160ms cubic-bezier(0.25, 1, 0.5, 1);
     }
 
     .auth-demo-role-active .pp-beam {
@@ -1324,6 +1331,11 @@
     .pp-art,
     .pp-halo {
       transition: opacity 240ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    /* A prefilled card's halo and beam wait for the rings to arrive. */
+    .pp-halo {
+      animation: pp-fade-in 600ms cubic-bezier(0.25, 1, 0.5, 1) 700ms backwards;
     }
 
     .pp-fleck {
@@ -1359,6 +1371,10 @@
     .auth-demo-role:hover:active:not(:disabled) {
       --lift: 0px;
     }
+
+    .auth-demo-role:hover:not(:disabled) .pp-sheen::after {
+      animation: pp-sweep 1s cubic-bezier(0.25, 1, 0.5, 1) both;
+    }
   }
 
   @media (prefers-reduced-motion: no-preference) {
@@ -1369,9 +1385,17 @@
     .auth-demo-role:focus-visible .pp-sheen::after {
       animation: pp-sweep 1s cubic-bezier(0.25, 1, 0.5, 1) both;
     }
+  }
 
-    .auth-demo-role:hover:not(:disabled) .pp-sheen::after {
-      animation: pp-sweep 1s cubic-bezier(0.25, 1, 0.5, 1) both;
+  /* High contrast: the selection keeps a visible frame and label colour. */
+  @media (forced-colors: active) {
+    .auth-demo-role-active:not(:focus-visible) {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+
+    .auth-demo-role-active .auth-demo-role-name {
+      color: Highlight;
     }
   }
 
@@ -2018,6 +2042,18 @@
   }
 }
 
+@keyframes pp-beam-draw {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes pp-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
 @keyframes pp-gather {
   0% {
     opacity: 0;
@@ -2365,7 +2401,7 @@
   }
 
   .auth-demo-grid .auth-demo-role-long .auth-demo-role-name {
-    max-width: calc(100% - var(--art-r) - var(--art) * 0.42 + 0.4rem);
+    max-width: calc(100% - var(--art-r) - var(--art) * 0.5 + 0.4rem);
   }
 }
 
