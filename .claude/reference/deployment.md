@@ -110,10 +110,10 @@ After the owner's go, rerun each with `--apply` in the same order, inspect `\d+ 
 
 In `break_glass` a super user without a passkey cannot log in locally (`POST /api/auth/login` answers 401 and records `auth.break_glass.mfa_missing`). Super users have no program, so they cannot use SSO either. The first passkey must therefore be enrolled before the switch:
 
-1. Set `LOCAL_LOGIN_MODE=enabled` on `web` explicitly. It is not in the variable list above, and unset means `enabled` only while no OIDC variable is set.
+1. Set `LOCAL_LOGIN_MODE=enabled` on `web` explicitly. It is not in the variable list above, and unset means `enabled` only while none of the five core OIDC variables (`OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, `OIDC_STATE_SECRET`) is set. `OIDC_TENANT_ID` or `OIDC_ALLOWED_PROGRAM_IDS` alone does not change that (`configured` in `artifacts/api-server/src/lib/auth/oidc.ts`).
 2. Passkeys need a relying party. With neither `WEBAUTHN_RP_ID` nor `WEBAUTHN_ORIGINS` set, both come from `APP_BASE_URL` (`truenote.org`, `https://truenote.org`). `www.truenote.org` answers 308 to the apex today; if it ever serves the app, set `WEBAUTHN_ORIGINS=https://truenote.org,https://www.truenote.org`.
 3. Sign in as the super user, open `/admin/security`, card "Emergency sign-in". Add a passkey (asks for the current password), then generate recovery codes. The 10 codes are shown once; store them offline. Generating again replaces the whole set.
-4. Sign out and back in: the password step now asks for the passkey or a recovery code. This applies in every mode, `enabled` included, once the account has a passkey.
+4. Sign out and back in: the password step now asks for the passkey or a recovery code. This applies in every mode, `enabled` included, once the account has a passkey. The password response must list `"methods":["passkey","recovery_code"]`. If it lists only `recovery_code`, the relying party is not usable: passkey sign-in is refused, `web` logs `[auth] WebAuthn is not configured; login MFA offers recovery codes only`, and the event `auth.mfa.webauthn_unconfigured` is recorded. Sign in with a recovery code and fix `WEBAUTHN_RP_ID`, `WEBAUTHN_ORIGINS` or `APP_BASE_URL` before going on.
 
 The last passkey cannot be removed while the mode is `break_glass` (409).
 
@@ -123,7 +123,7 @@ From the customer's IT team: tenant ID, client ID, client secret, and the progra
 
 | Variable | Value |
 |---|---|
-| `LOCAL_LOGIN_MODE` | `enabled` (keep it explicit: with OIDC variables present but OIDC not usable, an unset mode means `disabled` and locks every local login) |
+| `LOCAL_LOGIN_MODE` | `enabled` (keep it explicit: with any of the five core OIDC variables set but OIDC not usable, an unset mode means `disabled` and locks every local login) |
 | `OIDC_TENANT_ID` | the tenant ID |
 | `OIDC_ISSUER_URL` | `https://login.microsoftonline.com/<tenant ID>/v2.0` (its tenant segment must equal `OIDC_TENANT_ID`) |
 | `OIDC_CLIENT_ID` | the client ID |
@@ -140,6 +140,7 @@ From the customer's IT team: tenant ID, client ID, client secret, and the progra
 - SSO login whose token lacks `amr: ["mfa"]` (a user excluded from the IdP's MFA policy, if the IT team can provide one): redirect to `/login?sso_error=1`, no `sessions` row, `web` logs `[oidc] callback failed: OIDC token does not contain MFA evidence`.
 - A user outside `OIDC_ALLOWED_PROGRAM_IDS`: refused the same way, security event `auth.oidc.login` denied with reason `program_not_allowed`.
 - After the switch to `break_glass` (step 5): super-user password login asks for the passkey and succeeds with it (event `auth.break_glass.login`, `details.mfa = "passkey"`); a password login by any other role answers 401.
+- After the switch, the recovery-code path: super-user password login followed by one recovery code succeeds (event `auth.break_glass.login`, `details.mfa = "recovery_code"`), and the "Emergency sign-in" card shows one fewer unused code. This uses up a code; generate a new set if fewer than you want remain.
 
 ### 5. Switch to `break_glass`
 
@@ -147,7 +148,9 @@ Only after step 2 and the SSO checks pass. Set `LOCAL_LOGIN_MODE=break_glass`: l
 
 ### Known limitation
 
-`POST /api/auth/change-password` and reset-link completion (`POST /api/auth/reset-password`) issue a 7-day session with `auth_method = 'local'`, even when the user arrived through SSO. In `break_glass` that session is refused on its first request for anyone but a super user, and in `disabled` for everyone, so the effect is limited to `enabled` mode, where an SSO user who changes their password gets a 7-day local session without the SSO idle and 10-hour limits.
+`POST /api/auth/change-password` issues a 7-day session with `auth_method = 'local'`, even when the user arrived through SSO. In `break_glass` that session is refused on its first request for anyone but a super user, and in `disabled` for everyone, so the effect is limited to `enabled` mode, where an SSO user who changes their password gets a 7-day local session without the SSO idle and 10-hour limits.
+
+Reset-link completion (`POST /api/auth/reset-password`) applies the login policy. When `LOCAL_LOGIN_MODE` does not allow the user, it answers 403 `Use company SSO to sign in.` and rolls back: the link stays unused and the password unchanged. For a user with a passkey, and for a `super_user` without one in `break_glass`, it sets the password, consumes the link and deletes the user's sessions, but issues no session: the response is `{ "passwordReset": true, "signInRequired": true }` and the event `auth.password_reset.sign_in_required` is recorded. That user signs in again through `/login` and its second factor; a `break_glass` super user without a passkey is still refused there (`auth.break_glass.mfa_missing`). Only a user without a passkey in `enabled` mode gets a session from the link, a 7-day `auth_method = 'local'` session with the same limitation as change-password.
 
 ## Data copy from Replit (2026-10-07)
 

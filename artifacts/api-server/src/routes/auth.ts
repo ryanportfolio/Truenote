@@ -593,7 +593,7 @@ class ResetPasswordRejectedError extends Error {
 
 /**
  * POST /api/auth/reset-password — consume a reset link, set new
- * password, log the user in.
+ * password, and sign the user in unless a second factor is required.
  *
  * Atomic transaction:
  *   (1) re-verify the token is unused + unexpired (under the row
@@ -690,7 +690,7 @@ authRouter.post("/reset-password", async (req, res, next) => {
 
       const localLoginMode = getOidcConfig().localLoginMode;
       if (!isLocalLoginAllowed(localLoginMode, user.role)) {
-        // Reset and invite completion issue a local session, so the same
+        // Reset and invite completion can issue a local session, so the same
         // policy as /login applies. Throw to roll back token consumption;
         // returning a denial here would commit it and burn the reset link.
         throw new ResetPasswordRejectedError(403, "Use company SSO to sign in.");
