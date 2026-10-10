@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "../db-client.js";
 import type { CurrentUser } from "../auth/current-user.js";
+import { reportAuditWriteFailure } from "../monitoring/alert-email.js";
 import { translateSecuritySchemaError } from "./errors.js";
 
 export interface SecurityEventInput {
@@ -101,6 +102,9 @@ export async function appendSecurityEvent(
       details
     };
   } catch (error) {
+    // Logs and emails without touching the database, so a Postgres outage
+    // still raises the alert (lib/monitoring/alert-email.ts).
+    reportAuditWriteFailure(input.action, input.outcome, error);
     translateSecuritySchemaError(error);
   }
 }
@@ -108,17 +112,16 @@ export async function appendSecurityEvent(
 export async function recordSecurityEvent(
   input: SecurityEventInput
 ): Promise<StoredSecurityEvent> {
-  // The database trigger created by p1-siem-delivery-outbox.sql enqueues the
-  // receipt in the same transaction. Delivery is deliberately off-path.
+  // The worker's security monitor prints committed events to the log and
+  // checks them against the alert rules (lib/monitoring/security-monitor.ts).
+  // Nothing on this request path waits for that.
   return appendSecurityEvent(input);
 }
 
-/** Best-effort wrapper for response middleware and denied requests. */
+/**
+ * Best-effort wrapper for response middleware and denied requests. A failed
+ * append was already logged and alerted by appendSecurityEvent.
+ */
 export function recordSecurityEventBestEffort(input: SecurityEventInput): void {
-  void recordSecurityEvent(input).catch((error: unknown) => {
-    console.warn(
-      "[security-audit] failed to append event:",
-      error instanceof Error ? error.message : error
-    );
-  });
+  void recordSecurityEvent(input).catch(() => undefined);
 }
