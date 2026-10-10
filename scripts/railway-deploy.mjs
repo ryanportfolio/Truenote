@@ -14,7 +14,7 @@
 // and appends one register row per service, failed attempts included.
 // Run from the repo root on a machine with the Railway and GitHub CLIs logged in.
 import { randomBytes } from "node:crypto";
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readFileSync, writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -154,15 +154,21 @@ function csv(value) {
 
 function record(rows) {
   const lines = rows.map((row) => row.map(csv).join(","));
-  const existing = existsSync(REGISTER) ? readFileSync(REGISTER, "utf8").replace(/\r\n/g, "\n") : null;
-  if (existing !== null && existing.split("\n")[0] !== REGISTER_HEADER) {
-    console.error(`${REGISTER} has an unexpected header; add these rows by hand:`);
-    for (const line of lines) console.error(line);
-    process.exitCode = 1;
-    return;
+  // One descriptor for the check and the append, so the file checked is the
+  // file written. "a+" creates it when missing; writes always go to the end.
+  const fd = openSync(REGISTER, "a+");
+  try {
+    const existing = readFileSync(fd, "utf8").replace(/\r\n/g, "\n");
+    if (existing !== "" && existing.split("\n")[0] !== REGISTER_HEADER) {
+      console.error(`${REGISTER} has an unexpected header; add these rows by hand:`);
+      for (const line of lines) console.error(line);
+      process.exitCode = 1;
+      return;
+    }
+    writeSync(fd, `${existing === "" ? `${REGISTER_HEADER}\n` : ""}${lines.join("\n")}\n`);
+  } finally {
+    closeSync(fd);
   }
-  if (existing === null) writeFileSync(REGISTER, `${REGISTER_HEADER}\n`);
-  appendFileSync(REGISTER, `${lines.join("\n")}\n`);
   console.log(`appended ${rows.length} row(s) to ${REGISTER}; commit it through a pull request.`);
 }
 
