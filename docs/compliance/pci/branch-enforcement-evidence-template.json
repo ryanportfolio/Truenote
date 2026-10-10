@@ -1,18 +1,18 @@
 {
   "schemaVersion": 2,
   "recordId": "TN-BRANCH-<YYYY>-<NNN>",
-  "repository": "ryanportfolio/kbase",
+  "repository": "ryanportfolio/Truenote",
   "defaultBranch": "main",
   "capturedAt": "<UTC timestamp>",
   "capturedBy": "<GitHub API capture operator>",
   "captureMethod": "github_api",
   "apiEndpoints": [
-    "/repos/ryanportfolio/kbase/rulesets",
-    "/repos/ryanportfolio/kbase/branches/main/protection"
+    "/repos/ryanportfolio/Truenote/rulesets",
+    "/repos/ryanportfolio/Truenote/branches/main/protection"
   ],
   "apiResponses": [
     {
-      "endpoint": "/repos/ryanportfolio/kbase/rulesets",
+      "endpoint": "/repos/ryanportfolio/Truenote/rulesets",
       "method": "GET",
       "httpStatus": 0,
       "capturedAt": "<UTC timestamp>",
@@ -22,7 +22,7 @@
       "bodySha256": "<SHA-256 of complete response body>"
     },
     {
-      "endpoint": "/repos/ryanportfolio/kbase/branches/main/protection",
+      "endpoint": "/repos/ryanportfolio/Truenote/branches/main/protection",
       "method": "GET",
       "httpStatus": 0,
       "capturedAt": "<UTC timestamp>",

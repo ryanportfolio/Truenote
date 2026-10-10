@@ -33,6 +33,10 @@ Set per service (values never in git or chat; the owner's source file is `Deskto
 
 `railway variable set KEY --stdin --skip-deploys -p <project> -e <env> -s <service>` batches changes without a redeploy; `railway variable delete` always redeploys.
 
+Pending with the monitoring change (`docs/security/monitoring.md`, "Turning it on"): `SECURITY_ALERT_EMAIL` on both services, after `lib/db/sql/0011_monitoring_state.sql` is applied.
+
+Pending with the evidence harness (`docs/security/evidence-harness.md`): `EVIDENCE_GITHUB_TOKEN` on `worker`. Until it is set, the five GitHub checks record `error`. Evidence alerts go to `SECURITY_ALERT_EMAIL` unless `EVIDENCE_ALERT_EMAIL` is set.
+
 ### Database roles
 
 Two roles, defined by `lib/db/sql/0007_app_runtime_role.sql`:
@@ -58,14 +62,15 @@ The owner authorized an agent account for operating and testing the site (2026-1
 
 ## Deploying
 
-Merging to `main` deploys nothing. Each production deploy waits for the owner's go. From a worktree checked out at freshly fetched `origin/main`:
+Merging to `main` deploys nothing. Each production deploy waits for the owner's go. From a worktree checked out at freshly fetched `origin/main`, first record the commit being shipped; the evidence harness puts it on every receipt (`artifacts/api-server/src/lib/evidence/receipts.ts`), and `railway up` uploads no `.git`. The file is gitignored and whitelisted in `.railwayignore` and `.dockerignore`:
 
 ```text
+node -e "const {execSync:x}=require('child_process');const c=x('git rev-parse HEAD').toString().trim();const d=x('git status --porcelain').toString().trim()?'+dirty':'';require('fs').writeFileSync('.release-commit',c+d+'\n')"
 railway up --detach -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4deb-9434-e9b63a309bd9 -s web -m "<what ships>"
 railway up --detach -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4deb-9434-e9b63a309bd9 -s worker -m "<what ships>"
 ```
 
-Deploy both services from the same commit; they share code. Poll `railway deployment list -p <project> -e <env> -s <service> --json` until `SUCCESS`, then check: `/health` returns `{"ok":true}`, `/` and the changed pages return 200, `railway logs -p <project> -e <env> -s web` shows `[api-server] listening on http://0.0.0.0:8080`, and `railway logs -p <project> -e <env> -s worker` shows `[worker] ready`. For retrieval or answer changes, run one cited question (`.tmp`-style script: demo CSR login, `POST /api/ask`, expect `refused=false` with at least one source).
+Deploy both services from the same commit; they share code. Poll `railway deployment list -p <project> -e <env> -s <service> --json` until `SUCCESS`, then check: `/health` returns `{"ok":true}`, `/` and the changed pages return 200, `railway logs -p <project> -e <env> -s web` shows `[api-server] listening on http://0.0.0.0:8080`, and `railway logs -p <project> -e <env> -s worker` shows `[worker] ready`. Once 0011 is applied, `/health/ready` must also return 200 within a minute of the worker's start (it reports `worker: stale` or `missing` otherwise; `docs/security/monitoring.md`). For retrieval or answer changes, run one cited question (`.tmp`-style script: demo CSR login, `POST /api/ask`, expect `refused=false` with at least one source).
 
 The image runs TypeScript through `tsx`: `scripts/railway-start.sh` execs `artifacts/api-server/src/index.ts` or `scripts/src/worker.ts`. The build runs `pnpm install --frozen-lockfile`, the typecheck of every workspace (`pnpm -r run check`) and the rag-app build; a type error fails the image. `tsx` is a dev dependency, so the image keeps dev dependencies.
 
@@ -84,7 +89,7 @@ node scripts/railway-apply-sql.mjs lib/db/sql/NNNN_<name>.sql --apply   # one tr
 
 The script runs `psql --single-transaction` inside `pgvector` over `railway ssh` and refuses a file already recorded in `schema_migrations`. Each `railway ssh` call stays under 6,500 base64 characters (Windows caps the command line near 8,000). A file that fits goes in the same call as the apply; a larger one is first uploaded in pieces to `/tmp/truenote-sql-<sha256>.sql` in the container, then the apply call checks that file against the local hash and runs the lock, DDL and ledger insert in one transaction as before (first used for `0003`, 10.8 KB, in four pieces). A hand-run `psql -f` skips the checksum check, the advisory lock and the ledger row, so always use the script. The file must also contain no `BEGIN`/`COMMIT` of its own, since an embedded `COMMIT` ends the script's transaction before the ledger insert. Then deploy the code that needs the change, and inspect the resulting definition (`\d+ <table>`, `pg_get_constraintdef`, `pg_get_functiondef`).
 
-Applied: `0001_schema_migrations.sql` (2026-10-07, sha256 `f33bb30e…`), `0002_eval_questions_is_protected.sql` (2026-10-08, `ff92f1c1…`), `0003_source_library.sql` (2026-10-08 12:17 UTC, `3b88f685…`, after a pre-change dump kept at `D:\CoreWise\_artifacts\truenote\truenote-prod-20261008T1212-pre0003.dump`, sha256 `9fdbeb66…`), `0004_supervisor_role.sql` (2026-10-08 20:40 UTC, `a4c26c24…`), `0005_team_members.sql` (2026-10-08 20:40 UTC, `7d290e7d…`), `0006_kb_team_shortcuts.sql` (2026-10-08 20:40 UTC, `29e5904f…`), `0007_app_runtime_role.sql` (2026-10-09 19:35 UTC, `851668b5…`), `0008_security_events_append_only.sql` (2026-10-09 19:35 UTC, `e535e002…`), `0009_document_source_audit_triggers.sql` (2026-10-09 19:35 UTC, `0e930d99…`), `0010_clear_refusal_derived_titles.sql` (2026-10-09 22:08 UTC, `3b2f4368…`). Baseline before them: the Replit production schema as restored on 2026-10-07.
+Applied: `0001_schema_migrations.sql` (2026-10-07, sha256 `f33bb30e…`), `0002_eval_questions_is_protected.sql` (2026-10-08, `ff92f1c1…`), `0003_source_library.sql` (2026-10-08 12:17 UTC, `3b88f685…`, after a pre-change dump kept at `D:\CoreWise\_artifacts\truenote\truenote-prod-20261008T1212-pre0003.dump`, sha256 `9fdbeb66…`), `0004_supervisor_role.sql` (2026-10-08 20:40 UTC, `a4c26c24…`), `0005_team_members.sql` (2026-10-08 20:40 UTC, `7d290e7d…`), `0006_kb_team_shortcuts.sql` (2026-10-08 20:40 UTC, `29e5904f…`), `0007_app_runtime_role.sql` (2026-10-09 19:35 UTC, `851668b5…`), `0008_security_events_append_only.sql` (2026-10-09 19:35 UTC, `e535e002…`), `0009_document_source_audit_triggers.sql` (2026-10-09 19:35 UTC, `0e930d99…`), `0010_clear_refusal_derived_titles.sql` (2026-10-09 22:08 UTC, `3b2f4368…`), `0011_monitoring_state.sql` (2026-10-10 05:01 UTC, `dbe0bcca…`), `0012_evidence_receipts.sql` (2026-10-10 05:07 UTC, `9089c8d6…`; pg-boss queue `evidence-run` created by `pgboss:install` the same morning). Baseline before them: the Replit production schema as restored on 2026-10-07.
 
 0007 creates the `truenote_app` role and its grants ("Database roles"); 0008 and 0009 install the `security_events` append-only and truncate guards and the document-version and content-source audit triggers. All three are additive and were applied in separate runs, so no pre-change dump was taken; a privilege sweep and rolled-back negative tests followed (receipt named in "Database roles"). 0010 is data only: it cleared 9 session titles derived from refused questions.
 

@@ -87,7 +87,8 @@ const ADMIN_TITLES: Record<string, string> = {
   "/admin/evaluations": "Evaluation Center",
   "/admin/security": "Security",
   "/admin/programs": "Programs",
-  "/admin/teams": "Teams"
+  "/admin/teams": "Teams",
+  "/compliance": "Compliance documents"
 };
 
 /** Pages that show no visible title (the sidebar names them), so their placeholder shows none either. */
@@ -140,7 +141,9 @@ export function isProtectedPath(path: string): boolean {
     pathname === "/chat" ||
     pathname === "/kb" ||
     pathname.startsWith("/kb/") ||
-    pathname.startsWith("/admin/")
+    pathname.startsWith("/admin/") ||
+    pathname === "/compliance" ||
+    pathname.startsWith("/compliance/")
   );
 }
 

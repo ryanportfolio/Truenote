@@ -1,0 +1,40 @@
+name: Evidence harness watch
+
+# Daily check from outside Railway that the evidence harness is still writing
+# receipts (docs/security/evidence-harness.md). Reads only public endpoints;
+# needs no secret. The schedule runs once the repository variable
+# EVIDENCE_WATCH_ENABLED is "true" (set it after the harness is deployed);
+# manual runs always work.
+
+on:
+  schedule:
+    - cron: "41 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evidence-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: Heartbeat and public checks
+    if: github.event_name == 'workflow_dispatch' || vars.EVIDENCE_WATCH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Heartbeat and passive public checks
+        run: corepack pnpm --filter @workspace/scripts run evidence:outside

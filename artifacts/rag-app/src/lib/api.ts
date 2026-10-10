@@ -5,6 +5,8 @@ import type {
   AskStage,
   BulkCreateUsersResponse,
   ChangePasswordResponse,
+  ComplianceDocumentListResponse,
+  ComplianceDocumentResponse,
   CreateUserRequest,
   CreateUserResponse,
   CurrentUser,
@@ -1210,4 +1212,21 @@ export async function deleteUser(id: string): Promise<void> {
   }
   const body = (await response.json().catch(() => ({}))) as { error?: string };
   throw new Error(body.error ?? `HTTP ${response.status}`);
+}
+
+export async function getComplianceDocuments(): Promise<ComplianceDocumentListResponse> {
+  const response = await fetch("/api/compliance/documents", withDefaults());
+  return asJson<ComplianceDocumentListResponse>(response);
+}
+
+/** Null when the document does not exist (404) or the id is malformed (400). */
+export async function getComplianceDocument(
+  slug: string
+): Promise<ComplianceDocumentResponse | null> {
+  const response = await fetch(
+    `/api/compliance/documents/${encodeURIComponent(slug)}`,
+    withDefaults()
+  );
+  if (response.status === 404 || response.status === 400) return null;
+  return asJson<ComplianceDocumentResponse>(response);
 }
