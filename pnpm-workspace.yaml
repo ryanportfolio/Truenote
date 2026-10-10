@@ -31,3 +31,9 @@ catalog:
   drizzle-orm: 0.45.2
   drizzle-kit: ^0.24.2
   vitest: ^2.1.1
+
+# Dependabot version updates run pnpm with minimum-release-age=4320 (its
+# default 3-day cooldown). A manifest specifier whose floor is younger than
+# that has no mature match, and every npm update in the job fails. Applying
+# the same age locally keeps pnpm add/update from writing such floors.
+minimumReleaseAge: 4320
