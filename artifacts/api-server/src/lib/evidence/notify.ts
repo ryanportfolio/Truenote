@@ -106,44 +106,79 @@ export async function classifyRun(
   });
 }
 
-export function renderRunEmail(runId: string, classified: ClassifiedEntry[]): { subject: string; text: string; html: string } | null {
+const LABEL: Record<Notice, string> = {
+  "new-failure": "New failure",
+  "gap-expired": "Known-gap link expired",
+  "repeated-error": "Could not run twice in a row",
+  recovered: "Recovered",
+  "known-gap": "Known gap",
+  unchanged: "Unchanged"
+};
+
+/** Alert lines for one run: attention items, plus recoveries when there are any. */
+export function alertLines(runId: string, classified: ClassifiedEntry[]): string[] {
   const attention = classified.filter((entry) => ATTENTION.includes(entry.notice));
-  if (attention.length === 0) return null;
+  if (attention.length === 0) return [];
   const recovered = classified.filter((entry) => entry.notice === "recovered");
-  const label: Record<Notice, string> = {
-    "new-failure": "New failure",
-    "gap-expired": "Known-gap link expired",
-    "repeated-error": "Could not run twice in a row",
-    recovered: "Recovered",
-    "known-gap": "Known gap",
-    unchanged: "Unchanged"
-  };
-  const lines = [...attention, ...recovered].map(
-    (entry) => `${label[entry.notice]}: ${entry.checkId} (${entry.result}) ${entry.summary}`
+  return [...attention, ...recovered].map(
+    (entry) => `${LABEL[entry.notice]}: ${entry.checkId} (${entry.result}, run ${runId.slice(0, 8)}) ${entry.summary}`
   );
-  const subject = `Truenote evidence: ${attention.length} check(s) need attention`;
-  const text = [
-    `Evidence run ${runId}.`,
-    "",
-    ...lines,
-    "",
-    "Receipts: GET /api/admin/evidence/failures (super_user)."
-  ].join("\n");
-  const html = `<p>Evidence run ${escapeHtml(runId)}.</p><ul>${lines
-    .map((line) => `<li>${escapeHtml(line)}</li>`)
-    .join("")}</ul><p>Receipts: GET /api/admin/evidence/failures (super_user).</p>`;
-  return { subject, text, html };
 }
 
+export function renderAlertEmail(lines: string[]): { subject: string; text: string; html: string } {
+  const count = lines.filter((line) => !line.startsWith(LABEL.recovered)).length;
+  const footer = "Receipts: GET /api/admin/evidence/failures (super_user).";
+  return {
+    subject: `Truenote evidence: ${count} check(s) need attention`,
+    text: [...lines, "", footer].join("\n"),
+    html: `<ul>${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul><p>${escapeHtml(footer)}</p>`
+  };
+}
+
+/**
+ * Undelivered alert lines live in app_settings (key evidence_pending_alert)
+ * until an email succeeds. Without this, a failed send would be lost: the
+ * next run sees the failure as unchanged and does not alert again.
+ */
+const PENDING_KEY = "evidence_pending_alert";
+const MAX_PENDING_LINES = 200;
+
+async function readPending(): Promise<string[]> {
+  const result = await db.execute(sql`SELECT value FROM app_settings WHERE key = ${PENDING_KEY}`);
+  const value = (result.rows[0] as { value?: { lines?: unknown } } | undefined)?.value;
+  return Array.isArray(value?.lines) ? value.lines.filter((line): line is string => typeof line === "string") : [];
+}
+
+async function writePending(lines: string[]): Promise<void> {
+  if (lines.length === 0) {
+    await db.execute(sql`DELETE FROM app_settings WHERE key = ${PENDING_KEY}`);
+    return;
+  }
+  const value = JSON.stringify({ lines: lines.slice(-MAX_PENDING_LINES), updatedAt: new Date().toISOString() });
+  await db.execute(sql`
+    INSERT INTO app_settings (key, value, updated_at)
+    VALUES (${PENDING_KEY}, ${value}::jsonb, now())
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+  `);
+}
+
+/**
+ * Classify a run and send one email with this run's alert lines plus any
+ * still undelivered from earlier runs. Lines stay pending until a send
+ * succeeds; every run retries them.
+ */
 export async function notifyRun(runId: string, entries: RunEntry[]): Promise<ClassifiedEntry[]> {
   const classified = await classifyRun(entries);
-  const email = renderRunEmail(runId, classified);
-  if (!email) return classified;
+  const pending = await readPending();
+  const lines = [...pending, ...alertLines(runId, classified)];
+  if (lines.length === 0) return classified;
+  if (lines.length > pending.length) await writePending(lines);
   const to = process.env.EVIDENCE_ALERT_EMAIL;
   if (!to) {
-    console.warn(`[evidence] ${email.subject}; EVIDENCE_ALERT_EMAIL is not set, so no email was sent`);
+    console.warn(`[evidence] ${lines.length} alert line(s) pending; EVIDENCE_ALERT_EMAIL is not set`);
     return classified;
   }
-  await getEmailSender().send({ to, ...email });
+  await getEmailSender().send({ to, ...renderAlertEmail(lines) });
+  await writePending([]);
   return classified;
 }

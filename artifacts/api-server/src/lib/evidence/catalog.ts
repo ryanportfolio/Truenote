@@ -135,8 +135,9 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
     cadenceStatus: "proposed",
     passCondition:
       "A handshake to each public host on 443 negotiates TLSv1.2 or TLSv1.3 with a certificate that " +
-      "chains to the Node trust store, matches the host name and expires in 14 or more days; a " +
-      "handshake capped at TLSv1.1 fails.",
+      "chains to the Node trust store, matches the host name and expires in 14 or more days; the " +
+      "server refuses a handshake capped at TLSv1.1 with a TLS alert. A legacy handshake that fails " +
+      "any other way (timeout, reset, local refusal) is recorded as error.",
     limits: "Run from inside Railway's network by the worker and from GitHub's network by the watcher."
   },
   {
@@ -288,8 +289,10 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
     cadenceStatus: "proposed",
     passCondition:
       "An RFC 3161 time-stamping authority in TIMESTAMP_AUTHORITIES grants a token (PKIStatus 0 or 1) " +
-      "over the sha256 chain head, and the token contains that digest. The token is stored base64 in " +
-      "the receipt for offline verification with `openssl ts -verify`.",
+      "whose TSTInfo imprint is the sha256 chain head and whose nonce is ours, whose CMS signature and " +
+      "message digest verify, whose signer has the timeStamping key usage and chains to a pinned root " +
+      "in TSA_TRUST_ANCHORS. The token is stored base64 in the receipt for offline verification with " +
+      "`openssl ts -verify`.",
     limits:
       "Proves the chain head existed by the token's time. Only the hash leaves the system."
   }

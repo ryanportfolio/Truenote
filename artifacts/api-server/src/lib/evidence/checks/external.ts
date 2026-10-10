@@ -123,8 +123,18 @@ export async function observeTls(host: string, now = new Date()): Promise<TlsObs
   return observation;
 }
 
-/** Client-side refusals say nothing about the server. */
-const CLIENT_SIDE_LEGACY_ERRORS = new Set(["ERR_SSL_NO_PROTOCOLS_AVAILABLE", "ERR_SSL_UNSUPPORTED_PROTOCOL", "ETIMEDOUT", "ECONNREFUSED", "ENOTFOUND"]);
+/**
+ * Errors that show the server itself refused the TLS 1.0/1.1 handshake: a
+ * protocol_version or handshake_failure alert, or a reply in a newer record
+ * version. Any other error (timeouts, resets, unreachable hosts, local
+ * OpenSSL refusing to offer the version) proves nothing about the server.
+ */
+const SERVER_REFUSED_LEGACY = new Set([
+  "ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION",
+  "ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE",
+  "ERR_SSL_TLSV1_ALERT_INSUFFICIENT_SECURITY",
+  "ERR_SSL_WRONG_VERSION_NUMBER"
+]);
 
 export function evaluateTls(observations: TlsObservation[]): CheckOutcome {
   const failures: string[] = [];
@@ -138,7 +148,7 @@ export function evaluateTls(observations: TlsObservation[]): CheckOutcome {
       failures.push(`${o.host}: certificate expires in ${o.daysToExpiry ?? "?"} day(s)`);
     }
     if (o.legacyHandshakeSucceeded) failures.push(`${o.host}: accepted a TLSv1.1-capped handshake`);
-    if (o.legacyHandshakeError && CLIENT_SIDE_LEGACY_ERRORS.has(o.legacyHandshakeError)) inconclusive = true;
+    if (!o.legacyHandshakeSucceeded && !SERVER_REFUSED_LEGACY.has(o.legacyHandshakeError ?? "")) inconclusive = true;
   }
   const result = outcome(failures, "TLS 1.2+ with trusted certificates; TLS 1.0/1.1 refused.", { hosts: observations }, { hosts: observations.map((o) => o.host), certMinDays: CERT_MIN_DAYS });
   if (failures.length === 0 && inconclusive) {
@@ -308,7 +318,9 @@ export function evaluateDnsCaa(caa: Array<Record<string, unknown>> | { error: st
   if (!Array.isArray(caa)) {
     return { result: "error", summary: `CAA lookup failed: ${caa.error}`, failures: [caa.error], outputs: { records } };
   }
-  const issuers = caa.filter((r) => typeof r.issue === "string" || typeof r.issuewild === "string");
+  // issuewild restricts wildcard certificates only; the public hosts need an
+  // issue record. Wildcard restrictions are recorded with the records.
+  const issuers = caa.filter((r) => typeof r.issue === "string");
   const failures = issuers.length === 0 ? ["no CAA issue record for truenote.org"] : [];
   return outcome(failures, "CAA records limit certificate issuance.", { caa, records }, { domain: "truenote.org" });
 }

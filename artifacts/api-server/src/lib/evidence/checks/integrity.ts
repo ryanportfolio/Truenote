@@ -2,14 +2,17 @@ import { randomBytes } from "node:crypto";
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "../../db-client.js";
 import type { CheckOutcome } from "../receipts.js";
+import { verifyTimestampToken, type TimestampVerification } from "./tsa-verify.js";
 
 type Executor = { execute(query: SQL): Promise<{ rows: unknown[] }> };
 const defaultExecutor = db as unknown as Executor;
 
 /**
  * Chain verification for evidence_receipts and security_events, and a daily
- * RFC 3161 timestamp over the evidence chain head. Verification recomputes
- * every hash in SQL with the same rule the append functions use.
+ * RFC 3161 timestamp over the evidence chain head, accepted only when the
+ * token's signature verifies to a pinned root (tsa-verify.ts). Chain
+ * verification recomputes every hash in SQL with the same rule the append
+ * functions use.
  */
 
 interface ChainSummary {
@@ -169,29 +172,44 @@ export function parseTimestampResponse(response: Buffer): { status: number; toke
   return { status, token };
 }
 
-export function evaluateTimestamp(
-  headHash: string | null,
-  attempts: Array<{ authority: string; status: number | null; error: string | null; tokenBase64: string | null; containsDigest: boolean; containsNonce: boolean }>
-): CheckOutcome {
+export interface TimestampAttempt {
+  authority: string;
+  status: number | null;
+  error: string | null;
+  tokenBase64: string | null;
+  verification: TimestampVerification | null;
+}
+
+export function evaluateTimestamp(headHash: string | null, attempts: TimestampAttempt[]): CheckOutcome {
+  const withoutTokens = attempts.map(({ tokenBase64: _token, ...rest }) => rest);
   if (!headHash) {
-    return { result: "error", summary: "No evidence receipts to timestamp yet.", failures: ["empty chain"], outputs: { attempts } };
+    return { result: "error", summary: "No evidence receipts to timestamp yet.", failures: ["empty chain"], outputs: { attempts: withoutTokens } };
   }
-  const granted = attempts.find((a) => (a.status === 0 || a.status === 1) && a.tokenBase64 && a.containsDigest && a.containsNonce);
+  const granted = attempts.find(
+    (a) => (a.status === 0 || a.status === 1) && a.tokenBase64 && a.verification?.verified === true
+  );
   if (granted) {
     return {
       result: "pass",
-      summary: `${granted.authority} timestamped chain head ${headHash.slice(0, 16)}.`,
+      summary: `${granted.authority} timestamped chain head ${headHash.slice(0, 16)} at ${granted.verification!.genTime ?? "?"}.`,
       failures: [],
       inputs: { headHash },
-      outputs: { authority: granted.authority, token: granted.tokenBase64, attempts: attempts.map(({ tokenBase64: _t, ...rest }) => rest) }
+      outputs: {
+        authority: granted.authority,
+        genTime: granted.verification!.genTime,
+        signer: granted.verification!.signer,
+        trustAnchor: granted.verification!.anchor,
+        token: granted.tokenBase64,
+        attempts: withoutTokens
+      }
     };
   }
   return {
     result: "error",
-    summary: "No time-stamping authority granted a token.",
-    failures: attempts.map((a) => `${a.authority}: ${a.error ?? `status ${a.status}`}`),
+    summary: "No time-stamping authority returned a token that verifies.",
+    failures: attempts.map((a) => `${a.authority}: ${a.error ?? a.verification?.reason ?? `status ${a.status}`}`),
     inputs: { headHash },
-    outputs: { attempts }
+    outputs: { attempts: withoutTokens }
   };
 }
 
@@ -201,7 +219,7 @@ export async function checkChainTimestamp(): Promise<CheckOutcome> {
   `);
   const row = head.rows[0] as { sequence?: unknown; receipt_hash?: string } | undefined;
   const headHash = row?.receipt_hash ?? null;
-  const attempts: Parameters<typeof evaluateTimestamp>[1] = [];
+  const attempts: TimestampAttempt[] = [];
   if (headHash) {
     const digest = Buffer.from(headHash, "hex");
     for (const authority of TIMESTAMP_AUTHORITIES) {
@@ -216,17 +234,11 @@ export async function checkChainTimestamp(): Promise<CheckOutcome> {
         const body = Buffer.from(await response.arrayBuffer());
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const parsed = parseTimestampResponse(body);
-        attempts.push({
-          authority,
-          status: parsed.status,
-          error: null,
-          tokenBase64: parsed.token?.toString("base64") ?? null,
-          containsDigest: parsed.token?.includes(digest) ?? false,
-          containsNonce: parsed.token?.includes(nonce) ?? false
-        });
-        if (parsed.status <= 1 && parsed.token) break;
+        const verification = parsed.token ? verifyTimestampToken(parsed.token, digest, nonce) : null;
+        attempts.push({ authority, status: parsed.status, error: null, tokenBase64: parsed.token?.toString("base64") ?? null, verification });
+        if (parsed.status <= 1 && verification?.verified) break;
       } catch (error) {
-        attempts.push({ authority, status: null, error: (error as Error).message.slice(0, 200), tokenBase64: null, containsDigest: false, containsNonce: false });
+        attempts.push({ authority, status: null, error: (error as Error).message.slice(0, 200), tokenBase64: null, verification: null });
       }
     }
   }

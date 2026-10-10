@@ -171,7 +171,11 @@ export function evaluateAuditTriggers(triggers: TriggerObservation[], functions:
   for (const required of REQUIRED_TRIGGERS) {
     const found = triggers.find((t) => t.table === required.table && t.name === required.name);
     if (!found || found.enabled === null) failures.push(`trigger ${required.name} on ${required.table} is missing`);
-    else if (found.enabled === "D") failures.push(`trigger ${required.name} on ${required.table} is disabled`);
+    // O fires in normal sessions, A always; R fires only in replica sessions
+    // and D never, so neither protects the application's writes.
+    else if (found.enabled !== "O" && found.enabled !== "A") {
+      failures.push(`trigger ${required.name} on ${required.table} does not fire in normal sessions (tgenabled ${found.enabled})`);
+    }
   }
   for (const fn of functions) {
     if (!fn.exists) {

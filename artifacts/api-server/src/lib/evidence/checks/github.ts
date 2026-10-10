@@ -23,6 +23,7 @@ export const ALERT_REMEDIATION_DAYS = 30;
 const TOKEN_MIN_DAYS = 30;
 const SCHEDULED_RUN_MAX_AGE_DAYS = 8;
 const DAY_MS = 86_400_000;
+const MAX_PAGES = 20;
 
 export interface GithubResponse {
   status: number;
@@ -72,7 +73,7 @@ export function githubClientFromEnv(env: NodeJS.ProcessEnv = process.env): Githu
     async getAll(pathAndQuery) {
       const items: unknown[] = [];
       let url: string | null = `${base}${pathAndQuery.replace("{repo}", repo)}`;
-      for (let page = 0; url && page < 20; page += 1) {
+      for (let page = 0; url && page < MAX_PAGES; page += 1) {
         const response = await request(url);
         if (response.status !== 200 || !Array.isArray(response.body)) {
           throw new Error(`GET ${pathAndQuery} answered ${response.status}`);
@@ -81,6 +82,8 @@ export function githubClientFromEnv(env: NodeJS.ProcessEnv = process.env): Githu
         const link = response.headers.get("link") ?? "";
         url = /<([^>]+)>;\s*rel="next"/.exec(link)?.[1] ?? null;
       }
+      // Partial lists could hide an overdue alert on a later page.
+      if (url) throw new Error(`GET ${pathAndQuery} has more than ${MAX_PAGES} pages; collection incomplete`);
       return items;
     }
   };
