@@ -17,6 +17,7 @@ interface HistoryVersion {
   document_lifecycle_state: string;
   is_active: boolean;
   lifecycle_state: string;
+  scan_status: string;
   classification: string;
   revoked_at: unknown;
   source_program_id: string;
@@ -39,7 +40,7 @@ interface HistoryChunk {
  * Authorize every dependency before returning any part of a stored exchange.
  * Missing provenance cannot prove current access, even for refused answers.
  * Durable retired receipts are allowed only while their parent document and
- * approved source remain active. Legacy chunks must still be current.
+ * approved source remain active. Versions found infected are never served. Legacy chunks must still be current.
  */
 export async function loadAuthorizedHistorySources(input: {
   logs: HistoryLog[];
@@ -91,7 +92,7 @@ export async function loadAuthorizedHistorySources(input: {
     const result = await db.execute(sql`
       SELECT v.id::text, v.document_id::text, d.program_id::text,
         d.lifecycle_state AS document_lifecycle_state,
-        v.is_active, v.lifecycle_state, v.classification, v.revoked_at,
+        v.is_active, v.lifecycle_state, v.scan_status, v.classification, v.revoked_at,
         s.program_id::text AS source_program_id, s.is_active AS source_active,
         s.approved_at AS source_approved_at, s.retired_at AS source_retired_at
       FROM document_versions v
@@ -105,6 +106,7 @@ export async function loadAuthorizedHistorySources(input: {
         row.program_id !== input.programId || row.source_program_id !== input.programId ||
         row.document_lifecycle_state !== "active" || row.source_active !== true ||
         !row.source_approved_at || row.source_retired_at !== null || row.revoked_at !== null ||
+        row.scan_status === "infected" ||
         !classification || !canReadClassification(clearance, classification)
       ) continue;
       versions.set(row.id, row);

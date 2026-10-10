@@ -2,7 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Lock, LockOpen, RefreshCw, ShieldCheck, ShieldOff } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
-import { getSecurityDashboard, updateDemoLimits, updateMalwareScanning } from "@/lib/api";
+import {
+  getSecurityDashboard,
+  rescanUnscannedDocuments,
+  updateDemoLimits,
+  updateMalwareScanning
+} from "@/lib/api";
+import { formatAbsoluteTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { CurrentUser, SecurityDashboardResponse } from "@/types/api";
 
@@ -32,6 +38,7 @@ function SecurityDashboard(): JSX.Element {
   const [confirmDisable, setConfirmDisable] = useState(false);
   const [confirmLift, setConfirmLift] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rescanQueued, setRescanQueued] = useState<number | null>(null);
 
   const load = useCallback(async (initial = false): Promise<void> => {
     if (initial) setLoading(true);
@@ -76,6 +83,25 @@ function SecurityDashboard(): JSX.Element {
       setSaving(false);
     }
   }
+
+  async function rescanUnscanned(): Promise<void> {
+    setSaving(true);
+    setError(null);
+    try {
+      const { queued, ...dashboard } = await rescanUnscannedDocuments();
+      setData(dashboard);
+      setRescanQueued(queued);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Rescan could not be queued");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const scannerUsable =
+    data !== null &&
+    data.malwareScanning.scannerConfigured &&
+    data.malwareScanning.scannerTransportSecure;
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
@@ -127,7 +153,7 @@ function SecurityDashboard(): JSX.Element {
                   <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                     {data.malwareScanning.enabled
                       ? "Enforcement is on. Uploads require a clean external verdict."
-                      : "Temporarily disabled. File signatures, EICAR, content checks, and separate approval remain active. Run scan again from Documents to continue previously quarantined uploads."}
+                      : `Temporarily disabled until ${data.malwareScanning.disabledUntil ? formatAbsoluteTime(data.malwareScanning.disabledUntil) : "it lapses"}; enforcement returns on its own after 24 hours. File signatures, EICAR, content checks, and separate approval remain active.`}
                   </p>
                   <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm">
                     <div>
@@ -136,7 +162,7 @@ function SecurityDashboard(): JSX.Element {
                         {data.malwareScanning.scannerConfigured
                           ? data.malwareScanning.scannerTransportSecure
                             ? "Configured"
-                            : "HTTPS required"
+                            : "Secure transport required"
                           : "Not configured"}
                       </dd>
                     </div>
@@ -144,6 +170,14 @@ function SecurityDashboard(): JSX.Element {
                       <dt className="text-xs uppercase tracking-wide text-muted-foreground">Enforcement</dt>
                       <dd className="mt-0.5 font-medium">{data.malwareScanning.enabled ? "On" : "Off"}</dd>
                     </div>
+                    {data.malwareScanning.bypassExpiredAt ? (
+                      <div>
+                        <dt className="text-xs uppercase tracking-wide text-muted-foreground">Last bypass lapsed</dt>
+                        <dd className="mt-0.5 font-medium">
+                          <RelativeTime iso={data.malwareScanning.bypassExpiredAt} />
+                        </dd>
+                      </div>
+                    ) : null}
                     {data.malwareScanning.updatedAt ? (
                       <div>
                         <dt className="text-xs uppercase tracking-wide text-muted-foreground">Last changed</dt>
@@ -180,7 +214,7 @@ function SecurityDashboard(): JSX.Element {
             {data.malwareScanning.enabled && (!data.malwareScanning.scannerConfigured || !data.malwareScanning.scannerTransportSecure) ? (
               <p className="border-t border-border bg-warning/15 px-5 py-3 text-sm text-warning-foreground">
                 {data.malwareScanning.scannerConfigured
-                  ? "Scanner endpoint must use HTTPS in production. New uploads will be quarantined until the endpoint is corrected or enforcement is disabled."
+                  ? "Scanner endpoint must use HTTPS, or HTTP to a Railway private host, in production. New uploads will be quarantined until the endpoint is corrected or enforcement is disabled."
                   : "Scanner endpoint is not configured. New uploads will be quarantined until enforcement is disabled or an endpoint is added."}
               </p>
             ) : null}
@@ -198,7 +232,7 @@ function SecurityDashboard(): JSX.Element {
                   <div>
                     <p className="text-sm font-medium">Disable external malware scanning?</p>
                     <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                      New uploads can continue without an external verdict. The operating mode remains recorded in document metadata and the security audit log.
+                      New uploads can continue without an external verdict for the next 24 hours; enforcement then returns on its own. The operating mode remains recorded in document metadata and the security audit log, and those uploads can be scanned later from this page.
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button type="button" className="btn-whisper px-3 py-1.5 text-sm" onClick={() => setConfirmDisable(false)} disabled={saving}>
@@ -231,6 +265,27 @@ function SecurityDashboard(): JSX.Element {
 
           <section aria-labelledby="scan-summary-heading">
             <h2 id="scan-summary-heading" className="text-xl font-semibold tracking-tight">Document scan history</h2>
+            {data.summary.awaitingScan > 0 || rescanQueued !== null ? (
+              <div className="mt-3 flex flex-col gap-3 rounded-lg border border-border bg-card p-4 shadow-card sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm leading-relaxed">
+                  {data.summary.awaitingScan > 0
+                    ? `${data.summary.awaitingScan} parsed ${data.summary.awaitingScan === 1 ? "version has" : "versions have"} no external malware verdict (uploaded while scanning was off, or accepted before it existed).`
+                    : "No versions are waiting for an external malware verdict."}
+                  {rescanQueued !== null ? ` Queued ${rescanQueued} for scanning; refresh to see results.` : ""}
+                  {data.summary.awaitingScan > 0 && !scannerUsable ? " Configure the scanner endpoint to scan them." : ""}
+                </p>
+                {data.summary.awaitingScan > 0 ? (
+                  <button
+                    type="button"
+                    className="btn-primary shrink-0 px-4 py-2 text-sm"
+                    onClick={() => void rescanUnscanned()}
+                    disabled={saving || !scannerUsable}
+                  >
+                    {saving ? "Queuing…" : "Scan them now"}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               {[
                 ["Quarantined", data.summary.quarantined],
@@ -316,6 +371,8 @@ function SecurityDashboard(): JSX.Element {
 }
 
 function controlEventLabel(action: string): string {
+  if (action === "security.malware_rescan.requested") return "Scan of unscanned uploads queued";
+  if (action === "document.malware_rescan.infected") return "Malware found in a previously unscanned upload";
   const on = action.endsWith(".enabled");
   if (action.startsWith("security.demo_limits.")) return on ? "Demo limits restored" : "Demo limits lifted";
   return `Malware scanning ${on ? "enabled" : "disabled"}`;

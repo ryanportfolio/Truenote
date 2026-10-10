@@ -980,6 +980,17 @@ export async function updateMalwareScanning(
   return asJson<SecurityDashboardResponse>(response);
 }
 
+/** Queues a scan-only malware pass for every version that skipped the external scan. */
+export async function rescanUnscannedDocuments(): Promise<
+  SecurityDashboardResponse & { queued: number }
+> {
+  const response = await fetch(
+    "/api/admin/security/malware-rescan",
+    withDefaults({ method: "POST" })
+  );
+  return asJson<SecurityDashboardResponse & { queued: number }>(response);
+}
+
 /**
  * The user-admin endpoints. All authenticated, all behind the same
  * server-side capability gates (canManageUser / canAssignRole). The

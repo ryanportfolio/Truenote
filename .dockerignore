@@ -16,6 +16,8 @@
 !scripts/**
 !docs/
 !docs/**
+!services/
+!services/**
 !.release-commit
 **/node_modules
 **/dist

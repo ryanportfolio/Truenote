@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   disabledMalwareScanResult,
   hasBlockingFindings,
+  isScannerTransportAllowed,
+  scanForMalware,
   redactSensitiveText,
   scanTextForSensitiveContent,
   validateFileSignature
@@ -80,5 +82,88 @@ describe("scanTextForSensitiveContent", () => {
         "prompt.system_prompt_exfiltration"
       ])
     );
+  });
+});
+
+describe("isScannerTransportAllowed", () => {
+  it("requires HTTPS in production, except for Railway private hosts over HTTP", () => {
+    expect(isScannerTransportAllowed("https://scanner.example.com/scan", "production")).toBe(true);
+    expect(isScannerTransportAllowed("http://scanner.railway.internal:8080/scan", "production")).toBe(true);
+    expect(isScannerTransportAllowed("http://scanner.example.com/scan", "production")).toBe(false);
+    expect(isScannerTransportAllowed("http://127.0.0.1:8080/scan", "production")).toBe(false);
+  });
+
+  it("refuses look-alike hosts and malformed URLs in production", () => {
+    for (const url of [
+      "http://railway.internal/scan",
+      "http://scanner.railway.internal.example.com/scan",
+      "http://scanner.railway.internalx/scan",
+      "http://user:pass@scanner.railway.internal/scan",
+      "ftp://scanner.railway.internal/scan",
+      "scanner.railway.internal:8080",
+      "not a url"
+    ]) {
+      expect(isScannerTransportAllowed(url, "production"), url).toBe(false);
+    }
+  });
+
+  it("allows any URL outside production", () => {
+    expect(isScannerTransportAllowed("http://127.0.0.1:8080/scan", "development")).toBe(true);
+    expect(isScannerTransportAllowed("http://127.0.0.1:8080/scan", undefined)).toBe(true);
+  });
+});
+
+describe("scanForMalware transport in production", () => {
+  const input = {
+    buffer: Buffer.from("plain text"),
+    sha256: "0".repeat(64),
+    mimeType: "text/plain",
+    originalFileName: "notes.txt"
+  };
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("sends signed bytes to a Railway private host over HTTP", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("MALWARE_SCANNER_URL", "http://scanner.railway.internal:8080/scan");
+    vi.stubEnv("MALWARE_SCANNER_TOKEN", "test-token");
+    vi.stubEnv("MALWARE_SCANNER_HMAC_KEY", "test-key");
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ verdict: "clean", engine: "ClamAV 1.4.6 signatures 1", scanId: "s1" }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await scanForMalware(input);
+    expect(result.status).toBe("clean");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer test-token");
+    expect(headers["X-Truenote-Signature"]).toMatch(/^sha256=[0-9a-f]{64}$/);
+  });
+
+  it("refuses plain HTTP to any other host without sending bytes", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("MALWARE_SCANNER_URL", "http://scanner.example.com/scan");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await scanForMalware(input);
+    expect(result.status).toBe("error");
+    expect(result.findings[0]?.ruleId).toBe("malware.scanner_insecure_transport");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("treats a non-200 scanner answer as an error (fail closed)", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("MALWARE_SCANNER_URL", "http://scanner.railway.internal:8080/scan");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 401 })));
+    const result = await scanForMalware(input);
+    expect(result.status).toBe("error");
+    expect(result.findings[0]?.blocking).toBe(true);
   });
 });
