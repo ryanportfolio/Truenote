@@ -84,7 +84,6 @@ Provider security and support contacts are in the incident response plan, sectio
 |---|---|---|
 | Railway | Hosts production; volume backups; restore-test projects | Pro plan support through Central Station (incident response plan, section 2) |
 | Backblaze B2 | Holds the encrypted off-site copy in an account separate from Railway | [Backblaze support](https://help.backblaze.com/) |
-| healthchecks.io | Emails the maintainer when a weekly backup run does not report success | [healthchecks.io docs](https://healthchecks.io/docs/) |
 | Name.com, through Replit's DNS screen | Holds the `truenote.org` DNS records | deployment.md, "Cutover" |
 | GitHub | Source code and deploy source | incident response plan, section 2 |
 

@@ -7,9 +7,9 @@
 // Finds the newest manifests/<run id>.json, downloads the object it names and
 // checks that the run is recent, that size and SHA-256 match the manifest,
 // and that the object is an age file encrypted to the expected recipient.
-// This catches what the dead-man's switch cannot: a backup job that still
-// pings but uploads nothing useful. It cannot decrypt (it has no private key);
-// only a restore test proves the contents.
+// It is the alert for missed or broken runs: run weekly as a scheduled task,
+// it fails when no good run arrived. It cannot decrypt (it has no private
+// key); only a restore test proves the contents.
 //
 // Credentials: OFFSITE_S3_ENDPOINT, OFFSITE_S3_REGION, OFFSITE_S3_BUCKET,
 // OFFSITE_S3_ACCESS_KEY_ID, OFFSITE_S3_SECRET_ACCESS_KEY and

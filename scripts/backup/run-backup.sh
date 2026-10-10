@@ -27,7 +27,6 @@
 #   S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY
 #                             the Railway bucket truenote-storage (read)
 #   BACKUP_GIT_URL            optional; repository to bundle (public HTTPS URL)
-#   HEALTHCHECK_URL           optional; pinged on success, <url>/fail on failure
 #   BACKUP_PREFIX             optional; default weekly
 set -eu
 umask 077
@@ -51,17 +50,11 @@ run_id=$(date -u +%Y%m%dT%H%M%SZ)
 started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 work=$(mktemp -d)
 
-ping() {
-  if [ -n "${HEALTHCHECK_URL:-}" ]; then
-    curl -fsS -m 10 --retry 3 -o /dev/null "$1" || echo "[backup] healthcheck ping failed" >&2
-  fi
-}
 finish() {
   rc=$?
   rm -rf "$work"
   if [ "$rc" -ne 0 ]; then
     echo "[backup] run $run_id failed (exit $rc)" >&2
-    ping "${HEALTHCHECK_URL:-}/fail"
   fi
   exit "$rc"
 }
@@ -180,4 +173,3 @@ printf '{"run_id":"%s","started_at":"%s","finished_at":"%s","objects":[%s],"size
 rclone copyto manifest.json "offsite:$OFFSITE_S3_BUCKET/manifests/$run_id.json" --no-check-dest --retries 3 --quiet
 
 echo "[backup] run $run_id ok: $keys, $size bytes, sha256 $sha, $file_count bucket files, $missing of $referenced referenced files missing"
-ping "${HEALTHCHECK_URL:-}"
