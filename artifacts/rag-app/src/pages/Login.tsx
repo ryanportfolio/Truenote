@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { BrandField } from "@/components/BrandField";
+import { DemoPortal } from "@/components/DemoPortal";
 import { LoginMfaStep } from "@/components/security/LoginMfaStep";
+import { ThemePicker } from "@/components/ThemePicker";
 import { fetchConfig, login } from "@/lib/api";
 import { defaultLandingPath } from "@/lib/landing";
 import { cn } from "@/lib/utils";
@@ -42,24 +44,22 @@ interface LoginPageProps {
 /**
  * The portal grid in index.css is two columns, which fits two or four
  * accounts (the server allows 1 to 4). One account takes the full row.
- * Three sit in one row from `sm` up, with the orbit lifted above the
- * label so the narrower portal keeps room for its text, and stack below
- * `sm`, where three columns would clip the labels.
+ * Three sit in one row from `sm` up and stack below `sm`, where three
+ * columns would clip the labels. The grid's data-count lets index.css
+ * place each portal's archive art and aim its reading beam at the label.
  */
 function demoPortalLayout(count: number): {
   grid: string;
   portal: string;
-  orbit: string;
 } {
-  if (count === 1) return { grid: "grid-cols-1", portal: "", orbit: "" };
+  if (count === 1) return { grid: "grid-cols-1", portal: "" };
   if (count === 3) {
     return {
       grid: "grid-cols-1 sm:grid-cols-3",
-      portal: "min-h-[4.75rem] sm:min-h-[7rem] sm:pr-3",
-      orbit: "sm:top-6"
+      portal: "min-h-[4.75rem] sm:min-h-[7rem]"
     };
   }
-  return { grid: "", portal: "", orbit: "" };
+  return { grid: "", portal: "" };
 }
 
 export function LoginPage({
@@ -127,12 +127,14 @@ export function LoginPage({
     };
   }, []);
 
-  function applyDemoAccount(account: DemoAccount): void {
+  // Stable identity, so the memoized portals skip re-rendering on every
+  // keystroke in the email and password fields.
+  const applyDemoAccount = useCallback((account: DemoAccount): void => {
     setEmail(account.email);
     setPassword(account.password);
     setSelectedDemo(account.email);
     setError(null);
-  }
+  }, []);
 
   const demoLayout = demoPortalLayout(demoAccounts.length);
 
@@ -245,33 +247,20 @@ export function LoginPage({
             {demoAccounts.length > 0 && localLoginMode !== "disabled" ? (
               <fieldset className="auth-demo">
                 <legend>Demo Accounts:</legend>
-                <div className={cn("auth-demo-grid", demoLayout.grid)}>
-                  {demoAccounts.map((account) => {
-                    const selected = selectedDemo === account.email;
-                    return (
-                      <button
-                        key={account.email}
-                        type="button"
-                        onClick={() => applyDemoAccount(account)}
-                        aria-pressed={selected}
-                        aria-label={`Use the ${account.label} demo`}
-                        disabled={submitting}
-                        className={cn(
-                          "auth-demo-role",
-                          selected && "auth-demo-role-active",
-                          demoLayout.portal
-                        )}
-                      >
-                        <span className="auth-demo-role-name">{account.label}</span>
-                        <span
-                          className={cn("auth-demo-role-orbit", demoLayout.orbit)}
-                          aria-hidden
-                        >
-                          <span />
-                        </span>
-                      </button>
-                    );
-                  })}
+                <div
+                  className={cn("auth-demo-grid", demoLayout.grid)}
+                  data-count={demoAccounts.length}
+                >
+                  {demoAccounts.map((account) => (
+                    <DemoPortal
+                      key={account.email}
+                      account={account}
+                      selected={selectedDemo === account.email}
+                      disabled={submitting}
+                      className={demoLayout.portal}
+                      onSelect={applyDemoAccount}
+                    />
+                  ))}
                 </div>
               </fieldset>
             ) : null}
@@ -356,9 +345,8 @@ export function LoginPage({
             </div>
           </form>
           )}
-
-
         </div>
+        <ThemePicker className="auth-theme" />
       </section>
 
       <section className="archive-visual" aria-hidden="true">

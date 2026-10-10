@@ -11,6 +11,21 @@
          fetch uses the same credential mode, so Chromium reuses this response. -->
     <link rel="preload" href="/api/me" as="fetch" crossorigin="use-credentials" />
     <meta name="theme-color" content="#E8E6DE" />
+    <!-- Apply the stored theme (src/lib/theme.ts) before the stylesheet
+         paints, so dark and warm never flash the light palette. -->
+    <script>
+      (function () {
+        try {
+          var theme = localStorage.getItem("truenote.theme");
+          if (theme !== "dark" && theme !== "warm") return;
+          var root = document.documentElement;
+          root.dataset.theme = theme;
+          if (theme === "dark") root.classList.add("dark");
+          var colors = { dark: "#14171D", warm: "#E9D8A6" };
+          document.querySelector('meta[name="theme-color"]').setAttribute("content", colors[theme]);
+        } catch (e) {}
+      })();
+    </script>
     <title>Truenote | Cited Knowledge Answers for Customer Service Teams</title>
     <meta name="description" content="Truenote helps customer service teams find fast, source-backed answers from approved policies and procedures, with citations they can verify." />
     <meta name="robots" content="index, follow" />

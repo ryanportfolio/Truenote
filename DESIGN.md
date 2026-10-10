@@ -17,7 +17,7 @@ The visual reference is docs.cohere.com's light theme (extracted from its deploy
 | `--muted` | `95.56% 0.0017 67.8` | `#F1F0EF` | Quiet fills, icon-button hover, neutral badges |
 | `--muted-foreground` | `46.63% 0.0159 97.7` | `#5C5A50` | Chrome text. **5.54:1** on bg, **6.80:1** on card (AA+) |
 | `--primary` | `41.41% 0.1807 261.2` | `#0040AB` | Parent-company brand blue. **7.24:1** on bg, **9.05:1** white-on (AAA both ways) |
-| `--accent` | `52.37% 0.2194 260.5` | `#005DE5` | Vivid brand blue — hover states only, never text |
+| `--accent` | `52.37% 0.2194 260.5` | `#005DE5` | Vivid brand blue — hover states only, never text. Exception: the login demo portals use it as an art tint (glass core, beam, shockwave, the selected card's 5% wash) |
 | `--success` | `43.52% 0.0428 168.8` | `#39594D` | Evergreen (Cohere's accent): ready pills, thumbs-up, copy-confirm. **7.61:1** on card |
 | `--warning` | `77.04% 0.1646 70.7` | `#F59F0A` | Amber — tint washes + badge chips only, never running text |
 | `--warning-foreground` | `28.01% 0.0563 94.1` | `#322801` | Text on warning tints |
@@ -31,7 +31,7 @@ The visual reference is docs.cohere.com's light theme (extracted from its deploy
 
 Three-surface depth model: **cream canvas → `--secondary` chrome (TopBar/Sidebar) → `--card` content**. Cards separate with hairline + `shadow-card`; heavy shadows are reserved for `--shadow-panel` surfaces that actually float.
 
-Light mode is the ship target. `.dark` ships as a mechanical inversion (converted from the old HSL values) so consumers don't break; no dark toggle is surfaced.
+The table above is the light theme, the default. Dark and warm themes redefine the same tokens (§Themes); components never branch on the theme.
 
 ## Typography
 
@@ -218,6 +218,7 @@ Shipped motion vocabulary (enter-only — panels are conditional-render; exit an
 | Wait-stage label, `parsing` status pill | `animate-pulse` (the only in-progress states on task surfaces get the only ambient motion) |
 | Retrieval instrument | Two orbital rings rotate around an evidence core while the stage label changes; 2.8–3.4s linear |
 | Login archive plate | 1.8s band-registration sequence, then a 14s masked depth cycle with counter-moving paper and mineral bands, one mineral refraction, and a long rest; all disabled by `prefers-reduced-motion` and low-performance mode |
+| Login demo portals | Entrance: rings register in over 1.5s. Hover and keyboard focus: 2D lift, pointer-tracked rim light, sheen and depth parallax, rings turn part-way toward alignment (820ms), pencil arcs draw on, one 1s refraction sweep. Select: paper flecks gather into the core (620ms), core flash and two shockwave rings (0.6 to 1.6s), gaps lock onto the label channel and the beam draws (560ms after 520ms); a card deselected mid-burst fades its burst out in 160ms. A prefilled card's halo and beam wait for the rings (700ms and 900ms). Selected: core orbit lines turn (16s loop, parked in low-performance mode). No 3D tilt: it blurred the label raster. Reduced motion: static states only |
 | Empty-state evidence sheets | `blob-drift-a/b`: few-px translate+scale wanders on 26s/34s loops, allowed only on the pressure-free empty surface |
 | Auth BrandField | Adaptive 30fps watercolor on forgot/reset and at low opacity behind the login panel; reduced motion freezes one reviewed frame |
 
@@ -225,7 +226,7 @@ Shipped motion vocabulary (enter-only — panels are conditional-render; exit an
 
 The visual metaphor is evidence gathering into a trustworthy core. Physical paper, translucent mineral, and living watercolor use cobalt (`--primary`), mineral green (`--archive-green`), persimmon (`--archive-coral`), and a homeopathic amber filament on the warm-neutral system. Art colors never replace semantic status tokens.
 
-1. **Login hero** — `public/visuals/luminous-archive-clean.webp` (1920×1080 WebP q82, ~117KB), an original editorial evidence archive generated for Truenote. Clean cream-paper bands, a muted mineral index, and one persimmon register gather around a recessed cobalt answer core. The artwork contains no loose gold pins, beads, or connecting wires. Four feathered copies of the same image follow its physical bands: the archive registers over 1.8 seconds, then the outer paper, mineral index, core, and lower foreground move in restrained opposition during a 14-second cycle while one light passes across the mineral band. Reduced-motion and low-performance modes render the complete base image as a still. The sign-in panel carries the **BrandField** watercolor at near-full strength (opacity 0.85, bottom-fade mask — see below) so the living field and the sculpture share the surface. Demo deployments extend the archive metaphor into two large role portals: mineral sheets and orbit lines frame a concise role promise while the selected portal tightens around its cobalt core.
+1. **Login hero** — `public/visuals/luminous-archive-clean.webp` (1920×1080 WebP q82, ~117KB), an original editorial evidence archive generated for Truenote. Clean cream-paper bands, a muted mineral index, and one persimmon register gather around a recessed cobalt answer core. The artwork contains no loose gold pins, beads, or connecting wires. Four feathered copies of the same image follow its physical bands: the archive registers over 1.8 seconds, then the outer paper, mineral index, core, and lower foreground move in restrained opposition during a 14-second cycle while one light passes across the mineral band. Reduced-motion and low-performance modes render the complete base image as a still. The sign-in panel carries the **BrandField** watercolor at near-full strength (opacity 0.85, bottom-fade mask — see below) so the living field and the sculpture share the surface. Demo deployments get one portal per demo account (`components/DemoPortal.tsx`), each an inline-SVG miniature of the archive: grid-paper and grey-sage mineral rings around a recessed cobalt glass core, persimmon register bars, and pencil construction arcs. Every ring has one gap. Hover turns the rings part of the way toward alignment; selecting an account locks every gap onto one channel aimed at its label and draws a cobalt reading beam through it, so the selected portal reads by shape as well as by its border and label color. Roles differ by seam layout and register-bar count (CSR 1, Supervisor 2, Manager 3). When a label would wrap or come within reach of the rings (measured from the rendered card, not counted in characters), its card makes room: narrow cards push the label below the rings, wide cards stop it short of them.
 2. **Supporting auth surfaces** — **BrandField** (`components/BrandField.tsx`) is a hand-rolled WebGL1 fragment shader rendering domain-warped, grain-dithered watercolor with a gentle pointer lens. Forgot/reset use it full-field; login uses it at low opacity behind the panel. Guards: `prefers-reduced-motion` freezes one reviewed frame; no WebGL/context loss falls back to CSS washes; hidden tabs pause; rendering is capped at 30fps and ≤1.25 DPR × 0.6 scale. The adaptive governor (`lib/fieldQuality.ts`) steps scale 0.6 → 0.45 → 0.35, then octaves 5 → 4, then freezes on weak hardware. Tiers never step back up.
 3. **Retrieval state** — code-native orbital rings turn the same metaphor into purposeful progress. The text stage remains canonical.
 4. **Empty states** — a tiny CSS 3D paper stack gives pressure-free surfaces a collectible object without another bitmap, inheriting the merged 26s/34s reduced-motion-safe drift loops.
@@ -237,9 +238,27 @@ Authenticated task surfaces remain calm. Depth concentrates around the answer, r
 
 Components consume `oklch(var(--token) / <alpha-value>)` via `tailwind.config.ts`. Variable names are stable; only values change. Adding a token is a deliberate conversation (`--success` was added by the design pass, C5). `shadow-card` / `shadow-panel` are the only shadow utilities — `shadow-sm`/`shadow-2xl` are drift.
 
-## Dark mode
+## Themes
 
-Mechanical inversion of the pre-pass HSL values, converted to OKLCH. No toggle. Before shipping it for real: re-run all contrast math, keep near-black (not `#000`) surfaces with the brand-blue hue baked in, cream (not `#fff`) foreground.
+Three themes, no "system" option: **Light** (default, the token table above), **Dark**, and **Warm** (amber paper and brown ink with the blue taken out, for evening reading). The switch (`components/ThemePicker.tsx`) is a three-option radio group in the TopBar next to Sign out and in the login panel's top-right corner. The choice is stored per browser (`localStorage["truenote.theme"]`, absent for Light) and applied by an inline script in `index.html` before the stylesheet, so a reload never flashes Light; `src/lib/theme.ts` sets `data-theme` on `<html>` (plus the `dark` class for Tailwind's `dark:` variant) and updates `theme-color`. Tokens live in `index.css` under `:root[data-theme="dark"]` and `:root[data-theme="warm"]`.
+
+| Token | Dark | Warm |
+|---|---|---|
+| `--background` | `20.5% 0.0125 262` `#14171D` | `88.5% 0.068 92` `#E9D8A6` |
+| `--foreground` | `93.2% 0.0115 92` `#EBE8E0` | `25% 0.035 62` `#2E1E0F` |
+| `--card` | `24% 0.0135 262` `#1C1F26` | `93% 0.052 94` `#F3E8C1` |
+| `--secondary` (chrome) | `22.4% 0.013 262` | `91% 0.06 93` |
+| `--muted` | `28.5% 0.014 262` | `86% 0.07 90` |
+| `--muted-foreground` | `75.5% 0.014 95` `#B2B0A6` | `42.5% 0.05 66` `#614930` |
+| `--primary` | `77% 0.115 256` `#83B7FD` | `39% 0.1 48` `#6E3108` (burnt sienna) |
+| `--accent` | `68% 0.15 257` | `49% 0.13 50` |
+| `--destructive` | `81% 0.1 24` | `38.5% 0.135 25` |
+| `--success` | `77% 0.085 165` | `40% 0.07 135` (olive) |
+| `--border` / `--input` | `33.5% 0.015 262` | `80% 0.07 88` |
+
+Contrast, computed (sRGB, WCAG 2.1), Dark / Warm: foreground on background 14.67 / 11.41, on card 13.48 / 13.13; muted-foreground on background 8.20 / 5.94; primary on background 8.64 / 7.08, on card 7.94 / 8.14; primary-foreground on primary 8.68 / 8.65; destructive on its 10% tint over card 7.18 / 7.18; success on card 8.24 / 7.32; foreground on a highlight at 55% over card ≥ 8.04 / 9.89. The login checks rerun these in the browser for every theme (`T2`).
+
+Theme-specific pieces outside the tokens: `.select-quiet`'s chevron repeats each theme's `--muted-foreground` hex; BrandField's shader takes a palette per theme as uniforms; the login hero photograph is tinted with a CSS filter (Dark `brightness(0.34) contrast(1.1) saturate(0.9)`, Warm `sepia(0.95) saturate(0.9) brightness(0.88)`, which turns the cobalt core bronze). The demo portals' glass core uses `--archive-cobalt` / `--archive-cobalt-vivid` (brand cobalt in light and dark, bronze in warm), and their highlights use `--pp-light` (the card's near-white, or the cream ink in dark), so the miniature keeps the hero's dark glass and bright specular in every theme. The favicon and the static `/about/` and `/security/` pages stay light.
 
 ## What makes Truenote feel like Truenote
 
@@ -262,4 +281,4 @@ Pure-CSS breakpoints, no JS breakpoint state:
 ## Follow-ups
 
 - ~~Drag-and-drop upload zone~~ shipped (pass 3): the upload card is the drop target — drag-over = `border-primary/40 bg-primary/5`, client-side type/size validation through the quiet-alert recipe, dropped file handed to the native input via `DataTransfer`.
-- **Dark mode**: still a mechanical inversion; `.select-quiet`'s chevron hex, the favicon, AND BrandField's shader ink constants are light-mode-tuned — revisit all three if a toggle ships.
+- **Themes**: the static `/about/` and `/security/` pages and the favicon are light-only; theme them if those pages start sharing the app stylesheet.

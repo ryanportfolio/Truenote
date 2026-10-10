@@ -10,6 +10,7 @@
    * Values + contrast math live in DESIGN.md. Re-run the math before
    * softening any value; do not eyeball. */
   :root {
+    color-scheme: light;
     --background: 92.43% 0.0109 95.2; /* #E8E6DE warm cream — byte-identical to Cohere's canvas */
     /* Body ink. 13.05:1 on --background, 16.02:1 on --card (AAA with margin). */
     --foreground: 24.31% 0.0076 95.4; /* #21201C warm near-black — never #000 */
@@ -58,37 +59,91 @@
     --archive-coral: 66.5% 0.145 43;
     --archive-green: 64% 0.075 176;
     --archive-ink: 29% 0.11 260;
+    /* The hero's glass core (login demo portals): brand cobalt in light and
+     * dark, bronze in warm. Not a UI color. */
+    --archive-cobalt: 41.41% 0.1807 261.2;
+    --archive-cobalt-vivid: 52.37% 0.2194 260.5;
   }
 
-  /* Dark mode ships as sensible inversion; product currently surfaces light only.
-   * Mechanical OKLCH conversion of the previous HSL values — no design pass. */
-  .dark {
-    --background: 21.2% 0.0092 255.6;
-    --foreground: 92.15% 0.0096 93.6;
-    --card: 24.26% 0.0105 260.7;
-    --card-foreground: 92.15% 0.0096 93.6;
-    --popover: 24.26% 0.0105 260.7;
-    --popover-foreground: 92.15% 0.0096 93.6;
-    --primary: 71.47% 0.1512 254.8;
-    --primary-foreground: 23.48% 0.0895 258.6;
-    --secondary: 29.52% 0.0107 254;
-    --secondary-foreground: 92.15% 0.0096 93.6;
-    --muted: 29.52% 0.0107 254;
-    --muted-foreground: 72.69% 0.0114 100.9;
-    --accent: 81.68% 0.0953 250.4;
-    --accent-foreground: 23.48% 0.0895 258.6;
-    --destructive: 39.58% 0.1331 25.7;
-    --destructive-foreground: 92.15% 0.0096 93.6;
-    --warning: 77.04% 0.1646 70.7;
-    --warning-foreground: 28.01% 0.0563 94.1;
-    --success: 54.67% 0.054 167.1; /* #517B6A Cohere dark accent */
-    --success-foreground: 21.2% 0.0092 255.6;
-    --highlight-yellow: 72% 0.1 85;
-    --highlight-green: 68% 0.065 165;
-    --highlight-blue: 70% 0.08 255;
-    --border: 31.56% 0.0121 258.4;
-    --input: 31.56% 0.0121 258.4;
-    --ring: 71.47% 0.1512 254.8;
+  /* Dark and warm themes (src/lib/theme.ts sets data-theme on <html>;
+   * light keeps :root). Contrast for every pair is computed in DESIGN.md
+   * §Themes; re-run it before changing a value.
+   *
+   * Dark: blue-black surfaces with the brand hue baked in, cream ink, and
+   * the brand blue lifted so it reads on dark (light-mode lightness would
+   * fall to ~2:1). */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --background: 20.5% 0.0125 262; /* #14171D */
+    --foreground: 93.2% 0.0115 92; /* #EBE8E0 cream ink, 14.67:1 on bg */
+    --card: 24% 0.0135 262; /* #1C1F26 */
+    --card-foreground: 93.2% 0.0115 92;
+    --popover: 24% 0.0135 262;
+    --popover-foreground: 93.2% 0.0115 92;
+    --primary: 77% 0.115 256; /* #83B7FD, 8.64:1 on bg, 7.94:1 on card */
+    --primary-foreground: 20.5% 0.06 262;
+    --secondary: 22.4% 0.013 262; /* chrome layer */
+    --secondary-foreground: 93.2% 0.0115 92;
+    --muted: 28.5% 0.014 262;
+    --muted-foreground: 75.5% 0.014 95; /* 8.2:1 on bg */
+    --accent: 68% 0.15 257;
+    --accent-foreground: 18% 0.04 262;
+    --destructive: 81% 0.1 24; /* 7.18:1 on its 10% tint over card */
+    --destructive-foreground: 20.5% 0.04 25;
+    --warning: 80% 0.14 75;
+    --warning-foreground: 24% 0.05 75;
+    --success: 77% 0.085 165; /* 8.24:1 on card */
+    --success-foreground: 20.5% 0.03 165;
+    --highlight-yellow: 50% 0.095 85;
+    --highlight-green: 48% 0.07 165;
+    --highlight-blue: 48% 0.09 255;
+    --border: 33.5% 0.015 262;
+    --input: 33.5% 0.015 262;
+    --ring: 77% 0.115 256;
+    --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.35);
+    --shadow-panel: 0 8px 24px oklch(0% 0 0 / 0.45), 0 1px 2px oklch(0% 0 0 / 0.3);
+    --archive-coral: 70% 0.13 43;
+    --archive-green: 66% 0.07 176;
+    --archive-ink: 14% 0.03 262;
+  }
+
+  /* Warm: amber paper and brown ink with the blue taken out, for evening
+   * reading. Brand blue becomes a burnt sienna; nothing on the page emits
+   * a saturated blue. */
+  :root[data-theme="warm"] {
+    --background: 88.5% 0.068 92; /* #E9D8A6 */
+    --foreground: 25% 0.035 62; /* #2E1E0F, 11.41:1 on bg */
+    --card: 93% 0.052 94; /* #F3E8C1 */
+    --card-foreground: 25% 0.035 62;
+    --popover: 93% 0.052 94;
+    --popover-foreground: 25% 0.035 62;
+    --primary: 39% 0.1 48; /* #6E3108, 7.08:1 on bg, 8.14:1 on card */
+    --primary-foreground: 95% 0.04 94;
+    --secondary: 91% 0.06 93;
+    --secondary-foreground: 25% 0.035 62;
+    --muted: 86% 0.07 90;
+    --muted-foreground: 42.5% 0.05 66; /* 5.94:1 on bg */
+    --accent: 49% 0.13 50;
+    --accent-foreground: 96% 0.035 94;
+    --destructive: 38.5% 0.135 25; /* 7.18:1 on its 10% tint over card */
+    --destructive-foreground: 95% 0.04 94;
+    --warning: 75% 0.15 70;
+    --warning-foreground: 27% 0.05 70;
+    --success: 40% 0.07 135; /* olive, 7.32:1 on card */
+    --success-foreground: 95% 0.04 94;
+    --highlight-yellow: 80% 0.13 78;
+    --highlight-green: 76% 0.085 140;
+    --highlight-blue: 77% 0.055 235;
+    --border: 80% 0.07 88;
+    --input: 80% 0.07 88;
+    --ring: 39% 0.1 48;
+    --shadow-card: 0 1px 2px oklch(25% 0.035 62 / 0.08);
+    --shadow-panel: 0 8px 24px oklch(25% 0.035 62 / 0.12), 0 1px 2px oklch(25% 0.035 62 / 0.08);
+    --archive-coral: 62% 0.15 45;
+    --archive-green: 58% 0.08 130;
+    --archive-ink: 28% 0.05 55;
+    --archive-cobalt: 36% 0.035 72;
+    --archive-cobalt-vivid: 52% 0.06 72;
   }
 }
 
@@ -177,13 +232,23 @@
 
   /* Native <select> quiet restyle: drop the OS chevron for a consistent
    * muted one. Chevron stroke is --muted-foreground's hex (#5C5A50) baked
-   * into the data URI — CSS url() can't read custom properties; revisit if
-   * dark mode ever ships a toggle. Call sites keep their own border/bg/size. */
+   * into the data URI — CSS url() can't read custom properties, so each
+   * theme below repeats it in its own color. Call sites keep their own
+   * border/bg/size. */
   .select-quiet {
     @apply cursor-pointer appearance-none bg-no-repeat pr-8;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235C5A50' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-position: right 0.5rem center;
     background-size: 1rem 1rem;
+  }
+
+  /* Same chevron in each theme's --muted-foreground. */
+  :root[data-theme="dark"] .select-quiet {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23B2B0A6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
+
+  :root[data-theme="warm"] .select-quiet {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23614930' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   }
 
   /* Loading placeholder bar: muted fill with a slow breathing pulse
@@ -298,6 +363,53 @@
            hover:bg-muted hover:text-foreground
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background
            disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Theme switch (components/ThemePicker.tsx): a chrome-layer pill whose
+   * checked option sits on the card surface, like a pressed key. */
+  .theme-picker {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 0.125rem;
+    border: 1px solid oklch(var(--border));
+    border-radius: 999px;
+    background: oklch(var(--secondary));
+    padding: 0.125rem;
+  }
+
+  .theme-picker-option {
+    display: inline-grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    border-radius: 999px;
+    color: oklch(var(--muted-foreground));
+    cursor: pointer;
+    transition: color 100ms ease-out, background-color 100ms ease-out;
+  }
+
+  .theme-picker-option:hover {
+    color: oklch(var(--foreground));
+  }
+
+  .theme-picker-option[aria-checked="true"] {
+    background: oklch(var(--card));
+    color: oklch(var(--foreground));
+    box-shadow: inset 0 0 0 1px oklch(var(--border)), var(--shadow-card);
+  }
+
+  .theme-picker-option:focus-visible {
+    outline: 2px solid oklch(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* On the auth pages the switch sits in the panel's top-right corner;
+   * it comes last in the DOM, so Tab still reaches the form first. */
+  .auth-theme {
+    position: absolute;
+    top: 1.25rem;
+    right: 1.25rem;
+    z-index: 2;
   }
 }
 
@@ -641,78 +753,105 @@
   .auth-demo-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: 1fr;
     gap: 0.65rem;
   }
 
+  /* Demo portals (components/DemoPortal.tsx): each card holds a miniature
+   * of the Luminous Archive hero in inline SVG. Layout vars place the art
+   * (--art size, centered --art-r from the right and --art-t from the top)
+   * and aim the reading beam and pencil gap at the label (--align). --k
+   * scales each ring's rest offset: 1 at rest, 0.45 on hover/focus, 0 when
+   * selected, so the gaps lock onto --align. Geometry keeps every ring and
+   * register bar clear of the label box at Verdana widths. */
   .auth-demo-role {
+    --k: 1;
+    --lift: 0px;
+    --press: 1;
+    --beam: 0;
+    --art: 140px;
+    --art-r: 30px;
+    --art-t: 30px;
+    --align: 150deg;
+    --pencil: var(--align);
+    --reg: 186deg;
+    /* Highlights in the art (stars, specular, flash, flecks, sheen): the
+     * card's near-white in light and warm, the cream ink in dark. */
+    --pp-light: var(--card);
     position: relative;
+    isolation: isolate;
     display: grid;
-    min-height: 5.15rem;
+    min-height: 7rem;
     align-content: end;
     overflow: hidden;
     cursor: pointer;
     border: 1px solid oklch(var(--border));
-    border-radius: 0.85rem;
-    background: oklch(var(--card) / 0.9);
-    padding: 0.85rem 4rem 0.8rem 0.9rem;
+    border-radius: 0.65rem;
+    background: oklch(var(--card) / 0.94);
+    padding: 0.85rem 0.9rem 0.8rem;
     text-align: left;
     box-shadow: inset 0 1px 0 oklch(var(--card)),
       0 5px 16px oklch(var(--archive-ink) / 0.06);
-    transition: border-color 180ms cubic-bezier(0.25, 1, 0.5, 1),
-      background-color 180ms cubic-bezier(0.25, 1, 0.5, 1),
-      box-shadow 180ms cubic-bezier(0.25, 1, 0.5, 1),
-      transform 180ms cubic-bezier(0.25, 1, 0.5, 1);
   }
 
-  .auth-demo-role::before {
-    position: absolute;
-    top: -1.5rem;
-    right: 1.25rem;
-    width: 2.9rem;
-    height: 7.25rem;
-    border: 1px solid oklch(var(--archive-green) / 0.45);
-    border-radius: 70% 30% 68% 32%;
-    background: oklch(var(--archive-green) / 0.15);
-    content: "";
-    pointer-events: none;
-    transform: rotate(28deg);
-    transition: transform 240ms cubic-bezier(0.25, 1, 0.5, 1);
+  :root[data-theme="dark"] .auth-demo-role {
+    --pp-light: var(--foreground);
   }
 
-  .auth-demo-role:nth-child(even)::before {
-    border-color: oklch(var(--archive-coral) / 0.48);
-    background: oklch(var(--archive-coral) / 0.14);
-    transform: rotate(-28deg);
+  /* Wide, short cards (one account; three stacked below sm): the label
+   * sits far left, so the pencil arcs open downward and the register bars
+   * sit upper left of the core, where the card has height. */
+  .auth-demo-grid[data-count="1"] .auth-demo-role {
+    --art-r: 64px;
+    --art-t: 41px;
+    --align: 176deg;
+    --pencil: 90deg;
+    --reg: 202deg;
+    min-height: 5.15rem;
   }
 
-  .auth-demo-role:hover:not(:disabled) {
-    border-color: oklch(var(--primary) / 0.38);
-    box-shadow: inset 0 1px 0 oklch(var(--card)),
-      0 9px 22px oklch(var(--archive-ink) / 0.11);
-    transform: translateY(-2px);
+  .auth-demo-grid[data-count="3"] .auth-demo-role {
+    --art-r: 56px;
+    --art-t: 38px;
+    --align: 175deg;
+    --pencil: 90deg;
+    --reg: 202deg;
   }
 
-  .auth-demo-role:hover:not(:disabled)::before,
-  .auth-demo-role-active::before {
-    transform: rotate(34deg) scale(1.06);
-  }
-
-  .auth-demo-role:nth-child(even):hover:not(:disabled)::before,
-  .auth-demo-role-active:nth-child(even)::before {
-    transform: rotate(-34deg) scale(1.06);
+  @media (min-width: 640px) {
+    .auth-demo-grid[data-count="3"] .auth-demo-role {
+      --art-r: 28px;
+      --art-t: 26px;
+      --align: 135deg;
+      --pencil: 135deg;
+      --reg: 182deg;
+    }
   }
 
   .auth-demo-role-active {
-    border-color: oklch(var(--primary) / 0.55);
-    background: oklch(var(--primary) / 0.075);
-    color: oklch(var(--primary));
-    box-shadow: inset 0 0 0 1px oklch(var(--primary) / 0.08),
-      0 8px 20px oklch(var(--primary) / 0.1);
+    --k: 0;
+    --beam: 1;
+    border-color: oklch(var(--primary) / 0.5);
+    background: oklch(var(--card));
+    box-shadow: inset 0 0 0 1px oklch(var(--primary) / 0.1),
+      0 8px 22px oklch(var(--primary) / 0.13);
   }
 
   .auth-demo-role:disabled {
     cursor: not-allowed;
     opacity: 0.55;
+  }
+
+  /* Parallax is an inline translate from DemoPortal; disabled cards and
+   * reduced motion keep every layer still. */
+  .auth-demo-role:disabled .pp-layer {
+    translate: none !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pp-layer {
+      translate: none !important;
+    }
   }
 
   .auth-demo-role:focus-visible,
@@ -722,68 +861,661 @@
     outline-offset: 2px;
   }
 
-  .auth-demo-role-name {
-    position: relative;
-    z-index: 1;
+  .auth-demo-role:focus-visible {
+    --k: 0.45;
   }
 
-  .auth-demo-role-name {
-    color: oklch(var(--foreground));
+  .auth-demo-role-active:focus-visible {
+    --k: 0;
+  }
+
+  .auth-demo-role-name,
+  .auth-demo-role-measure {
     font-size: 1rem;
     font-weight: 600;
     letter-spacing: -0.02em;
     line-height: 1.2;
   }
 
+  .auth-demo-role-name {
+    position: relative;
+    z-index: 2;
+    justify-self: start;
+    color: oklch(var(--foreground));
+    text-shadow: 0 0 2px oklch(var(--card)), 0 0 7px oklch(var(--card));
+  }
+
+  /* One-line copy of the label that DemoPortal measures to decide whether
+   * the label needs room (auth-demo-role-long). Never painted. */
+  .auth-demo-role-measure {
+    position: absolute;
+    top: 0;
+    left: 0;
+    visibility: hidden;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
   .auth-demo-role-active .auth-demo-role-name {
     color: oklch(var(--primary));
   }
 
-  .auth-demo-role-orbit {
+  /* Long labels wrap, so the card makes room instead of letting them run
+   * into the art: narrow cards push the label below the rings (the row
+   * grows), wide cards cap its width short of the rings. 0.42 x --art is
+   * the outer ring's reach, pulled-out tabs included; the width cap uses
+   * 0.5 x --art so it also clears the register bars. */
+  .auth-demo-role-long {
+    --pencil: 110deg;
+    padding-top: calc(var(--art-t) + var(--art) * 0.42);
+  }
+
+  .auth-demo-grid[data-count="1"] .auth-demo-role-long,
+  .auth-demo-grid[data-count="3"] .auth-demo-role-long {
+    --pencil: 90deg;
+    padding-top: 0.85rem;
+  }
+
+  .auth-demo-grid[data-count="1"] .auth-demo-role-long .auth-demo-role-name,
+  .auth-demo-grid[data-count="3"] .auth-demo-role-long .auth-demo-role-name {
+    max-width: calc(100% - var(--art-r) - var(--art) * 0.5 + 0.4rem);
+  }
+
+  @media (min-width: 640px) {
+    .auth-demo-grid[data-count="3"] .auth-demo-role-long {
+      --pencil: 110deg;
+      padding-top: calc(var(--art-t) + var(--art) * 0.42);
+    }
+
+    .auth-demo-grid[data-count="3"] .auth-demo-role-long .auth-demo-role-name {
+      max-width: none;
+    }
+  }
+
+  /* Light that follows the pointer: a rim on the border and a glass sheen. */
+  .pp-rim,
+  .pp-sheen {
     position: absolute;
-    top: 50%;
-    right: -0.45rem;
-    width: 4.3rem;
-    height: 2.7rem;
-    border: 1px solid oklch(var(--primary) / 0.24);
-    border-radius: 50%;
+    border-radius: inherit;
     pointer-events: none;
-    transform: translateY(-50%) rotate(-16deg);
+    opacity: 0;
   }
 
-  .auth-demo-role:nth-child(even) .auth-demo-role-orbit {
-    transform: translateY(-50%) rotate(16deg);
+  .pp-rim {
+    inset: 0;
+    z-index: 3;
+    padding: 1.5px;
+    background: radial-gradient(
+      6rem circle at var(--mx, 50%) var(--my, 0%),
+      oklch(var(--accent)),
+      oklch(var(--accent) / 0.35) 45%,
+      oklch(var(--primary) / 0) 80%
+    );
+    -webkit-mask: linear-gradient(black, black) content-box, linear-gradient(black, black);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(black, black) content-box exclude, linear-gradient(black, black);
   }
 
-  .auth-demo-role-orbit span {
+  .pp-sheen {
+    inset: 0;
+    z-index: 1;
+    overflow: hidden;
+    background: radial-gradient(
+      9rem circle at var(--mx, 50%) var(--my, 0%),
+      oklch(var(--pp-light) / 0.12),
+      oklch(var(--pp-light) / 0) 70%
+    );
+  }
+
+  .pp-sheen::after {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 1.35rem;
-    height: 1.35rem;
-    border-radius: 42% 58% 48% 52%;
-    background: oklch(var(--archive-ink));
-    box-shadow: 0 0 0 0.35rem oklch(var(--primary) / 0.08),
-      -0.75rem 0.55rem 0 oklch(var(--archive-coral) / 0.72);
-    transform: translate(-50%, -50%) rotate(12deg);
-    transition: box-shadow 240ms cubic-bezier(0.25, 1, 0.5, 1),
-      transform 240ms cubic-bezier(0.25, 1, 0.5, 1);
+    top: -40%;
+    left: 0;
+    width: 38%;
+    height: 180%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      oklch(var(--pp-light) / 0.5) 45%,
+      oklch(var(--archive-green) / 0.16) 60%,
+      transparent
+    );
+    content: "";
+    opacity: 0;
+    transform: translateX(-140%) rotate(18deg);
   }
 
-  .auth-demo-role:nth-child(even) .auth-demo-role-orbit span {
-    box-shadow: 0 0 0 0.35rem oklch(var(--primary) / 0.08),
-      0.7rem -0.5rem 0 oklch(var(--archive-green) / 0.72);
+  .pp-art {
+    position: absolute;
+    z-index: 0;
+    opacity: 0.94;
+    top: calc(var(--art-t) - var(--art) / 2);
+    right: calc(var(--art-r) - var(--art) / 2);
+    width: var(--art);
+    height: var(--art);
+    overflow: visible;
+    pointer-events: none;
   }
 
-  .auth-demo-role-active .auth-demo-role-orbit span {
-    box-shadow: 0 0 0 0.5rem oklch(var(--primary) / 0.12),
-      -0.75rem 0.55rem 0 oklch(var(--archive-coral) / 0.82);
-    transform: translate(-50%, -50%) rotate(12deg) scale(1.08);
+  .pp-art * {
+    transform-box: view-box;
+    transform-origin: 50% 50%;
   }
 
-  .auth-demo-role-active:nth-child(even) .auth-demo-role-orbit span {
-    box-shadow: 0 0 0 0.5rem oklch(var(--primary) / 0.12),
-      0.7rem -0.5rem 0 oklch(var(--archive-green) / 0.82);
+  .pp-spin {
+    transform: rotate(calc(var(--align) + var(--off) * var(--k)));
+  }
+
+  .pp-spin-register {
+    transform: rotate(calc(var(--reg) + var(--off) * var(--k)));
+  }
+
+  .pp-pencil-axis {
+    transform: rotate(var(--pencil));
+  }
+
+  .pp-beam-axis {
+    transform: rotate(var(--align));
+  }
+
+  .pp-pencil {
+    fill: none;
+    stroke: oklch(var(--foreground) / 0.17);
+    stroke-width: 0.7;
+    stroke-dasharray: 1 1;
+    stroke-dashoffset: 0.55;
+  }
+
+  .pp-ticks {
+    fill: none;
+    stroke: oklch(var(--foreground) / 0.2);
+    stroke-width: 0.6;
+  }
+
+  .pp-shadow-offset {
+    transform: translate(0.9px, 1.9px);
+  }
+
+  .pp-shadow {
+    fill: oklch(var(--foreground) / 0.11);
+    stroke: oklch(var(--foreground) / 0.05);
+    stroke-width: 1.8;
+    stroke-linejoin: round;
+  }
+
+  .pp-edge {
+    fill: none;
+    stroke: oklch(var(--foreground) / 0.24);
+    stroke-width: 0.45;
+  }
+
+  .pp-grid {
+    fill: none;
+    stroke: oklch(var(--foreground) / 0.14);
+    stroke-width: 0.3;
+  }
+
+  .pp-grid-mineral {
+    stroke: oklch(var(--pp-light) / 0.3);
+  }
+
+  /* Stops use plain tokens; the @supports block below refines them with
+   * color-mix (warm paper, grey sage mineral, deep cobalt glass). Without
+   * the guard a browser lacking color-mix would compute black stops. */
+  .pp-stop-card {
+    stop-color: oklch(var(--card));
+  }
+
+  .pp-stop-paper {
+    stop-color: oklch(var(--card));
+  }
+
+  .pp-stop-paper-deep {
+    stop-color: oklch(var(--background));
+  }
+
+  .pp-stop-mineral-light {
+    stop-color: oklch(var(--archive-green) / 0.3);
+  }
+
+  .pp-stop-mineral {
+    stop-color: oklch(var(--archive-green) / 0.45);
+  }
+
+  .pp-stop-mineral-deep {
+    stop-color: oklch(var(--archive-green) / 0.6);
+  }
+
+  .pp-stop-mottle {
+    stop-color: oklch(var(--pp-light) / 0.28);
+  }
+
+  .pp-stop-mottle-clear {
+    stop-color: oklch(var(--pp-light) / 0);
+  }
+
+  .pp-stop-glass-hot {
+    stop-color: oklch(var(--archive-cobalt-vivid));
+  }
+
+  .pp-stop-glass {
+    stop-color: oklch(var(--archive-cobalt));
+  }
+
+  .pp-stop-glass-deep {
+    stop-color: oklch(var(--archive-ink));
+  }
+
+  .pp-stop-glass-edge {
+    stop-color: oklch(var(--archive-ink));
+  }
+
+  .pp-stop-flash {
+    stop-color: oklch(var(--pp-light) / 0.95);
+  }
+
+  .pp-stop-flash-mid {
+    stop-color: oklch(var(--accent) / 0.55);
+  }
+
+  .pp-stop-flash-clear {
+    stop-color: oklch(var(--accent) / 0);
+  }
+
+  .pp-stop-streak {
+    stop-color: oklch(var(--accent) / 0.4);
+  }
+
+  .pp-stop-streak-clear {
+    stop-color: oklch(var(--accent) / 0);
+  }
+
+  .pp-stop-halo {
+    stop-color: oklch(var(--accent) / 0.32);
+  }
+
+  .pp-stop-halo-clear {
+    stop-color: oklch(var(--accent) / 0);
+  }
+
+  .pp-stop-beam {
+    stop-color: oklch(var(--accent) / 0.95);
+  }
+
+  .pp-stop-beam-mid {
+    stop-color: oklch(var(--accent) / 0.5);
+  }
+
+  .pp-stop-beam-clear {
+    stop-color: oklch(var(--primary) / 0);
+  }
+
+  @supports (color: color-mix(in oklab, red, blue)) {
+    .auth-demo-role-active {
+      background: color-mix(in oklab, oklch(var(--card)) 95%, oklch(var(--accent)));
+    }
+
+    /* Persimmon plus mineral mixes to a yellow ochre, which warms the
+     * paper toward the hero's cream without a status token. */
+    .pp-stop-paper {
+      stop-color: color-mix(
+        in oklab,
+        color-mix(
+          in oklab,
+          color-mix(in oklab, oklch(var(--card)) 78%, oklch(var(--archive-coral))),
+          oklch(var(--archive-green)) 10%
+        ),
+        oklch(var(--foreground)) 2%
+      );
+    }
+
+    .pp-stop-paper-deep {
+      stop-color: color-mix(
+        in oklab,
+        color-mix(
+          in oklab,
+          color-mix(in oklab, oklch(var(--background)) 76%, oklch(var(--archive-coral))),
+          oklch(var(--archive-green)) 12%
+        ),
+        oklch(var(--foreground)) 2%
+      );
+    }
+
+    /* Grey sage: green over the cream canvas, its cyan cancelled by a
+     * touch of persimmon and settled with warm ink. */
+    .pp-stop-mineral-light {
+      stop-color: color-mix(
+        in oklab,
+        color-mix(
+          in oklab,
+          color-mix(in oklab, oklch(var(--background)) 62%, oklch(var(--archive-green))),
+          oklch(var(--archive-coral)) 20%
+        ),
+        oklch(var(--foreground)) 4%
+      );
+    }
+
+    .pp-stop-mineral {
+      stop-color: color-mix(
+        in oklab,
+        color-mix(
+          in oklab,
+          color-mix(in oklab, oklch(var(--background)) 48%, oklch(var(--archive-green))),
+          oklch(var(--archive-coral)) 20%
+        ),
+        oklch(var(--foreground)) 10%
+      );
+    }
+
+    .pp-stop-mineral-deep {
+      stop-color: color-mix(
+        in oklab,
+        color-mix(
+          in oklab,
+          color-mix(in oklab, oklch(var(--background)) 42%, oklch(var(--archive-green))),
+          oklch(var(--archive-coral)) 25%
+        ),
+        oklch(var(--foreground)) 18%
+      );
+    }
+
+    .pp-stop-glass-deep {
+      stop-color: color-mix(in oklab, oklch(var(--archive-cobalt)) 50%, oklch(var(--archive-ink)));
+    }
+
+    .pp-stop-glass-edge {
+      stop-color: color-mix(in oklab, oklch(var(--archive-ink)) 80%, oklch(var(--foreground)));
+    }
+  }
+
+  .pp-bar {
+    fill: oklch(var(--archive-coral));
+    stroke: oklch(var(--foreground) / 0.3);
+    stroke-width: 0.35;
+  }
+
+  .pp-bezel {
+    stroke: oklch(var(--foreground) / 0.2);
+    stroke-width: 0.45;
+  }
+
+  .pp-bezel-light {
+    fill: none;
+    stroke: oklch(var(--pp-light));
+    stroke-linecap: round;
+    stroke-width: 1.1;
+  }
+
+  .pp-recess {
+    fill: none;
+    stroke: oklch(var(--archive-ink) / 0.6);
+    stroke-width: 1.5;
+  }
+
+  .pp-orbits {
+    fill: none;
+    stroke: oklch(var(--pp-light) / 0.5);
+    stroke-width: 0.4;
+  }
+
+  .pp-star {
+    fill: oklch(var(--pp-light) / 0.85);
+  }
+
+  .pp-crescent {
+    fill: oklch(var(--pp-light) / 0.9);
+  }
+
+  .pp-halo {
+    opacity: 0;
+  }
+
+  .auth-demo-role-active .pp-halo,
+  .auth-demo-role:focus-visible .pp-halo {
+    opacity: 1;
+  }
+
+  .pp-crescent-glow {
+    fill: none;
+    stroke: oklch(var(--pp-light) / 0.32);
+    stroke-linecap: round;
+    stroke-width: 3.4;
+  }
+
+  .pp-glint {
+    fill: oklch(var(--pp-light));
+  }
+
+  .pp-flare {
+    fill: none;
+    stroke: oklch(var(--pp-light) / 0.85);
+    stroke-linecap: round;
+    stroke-width: 0.4;
+  }
+
+  .pp-flash {
+    opacity: 0;
+  }
+
+  /* A card that loses the selection mid-burst lets the burst go quietly. */
+  .auth-demo-role:not(.auth-demo-role-active) .pp-burst {
+    opacity: 0;
+  }
+
+  .pp-beam {
+    transform: scaleX(var(--beam));
+  }
+
+  .pp-beam-line {
+    fill: none;
+    stroke: oklch(var(--pp-light) / 0.85);
+    stroke-linecap: round;
+    stroke-width: 0.7;
+  }
+
+  .pp-fleck {
+    fill: oklch(var(--pp-light));
+    stroke: oklch(var(--archive-ink) / 0.35);
+    stroke-width: 0.4;
+    opacity: 0;
+    transform-origin: 0 0;
+  }
+
+  .pp-fleck-cobalt {
+    fill: oklch(var(--archive-cobalt));
+    stroke: none;
+  }
+
+  .pp-fleck-coral {
+    fill: oklch(var(--archive-coral));
+  }
+
+  .pp-fleck-green {
+    fill: oklch(var(--archive-green));
+  }
+
+  .pp-wave {
+    fill: none;
+    stroke: oklch(var(--accent) / 0.9);
+    stroke-width: 1.6;
+    vector-effect: non-scaling-stroke;
+    opacity: 0;
+  }
+
+  .pp-wave-late {
+    stroke: oklch(var(--archive-green) / 0.8);
+  }
+
+  .auth-demo-role-active .pp-core {
+    transform: scale(1.04);
+  }
+
+  .auth-demo-role-active .pp-art,
+  .auth-demo-role:focus-visible .pp-art {
+    opacity: 1;
+  }
+
+  /* Hover and keyboard focus: light on, pencil drawn, rings part-aligned.
+   * Static state changes, so they hold under reduced motion too. */
+  @media (hover: hover) and (pointer: fine) {
+    .auth-demo-role:hover:not(:disabled) {
+      --k: 0.45;
+      border-color: oklch(var(--primary) / 0.32);
+      box-shadow: inset 0 1px 0 oklch(var(--card)),
+        0 14px 30px oklch(var(--archive-ink) / 0.13);
+    }
+
+    .auth-demo-role-active:hover:not(:disabled) {
+      --k: 0;
+      border-color: oklch(var(--primary) / 0.6);
+      box-shadow: inset 0 0 0 1px oklch(var(--primary) / 0.12),
+        0 14px 30px oklch(var(--primary) / 0.16);
+    }
+
+    .auth-demo-role:hover:not(:disabled) .pp-rim,
+    .auth-demo-role:hover:not(:disabled) .pp-sheen,
+    .auth-demo-role:hover:not(:disabled) .pp-art,
+    .auth-demo-role:hover:not(:disabled) .pp-halo {
+      opacity: 1;
+    }
+
+    .auth-demo-role:hover:not(:disabled) .pp-pencil {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  .auth-demo-role:focus-visible .pp-rim,
+  .auth-demo-role:focus-visible .pp-sheen {
+    opacity: 1;
+  }
+
+  .auth-demo-role:focus-visible .pp-pencil {
+    stroke-dashoffset: 0;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .auth-demo-role {
+      transform: translateY(var(--lift)) scale(var(--press));
+      transition: border-color 240ms cubic-bezier(0.25, 1, 0.5, 1),
+        background-color 240ms cubic-bezier(0.25, 1, 0.5, 1),
+        box-shadow 240ms cubic-bezier(0.25, 1, 0.5, 1),
+        transform 200ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .auth-demo-role:active:not(:disabled) {
+      --press: 0.975;
+    }
+
+    .auth-demo-role:active:not(:disabled) .pp-core {
+      transform: scale(0.9);
+    }
+
+    .pp-layer {
+      transition: translate 420ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .pp-spin {
+      transition: transform 820ms cubic-bezier(0.25, 1, 0.5, 1) var(--delay);
+      animation: pp-register 1.5s cubic-bezier(0.25, 1, 0.5, 1) backwards;
+      animation-delay: calc(var(--delay) + 120ms);
+    }
+
+    .pp-spin-register {
+      animation-name: pp-register-bars;
+    }
+
+    .pp-pencil {
+      transition: stroke-dashoffset 900ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .pp-beam {
+      transition: transform 200ms cubic-bezier(0.25, 1, 0.5, 1);
+      animation: pp-beam-draw 560ms cubic-bezier(0.25, 1, 0.5, 1) 900ms backwards;
+    }
+
+    .pp-burst {
+      transition: opacity 160ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .auth-demo-role-active .pp-beam {
+      transition: transform 560ms cubic-bezier(0.25, 1, 0.5, 1) 520ms;
+    }
+
+    .pp-core {
+      transition: transform 320ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .pp-rim,
+    .pp-sheen,
+    .pp-art,
+    .pp-halo {
+      transition: opacity 240ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    /* A prefilled card's halo and beam wait for the rings to arrive. */
+    .pp-halo {
+      animation: pp-fade-in 600ms cubic-bezier(0.25, 1, 0.5, 1) 700ms backwards;
+    }
+
+    .pp-fleck {
+      animation: pp-gather 620ms cubic-bezier(0.25, 1, 0.5, 1) calc(var(--i) * 18ms) both;
+    }
+
+    .pp-burst .pp-flash {
+      animation: pp-flash 1s cubic-bezier(0.25, 1, 0.5, 1) both;
+    }
+
+    .pp-wave {
+      animation: pp-wave 900ms cubic-bezier(0.25, 1, 0.5, 1) 600ms forwards;
+    }
+
+    .pp-wave-late {
+      animation-delay: 720ms;
+    }
+
+    .auth-demo-role-active .pp-orbits {
+      animation: pp-orbit 16s linear infinite;
+    }
+
+    :root[data-perf="low"] .auth-demo-role-active .pp-orbits {
+      animation: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+    .auth-demo-role:hover:not(:disabled) {
+      --lift: -3px;
+    }
+
+    .auth-demo-role:hover:active:not(:disabled) {
+      --lift: 0px;
+    }
+
+    .auth-demo-role:hover:not(:disabled) .pp-sheen::after {
+      animation: pp-sweep 1s cubic-bezier(0.25, 1, 0.5, 1) both;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .auth-demo-role:focus-visible {
+      --lift: -3px;
+    }
+
+    .auth-demo-role:focus-visible .pp-sheen::after {
+      animation: pp-sweep 1s cubic-bezier(0.25, 1, 0.5, 1) both;
+    }
+  }
+
+  /* High contrast: the selection keeps a visible frame and label colour. */
+  @media (forced-colors: active) {
+    .auth-demo-role-active:not(:focus-visible) {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+
+    .auth-demo-role-active .auth-demo-role-name {
+      color: Highlight;
+    }
   }
 
   .auth-field {
@@ -869,6 +1601,26 @@
     overflow: hidden;
     background: oklch(92.5% 0.022 78);
     isolation: isolate;
+  }
+
+  /* The hero is one cream photograph, so the themes tint it instead of
+   * swapping assets: dark dims it toward the page, warm turns it sepia so
+   * the cobalt core becomes bronze and no saturated blue remains. Planes are copies of the same image and take the
+   * same filter, so the bands stay registered. */
+  :root[data-theme="dark"] .archive-visual {
+    background: oklch(var(--background));
+  }
+
+  :root[data-theme="dark"] :is(.archive-image, .archive-layer-image) {
+    filter: brightness(0.34) contrast(1.1) saturate(0.9);
+  }
+
+  :root[data-theme="warm"] .archive-visual {
+    background: oklch(var(--background));
+  }
+
+  :root[data-theme="warm"] :is(.archive-image, .archive-layer-image) {
+    filter: sepia(0.95) saturate(0.9) brightness(0.88);
   }
 
   .archive-image,
@@ -1413,6 +2165,100 @@
   animation: none;
 }
 
+/* Demo portals (components/DemoPortal.tsx). */
+@keyframes pp-register {
+  from {
+    opacity: 0;
+    transform: rotate(calc(var(--align) + var(--off) * var(--k) - 70deg));
+  }
+}
+
+/* The bars come in from above the core, away from the label. */
+@keyframes pp-register-bars {
+  from {
+    opacity: 0;
+    transform: rotate(calc(var(--reg) + var(--off) * var(--k) + 60deg));
+  }
+}
+
+@keyframes pp-beam-draw {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes pp-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pp-gather {
+  0% {
+    opacity: 0;
+    transform: translate(100px, 100px) rotate(calc(var(--a) - 40deg)) translateX(var(--r0))
+      rotate(70deg) scale(1.4);
+  }
+  14%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(100px, 100px) rotate(var(--a)) translateX(22px) rotate(0deg) scale(0.5);
+  }
+}
+
+@keyframes pp-flash {
+  0%,
+  50% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  62% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+@keyframes pp-wave {
+  0% {
+    opacity: 0.95;
+    transform: scale(1);
+  }
+  45% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(3.6);
+  }
+}
+
+@keyframes pp-sweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-140%) rotate(18deg);
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(330%) rotate(18deg);
+  }
+}
+
+@keyframes pp-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes archive-rear-settle {
   from {
     opacity: 0.7;
@@ -1679,8 +2525,22 @@
     grid-template-columns: 1fr;
   }
 
-  .auth-demo-role {
+  .auth-demo-grid .auth-demo-role {
+    --art-r: 56px;
+    --art-t: 38px;
+    --align: 175deg;
+    --pencil: 90deg;
+    --reg: 202deg;
     min-height: 4.75rem;
+  }
+
+  .auth-demo-grid .auth-demo-role-long {
+    --pencil: 90deg;
+    padding-top: 0.85rem;
+  }
+
+  .auth-demo-grid .auth-demo-role-long .auth-demo-role-name {
+    max-width: calc(100% - var(--art-r) - var(--art) * 0.5 + 0.4rem);
   }
 }
 
