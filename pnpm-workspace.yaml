@@ -30,7 +30,7 @@ catalog:
   autoprefixer: ^10.4.20
   drizzle-orm: 0.45.2
   drizzle-kit: ^0.24.2
-  vitest: ^2.1.1
+  vitest: ^4.1.11
 
 # Dependabot version updates run pnpm with minimum-release-age=4320 (its
 # default 3-day cooldown). A manifest specifier whose floor is younger than
