@@ -2,8 +2,8 @@ name: Scanner image
 
 # Builds the `scanner` service image (services/scanner/Dockerfile), runs it,
 # and checks the real ClamAV engine through the HTTP contract: clean files
-# pass, EICAR is infected, a wrong token or HMAC gets 401, an oversize body is
-# refused. Also runs the wrapper's contract tests against a fake clamd and a
+# pass, EICAR and a zip past the extraction limit are infected, a wrong token
+# or HMAC gets 401, an oversize body is refused. Also runs the wrapper's contract tests against a fake clamd and a
 # report-only Grype scan of the image. Every action is pinned to a full commit SHA.
 on:
   pull_request:

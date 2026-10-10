@@ -13,6 +13,15 @@ stop_all() {
 }
 trap 'stop_all; exit 0' TERM INT
 
+# One update before clamd loads, so clamd starts on current signatures (the
+# image's bundled database can be weeks old, and a reload notice sent before
+# clamd's socket exists is lost). On failure, start with the bundled database;
+# /health reports it stale past 48 hours.
+grep -v '^NotifyClamd' "$conf/freshclam.conf" > /tmp/freshclam-initial.conf
+freshclam --config-file=/tmp/freshclam-initial.conf --stdout \
+  || echo "[scanner] initial signature update failed; starting with the bundled database" >&2
+rm -f /tmp/freshclam-initial.conf
+
 freshclam --config-file="$conf/freshclam.conf" --daemon --stdout &
 clamd --config-file="$conf/clamd.conf" &
 node "$conf/server.mjs" &

@@ -1,9 +1,11 @@
 // Smoke test against a running scanner (the real ClamAV engine):
 //   SCANNER_TOKEN=... SCANNER_HMAC_KEY=... node services/scanner/test/smoke.mjs http://127.0.0.1:8080
 // Waits for /health, then checks: clean text and a minimal PDF are clean,
-// EICAR is infected, a wrong token or HMAC gets 401, a body over 20 MiB is
-// refused. Exits non-zero on the first failure.
+// EICAR is infected, a small zip that expands past ClamAV's file-size limit
+// is flagged (AlertExceedsMax), a wrong token or HMAC gets 401, a body over
+// 20 MiB is refused. Exits non-zero on the first failure.
 import { createHash, createHmac } from "node:crypto";
+import { crc32, deflateRawSync } from "node:zlib";
 
 const base = process.argv[2] ?? "http://127.0.0.1:8080";
 const token = process.env.SCANNER_TOKEN ?? "";
@@ -19,6 +21,39 @@ const PDF = `%PDF-1.4
 trailer << /Root 1 0 R >>
 %%EOF
 `;
+
+/** One-entry zip whose member (zeros) is larger than clamd's MaxFileSize (100 MiB). */
+function oversizedMemberZip() {
+  const data = Buffer.alloc(105 * 1024 * 1024);
+  const packed = deflateRawSync(data, { level: 9 });
+  const name = Buffer.from("big.bin");
+  const crc = crc32(data);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt16LE(8, 8);
+  local.writeUInt32LE(crc, 14);
+  local.writeUInt32LE(packed.length, 18);
+  local.writeUInt32LE(data.length, 22);
+  local.writeUInt16LE(name.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(20, 4);
+  central.writeUInt16LE(20, 6);
+  central.writeUInt16LE(8, 10);
+  central.writeUInt32LE(crc, 16);
+  central.writeUInt32LE(packed.length, 20);
+  central.writeUInt32LE(data.length, 24);
+  central.writeUInt16LE(name.length, 28);
+  const centralOffset = local.length + name.length + packed.length;
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(central.length + name.length, 12);
+  end.writeUInt32LE(centralOffset, 16);
+  return Buffer.concat([local, name, packed, central, name, end]);
+}
 
 async function scan(body, { authToken = token, key = hmacKey } = {}) {
   const response = await fetch(`${base}/scan`, {
@@ -73,6 +108,13 @@ check(
   "EICAR -> infected",
   eicar.status === 200 && eicar.json.verdict === "infected" && /eicar/i.test(eicar.json.signature ?? ""),
   eicar
+);
+
+const bomb = await scan(oversizedMemberZip());
+check(
+  "zip past the file-size limit -> infected",
+  bomb.status === 200 && bomb.json.verdict === "infected" && /Limits.Exceeded/.test(bomb.json.signature ?? ""),
+  bomb
 );
 
 const badHmac = await scan(Buffer.from(EICAR), { key: "wrong-key-wrong-key-wrong-key-wrong" });
