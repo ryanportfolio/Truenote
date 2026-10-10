@@ -33,11 +33,11 @@ The evidence owner confirms:
 - [ ] The exact deployed application runtime database role is approved and can
       be supplied through `truenote.evidence_runtime_role`. The evidence
       operator does not assume that runtime role.
-- [ ] The P0/P1 and SIEM DDL versions tied to the release are approved.
+- [ ] The P0/P1 and monitoring DDL versions tied to the release (`lib/db/sql/`) are approved.
 - [ ] Security-approved non-live test values are available; no real customer or
       cardholder data will be used.
-- [ ] SIEM, OpenRouter, platform, and application observers are available for the
-      runtime exercises that require them.
+- [ ] Alert-email, OpenRouter, platform, and application observers are available
+      for the runtime exercises that require them.
 
 Any unchecked prerequisite blocks execution.
 
@@ -58,7 +58,7 @@ Before tracing any `TN-FLOW-*` path, also confirm:
       `destructiveTestingProhibited=true` remain true.
 
 The provisional record authorizes only this bounded stable-flow trace. It does
-not authorize the workload, credential-administration, SIEM failure, catalog, or
+not authorize the workload, credential-administration, alert failure, catalog, or
 other exercises below merely because they share this runbook.
 
 ### 1.2 Other evidence exercises
@@ -116,9 +116,8 @@ Acceptance requires:
 2. all expected tables, columns, validated constraints, valid/ready indexes,
    functions, enabled triggers, and privilege checks appear exactly once;
 3. security-definer functions report a fixed `search_path` where required;
-4. SIEM mutation functions are not executable by `PUBLIC`, the runtime role can
-   execute only the intended claim/complete/fail/health functions, and the outbox
-   has no `PUBLIC` table privilege;
+4. `append_security_event` is not executable by `PUBLIC`, the runtime role can
+   execute it, and `security_events` has no `PUBLIC` table privilege;
 5. a qualified reviewer compares the retained definitions and SHA-256 values in
    the second result set with the approved repository DDL; and
 6. the exported result file is hashed and linked from a completed structured
@@ -157,23 +156,25 @@ Do not lower thresholds or disable controls solely to simplify the test. Capacit
 owners must approve thresholds against expected shift-change, import, and
 evaluation bursts.
 
-## 5. Exercise audit and SIEM delivery
+## 5. Exercise audit logging and security alerts
 
-Trigger an approved, reversible security event using the application—not a direct
-insert. Capture only synthetic identifiers and redacted metadata.
+Trigger an approved, reversible security event using the application, not a direct
+insert. Capture only synthetic identifiers and redacted metadata. Rules, delivery
+and the per-rule test record: [`docs/security/monitoring.md`](../../security/monitoring.md).
 
 Acceptance requires:
 
 - an append-only security event with request correlation;
-- a transactional outbox row for the same event;
-- a signed receiver request accepted by the configured SIEM;
-- delivery state reaching `delivered`;
-- the corresponding SIEM search/alert receipt;
-- a controlled receiver failure demonstrating retry and then recovery; and
-- a controlled maximum-attempt exercise demonstrating dead-letter visibility and
-  the documented responder path.
+- the matching `[security-event]` line in the worker log, and in the daily export
+  in the private `ryanportfolio/truenote-ops` repository once that day is exported
+  (`security_alert_delivery`);
+- the alert email for the rule the event triggers (`security_alert_delivery`);
+- a controlled alert-email failure showing the monitor keeps the cursor, retries,
+  and delivers after recovery (`security_monitor_recovery`); and
+- a controlled audit write failure showing the alert email arrives without the
+  database (`audit_write_failure_alert`).
 
-Detailed webhook bodies, signing keys, and exploit material remain restricted.
+Fault-injection steps and alert recipients remain restricted.
 
 ## 6. Exercise the local provider firewall and OpenRouter guardrails separately
 

@@ -458,17 +458,28 @@ export function applyVersionActivity(
 }
 
 /**
- * Erase durable citation snapshots that reference a now-deleted document, so
- * a removed document's excerpts are purged from every user's history at rest
- * — not merely hidden at read time. The whole snapshot for a matching row is
- * nulled (a partial edit would corrupt the index-aligned receipt); those rows
- * fall back to the legacy resolver, which filters to active versions and so
- * drops the deleted chunks. Program-scoped. Returns the number of rows
- * scrubbed.
+ * Value written over a purged snapshot. `query_log.citation_snapshots` is
+ * NOT NULL, so NULL fails the whole UPDATE. `[]` is not used either: it reads
+ * as "never frozen", and the reingest backfill would re-freeze it from live
+ * chunks, which a revoked version keeps. This non-array object fails
+ * parseCitationSnapshots (no receipt), reads as `[]` through
+ * snapshotsArraySql, yields NULL for `-> index` deep-link lookups, and never
+ * matches the `[]` predicates in saveCitationSnapshots or reingest.
+ */
+export const PURGED_CITATION_SNAPSHOTS = JSON.stringify({ purged: true });
+
+/**
+ * Erase durable citation snapshots that reference a revoked or deleted
+ * document, so its excerpts are purged from every user's history at rest,
+ * not merely hidden at read time. The whole snapshot for a matching row is
+ * replaced with PURGED_CITATION_SNAPSHOTS (a partial edit would corrupt the
+ * index-aligned receipt); those rows fall back to the legacy resolver, which
+ * requires every cited chunk to be on a current active version and so
+ * withholds the exchange. Program-scoped. Returns the number of rows scrubbed.
  *
- * Best-effort by design: the history read path (applyVersionActivity) already
- * refuses to serve deleted-version excerpts, so a failure here is a lost
- * at-rest cleanup, not an exposure.
+ * Best-effort by design: the history read path already refuses to serve
+ * revoked or deleted excerpts, so a failure here is a lost at-rest cleanup,
+ * not an exposure.
  */
 export async function purgeCitationSnapshotsForDocument(input: {
   programId: string;
@@ -477,7 +488,7 @@ export async function purgeCitationSnapshotsForDocument(input: {
   const marker = JSON.stringify([{ doc_id: input.documentId }]);
   const result = await db.execute(sql`
     UPDATE query_log
-    SET citation_snapshots = NULL
+    SET citation_snapshots = ${PURGED_CITATION_SNAPSHOTS}::jsonb
     WHERE program_id = ${input.programId}::uuid
       AND citation_snapshots @> ${marker}::jsonb
     RETURNING id

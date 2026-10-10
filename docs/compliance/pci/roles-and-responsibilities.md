@@ -19,7 +19,7 @@ No populated record or appointment is supplied by this repository.
 | Change authority | Approve production and emergency changes | Unassigned | Appointment and change records |
 | Platform/database owner | Own Railway platform and database configuration, production definitions, backup/restore, and recovery evidence | Unassigned | Read-only catalog-query output/definitions, configuration exports, and exercise results |
 | IAM owner | Own IdP/MFA, break-glass, access reviews, and joiner/mover/leaver evidence | Unassigned | IdP exports and review records |
-| Security operations/SIEM owner | Own event delivery, alerting, retention, dead-letter response, and incident escalation | Unassigned | SIEM receipts, alert tests, runbooks |
+| Security operations/SIEM owner | Own alert rules and recipients, the security monitor, the off-Railway log copy and its retention, alert review, and incident escalation | Unassigned | Alert test record, review records, runbooks |
 | Data/content owner | Approve sources, classifications, retention, revocation, and permitted sensitive-data use | Unassigned | Approval and review records |
 | Vendor-risk owner | Own provider due diligence, contracts, subprocessor/data-retention evidence, and annual review | Unassigned | Responsibility matrix and current attestations |
 
