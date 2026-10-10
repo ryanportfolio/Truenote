@@ -1,0 +1,69 @@
+name: Dependency scan
+
+# Daily audit of every dependency, development dependencies included. The
+# runtime image runs TypeScript through tsx, a development dependency, so
+# development dependencies ship to production and the production-only audit
+# in security.yml does not cover them. The full JSON report is retained; the
+# job fails on a High or Critical advisory, and a failed scheduled run opens
+# an issue. Every action is pinned to a full commit SHA.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/dependency-scan.yml
+      - .github/workflows/scheduled-failure-issue.yml
+  schedule:
+    - cron: "37 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-audit:
+    name: Full dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Audit report, all dependencies
+        run: |
+          corepack pnpm@11.13.0 --pm-on-fail=ignore audit --json > pnpm-audit-full.json || true
+          {
+            echo "### Advisories by severity, all dependencies"
+            echo '```json'
+            jq '.metadata.vulnerabilities' pnpm-audit-full.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain the audit report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pnpm-audit-full
+          path: pnpm-audit-full.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Fail on High or Critical advisories
+        run: corepack pnpm@11.13.0 --pm-on-fail=ignore audit --audit-level high
+
+  notify-failure:
+    name: Report a failed scheduled run
+    needs: [full-audit]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/scheduled-failure-issue.yml

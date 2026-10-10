@@ -1,0 +1,3239 @@
+{
+ "source": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_MODERATE-baseline-resolved-profile_catalog-min.json",
+ "sha256": "27936e7023400619300e5deddeb87c2bee05f03cea37d65fabba0fe21d1fe8e7",
+ "title": "Electronic (OSCAL) Version of NIST Special Publication 800-53 Revision 5.2.0 MODERATE IMPACT BASELINE",
+ "version": "5.2.0",
+ "lastModified": "2026-05-13T05:08:58.668341Z",
+ "controls": {
+  "AC-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "AC-01",
+    "AC-01a.",
+    "AC-01a.[01]",
+    "AC-01a.[02]",
+    "AC-01a.[03]",
+    "AC-01a.[04]",
+    "AC-01a.01",
+    "AC-01a.01(a)",
+    "AC-01a.01(a)[01]",
+    "AC-01a.01(a)[02]",
+    "AC-01a.01(a)[03]",
+    "AC-01a.01(a)[04]",
+    "AC-01a.01(a)[05]",
+    "AC-01a.01(a)[06]",
+    "AC-01a.01(a)[07]",
+    "AC-01a.01(b)",
+    "AC-01b.",
+    "AC-01c.",
+    "AC-01c.01",
+    "AC-01c.01[01]",
+    "AC-01c.01[02]",
+    "AC-01c.02",
+    "AC-01c.02[01]",
+    "AC-01c.02[02]"
+   ]
+  },
+  "AC-2": {
+   "title": "Account Management",
+   "objectives": [
+    "AC-02",
+    "AC-02a.",
+    "AC-02a.[01]",
+    "AC-02a.[02]",
+    "AC-02b.",
+    "AC-02c.",
+    "AC-02d.",
+    "AC-02d.01",
+    "AC-02d.02",
+    "AC-02d.03",
+    "AC-02d.03[01]",
+    "AC-02d.03[02]",
+    "AC-02e.",
+    "AC-02f.",
+    "AC-02f.[01]",
+    "AC-02f.[02]",
+    "AC-02f.[03]",
+    "AC-02f.[04]",
+    "AC-02f.[05]",
+    "AC-02g.",
+    "AC-02h.",
+    "AC-02h.01",
+    "AC-02h.02",
+    "AC-02h.03",
+    "AC-02i.",
+    "AC-02i.01",
+    "AC-02i.02",
+    "AC-02i.03",
+    "AC-02j.",
+    "AC-02k.",
+    "AC-02k.[01]",
+    "AC-02k.[02]",
+    "AC-02l.",
+    "AC-02l.[01]",
+    "AC-02l.[02]"
+   ]
+  },
+  "AC-2(1)": {
+   "title": "Automated System Account Management",
+   "objectives": [
+    "AC-02(01)"
+   ]
+  },
+  "AC-2(2)": {
+   "title": "Automated Temporary and Emergency Account Management",
+   "objectives": [
+    "AC-02(02)"
+   ]
+  },
+  "AC-2(3)": {
+   "title": "Disable Accounts",
+   "objectives": [
+    "AC-02(03)",
+    "AC-02(03)(a)",
+    "AC-02(03)(b)",
+    "AC-02(03)(c)",
+    "AC-02(03)(d)"
+   ]
+  },
+  "AC-2(4)": {
+   "title": "Automated Audit Actions",
+   "objectives": [
+    "AC-02(04)",
+    "AC-02(04)[01]",
+    "AC-02(04)[02]",
+    "AC-02(04)[03]",
+    "AC-02(04)[04]",
+    "AC-02(04)[05]"
+   ]
+  },
+  "AC-2(5)": {
+   "title": "Inactivity Logout",
+   "objectives": [
+    "AC-02(05)"
+   ]
+  },
+  "AC-2(13)": {
+   "title": "Disable Accounts for High-risk Individuals",
+   "objectives": [
+    "AC-02(13)"
+   ]
+  },
+  "AC-3": {
+   "title": "Access Enforcement",
+   "objectives": [
+    "AC-03"
+   ]
+  },
+  "AC-4": {
+   "title": "Information Flow Enforcement",
+   "objectives": [
+    "AC-04"
+   ]
+  },
+  "AC-5": {
+   "title": "Separation of Duties",
+   "objectives": [
+    "AC-05",
+    "AC-05a.",
+    "AC-05b."
+   ]
+  },
+  "AC-6": {
+   "title": "Least Privilege",
+   "objectives": [
+    "AC-06"
+   ]
+  },
+  "AC-6(1)": {
+   "title": "Authorize Access to Security Functions",
+   "objectives": [
+    "AC-06(01)",
+    "AC-06(01)(a)",
+    "AC-06(01)(a)[01]",
+    "AC-06(01)(a)[02]",
+    "AC-06(01)(a)[03]",
+    "AC-06(01)(b)"
+   ]
+  },
+  "AC-6(2)": {
+   "title": "Non-privileged Access for Nonsecurity Functions",
+   "objectives": [
+    "AC-06(02)"
+   ]
+  },
+  "AC-6(5)": {
+   "title": "Privileged Accounts",
+   "objectives": [
+    "AC-06(05)"
+   ]
+  },
+  "AC-6(7)": {
+   "title": "Review of User Privileges",
+   "objectives": [
+    "AC-06(07)",
+    "AC-06(07)(a)",
+    "AC-06(07)(b)"
+   ]
+  },
+  "AC-6(9)": {
+   "title": "Log Use of Privileged Functions",
+   "objectives": [
+    "AC-06(09)"
+   ]
+  },
+  "AC-6(10)": {
+   "title": "Prohibit Non-privileged Users from Executing Privileged Functions",
+   "objectives": [
+    "AC-06(10)"
+   ]
+  },
+  "AC-7": {
+   "title": "Unsuccessful Logon Attempts",
+   "objectives": [
+    "AC-07",
+    "AC-07a.",
+    "AC-07b."
+   ]
+  },
+  "AC-8": {
+   "title": "System Use Notification",
+   "objectives": [
+    "AC-08",
+    "AC-08a.",
+    "AC-08a.01",
+    "AC-08a.02",
+    "AC-08a.03",
+    "AC-08a.04",
+    "AC-08b.",
+    "AC-08c.",
+    "AC-08c.01",
+    "AC-08c.02",
+    "AC-08c.03"
+   ]
+  },
+  "AC-11": {
+   "title": "Device Lock",
+   "objectives": [
+    "AC-11",
+    "AC-11a.",
+    "AC-11b."
+   ]
+  },
+  "AC-11(1)": {
+   "title": "Pattern-hiding Displays",
+   "objectives": [
+    "AC-11(01)"
+   ]
+  },
+  "AC-12": {
+   "title": "Session Termination",
+   "objectives": [
+    "AC-12"
+   ]
+  },
+  "AC-14": {
+   "title": "Permitted Actions Without Identification or Authentication",
+   "objectives": [
+    "AC-14",
+    "AC-14a.",
+    "AC-14b.",
+    "AC-14b.[01]",
+    "AC-14b.[02]"
+   ]
+  },
+  "AC-17": {
+   "title": "Remote Access",
+   "objectives": [
+    "AC-17",
+    "AC-17a.",
+    "AC-17a.[01]",
+    "AC-17a.[02]",
+    "AC-17a.[03]",
+    "AC-17b."
+   ]
+  },
+  "AC-17(1)": {
+   "title": "Monitoring and Control",
+   "objectives": [
+    "AC-17(01)",
+    "AC-17(01)[01]",
+    "AC-17(01)[02]"
+   ]
+  },
+  "AC-17(2)": {
+   "title": "Protection of Confidentiality and Integrity Using Encryption",
+   "objectives": [
+    "AC-17(02)"
+   ]
+  },
+  "AC-17(3)": {
+   "title": "Managed Access Control Points",
+   "objectives": [
+    "AC-17(03)"
+   ]
+  },
+  "AC-17(4)": {
+   "title": "Privileged Commands and Access",
+   "objectives": [
+    "AC-17(04)",
+    "AC-17(04)(a)",
+    "AC-17(04)(a)[01]",
+    "AC-17(04)(a)[02]",
+    "AC-17(04)(a)[03]",
+    "AC-17(04)(a)[04]",
+    "AC-17(04)(b)"
+   ]
+  },
+  "AC-18": {
+   "title": "Wireless Access",
+   "objectives": [
+    "AC-18",
+    "AC-18a.",
+    "AC-18a.[01]",
+    "AC-18a.[02]",
+    "AC-18a.[03]",
+    "AC-18b."
+   ]
+  },
+  "AC-18(1)": {
+   "title": "Authentication and Encryption",
+   "objectives": [
+    "AC-18(01)",
+    "AC-18(01)[01]",
+    "AC-18(01)[02]"
+   ]
+  },
+  "AC-18(3)": {
+   "title": "Disable Wireless Networking",
+   "objectives": [
+    "AC-18(03)"
+   ]
+  },
+  "AC-19": {
+   "title": "Access Control for Mobile Devices",
+   "objectives": [
+    "AC-19",
+    "AC-19a.",
+    "AC-19a.[01]",
+    "AC-19a.[02]",
+    "AC-19a.[03]",
+    "AC-19b."
+   ]
+  },
+  "AC-19(5)": {
+   "title": "Full Device or Container-based Encryption",
+   "objectives": [
+    "AC-19(05)"
+   ]
+  },
+  "AC-20": {
+   "title": "Use of External Systems",
+   "objectives": [
+    "AC-20",
+    "AC-20a.",
+    "AC-20a.01",
+    "AC-20a.02",
+    "AC-20b."
+   ]
+  },
+  "AC-20(1)": {
+   "title": "Limits on Authorized Use",
+   "objectives": [
+    "AC-20(01)",
+    "AC-20(01)(a)",
+    "AC-20(01)(b)"
+   ]
+  },
+  "AC-20(2)": {
+   "title": "Portable Storage Devices — Restricted Use",
+   "objectives": [
+    "AC-20(02)"
+   ]
+  },
+  "AC-21": {
+   "title": "Information Sharing",
+   "objectives": [
+    "AC-21",
+    "AC-21a.",
+    "AC-21b."
+   ]
+  },
+  "AC-22": {
+   "title": "Publicly Accessible Content",
+   "objectives": [
+    "AC-22",
+    "AC-22a.",
+    "AC-22b.",
+    "AC-22c.",
+    "AC-22d.",
+    "AC-22d.[01]",
+    "AC-22d.[02]"
+   ]
+  },
+  "AT-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "AT-01",
+    "AT-01a.",
+    "AT-01a.[01]",
+    "AT-01a.[02]",
+    "AT-01a.[03]",
+    "AT-01a.[04]",
+    "AT-01a.01",
+    "AT-01a.01(a)",
+    "AT-01a.01(a)[01]",
+    "AT-01a.01(a)[02]",
+    "AT-01a.01(a)[03]",
+    "AT-01a.01(a)[04]",
+    "AT-01a.01(a)[05]",
+    "AT-01a.01(a)[06]",
+    "AT-01a.01(a)[07]",
+    "AT-01a.01(b)",
+    "AT-01b.",
+    "AT-01c.",
+    "AT-01c.01",
+    "AT-01c.01[01]",
+    "AT-01c.01[02]",
+    "AT-01c.02",
+    "AT-01c.02[01]",
+    "AT-01c.02[02]"
+   ]
+  },
+  "AT-2": {
+   "title": "Literacy Training and Awareness",
+   "objectives": [
+    "AT-02",
+    "AT-02a.",
+    "AT-02a.01",
+    "AT-02a.01[01]",
+    "AT-02a.01[02]",
+    "AT-02a.01[03]",
+    "AT-02a.01[04]",
+    "AT-02a.02",
+    "AT-02a.02[01]",
+    "AT-02a.02[02]",
+    "AT-02b.",
+    "AT-02c.",
+    "AT-02c.[01]",
+    "AT-02c.[02]",
+    "AT-02d."
+   ]
+  },
+  "AT-2(2)": {
+   "title": "Insider Threat",
+   "objectives": [
+    "AT-02(02)",
+    "AT-02(02)[01]",
+    "AT-02(02)[02]"
+   ]
+  },
+  "AT-2(3)": {
+   "title": "Social Engineering and Mining",
+   "objectives": [
+    "AT-02(03)",
+    "AT-02(03)[01]",
+    "AT-02(03)[02]",
+    "AT-02(03)[03]",
+    "AT-02(03)[04]"
+   ]
+  },
+  "AT-3": {
+   "title": "Role-based Training",
+   "objectives": [
+    "AT-03",
+    "AT-03a.",
+    "AT-03a.01",
+    "AT-03a.01[01]",
+    "AT-03a.01[02]",
+    "AT-03a.01[03]",
+    "AT-03a.01[04]",
+    "AT-03a.02",
+    "AT-03a.02[01]",
+    "AT-03a.02[02]",
+    "AT-03b.",
+    "AT-03b.[01]",
+    "AT-03b.[02]",
+    "AT-03c."
+   ]
+  },
+  "AT-4": {
+   "title": "Training Records",
+   "objectives": [
+    "AT-04",
+    "AT-04a.",
+    "AT-04a.[01]",
+    "AT-04a.[02]",
+    "AT-04b."
+   ]
+  },
+  "AU-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "AU-01",
+    "AU-01a.",
+    "AU-01a.[01]",
+    "AU-01a.[02]",
+    "AU-01a.[03]",
+    "AU-01a.[04]",
+    "AU-01a.01",
+    "AU-01a.01(a)",
+    "AU-01a.01(a)[01]",
+    "AU-01a.01(a)[02]",
+    "AU-01a.01(a)[03]",
+    "AU-01a.01(a)[04]",
+    "AU-01a.01(a)[05]",
+    "AU-01a.01(a)[06]",
+    "AU-01a.01(a)[07]",
+    "AU-01a.01(b)",
+    "AU-01b.",
+    "AU-01c.",
+    "AU-01c.01",
+    "AU-01c.01[01]",
+    "AU-01c.01[02]",
+    "AU-01c.02",
+    "AU-01c.02[01]",
+    "AU-01c.02[02]"
+   ]
+  },
+  "AU-2": {
+   "title": "Event Logging",
+   "objectives": [
+    "AU-02",
+    "AU-02a.",
+    "AU-02b.",
+    "AU-02c.",
+    "AU-02c.[01]",
+    "AU-02c.[02]",
+    "AU-02d.",
+    "AU-02e."
+   ]
+  },
+  "AU-3": {
+   "title": "Content of Audit Records",
+   "objectives": [
+    "AU-03",
+    "AU-03a.",
+    "AU-03b.",
+    "AU-03c.",
+    "AU-03d.",
+    "AU-03e.",
+    "AU-03f."
+   ]
+  },
+  "AU-3(1)": {
+   "title": "Additional Audit Information",
+   "objectives": [
+    "AU-03(01)"
+   ]
+  },
+  "AU-4": {
+   "title": "Audit Log Storage Capacity",
+   "objectives": [
+    "AU-04"
+   ]
+  },
+  "AU-5": {
+   "title": "Response to Audit Logging Process Failures",
+   "objectives": [
+    "AU-05",
+    "AU-05a.",
+    "AU-05b."
+   ]
+  },
+  "AU-6": {
+   "title": "Audit Record Review, Analysis, and Reporting",
+   "objectives": [
+    "AU-06",
+    "AU-06a.",
+    "AU-06b.",
+    "AU-06c."
+   ]
+  },
+  "AU-6(1)": {
+   "title": "Automated Process Integration",
+   "objectives": [
+    "AU-06(01)"
+   ]
+  },
+  "AU-6(3)": {
+   "title": "Correlate Audit Record Repositories",
+   "objectives": [
+    "AU-06(03)"
+   ]
+  },
+  "AU-7": {
+   "title": "Audit Record Reduction and Report Generation",
+   "objectives": [
+    "AU-07",
+    "AU-07a.",
+    "AU-07a.[01]",
+    "AU-07a.[02]",
+    "AU-07b.",
+    "AU-07b.[01]",
+    "AU-07b.[02]"
+   ]
+  },
+  "AU-7(1)": {
+   "title": "Automatic Processing",
+   "objectives": [
+    "AU-07(01)",
+    "AU-07(01)[01]",
+    "AU-07(01)[02]"
+   ]
+  },
+  "AU-8": {
+   "title": "Time Stamps",
+   "objectives": [
+    "AU-08",
+    "AU-08a.",
+    "AU-08b."
+   ]
+  },
+  "AU-9": {
+   "title": "Protection of Audit Information",
+   "objectives": [
+    "AU-09",
+    "AU-09a.",
+    "AU-09b."
+   ]
+  },
+  "AU-9(4)": {
+   "title": "Access by Subset of Privileged Users",
+   "objectives": [
+    "AU-09(04)"
+   ]
+  },
+  "AU-11": {
+   "title": "Audit Record Retention",
+   "objectives": [
+    "AU-11"
+   ]
+  },
+  "AU-12": {
+   "title": "Audit Record Generation",
+   "objectives": [
+    "AU-12",
+    "AU-12a.",
+    "AU-12b.",
+    "AU-12c."
+   ]
+  },
+  "CA-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "CA-01",
+    "CA-01a.",
+    "CA-01a.[01]",
+    "CA-01a.[02]",
+    "CA-01a.[03]",
+    "CA-01a.[04]",
+    "CA-01a.01",
+    "CA-01a.01(a)",
+    "CA-01a.01(a)[01]",
+    "CA-01a.01(a)[02]",
+    "CA-01a.01(a)[03]",
+    "CA-01a.01(a)[04]",
+    "CA-01a.01(a)[05]",
+    "CA-01a.01(a)[06]",
+    "CA-01a.01(a)[07]",
+    "CA-01a.01(b)",
+    "CA-01b.",
+    "CA-01c.",
+    "CA-01c.01",
+    "CA-01c.01[01]",
+    "CA-01c.01[02]",
+    "CA-01c.02",
+    "CA-01c.02[01]",
+    "CA-01c.02[02]"
+   ]
+  },
+  "CA-2": {
+   "title": "Control Assessments",
+   "objectives": [
+    "CA-02",
+    "CA-02a.",
+    "CA-02b.",
+    "CA-02b.01",
+    "CA-02b.02",
+    "CA-02b.03",
+    "CA-02b.03[01]",
+    "CA-02b.03[02]",
+    "CA-02b.03[03]",
+    "CA-02c.",
+    "CA-02d.",
+    "CA-02d.[01]",
+    "CA-02d.[02]",
+    "CA-02e.",
+    "CA-02f."
+   ]
+  },
+  "CA-2(1)": {
+   "title": "Independent Assessors",
+   "objectives": [
+    "CA-02(01)"
+   ]
+  },
+  "CA-3": {
+   "title": "Information Exchange",
+   "objectives": [
+    "CA-03",
+    "CA-03a.",
+    "CA-03b.",
+    "CA-03b.[01]",
+    "CA-03b.[02]",
+    "CA-03b.[03]",
+    "CA-03b.[04]",
+    "CA-03b.[05]",
+    "CA-03b.[06]",
+    "CA-03c."
+   ]
+  },
+  "CA-5": {
+   "title": "Plan of Action and Milestones",
+   "objectives": [
+    "CA-05",
+    "CA-05a.",
+    "CA-05b."
+   ]
+  },
+  "CA-6": {
+   "title": "Authorization",
+   "objectives": [
+    "CA-06",
+    "CA-06a.",
+    "CA-06b.",
+    "CA-06c.",
+    "CA-06c.01",
+    "CA-06c.02",
+    "CA-06d.",
+    "CA-06e."
+   ]
+  },
+  "CA-7": {
+   "title": "Continuous Monitoring",
+   "objectives": [
+    "CA-07",
+    "CA-07[01]",
+    "CA-07[02]",
+    "CA-07a.",
+    "CA-07b.",
+    "CA-07b.[01]",
+    "CA-07b.[02]",
+    "CA-07c.",
+    "CA-07d.",
+    "CA-07e.",
+    "CA-07f.",
+    "CA-07g.",
+    "CA-07g.[01]",
+    "CA-07g.[02]"
+   ]
+  },
+  "CA-7(1)": {
+   "title": "Independent Assessment",
+   "objectives": [
+    "CA-07(01)"
+   ]
+  },
+  "CA-7(4)": {
+   "title": "Risk Monitoring",
+   "objectives": [
+    "CA-07(04)",
+    "CA-07(04)(a)",
+    "CA-07(04)(b)",
+    "CA-07(04)(c)"
+   ]
+  },
+  "CA-9": {
+   "title": "Internal System Connections",
+   "objectives": [
+    "CA-09",
+    "CA-09a.",
+    "CA-09b.",
+    "CA-09b.[01]",
+    "CA-09b.[02]",
+    "CA-09b.[03]",
+    "CA-09b.[04]",
+    "CA-09c.",
+    "CA-09d."
+   ]
+  },
+  "CM-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "CM-01",
+    "CM-01a.",
+    "CM-01a.[01]",
+    "CM-01a.[02]",
+    "CM-01a.[03]",
+    "CM-01a.[04]",
+    "CM-01a.01",
+    "CM-01a.01(a)",
+    "CM-01a.01(a)[01]",
+    "CM-01a.01(a)[02]",
+    "CM-01a.01(a)[03]",
+    "CM-01a.01(a)[04]",
+    "CM-01a.01(a)[05]",
+    "CM-01a.01(a)[06]",
+    "CM-01a.01(a)[07]",
+    "CM-01a.01(b)",
+    "CM-01b.",
+    "CM-01c.",
+    "CM-01c.01",
+    "CM-01c.01[01]",
+    "CM-01c.01[02]",
+    "CM-01c.02",
+    "CM-01c.02[01]",
+    "CM-01c.02[02]"
+   ]
+  },
+  "CM-2": {
+   "title": "Baseline Configuration",
+   "objectives": [
+    "CM-02",
+    "CM-02a.",
+    "CM-02a.[01]",
+    "CM-02a.[02]",
+    "CM-02b.",
+    "CM-02b.01",
+    "CM-02b.02",
+    "CM-02b.03"
+   ]
+  },
+  "CM-2(2)": {
+   "title": "Automation Support for Accuracy and Currency",
+   "objectives": [
+    "CM-02(02)",
+    "CM-02(02)[01]",
+    "CM-02(02)[02]",
+    "CM-02(02)[03]",
+    "CM-02(02)[04]"
+   ]
+  },
+  "CM-2(3)": {
+   "title": "Retention of Previous Configurations",
+   "objectives": [
+    "CM-02(03)"
+   ]
+  },
+  "CM-2(7)": {
+   "title": "Configure Systems and Components for High-risk Areas",
+   "objectives": [
+    "CM-02(07)",
+    "CM-02(07)(a)",
+    "CM-02(07)(b)"
+   ]
+  },
+  "CM-3": {
+   "title": "Configuration Change Control",
+   "objectives": [
+    "CM-03",
+    "CM-03a.",
+    "CM-03b.",
+    "CM-03b.[01]",
+    "CM-03b.[02]",
+    "CM-03c.",
+    "CM-03d.",
+    "CM-03e.",
+    "CM-03f.",
+    "CM-03f.[01]",
+    "CM-03f.[02]",
+    "CM-03g.",
+    "CM-03g.[01]",
+    "CM-03g.[02]"
+   ]
+  },
+  "CM-3(2)": {
+   "title": "Testing, Validation, and Documentation of Changes",
+   "objectives": [
+    "CM-03(02)",
+    "CM-03(02)[01]",
+    "CM-03(02)[02]",
+    "CM-03(02)[03]"
+   ]
+  },
+  "CM-3(4)": {
+   "title": "Security and Privacy Representatives",
+   "objectives": [
+    "CM-03(04)",
+    "CM-03(04)[01]",
+    "CM-03(04)[02]"
+   ]
+  },
+  "CM-4": {
+   "title": "Impact Analyses",
+   "objectives": [
+    "CM-04",
+    "CM-04[01]",
+    "CM-04[02]"
+   ]
+  },
+  "CM-4(2)": {
+   "title": "Verification of Controls",
+   "objectives": [
+    "CM-04(02)",
+    "CM-04(02)[01]",
+    "CM-04(02)[02]",
+    "CM-04(02)[03]",
+    "CM-04(02)[04]",
+    "CM-04(02)[05]",
+    "CM-04(02)[06]"
+   ]
+  },
+  "CM-5": {
+   "title": "Access Restrictions for Change",
+   "objectives": [
+    "CM-05",
+    "CM-05[01]",
+    "CM-05[02]",
+    "CM-05[03]",
+    "CM-05[04]",
+    "CM-05[05]",
+    "CM-05[06]"
+   ]
+  },
+  "CM-6": {
+   "title": "Configuration Settings",
+   "objectives": [
+    "CM-06",
+    "CM-06a.",
+    "CM-06b.",
+    "CM-06c.",
+    "CM-06c.[01]",
+    "CM-06c.[02]",
+    "CM-06d.",
+    "CM-06d.[01]",
+    "CM-06d.[02]"
+   ]
+  },
+  "CM-7": {
+   "title": "Least Functionality",
+   "objectives": [
+    "CM-07",
+    "CM-07a.",
+    "CM-07b.",
+    "CM-07b.[01]",
+    "CM-07b.[02]",
+    "CM-07b.[03]",
+    "CM-07b.[04]",
+    "CM-07b.[05]"
+   ]
+  },
+  "CM-7(1)": {
+   "title": "Periodic Review",
+   "objectives": [
+    "CM-07(01)",
+    "CM-07(01)(a)",
+    "CM-07(01)(b)",
+    "CM-07(01)(b)[01]",
+    "CM-07(01)(b)[02]",
+    "CM-07(01)(b)[03]",
+    "CM-07(01)(b)[04]",
+    "CM-07(01)(b)[05]"
+   ]
+  },
+  "CM-7(2)": {
+   "title": "Prevent Program Execution",
+   "objectives": [
+    "CM-07(02)"
+   ]
+  },
+  "CM-7(5)": {
+   "title": "Authorized Software — Allow-by-exception",
+   "objectives": [
+    "CM-07(05)",
+    "CM-07(05)(a)",
+    "CM-07(05)(b)",
+    "CM-07(05)(c)"
+   ]
+  },
+  "CM-8": {
+   "title": "System Component Inventory",
+   "objectives": [
+    "CM-08",
+    "CM-08a.",
+    "CM-08a.01",
+    "CM-08a.02",
+    "CM-08a.03",
+    "CM-08a.04",
+    "CM-08a.05",
+    "CM-08b."
+   ]
+  },
+  "CM-8(1)": {
+   "title": "Updates During Installation and Removal",
+   "objectives": [
+    "CM-08(01)",
+    "CM-08(01)[01]",
+    "CM-08(01)[02]",
+    "CM-08(01)[03]"
+   ]
+  },
+  "CM-8(3)": {
+   "title": "Automated Unauthorized Component Detection",
+   "objectives": [
+    "CM-08(03)",
+    "CM-08(03)(a)",
+    "CM-08(03)(a)[01]",
+    "CM-08(03)(a)[02]",
+    "CM-08(03)(a)[03]",
+    "CM-08(03)(b)",
+    "CM-08(03)(b)[01]",
+    "CM-08(03)(b)[02]",
+    "CM-08(03)(b)[03]"
+   ]
+  },
+  "CM-9": {
+   "title": "Configuration Management Plan",
+   "objectives": [
+    "CM-09",
+    "CM-09[01]",
+    "CM-09[02]",
+    "CM-09a.",
+    "CM-09a.[01]",
+    "CM-09a.[02]",
+    "CM-09a.[03]",
+    "CM-09b.",
+    "CM-09b.[01]",
+    "CM-09b.[02]",
+    "CM-09c.",
+    "CM-09c.[01]",
+    "CM-09c.[02]",
+    "CM-09d.",
+    "CM-09e.",
+    "CM-09e.[01]",
+    "CM-09e.[02]"
+   ]
+  },
+  "CM-10": {
+   "title": "Software Usage Restrictions",
+   "objectives": [
+    "CM-10",
+    "CM-10a.",
+    "CM-10b.",
+    "CM-10c."
+   ]
+  },
+  "CM-11": {
+   "title": "User-installed Software",
+   "objectives": [
+    "CM-11",
+    "CM-11a.",
+    "CM-11b.",
+    "CM-11c."
+   ]
+  },
+  "CM-12": {
+   "title": "Information Location",
+   "objectives": [
+    "CM-12",
+    "CM-12a.",
+    "CM-12a.[01]",
+    "CM-12a.[02]",
+    "CM-12a.[03]",
+    "CM-12b.",
+    "CM-12b.[01]",
+    "CM-12b.[02]",
+    "CM-12c.",
+    "CM-12c.[01]",
+    "CM-12c.[02]"
+   ]
+  },
+  "CM-12(1)": {
+   "title": "Automated Tools to Support Information Location",
+   "objectives": [
+    "CM-12(01)"
+   ]
+  },
+  "CP-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "CP-01",
+    "CP-01a.",
+    "CP-01a.[01]",
+    "CP-01a.[02]",
+    "CP-01a.[03]",
+    "CP-01a.[04]",
+    "CP-01a.01",
+    "CP-01a.01(a)",
+    "CP-01a.01(a)[01]",
+    "CP-01a.01(a)[02]",
+    "CP-01a.01(a)[03]",
+    "CP-01a.01(a)[04]",
+    "CP-01a.01(a)[05]",
+    "CP-01a.01(a)[06]",
+    "CP-01a.01(a)[07]",
+    "CP-01a.01(b)",
+    "CP-01b.",
+    "CP-01c.",
+    "CP-01c.01",
+    "CP-01c.01[01]",
+    "CP-01c.01[02]",
+    "CP-01c.02",
+    "CP-01c.02[01]",
+    "CP-01c.02[02]"
+   ]
+  },
+  "CP-2": {
+   "title": "Contingency Plan",
+   "objectives": [
+    "CP-02",
+    "CP-02a.",
+    "CP-02a.01",
+    "CP-02a.02",
+    "CP-02a.02[01]",
+    "CP-02a.02[02]",
+    "CP-02a.02[03]",
+    "CP-02a.03",
+    "CP-02a.03[01]",
+    "CP-02a.03[02]",
+    "CP-02a.03[03]",
+    "CP-02a.04",
+    "CP-02a.05",
+    "CP-02a.06",
+    "CP-02a.07",
+    "CP-02a.07[01]",
+    "CP-02a.07[02]",
+    "CP-02b.",
+    "CP-02b.[01]",
+    "CP-02b.[02]",
+    "CP-02c.",
+    "CP-02d.",
+    "CP-02e.",
+    "CP-02e.[01]",
+    "CP-02e.[02]",
+    "CP-02f.",
+    "CP-02f.[01]",
+    "CP-02f.[02]",
+    "CP-02g.",
+    "CP-02g.[01]",
+    "CP-02g.[02]",
+    "CP-02h.",
+    "CP-02h.[01]",
+    "CP-02h.[02]"
+   ]
+  },
+  "CP-2(1)": {
+   "title": "Coordinate with Related Plans",
+   "objectives": [
+    "CP-02(01)"
+   ]
+  },
+  "CP-2(3)": {
+   "title": "Resume Mission and Business Functions",
+   "objectives": [
+    "CP-02(03)"
+   ]
+  },
+  "CP-2(8)": {
+   "title": "Identify Critical Assets",
+   "objectives": [
+    "CP-02(08)"
+   ]
+  },
+  "CP-3": {
+   "title": "Contingency Training",
+   "objectives": [
+    "CP-03",
+    "CP-03a.",
+    "CP-03a.01",
+    "CP-03a.02",
+    "CP-03a.03",
+    "CP-03b.",
+    "CP-03b.[01]",
+    "CP-03b.[02]"
+   ]
+  },
+  "CP-4": {
+   "title": "Contingency Plan Testing",
+   "objectives": [
+    "CP-04",
+    "CP-04a.",
+    "CP-04a.[01]",
+    "CP-04a.[02]",
+    "CP-04a.[03]",
+    "CP-04b.",
+    "CP-04c."
+   ]
+  },
+  "CP-4(1)": {
+   "title": "Coordinate with Related Plans",
+   "objectives": [
+    "CP-04(01)"
+   ]
+  },
+  "CP-6": {
+   "title": "Alternate Storage Site",
+   "objectives": [
+    "CP-06",
+    "CP-06a.",
+    "CP-06a.[01]",
+    "CP-06a.[02]",
+    "CP-06b."
+   ]
+  },
+  "CP-6(1)": {
+   "title": "Separation from Primary Site",
+   "objectives": [
+    "CP-06(01)"
+   ]
+  },
+  "CP-6(3)": {
+   "title": "Accessibility",
+   "objectives": [
+    "CP-06(03)",
+    "CP-06(03)[01]",
+    "CP-06(03)[02]"
+   ]
+  },
+  "CP-7": {
+   "title": "Alternate Processing Site",
+   "objectives": [
+    "CP-07",
+    "CP-07a.",
+    "CP-07b.",
+    "CP-07b.[01]",
+    "CP-07b.[02]",
+    "CP-07c."
+   ]
+  },
+  "CP-7(1)": {
+   "title": "Separation from Primary Site",
+   "objectives": [
+    "CP-07(01)"
+   ]
+  },
+  "CP-7(2)": {
+   "title": "Accessibility",
+   "objectives": [
+    "CP-07(02)",
+    "CP-07(02)[01]",
+    "CP-07(02)[02]"
+   ]
+  },
+  "CP-7(3)": {
+   "title": "Priority of Service",
+   "objectives": [
+    "CP-07(03)"
+   ]
+  },
+  "CP-8": {
+   "title": "Telecommunications Services",
+   "objectives": [
+    "CP-08"
+   ]
+  },
+  "CP-8(1)": {
+   "title": "Priority of Service Provisions",
+   "objectives": [
+    "CP-08(01)",
+    "CP-08(01)(a)",
+    "CP-08(01)(a)[01]",
+    "CP-08(01)(a)[02]",
+    "CP-08(01)(b)"
+   ]
+  },
+  "CP-8(2)": {
+   "title": "Single Points of Failure",
+   "objectives": [
+    "CP-08(02)"
+   ]
+  },
+  "CP-9": {
+   "title": "System Backup",
+   "objectives": [
+    "CP-09",
+    "CP-09a.",
+    "CP-09b.",
+    "CP-09c.",
+    "CP-09d.",
+    "CP-09d.[01]",
+    "CP-09d.[02]",
+    "CP-09d.[03]"
+   ]
+  },
+  "CP-9(1)": {
+   "title": "Testing for Reliability and Integrity",
+   "objectives": [
+    "CP-09(01)",
+    "CP-09(01)[01]",
+    "CP-09(01)[02]"
+   ]
+  },
+  "CP-9(8)": {
+   "title": "Cryptographic Protection",
+   "objectives": [
+    "CP-09(08)"
+   ]
+  },
+  "CP-10": {
+   "title": "System Recovery and Reconstitution",
+   "objectives": [
+    "CP-10",
+    "CP-10[01]",
+    "CP-10[02]"
+   ]
+  },
+  "CP-10(2)": {
+   "title": "Transaction Recovery",
+   "objectives": [
+    "CP-10(02)"
+   ]
+  },
+  "IA-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "IA-01",
+    "IA-01a.",
+    "IA-01a.[01]",
+    "IA-01a.[02]",
+    "IA-01a.[03]",
+    "IA-01a.[04]",
+    "IA-01a.01",
+    "IA-01a.01(a)",
+    "IA-01a.01(a)[01]",
+    "IA-01a.01(a)[02]",
+    "IA-01a.01(a)[03]",
+    "IA-01a.01(a)[04]",
+    "IA-01a.01(a)[05]",
+    "IA-01a.01(a)[06]",
+    "IA-01a.01(a)[07]",
+    "IA-01a.01(b)",
+    "IA-01b.",
+    "IA-01c.",
+    "IA-01c.01",
+    "IA-01c.01[01]",
+    "IA-01c.01[02]",
+    "IA-01c.02",
+    "IA-01c.02[01]",
+    "IA-01c.02[02]"
+   ]
+  },
+  "IA-2": {
+   "title": "Identification and Authentication (Organizational Users)",
+   "objectives": [
+    "IA-02",
+    "IA-02[01]",
+    "IA-02[02]"
+   ]
+  },
+  "IA-2(1)": {
+   "title": "Multi-factor Authentication to Privileged Accounts",
+   "objectives": [
+    "IA-02(01)"
+   ]
+  },
+  "IA-2(2)": {
+   "title": "Multi-factor Authentication to Non-privileged Accounts",
+   "objectives": [
+    "IA-02(02)"
+   ]
+  },
+  "IA-2(8)": {
+   "title": "Access to Accounts — Replay Resistant",
+   "objectives": [
+    "IA-02(08)"
+   ]
+  },
+  "IA-2(12)": {
+   "title": "Acceptance of PIV Credentials",
+   "objectives": [
+    "IA-02(12)"
+   ]
+  },
+  "IA-3": {
+   "title": "Device Identification and Authentication",
+   "objectives": [
+    "IA-03"
+   ]
+  },
+  "IA-4": {
+   "title": "Identifier Management",
+   "objectives": [
+    "IA-04",
+    "IA-04a.",
+    "IA-04b.",
+    "IA-04c.",
+    "IA-04d."
+   ]
+  },
+  "IA-4(4)": {
+   "title": "Identify User Status",
+   "objectives": [
+    "IA-04(04)"
+   ]
+  },
+  "IA-5": {
+   "title": "Authenticator Management",
+   "objectives": [
+    "IA-05",
+    "IA-05a.",
+    "IA-05b.",
+    "IA-05c.",
+    "IA-05d.",
+    "IA-05e.",
+    "IA-05f.",
+    "IA-05g.",
+    "IA-05h.",
+    "IA-05h.[01]",
+    "IA-05h.[02]",
+    "IA-05i."
+   ]
+  },
+  "IA-5(1)": {
+   "title": "Password-based Authentication",
+   "objectives": [
+    "IA-05(01)",
+    "IA-05(01)(a)",
+    "IA-05(01)(b)",
+    "IA-05(01)(c)",
+    "IA-05(01)(d)",
+    "IA-05(01)(e)",
+    "IA-05(01)(f)",
+    "IA-05(01)(g)",
+    "IA-05(01)(h)"
+   ]
+  },
+  "IA-5(2)": {
+   "title": "Public Key-based Authentication",
+   "objectives": [
+    "IA-05(02)",
+    "IA-05(02)(a)",
+    "IA-05(02)(a)(01)",
+    "IA-05(02)(a)(02)",
+    "IA-05(02)(b)",
+    "IA-05(02)(b)(01)",
+    "IA-05(02)(b)(02)"
+   ]
+  },
+  "IA-5(6)": {
+   "title": "Protection of Authenticators",
+   "objectives": [
+    "IA-05(06)"
+   ]
+  },
+  "IA-6": {
+   "title": "Authentication Feedback",
+   "objectives": [
+    "IA-06"
+   ]
+  },
+  "IA-7": {
+   "title": "Cryptographic Module Authentication",
+   "objectives": [
+    "IA-07"
+   ]
+  },
+  "IA-8": {
+   "title": "Identification and Authentication (Non-organizational Users)",
+   "objectives": [
+    "IA-08"
+   ]
+  },
+  "IA-8(1)": {
+   "title": "Acceptance of PIV Credentials from Other Agencies",
+   "objectives": [
+    "IA-08(01)",
+    "IA-08(01)[01]",
+    "IA-08(01)[02]"
+   ]
+  },
+  "IA-8(2)": {
+   "title": "Acceptance of External Authenticators",
+   "objectives": [
+    "IA-08(02)",
+    "IA-08(02)(a)",
+    "IA-08(02)(b)",
+    "IA-08(02)(b)[01]",
+    "IA-08(02)(b)[02]"
+   ]
+  },
+  "IA-8(4)": {
+   "title": "Use of Defined Profiles",
+   "objectives": [
+    "IA-08(04)"
+   ]
+  },
+  "IA-11": {
+   "title": "Re-authentication",
+   "objectives": [
+    "IA-11"
+   ]
+  },
+  "IA-12": {
+   "title": "Identity Proofing",
+   "objectives": [
+    "IA-12",
+    "IA-12a.",
+    "IA-12b.",
+    "IA-12c.",
+    "IA-12c.[01]",
+    "IA-12c.[02]",
+    "IA-12c.[03]"
+   ]
+  },
+  "IA-12(2)": {
+   "title": "Identity Evidence",
+   "objectives": [
+    "IA-12(02)"
+   ]
+  },
+  "IA-12(3)": {
+   "title": "Identity Evidence Validation and Verification",
+   "objectives": [
+    "IA-12(03)"
+   ]
+  },
+  "IA-12(5)": {
+   "title": "Address Confirmation",
+   "objectives": [
+    "IA-12(05)"
+   ]
+  },
+  "IR-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "IR-01",
+    "IR-01a.",
+    "IR-01a.[01]",
+    "IR-01a.[02]",
+    "IR-01a.[03]",
+    "IR-01a.[04]",
+    "IR-01a.01",
+    "IR-01a.01(a)",
+    "IR-01a.01(a)[01]",
+    "IR-01a.01(a)[02]",
+    "IR-01a.01(a)[03]",
+    "IR-01a.01(a)[04]",
+    "IR-01a.01(a)[05]",
+    "IR-01a.01(a)[06]",
+    "IR-01a.01(a)[07]",
+    "IR-01a.01(b)",
+    "IR-01b.",
+    "IR-01c.",
+    "IR-01c.01",
+    "IR-01c.01[01]",
+    "IR-01c.01[02]",
+    "IR-01c.02",
+    "IR-01c.02[01]",
+    "IR-01c.02[02]"
+   ]
+  },
+  "IR-2": {
+   "title": "Incident Response Training",
+   "objectives": [
+    "IR-02",
+    "IR-02a.",
+    "IR-02a.01",
+    "IR-02a.02",
+    "IR-02a.03",
+    "IR-02b.",
+    "IR-02b.[01]",
+    "IR-02b.[02]"
+   ]
+  },
+  "IR-3": {
+   "title": "Incident Response Testing",
+   "objectives": [
+    "IR-03"
+   ]
+  },
+  "IR-3(2)": {
+   "title": "Coordination with Related Plans",
+   "objectives": [
+    "IR-03(02)"
+   ]
+  },
+  "IR-4": {
+   "title": "Incident Handling",
+   "objectives": [
+    "IR-04",
+    "IR-04a.",
+    "IR-04a.[01]",
+    "IR-04a.[02]",
+    "IR-04a.[03]",
+    "IR-04a.[04]",
+    "IR-04a.[05]",
+    "IR-04a.[06]",
+    "IR-04b.",
+    "IR-04c.",
+    "IR-04c.[01]",
+    "IR-04c.[02]",
+    "IR-04d.",
+    "IR-04d.[01]",
+    "IR-04d.[02]",
+    "IR-04d.[03]",
+    "IR-04d.[04]"
+   ]
+  },
+  "IR-4(1)": {
+   "title": "Automated Incident Handling Processes",
+   "objectives": [
+    "IR-04(01)"
+   ]
+  },
+  "IR-5": {
+   "title": "Incident Monitoring",
+   "objectives": [
+    "IR-05",
+    "IR-05[01]",
+    "IR-05[02]"
+   ]
+  },
+  "IR-6": {
+   "title": "Incident Reporting",
+   "objectives": [
+    "IR-06",
+    "IR-06a.",
+    "IR-06b."
+   ]
+  },
+  "IR-6(1)": {
+   "title": "Automated Reporting",
+   "objectives": [
+    "IR-06(01)"
+   ]
+  },
+  "IR-6(3)": {
+   "title": "Supply Chain Coordination",
+   "objectives": [
+    "IR-06(03)"
+   ]
+  },
+  "IR-7": {
+   "title": "Incident Response Assistance",
+   "objectives": [
+    "IR-07",
+    "IR-07[01]",
+    "IR-07[02]"
+   ]
+  },
+  "IR-7(1)": {
+   "title": "Automation Support for Availability of Information and Support",
+   "objectives": [
+    "IR-07(01)"
+   ]
+  },
+  "IR-8": {
+   "title": "Incident Response Plan",
+   "objectives": [
+    "IR-08",
+    "IR-08a.",
+    "IR-08a.01",
+    "IR-08a.02",
+    "IR-08a.03",
+    "IR-08a.04",
+    "IR-08a.05",
+    "IR-08a.06",
+    "IR-08a.07",
+    "IR-08a.08",
+    "IR-08a.09",
+    "IR-08a.10",
+    "IR-08b.",
+    "IR-08b.[01]",
+    "IR-08b.[02]",
+    "IR-08c.",
+    "IR-08d.",
+    "IR-08d.[01]",
+    "IR-08d.[02]",
+    "IR-08e.",
+    "IR-08e.[01]",
+    "IR-08e.[02]"
+   ]
+  },
+  "MA-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "MA-01",
+    "MA-01a.",
+    "MA-01a.[01]",
+    "MA-01a.[02]",
+    "MA-01a.[03]",
+    "MA-01a.[04]",
+    "MA-01a.01",
+    "MA-01a.01(a)",
+    "MA-01a.01(a)[01]",
+    "MA-01a.01(a)[02]",
+    "MA-01a.01(a)[03]",
+    "MA-01a.01(a)[04]",
+    "MA-01a.01(a)[05]",
+    "MA-01a.01(a)[06]",
+    "MA-01a.01(a)[07]",
+    "MA-01a.01(b)",
+    "MA-01b.",
+    "MA-01c.",
+    "MA-01c.01",
+    "MA-01c.01[01]",
+    "MA-01c.01[02]",
+    "MA-01c.02",
+    "MA-01c.02[01]",
+    "MA-01c.02[02]"
+   ]
+  },
+  "MA-2": {
+   "title": "Controlled Maintenance",
+   "objectives": [
+    "MA-02",
+    "MA-02a.",
+    "MA-02a.[01]",
+    "MA-02a.[02]",
+    "MA-02a.[03]",
+    "MA-02b.",
+    "MA-02b.[01]",
+    "MA-02b.[02]",
+    "MA-02c.",
+    "MA-02d.",
+    "MA-02e.",
+    "MA-02f."
+   ]
+  },
+  "MA-3": {
+   "title": "Maintenance Tools",
+   "objectives": [
+    "MA-03",
+    "MA-03a.",
+    "MA-03a.[01]",
+    "MA-03a.[02]",
+    "MA-03a.[03]",
+    "MA-03b."
+   ]
+  },
+  "MA-3(1)": {
+   "title": "Inspect Tools",
+   "objectives": [
+    "MA-03(01)"
+   ]
+  },
+  "MA-3(2)": {
+   "title": "Inspect Media",
+   "objectives": [
+    "MA-03(02)"
+   ]
+  },
+  "MA-3(3)": {
+   "title": "Prevent Unauthorized Removal",
+   "objectives": [
+    "MA-03(03)",
+    "MA-03(03)(a)",
+    "MA-03(03)(b)",
+    "MA-03(03)(c)",
+    "MA-03(03)(d)"
+   ]
+  },
+  "MA-4": {
+   "title": "Nonlocal Maintenance",
+   "objectives": [
+    "MA-04",
+    "MA-04a.",
+    "MA-04a.[01]",
+    "MA-04a.[02]",
+    "MA-04b.",
+    "MA-04b.[01]",
+    "MA-04b.[02]",
+    "MA-04c.",
+    "MA-04d.",
+    "MA-04e.",
+    "MA-04e.[01]",
+    "MA-04e.[02]"
+   ]
+  },
+  "MA-5": {
+   "title": "Maintenance Personnel",
+   "objectives": [
+    "MA-05",
+    "MA-05a.",
+    "MA-05a.[01]",
+    "MA-05a.[02]",
+    "MA-05b.",
+    "MA-05c."
+   ]
+  },
+  "MA-6": {
+   "title": "Timely Maintenance",
+   "objectives": [
+    "MA-06"
+   ]
+  },
+  "MP-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "MP-01",
+    "MP-01a.",
+    "MP-01a.[01]",
+    "MP-01a.[02]",
+    "MP-01a.[03]",
+    "MP-01a.[04]",
+    "MP-01a.01",
+    "MP-01a.01(a)",
+    "MP-01a.01(a)[01]",
+    "MP-01a.01(a)[02]",
+    "MP-01a.01(a)[03]",
+    "MP-01a.01(a)[04]",
+    "MP-01a.01(a)[05]",
+    "MP-01a.01(a)[06]",
+    "MP-01a.01(a)[07]",
+    "MP-01a.01(b)",
+    "MP-01b.",
+    "MP-01c.",
+    "MP-01c.01",
+    "MP-01c.01[01]",
+    "MP-01c.01[02]",
+    "MP-01c.02",
+    "MP-01c.02[01]",
+    "MP-01c.02[02]"
+   ]
+  },
+  "MP-2": {
+   "title": "Media Access",
+   "objectives": [
+    "MP-02",
+    "MP-02[01]",
+    "MP-02[02]"
+   ]
+  },
+  "MP-3": {
+   "title": "Media Marking",
+   "objectives": [
+    "MP-03",
+    "MP-03a.",
+    "MP-03b."
+   ]
+  },
+  "MP-4": {
+   "title": "Media Storage",
+   "objectives": [
+    "MP-04",
+    "MP-04a.",
+    "MP-04a.[01]",
+    "MP-04a.[02]",
+    "MP-04a.[03]",
+    "MP-04a.[04]",
+    "MP-04b."
+   ]
+  },
+  "MP-5": {
+   "title": "Media Transport",
+   "objectives": [
+    "MP-05",
+    "MP-05a.",
+    "MP-05a.[01]",
+    "MP-05a.[02]",
+    "MP-05b.",
+    "MP-05c.",
+    "MP-05d.",
+    "MP-05d.[01]",
+    "MP-05d.[02]"
+   ]
+  },
+  "MP-6": {
+   "title": "Media Sanitization",
+   "objectives": [
+    "MP-06",
+    "MP-06a.",
+    "MP-06a.[01]",
+    "MP-06a.[02]",
+    "MP-06a.[03]",
+    "MP-06b."
+   ]
+  },
+  "MP-7": {
+   "title": "Media Use",
+   "objectives": [
+    "MP-07",
+    "MP-07a.",
+    "MP-07b."
+   ]
+  },
+  "PE-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "PE-01",
+    "PE-01a.",
+    "PE-01a.[01]",
+    "PE-01a.[02]",
+    "PE-01a.[03]",
+    "PE-01a.[04]",
+    "PE-01a.01",
+    "PE-01a.01(a)",
+    "PE-01a.01(a)[01]",
+    "PE-01a.01(a)[02]",
+    "PE-01a.01(a)[03]",
+    "PE-01a.01(a)[04]",
+    "PE-01a.01(a)[05]",
+    "PE-01a.01(a)[06]",
+    "PE-01a.01(a)[07]",
+    "PE-01a.01(b)",
+    "PE-01b.",
+    "PE-01c.",
+    "PE-01c.01",
+    "PE-01c.01[01]",
+    "PE-01c.01[02]",
+    "PE-01c.02",
+    "PE-01c.02[01]",
+    "PE-01c.02[02]"
+   ]
+  },
+  "PE-2": {
+   "title": "Physical Access Authorizations",
+   "objectives": [
+    "PE-02",
+    "PE-02a.",
+    "PE-02a.[01]",
+    "PE-02a.[02]",
+    "PE-02a.[03]",
+    "PE-02b.",
+    "PE-02c.",
+    "PE-02d."
+   ]
+  },
+  "PE-3": {
+   "title": "Physical Access Control",
+   "objectives": [
+    "PE-03",
+    "PE-03a.",
+    "PE-03a.01",
+    "PE-03a.02",
+    "PE-03b.",
+    "PE-03c.",
+    "PE-03d.",
+    "PE-03d.[01]",
+    "PE-03d.[02]",
+    "PE-03e.",
+    "PE-03e.[01]",
+    "PE-03e.[02]",
+    "PE-03e.[03]",
+    "PE-03f.",
+    "PE-03g.",
+    "PE-03g.[01]",
+    "PE-03g.[02]"
+   ]
+  },
+  "PE-4": {
+   "title": "Access Control for Transmission",
+   "objectives": [
+    "PE-04"
+   ]
+  },
+  "PE-5": {
+   "title": "Access Control for Output Devices",
+   "objectives": [
+    "PE-05"
+   ]
+  },
+  "PE-6": {
+   "title": "Monitoring Physical Access",
+   "objectives": [
+    "PE-06",
+    "PE-06a.",
+    "PE-06b.",
+    "PE-06b.[01]",
+    "PE-06b.[02]",
+    "PE-06c.",
+    "PE-06c.[01]",
+    "PE-06c.[02]"
+   ]
+  },
+  "PE-6(1)": {
+   "title": "Intrusion Alarms and Surveillance Equipment",
+   "objectives": [
+    "PE-06(01)",
+    "PE-06(01)[01]",
+    "PE-06(01)[02]"
+   ]
+  },
+  "PE-8": {
+   "title": "Visitor Access Records",
+   "objectives": [
+    "PE-08",
+    "PE-08a.",
+    "PE-08b.",
+    "PE-08c."
+   ]
+  },
+  "PE-9": {
+   "title": "Power Equipment and Cabling",
+   "objectives": [
+    "PE-09",
+    "PE-09[01]",
+    "PE-09[02]"
+   ]
+  },
+  "PE-10": {
+   "title": "Emergency Shutoff",
+   "objectives": [
+    "PE-10",
+    "PE-10a.",
+    "PE-10b.",
+    "PE-10c."
+   ]
+  },
+  "PE-11": {
+   "title": "Emergency Power",
+   "objectives": [
+    "PE-11"
+   ]
+  },
+  "PE-12": {
+   "title": "Emergency Lighting",
+   "objectives": [
+    "PE-12",
+    "PE-12[01]",
+    "PE-12[02]",
+    "PE-12[03]",
+    "PE-12[04]"
+   ]
+  },
+  "PE-13": {
+   "title": "Fire Protection",
+   "objectives": [
+    "PE-13",
+    "PE-13[01]",
+    "PE-13[02]",
+    "PE-13[03]",
+    "PE-13[04]",
+    "PE-13[05]",
+    "PE-13[06]"
+   ]
+  },
+  "PE-13(1)": {
+   "title": "Detection Systems — Automatic Activation and Notification",
+   "objectives": [
+    "PE-13(01)",
+    "PE-13(01)[01]",
+    "PE-13(01)[02]",
+    "PE-13(01)[03]"
+   ]
+  },
+  "PE-14": {
+   "title": "Environmental Controls",
+   "objectives": [
+    "PE-14",
+    "PE-14a.",
+    "PE-14b."
+   ]
+  },
+  "PE-15": {
+   "title": "Water Damage Protection",
+   "objectives": [
+    "PE-15",
+    "PE-15[01]",
+    "PE-15[02]",
+    "PE-15[03]",
+    "PE-15[04]"
+   ]
+  },
+  "PE-16": {
+   "title": "Delivery and Removal",
+   "objectives": [
+    "PE-16",
+    "PE-16a.",
+    "PE-16a.[01]",
+    "PE-16a.[02]",
+    "PE-16a.[03]",
+    "PE-16a.[04]",
+    "PE-16b."
+   ]
+  },
+  "PE-17": {
+   "title": "Alternate Work Site",
+   "objectives": [
+    "PE-17",
+    "PE-17a.",
+    "PE-17b.",
+    "PE-17c.",
+    "PE-17d."
+   ]
+  },
+  "PL-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "PL-01",
+    "PL-01a.",
+    "PL-01a.[01]",
+    "PL-01a.[02]",
+    "PL-01a.[03]",
+    "PL-01a.[04]",
+    "PL-01a.01",
+    "PL-01a.01(a)",
+    "PL-01a.01(a)[01]",
+    "PL-01a.01(a)[02]",
+    "PL-01a.01(a)[03]",
+    "PL-01a.01(a)[04]",
+    "PL-01a.01(a)[05]",
+    "PL-01a.01(a)[06]",
+    "PL-01a.01(a)[07]",
+    "PL-01a.01(b)",
+    "PL-01b.",
+    "PL-01c.",
+    "PL-01c.01",
+    "PL-01c.01[01]",
+    "PL-01c.01[02]",
+    "PL-01c.02",
+    "PL-01c.02[01]",
+    "PL-01c.02[02]"
+   ]
+  },
+  "PL-2": {
+   "title": "System Security and Privacy Plans",
+   "objectives": [
+    "PL-02",
+    "PL-02a.",
+    "PL-02a.01",
+    "PL-02a.01[01]",
+    "PL-02a.01[02]",
+    "PL-02a.02",
+    "PL-02a.02[01]",
+    "PL-02a.02[02]",
+    "PL-02a.03",
+    "PL-02a.03[01]",
+    "PL-02a.03[02]",
+    "PL-02a.04",
+    "PL-02a.04[01]",
+    "PL-02a.04[02]",
+    "PL-02a.05",
+    "PL-02a.05[01]",
+    "PL-02a.05[02]",
+    "PL-02a.06",
+    "PL-02a.06[01]",
+    "PL-02a.06[02]",
+    "PL-02a.07",
+    "PL-02a.07[01]",
+    "PL-02a.07[02]",
+    "PL-02a.08",
+    "PL-02a.08[01]",
+    "PL-02a.08[02]",
+    "PL-02a.09",
+    "PL-02a.09[01]",
+    "PL-02a.09[02]",
+    "PL-02a.10",
+    "PL-02a.10[01]",
+    "PL-02a.10[02]",
+    "PL-02a.11",
+    "PL-02a.11[01]",
+    "PL-02a.11[02]",
+    "PL-02a.12",
+    "PL-02a.12[01]",
+    "PL-02a.12[02]",
+    "PL-02a.13",
+    "PL-02a.13[01]",
+    "PL-02a.13[02]",
+    "PL-02a.14",
+    "PL-02a.14[01]",
+    "PL-02a.14[02]",
+    "PL-02a.15",
+    "PL-02a.15[01]",
+    "PL-02a.15[02]",
+    "PL-02b.",
+    "PL-02b.[01]",
+    "PL-02b.[02]",
+    "PL-02c.",
+    "PL-02d.",
+    "PL-02d.[01]",
+    "PL-02d.[02]",
+    "PL-02d.[03]",
+    "PL-02e.",
+    "PL-02e.[01]",
+    "PL-02e.[02]"
+   ]
+  },
+  "PL-4": {
+   "title": "Rules of Behavior",
+   "objectives": [
+    "PL-04",
+    "PL-04a.",
+    "PL-04a.[01]",
+    "PL-04a.[02]",
+    "PL-04b.",
+    "PL-04c.",
+    "PL-04d."
+   ]
+  },
+  "PL-4(1)": {
+   "title": "Social Media and External Site/Application Usage Restrictions",
+   "objectives": [
+    "PL-04(01)",
+    "PL-04(01)(a)",
+    "PL-04(01)(b)",
+    "PL-04(01)(c)"
+   ]
+  },
+  "PL-8": {
+   "title": "Security and Privacy Architectures",
+   "objectives": [
+    "PL-08",
+    "PL-08a.",
+    "PL-08a.01",
+    "PL-08a.02",
+    "PL-08a.03",
+    "PL-08a.03[01]",
+    "PL-08a.03[02]",
+    "PL-08a.04",
+    "PL-08a.04[01]",
+    "PL-08a.04[02]",
+    "PL-08b.",
+    "PL-08c.",
+    "PL-08c.[01]",
+    "PL-08c.[02]",
+    "PL-08c.[03]",
+    "PL-08c.[04]",
+    "PL-08c.[05]",
+    "PL-08c.[06]"
+   ]
+  },
+  "PL-10": {
+   "title": "Baseline Selection",
+   "objectives": [
+    "PL-10"
+   ]
+  },
+  "PL-11": {
+   "title": "Baseline Tailoring",
+   "objectives": [
+    "PL-11"
+   ]
+  },
+  "PS-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "PS-01",
+    "PS-01a.",
+    "PS-01a.[01]",
+    "PS-01a.[02]",
+    "PS-01a.[03]",
+    "PS-01a.[04]",
+    "PS-01a.01",
+    "PS-01a.01(a)",
+    "PS-01a.01(a)[01]",
+    "PS-01a.01(a)[02]",
+    "PS-01a.01(a)[03]",
+    "PS-01a.01(a)[04]",
+    "PS-01a.01(a)[05]",
+    "PS-01a.01(a)[06]",
+    "PS-01a.01(a)[07]",
+    "PS-01a.01(b)",
+    "PS-01b.",
+    "PS-01c.",
+    "PS-01c.01",
+    "PS-01c.01[01]",
+    "PS-01c.01[02]",
+    "PS-01c.02",
+    "PS-01c.02[01]",
+    "PS-01c.02[02]"
+   ]
+  },
+  "PS-2": {
+   "title": "Position Risk Designation",
+   "objectives": [
+    "PS-02",
+    "PS-02a.",
+    "PS-02b.",
+    "PS-02c."
+   ]
+  },
+  "PS-3": {
+   "title": "Personnel Screening",
+   "objectives": [
+    "PS-03",
+    "PS-03a.",
+    "PS-03b.",
+    "PS-03b.[01]",
+    "PS-03b.[02]"
+   ]
+  },
+  "PS-4": {
+   "title": "Personnel Termination",
+   "objectives": [
+    "PS-04",
+    "PS-04a.",
+    "PS-04b.",
+    "PS-04c.",
+    "PS-04d.",
+    "PS-04e."
+   ]
+  },
+  "PS-5": {
+   "title": "Personnel Transfer",
+   "objectives": [
+    "PS-05",
+    "PS-05a.",
+    "PS-05b.",
+    "PS-05c.",
+    "PS-05d."
+   ]
+  },
+  "PS-6": {
+   "title": "Access Agreements",
+   "objectives": [
+    "PS-06",
+    "PS-06a.",
+    "PS-06b.",
+    "PS-06c.",
+    "PS-06c.01",
+    "PS-06c.02"
+   ]
+  },
+  "PS-7": {
+   "title": "External Personnel Security",
+   "objectives": [
+    "PS-07",
+    "PS-07a.",
+    "PS-07b.",
+    "PS-07c.",
+    "PS-07d.",
+    "PS-07e."
+   ]
+  },
+  "PS-8": {
+   "title": "Personnel Sanctions",
+   "objectives": [
+    "PS-08",
+    "PS-08a.",
+    "PS-08b."
+   ]
+  },
+  "PS-9": {
+   "title": "Position Descriptions",
+   "objectives": [
+    "PS-09",
+    "PS-09[01]",
+    "PS-09[02]"
+   ]
+  },
+  "RA-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "RA-01",
+    "RA-01a.",
+    "RA-01a.[01]",
+    "RA-01a.[02]",
+    "RA-01a.[03]",
+    "RA-01a.[04]",
+    "RA-01a.01",
+    "RA-01a.01(a)",
+    "RA-01a.01(a)[01]",
+    "RA-01a.01(a)[02]",
+    "RA-01a.01(a)[03]",
+    "RA-01a.01(a)[04]",
+    "RA-01a.01(a)[05]",
+    "RA-01a.01(a)[06]",
+    "RA-01a.01(a)[07]",
+    "RA-01a.01(b)",
+    "RA-01b.",
+    "RA-01c.",
+    "RA-01c.01",
+    "RA-01c.01[01]",
+    "RA-01c.01[02]",
+    "RA-01c.02",
+    "RA-01c.02[01]",
+    "RA-01c.02[02]"
+   ]
+  },
+  "RA-2": {
+   "title": "Security Categorization",
+   "objectives": [
+    "RA-02",
+    "RA-02a.",
+    "RA-02b.",
+    "RA-02c."
+   ]
+  },
+  "RA-3": {
+   "title": "Risk Assessment",
+   "objectives": [
+    "RA-03",
+    "RA-03a.",
+    "RA-03a.01",
+    "RA-03a.02",
+    "RA-03a.03",
+    "RA-03b.",
+    "RA-03c.",
+    "RA-03d.",
+    "RA-03e.",
+    "RA-03f."
+   ]
+  },
+  "RA-3(1)": {
+   "title": "Supply Chain Risk Assessment",
+   "objectives": [
+    "RA-03(01)",
+    "RA-03(01)(a)",
+    "RA-03(01)(b)"
+   ]
+  },
+  "RA-5": {
+   "title": "Vulnerability Monitoring and Scanning",
+   "objectives": [
+    "RA-05",
+    "RA-05a.",
+    "RA-05a.[01]",
+    "RA-05a.[02]",
+    "RA-05b.",
+    "RA-05b.01",
+    "RA-05b.02",
+    "RA-05b.03",
+    "RA-05c.",
+    "RA-05d.",
+    "RA-05e.",
+    "RA-05f."
+   ]
+  },
+  "RA-5(2)": {
+   "title": "Update Vulnerabilities to Be Scanned",
+   "objectives": [
+    "RA-05(02)"
+   ]
+  },
+  "RA-5(5)": {
+   "title": "Privileged Access",
+   "objectives": [
+    "RA-05(05)"
+   ]
+  },
+  "RA-5(11)": {
+   "title": "Public Disclosure Program",
+   "objectives": [
+    "RA-05(11)"
+   ]
+  },
+  "RA-7": {
+   "title": "Risk Response",
+   "objectives": [
+    "RA-07",
+    "RA-07[01]",
+    "RA-07[02]",
+    "RA-07[03]",
+    "RA-07[04]"
+   ]
+  },
+  "RA-9": {
+   "title": "Criticality Analysis",
+   "objectives": [
+    "RA-09"
+   ]
+  },
+  "SA-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "SA-01",
+    "SA-01a.",
+    "SA-01a.[01]",
+    "SA-01a.[02]",
+    "SA-01a.[03]",
+    "SA-01a.[04]",
+    "SA-01a.01",
+    "SA-01a.01(a)",
+    "SA-01a.01(a)[01]",
+    "SA-01a.01(a)[02]",
+    "SA-01a.01(a)[03]",
+    "SA-01a.01(a)[04]",
+    "SA-01a.01(a)[05]",
+    "SA-01a.01(a)[06]",
+    "SA-01a.01(a)[07]",
+    "SA-01a.01(b)",
+    "SA-01b.",
+    "SA-01c.",
+    "SA-01c.01",
+    "SA-01c.01[01]",
+    "SA-01c.01[02]",
+    "SA-01c.02",
+    "SA-01c.02[01]",
+    "SA-01c.02[02]"
+   ]
+  },
+  "SA-2": {
+   "title": "Allocation of Resources",
+   "objectives": [
+    "SA-02",
+    "SA-02a.",
+    "SA-02a.[01]",
+    "SA-02a.[02]",
+    "SA-02b.",
+    "SA-02b.[01]",
+    "SA-02b.[02]",
+    "SA-02c.",
+    "SA-02c.[01]",
+    "SA-02c.[02]"
+   ]
+  },
+  "SA-3": {
+   "title": "System Development Life Cycle",
+   "objectives": [
+    "SA-03",
+    "SA-03a.",
+    "SA-03a.[01]",
+    "SA-03a.[02]",
+    "SA-03b.",
+    "SA-03b.[01]",
+    "SA-03b.[02]",
+    "SA-03c.",
+    "SA-03c.[01]",
+    "SA-03c.[02]",
+    "SA-03d.",
+    "SA-03d.[01]",
+    "SA-03d.[02]"
+   ]
+  },
+  "SA-4": {
+   "title": "Acquisition Process",
+   "objectives": [
+    "SA-04",
+    "SA-04a.",
+    "SA-04a.[01]",
+    "SA-04a.[02]",
+    "SA-04b.",
+    "SA-04c.",
+    "SA-04c.[01]",
+    "SA-04c.[02]",
+    "SA-04d.",
+    "SA-04d.[01]",
+    "SA-04d.[02]",
+    "SA-04e.",
+    "SA-04e.[01]",
+    "SA-04e.[02]",
+    "SA-04f.",
+    "SA-04f.[01]",
+    "SA-04f.[02]",
+    "SA-04g.",
+    "SA-04h.",
+    "SA-04h.[01]",
+    "SA-04h.[02]",
+    "SA-04h.[03]",
+    "SA-04i."
+   ]
+  },
+  "SA-4(1)": {
+   "title": "Functional Properties of Controls",
+   "objectives": [
+    "SA-04(01)"
+   ]
+  },
+  "SA-4(2)": {
+   "title": "Design and Implementation Information for Controls",
+   "objectives": [
+    "SA-04(02)"
+   ]
+  },
+  "SA-4(9)": {
+   "title": "Functions, Ports, Protocols, and Services in Use",
+   "objectives": [
+    "SA-04(09)",
+    "SA-04(09)[01]",
+    "SA-04(09)[02]",
+    "SA-04(09)[03]",
+    "SA-04(09)[04]"
+   ]
+  },
+  "SA-4(10)": {
+   "title": "Use of Approved PIV Products",
+   "objectives": [
+    "SA-04(10)"
+   ]
+  },
+  "SA-5": {
+   "title": "System Documentation",
+   "objectives": [
+    "SA-05",
+    "SA-05a.",
+    "SA-05a.01",
+    "SA-05a.01[01]",
+    "SA-05a.01[02]",
+    "SA-05a.01[03]",
+    "SA-05a.02",
+    "SA-05a.02[01]",
+    "SA-05a.02[02]",
+    "SA-05a.02[03]",
+    "SA-05a.02[04]",
+    "SA-05a.03",
+    "SA-05a.03[01]",
+    "SA-05a.03[02]",
+    "SA-05b.",
+    "SA-05b.01",
+    "SA-05b.01[01]",
+    "SA-05b.01[02]",
+    "SA-05b.01[03]",
+    "SA-05b.01[04]",
+    "SA-05b.02",
+    "SA-05b.02[01]",
+    "SA-05b.02[02]",
+    "SA-05b.03",
+    "SA-05b.03[01]",
+    "SA-05b.03[02]",
+    "SA-05c.",
+    "SA-05c.[01]",
+    "SA-05c.[02]",
+    "SA-05d."
+   ]
+  },
+  "SA-8": {
+   "title": "Security and Privacy Engineering Principles",
+   "objectives": [
+    "SA-08",
+    "SA-08[01]",
+    "SA-08[02]",
+    "SA-08[03]",
+    "SA-08[04]",
+    "SA-08[05]",
+    "SA-08[06]",
+    "SA-08[07]",
+    "SA-08[08]",
+    "SA-08[09]",
+    "SA-08[10]"
+   ]
+  },
+  "SA-9": {
+   "title": "External System Services",
+   "objectives": [
+    "SA-09",
+    "SA-09a.",
+    "SA-09a.[01]",
+    "SA-09a.[02]",
+    "SA-09a.[03]",
+    "SA-09b.",
+    "SA-09b.[01]",
+    "SA-09b.[02]",
+    "SA-09c."
+   ]
+  },
+  "SA-9(2)": {
+   "title": "Identification of Functions, Ports, Protocols, and Services",
+   "objectives": [
+    "SA-09(02)"
+   ]
+  },
+  "SA-10": {
+   "title": "Developer Configuration Management",
+   "objectives": [
+    "SA-10",
+    "SA-10a.",
+    "SA-10b.",
+    "SA-10b.[01]",
+    "SA-10b.[02]",
+    "SA-10b.[03]",
+    "SA-10c.",
+    "SA-10d.",
+    "SA-10d.[01]",
+    "SA-10d.[02]",
+    "SA-10d.[03]",
+    "SA-10e.",
+    "SA-10e.[01]",
+    "SA-10e.[02]",
+    "SA-10e.[03]"
+   ]
+  },
+  "SA-11": {
+   "title": "Developer Testing and Evaluation",
+   "objectives": [
+    "SA-11",
+    "SA-11a.",
+    "SA-11a.[01]",
+    "SA-11a.[02]",
+    "SA-11a.[03]",
+    "SA-11a.[04]",
+    "SA-11b.",
+    "SA-11c.",
+    "SA-11c.[01]",
+    "SA-11c.[02]",
+    "SA-11d.",
+    "SA-11e."
+   ]
+  },
+  "SA-15": {
+   "title": "Development Process, Standards, and Tools",
+   "objectives": [
+    "SA-15",
+    "SA-15a.",
+    "SA-15a.01",
+    "SA-15a.01[01]",
+    "SA-15a.01[02]",
+    "SA-15a.02",
+    "SA-15a.02[01]",
+    "SA-15a.02[02]",
+    "SA-15a.03",
+    "SA-15a.03[01]",
+    "SA-15a.03[02]",
+    "SA-15a.04",
+    "SA-15b.",
+    "SA-15b.[01]",
+    "SA-15b.[02]"
+   ]
+  },
+  "SA-15(3)": {
+   "title": "Criticality Analysis",
+   "objectives": [
+    "SA-15(03)",
+    "SA-15(03)(a)",
+    "SA-15(03)(b)",
+    "SA-15(03)(b)[01]",
+    "SA-15(03)(b)[02]"
+   ]
+  },
+  "SA-22": {
+   "title": "Unsupported System Components",
+   "objectives": [
+    "SA-22",
+    "SA-22a.",
+    "SA-22b."
+   ]
+  },
+  "SC-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "SC-01",
+    "SC-01a.",
+    "SC-01a.[01]",
+    "SC-01a.[02]",
+    "SC-01a.[03]",
+    "SC-01a.[04]",
+    "SC-01a.01",
+    "SC-01a.01(a)",
+    "SC-01a.01(a)[01]",
+    "SC-01a.01(a)[02]",
+    "SC-01a.01(a)[03]",
+    "SC-01a.01(a)[04]",
+    "SC-01a.01(a)[05]",
+    "SC-01a.01(a)[06]",
+    "SC-01a.01(a)[07]",
+    "SC-01a.01(b)",
+    "SC-01b.",
+    "SC-01c.",
+    "SC-01c.01",
+    "SC-01c.01[01]",
+    "SC-01c.01[02]",
+    "SC-01c.02",
+    "SC-01c.02[01]",
+    "SC-01c.02[02]"
+   ]
+  },
+  "SC-2": {
+   "title": "Separation of System and User Functionality",
+   "objectives": [
+    "SC-02"
+   ]
+  },
+  "SC-4": {
+   "title": "Information in Shared System Resources",
+   "objectives": [
+    "SC-04",
+    "SC-04[01]",
+    "SC-04[02]"
+   ]
+  },
+  "SC-5": {
+   "title": "Denial-of-service Protection",
+   "objectives": [
+    "SC-05",
+    "SC-05a.",
+    "SC-05b."
+   ]
+  },
+  "SC-7": {
+   "title": "Boundary Protection",
+   "objectives": [
+    "SC-07",
+    "SC-07a.",
+    "SC-07a.[01]",
+    "SC-07a.[02]",
+    "SC-07a.[03]",
+    "SC-07a.[04]",
+    "SC-07b.",
+    "SC-07c."
+   ]
+  },
+  "SC-7(3)": {
+   "title": "Access Points",
+   "objectives": [
+    "SC-07(03)"
+   ]
+  },
+  "SC-7(4)": {
+   "title": "External Telecommunications Services",
+   "objectives": [
+    "SC-07(04)",
+    "SC-07(04)(a)",
+    "SC-07(04)(b)",
+    "SC-07(04)(c)",
+    "SC-07(04)(c)[01]",
+    "SC-07(04)(c)[02]",
+    "SC-07(04)(d)",
+    "SC-07(04)(e)",
+    "SC-07(04)(e)[01]",
+    "SC-07(04)(e)[02]",
+    "SC-07(04)(f)",
+    "SC-07(04)(g)",
+    "SC-07(04)(h)"
+   ]
+  },
+  "SC-7(5)": {
+   "title": "Deny by Default — Allow by Exception",
+   "objectives": [
+    "SC-07(05)",
+    "SC-07(05)[01]",
+    "SC-07(05)[02]"
+   ]
+  },
+  "SC-7(7)": {
+   "title": "Split Tunneling for Remote Devices",
+   "objectives": [
+    "SC-07(07)"
+   ]
+  },
+  "SC-7(8)": {
+   "title": "Route Traffic to Authenticated Proxy Servers",
+   "objectives": [
+    "SC-07(08)"
+   ]
+  },
+  "SC-8": {
+   "title": "Transmission Confidentiality and Integrity",
+   "objectives": [
+    "SC-08"
+   ]
+  },
+  "SC-8(1)": {
+   "title": "Cryptographic Protection",
+   "objectives": [
+    "SC-08(01)"
+   ]
+  },
+  "SC-10": {
+   "title": "Network Disconnect",
+   "objectives": [
+    "SC-10"
+   ]
+  },
+  "SC-12": {
+   "title": "Cryptographic Key Establishment and Management",
+   "objectives": [
+    "SC-12",
+    "SC-12[01]",
+    "SC-12[02]"
+   ]
+  },
+  "SC-13": {
+   "title": "Cryptographic Protection",
+   "objectives": [
+    "SC-13",
+    "SC-13a.",
+    "SC-13b."
+   ]
+  },
+  "SC-15": {
+   "title": "Collaborative Computing Devices and Applications",
+   "objectives": [
+    "SC-15",
+    "SC-15a.",
+    "SC-15b."
+   ]
+  },
+  "SC-17": {
+   "title": "Public Key Infrastructure Certificates",
+   "objectives": [
+    "SC-17",
+    "SC-17a.",
+    "SC-17b."
+   ]
+  },
+  "SC-18": {
+   "title": "Mobile Code",
+   "objectives": [
+    "SC-18",
+    "SC-18a.",
+    "SC-18a.[01]",
+    "SC-18a.[02]",
+    "SC-18a.[03]",
+    "SC-18a.[04]",
+    "SC-18b.",
+    "SC-18b.[01]",
+    "SC-18b.[02]",
+    "SC-18b.[03]"
+   ]
+  },
+  "SC-20": {
+   "title": "Secure Name/Address Resolution Service (Authoritative Source)",
+   "objectives": [
+    "SC-20",
+    "SC-20a.",
+    "SC-20a.[01]",
+    "SC-20a.[02]",
+    "SC-20b.",
+    "SC-20b.[01]",
+    "SC-20b.[02]"
+   ]
+  },
+  "SC-21": {
+   "title": "Secure Name/Address Resolution Service (Recursive or Caching Resolver)",
+   "objectives": [
+    "SC-21",
+    "SC-21[01]",
+    "SC-21[02]",
+    "SC-21[03]",
+    "SC-21[04]"
+   ]
+  },
+  "SC-22": {
+   "title": "Architecture and Provisioning for Name/Address Resolution Service",
+   "objectives": [
+    "SC-22",
+    "SC-22[01]",
+    "SC-22[02]",
+    "SC-22[03]"
+   ]
+  },
+  "SC-23": {
+   "title": "Session Authenticity",
+   "objectives": [
+    "SC-23"
+   ]
+  },
+  "SC-28": {
+   "title": "Protection of Information at Rest",
+   "objectives": [
+    "SC-28"
+   ]
+  },
+  "SC-28(1)": {
+   "title": "Cryptographic Protection",
+   "objectives": [
+    "SC-28(01)",
+    "SC-28(01)[01]",
+    "SC-28(01)[02]"
+   ]
+  },
+  "SC-39": {
+   "title": "Process Isolation",
+   "objectives": [
+    "SC-39"
+   ]
+  },
+  "SI-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "SI-01",
+    "SI-01a.",
+    "SI-01a.[01]",
+    "SI-01a.[02]",
+    "SI-01a.[03]",
+    "SI-01a.[04]",
+    "SI-01a.01",
+    "SI-01a.01(a)",
+    "SI-01a.01(a)[01]",
+    "SI-01a.01(a)[02]",
+    "SI-01a.01(a)[03]",
+    "SI-01a.01(a)[04]",
+    "SI-01a.01(a)[05]",
+    "SI-01a.01(a)[06]",
+    "SI-01a.01(a)[07]",
+    "SI-01a.01(b)",
+    "SI-01b.",
+    "SI-01c.",
+    "SI-01c.01",
+    "SI-01c.01[01]",
+    "SI-01c.01[02]",
+    "SI-01c.02",
+    "SI-01c.02[01]",
+    "SI-01c.02[02]"
+   ]
+  },
+  "SI-2": {
+   "title": "Flaw Remediation",
+   "objectives": [
+    "SI-02",
+    "SI-02a.",
+    "SI-02a.[01]",
+    "SI-02a.[02]",
+    "SI-02a.[03]",
+    "SI-02b.",
+    "SI-02b.[01]",
+    "SI-02b.[02]",
+    "SI-02b.[03]",
+    "SI-02b.[04]",
+    "SI-02c.",
+    "SI-02c.[01]",
+    "SI-02c.[02]",
+    "SI-02d."
+   ]
+  },
+  "SI-2(2)": {
+   "title": "Automated Flaw Remediation Status",
+   "objectives": [
+    "SI-02(02)"
+   ]
+  },
+  "SI-3": {
+   "title": "Malicious Code Protection",
+   "objectives": [
+    "SI-03",
+    "SI-03a.",
+    "SI-03a.[01]",
+    "SI-03a.[02]",
+    "SI-03b.",
+    "SI-03c.",
+    "SI-03c.01",
+    "SI-03c.01[01]",
+    "SI-03c.01[02]",
+    "SI-03c.02",
+    "SI-03c.02[01]",
+    "SI-03c.02[02]",
+    "SI-03d."
+   ]
+  },
+  "SI-4": {
+   "title": "System Monitoring",
+   "objectives": [
+    "SI-04",
+    "SI-04a.",
+    "SI-04a.01",
+    "SI-04a.02",
+    "SI-04a.02[01]",
+    "SI-04a.02[02]",
+    "SI-04a.02[03]",
+    "SI-04b.",
+    "SI-04c.",
+    "SI-04c.01",
+    "SI-04c.02",
+    "SI-04d.",
+    "SI-04d.[01]",
+    "SI-04d.[02]",
+    "SI-04e.",
+    "SI-04f.",
+    "SI-04g."
+   ]
+  },
+  "SI-4(2)": {
+   "title": "Automated Tools and Mechanisms for Real-time Analysis",
+   "objectives": [
+    "SI-04(02)"
+   ]
+  },
+  "SI-4(4)": {
+   "title": "Inbound and Outbound Communications Traffic",
+   "objectives": [
+    "SI-04(04)",
+    "SI-04(04)(a)",
+    "SI-04(04)(a)[01]",
+    "SI-04(04)(a)[02]",
+    "SI-04(04)(b)",
+    "SI-04(04)(b)[01]",
+    "SI-04(04)(b)[02]"
+   ]
+  },
+  "SI-4(5)": {
+   "title": "System-generated Alerts",
+   "objectives": [
+    "SI-04(05)"
+   ]
+  },
+  "SI-5": {
+   "title": "Security Alerts, Advisories, and Directives",
+   "objectives": [
+    "SI-05",
+    "SI-05a.",
+    "SI-05b.",
+    "SI-05c.",
+    "SI-05d."
+   ]
+  },
+  "SI-7": {
+   "title": "Software, Firmware, and Information Integrity",
+   "objectives": [
+    "SI-07",
+    "SI-07a.",
+    "SI-07a.[01]",
+    "SI-07a.[02]",
+    "SI-07a.[03]",
+    "SI-07b.",
+    "SI-07b.[01]",
+    "SI-07b.[02]",
+    "SI-07b.[03]"
+   ]
+  },
+  "SI-7(1)": {
+   "title": "Integrity Checks",
+   "objectives": [
+    "SI-07(01)",
+    "SI-07(01)[01]",
+    "SI-07(01)[02]",
+    "SI-07(01)[03]"
+   ]
+  },
+  "SI-7(7)": {
+   "title": "Integration of Detection and Response",
+   "objectives": [
+    "SI-07(07)"
+   ]
+  },
+  "SI-8": {
+   "title": "Spam Protection",
+   "objectives": [
+    "SI-08",
+    "SI-08a.",
+    "SI-08a.[01]",
+    "SI-08a.[02]",
+    "SI-08a.[03]",
+    "SI-08a.[04]",
+    "SI-08b."
+   ]
+  },
+  "SI-8(2)": {
+   "title": "Automatic Updates",
+   "objectives": [
+    "SI-08(02)"
+   ]
+  },
+  "SI-10": {
+   "title": "Information Input Validation",
+   "objectives": [
+    "SI-10"
+   ]
+  },
+  "SI-11": {
+   "title": "Error Handling",
+   "objectives": [
+    "SI-11",
+    "SI-11a.",
+    "SI-11b."
+   ]
+  },
+  "SI-12": {
+   "title": "Information Management and Retention",
+   "objectives": [
+    "SI-12",
+    "SI-12[01]",
+    "SI-12[02]",
+    "SI-12[03]",
+    "SI-12[04]"
+   ]
+  },
+  "SI-16": {
+   "title": "Memory Protection",
+   "objectives": [
+    "SI-16"
+   ]
+  },
+  "SR-1": {
+   "title": "Policy and Procedures",
+   "objectives": [
+    "SR-01",
+    "SR-01a.",
+    "SR-01a.[01]",
+    "SR-01a.[02]",
+    "SR-01a.[03]",
+    "SR-01a.[04]",
+    "SR-01a.01",
+    "SR-01a.01(a)",
+    "SR-01a.01(a)[01]",
+    "SR-01a.01(a)[02]",
+    "SR-01a.01(a)[03]",
+    "SR-01a.01(a)[04]",
+    "SR-01a.01(a)[05]",
+    "SR-01a.01(a)[06]",
+    "SR-01a.01(a)[07]",
+    "SR-01a.01(b)",
+    "SR-01b.",
+    "SR-01c.",
+    "SR-01c.01",
+    "SR-01c.01[01]",
+    "SR-01c.01[02]",
+    "SR-01c.02",
+    "SR-01c.02[01]",
+    "SR-01c.02[02]"
+   ]
+  },
+  "SR-2": {
+   "title": "Supply Chain Risk Management Plan",
+   "objectives": [
+    "SR-02",
+    "SR-02a.",
+    "SR-02a.[01]",
+    "SR-02a.[02]",
+    "SR-02a.[03]",
+    "SR-02a.[04]",
+    "SR-02a.[05]",
+    "SR-02a.[06]",
+    "SR-02a.[07]",
+    "SR-02a.[08]",
+    "SR-02a.[09]",
+    "SR-02b.",
+    "SR-02c.",
+    "SR-02c.[01]",
+    "SR-02c.[02]"
+   ]
+  },
+  "SR-2(1)": {
+   "title": "Establish SCRM Team",
+   "objectives": [
+    "SR-02(01)"
+   ]
+  },
+  "SR-3": {
+   "title": "Supply Chain Controls and Processes",
+   "objectives": [
+    "SR-03",
+    "SR-03a.",
+    "SR-03a.[01]",
+    "SR-03a.[02]",
+    "SR-03b.",
+    "SR-03c."
+   ]
+  },
+  "SR-5": {
+   "title": "Acquisition Strategies, Tools, and Methods",
+   "objectives": [
+    "SR-05",
+    "SR-05[01]",
+    "SR-05[02]",
+    "SR-05[03]"
+   ]
+  },
+  "SR-6": {
+   "title": "Supplier Assessments and Reviews",
+   "objectives": [
+    "SR-06"
+   ]
+  },
+  "SR-8": {
+   "title": "Notification Agreements",
+   "objectives": [
+    "SR-08"
+   ]
+  },
+  "SR-10": {
+   "title": "Inspection of Systems or Components",
+   "objectives": [
+    "SR-10"
+   ]
+  },
+  "SR-11": {
+   "title": "Component Authenticity",
+   "objectives": [
+    "SR-11",
+    "SR-11a.",
+    "SR-11a.[01]",
+    "SR-11a.[02]",
+    "SR-11a.[03]",
+    "SR-11a.[04]",
+    "SR-11b."
+   ]
+  },
+  "SR-11(1)": {
+   "title": "Anti-counterfeit Training",
+   "objectives": [
+    "SR-11(01)"
+   ]
+  },
+  "SR-11(2)": {
+   "title": "Configuration Control for Component Service and Repair",
+   "objectives": [
+    "SR-11(02)",
+    "SR-11(02)[01]",
+    "SR-11(02)[02]"
+   ]
+  },
+  "SR-12": {
+   "title": "Component Disposal",
+   "objectives": [
+    "SR-12"
+   ]
+  }
+ }
+}

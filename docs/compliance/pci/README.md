@@ -91,8 +91,10 @@ and evidence sufficiency.
 14. [`verification-record-2026-07-16.md`](./verification-record-2026-07-16.md)
    records exact local checks and the current-main integration limitation.
    [`verification-record-2026-10-07.md`](./verification-record-2026-10-07.md)
-   is the current record the evidence gate reads; it pins the Railway-era threat
-   model.
+   pinned the Railway-era threat model.
+   [`verification-record-2026-10-10.md`](./verification-record-2026-10-10.md)
+   is the current record the evidence gate reads; it pins the threat model after
+   the generation-excerpt firewall change.
 15. [`change-record-2026-07-16-security-readiness.md`](./change-record-2026-07-16-security-readiness.md)
    is the populated pre-release Requirement 6.5 record for this tranche; its
    unchecked approval, hosted-check, deployment, and runtime gates block closure.

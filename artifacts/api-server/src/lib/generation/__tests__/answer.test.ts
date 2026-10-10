@@ -288,10 +288,14 @@ describe("generateAnswer ZDR route fallback", () => {
     );
   });
 
-  it("redacts sensitive question and excerpt data before OpenRouter", async () => {
+  it("redacts the question but sends approved excerpts verbatim to OpenRouter", async () => {
     const requests: CapturedRequest[] = [];
     const sensitiveChunks = [
-      { ...chunks[0]!, content: "Call 212-555-0198 or email csr@example.com." }
+      {
+        ...chunks[0]!,
+        docTitle: "Contacts sk-proj-abcdefghijklmnopqrstuvwxyz",
+        content: "Call 212-555-0198 or email csr@example.com. SSN 123-45-6789."
+      }
     ];
 
     await generateAnswer(
@@ -304,10 +308,12 @@ describe("generateAnswer ZDR route fallback", () => {
     );
 
     const userMessage = requests[0]?.messages?.find((message) => message.role === "user");
-    expect(userMessage?.content).toContain("[REDACTED_PII_EMAIL]");
-    expect(userMessage?.content).toContain("[REDACTED_PII_PHONE]");
-    expect(userMessage?.content).toContain("[REDACTED_PII_IP_ADDRESS]");
-    expect(userMessage?.content).not.toContain("csr@example.com");
+    expect(userMessage?.content).toContain("QUESTION: What is linked to [REDACTED_PII_IP_ADDRESS]?");
+    expect(userMessage?.content).not.toContain("192.0.2.10");
+    expect(userMessage?.content).toContain("Call 212-555-0198 or email csr@example.com.");
+    // Blocking classes stay redacted in excerpts and their unscanned titles.
+    expect(userMessage?.content).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz");
+    expect(userMessage?.content).not.toContain("123-45-6789");
   });
 
   it("routes Granite 4.2 8B only to its CoreWeave ZDR endpoint", async () => {

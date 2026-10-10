@@ -1,6 +1,6 @@
 # Invoices and Tax Receipts
 
-Larkspur Cloud Customer Support · Reference CS-REF-025 · Version 2 · Effective September 1, 2026 · Owner: Billing Operations
+Cloudshelf Customer Support · Reference CS-REF-025 · Version 2 · Effective September 1, 2026 · Owner: Billing Operations
 
 ## When to use this
 
@@ -32,7 +32,7 @@ To reissue a past invoice with a new company name or address, the customer selec
 
 ## Sales tax
 
-Prices are in US dollars and exclude sales tax. Tax is added at checkout based on the billing address of the card on file, and each invoice shows the tax as its own line. Agents cannot remove tax from a charge.
+Prices are in dollars and exclude sales tax. Tax is added at checkout based on the billing address of the card on file, and each invoice shows the tax as its own line. Agents cannot remove tax from a charge.
 
 Tax-exempt organizations can send an exemption certificate to Billing Operations through a ticket. Once approved, future charges are tax-free. Past tax is not refunded.
 
@@ -46,4 +46,4 @@ Tax-exempt organizations can send an exemption certificate to Billing Operations
 
 **"Can you change the date on an invoice?"** No. Invoice dates match the charge date.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.

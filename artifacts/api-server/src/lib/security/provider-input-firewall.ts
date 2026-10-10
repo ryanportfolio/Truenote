@@ -129,6 +129,24 @@ export function protectProviderText(text: string): ProviderInputProtection {
   };
 }
 
+/**
+ * Blocking classes only (secrets, SSNs, payment cards), with the same
+ * fail-closed rescan. Used for approved-document excerpts, whose contact
+ * emails, phone numbers and IPs are answer content. Titles are prepended to
+ * chunks after the upload scan, so excerpts still need this pass.
+ */
+export function protectApprovedDocumentText(text: string): string {
+  const protectedText = redactSensitiveText(text);
+  const unresolved = scanTextForSensitiveContent(protectedText).filter(
+    (item) =>
+      item.blocking && (item.category === "pii" || item.category === "secret")
+  );
+  if (unresolved.length > 0) {
+    throw new ProviderInputFirewallError(unresolved.map((item) => item.ruleId));
+  }
+  return protectedText;
+}
+
 export function protectProviderTexts(texts: string[]): string[] {
   return texts.map((text) => protectProviderText(text).text);
 }

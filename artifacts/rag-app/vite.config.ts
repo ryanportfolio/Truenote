@@ -4,6 +4,7 @@ import path from "node:path";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { brotliCompress, constants, gzip } from "node:zlib";
 import { promisify } from "node:util";
+import { buildCompliancePages, COMPLIANCE_SLUG_PATTERN } from "./compliance-pages";
 
 const brotli = promisify(brotliCompress);
 const gzipFile = promisify(gzip);
@@ -44,8 +45,31 @@ async function loadPciPage(): Promise<{ html: string; css: string }> {
 }
 
 /**
+ * Response for a /security/compliance/ request in development, or null when
+ * the path is not a published compliance page.
+ */
+async function compliancePageResponse(
+  pathname: string
+): Promise<{ body: string; contentType: string } | null> {
+  const match = /^\/security\/compliance(?:\/(?:([^/]+)\/?)?)?$/.exec(pathname);
+  if (!match) return null;
+  const { css, indexHtml, pages } = await buildCompliancePages();
+  const segment = match[1];
+  if (segment === undefined || segment === "index.html") {
+    return { body: indexHtml, contentType: "text/html; charset=utf-8" };
+  }
+  if (segment === "styles.css") {
+    return { body: css, contentType: "text/css; charset=utf-8" };
+  }
+  const page = COMPLIANCE_SLUG_PATTERN.test(segment) ? pages.get(segment) : undefined;
+  return page ? { body: page, contentType: "text/html; charset=utf-8" } : null;
+}
+
+/**
  * Keep the reviewable standalone document as the only content source while
  * publishing CSP-compatible assets at /security/ in development and builds.
+ * Public compliance summaries (compliance-pages.ts) render from Markdown to
+ * /security/compliance/ the same way.
  */
 function publishSecurityPage(): Plugin {
   return {
@@ -53,6 +77,20 @@ function publishSecurityPage(): Plugin {
     configureServer(server): void {
       server.middlewares.use((req, res, next) => {
         const pathname = req.url?.split("?", 1)[0];
+        if (pathname?.startsWith("/security/compliance")) {
+          void compliancePageResponse(pathname)
+            .then((page) => {
+              if (!page) {
+                next();
+                return;
+              }
+              res.statusCode = 200;
+              res.setHeader("Content-Type", page.contentType);
+              res.end(page.body);
+            })
+            .catch(next);
+          return;
+        }
         const securityRequest =
           pathname === "/security" ||
           pathname === "/security/" ||
@@ -112,6 +150,25 @@ function publishSecurityPage(): Plugin {
         fileName: "security/pci/styles.css",
         source: pciCss
       });
+
+      const compliance = await buildCompliancePages();
+      this.emitFile({
+        type: "asset",
+        fileName: "security/compliance/index.html",
+        source: compliance.indexHtml
+      });
+      this.emitFile({
+        type: "asset",
+        fileName: "security/compliance/styles.css",
+        source: compliance.css
+      });
+      for (const [slug, html] of compliance.pages) {
+        this.emitFile({
+          type: "asset",
+          fileName: `security/compliance/${slug}/index.html`,
+          source: html
+        });
+      }
     }
   };
 }
