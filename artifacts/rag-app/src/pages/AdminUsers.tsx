@@ -485,7 +485,7 @@ function SsoInvitationNotice({
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            The invitation email could not be sent. Ask them to open{" "}
+            We couldn't confirm the invitation email was sent. Ask them to open{" "}
             <span className="break-all font-mono">{signInUrl}</span> and choose
             "Continue with company SSO".
           </p>
