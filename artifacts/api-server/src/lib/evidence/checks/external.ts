@@ -73,8 +73,12 @@ function handshake(
   });
 }
 
+const CERTIFICATE_ERROR = /CERT|ALTNAME|SELF_SIGNED|UNABLE_TO_(GET|VERIFY)/;
+
 export async function observeTls(host: string, now = new Date()): Promise<TlsObservation> {
-  const modern = await handshake(host, { rejectUnauthorized: false, minVersion: "TLSv1.2" });
+  // Default verification: an untrusted, expired or mismatched certificate
+  // fails the handshake and its error code is recorded as the failure.
+  const modern = await handshake(host, { minVersion: "TLSv1.2" });
   let observation: TlsObservation = {
     host,
     protocol: null,
@@ -109,7 +113,6 @@ export async function observeTls(host: string, now = new Date()): Promise<TlsObs
   // SECLEVEL=0 lets this client offer TLS 1.0/1.1 at all, so a failure means
   // the server refused, not that local OpenSSL declined to try.
   const legacy = await handshake(host, {
-    rejectUnauthorized: false,
     minVersion: "TLSv1",
     maxVersion: "TLSv1.1",
     ciphers: "DEFAULT@SECLEVEL=0"
@@ -119,6 +122,9 @@ export async function observeTls(host: string, now = new Date()): Promise<TlsObs
     legacy.socket.destroy();
   } else {
     observation.legacyHandshakeError = legacy.error.code ?? legacy.error.message;
+    // Certificate verification runs only after the server agreed to the
+    // legacy protocol version, so a certificate error still means it accepted.
+    if (CERTIFICATE_ERROR.test(observation.legacyHandshakeError)) observation.legacyHandshakeSucceeded = true;
   }
   return observation;
 }
