@@ -43,7 +43,7 @@ const ALLOWED_EVIDENCE_GRADES = new Set([
 // The newest dated verification record pins the current source hashes. Older
 // records stay as dated history; adding a newer record means updating this path.
 export const CURRENT_VERIFICATION_RECORD =
-  "docs/compliance/pci/verification-record-2026-10-07.md";
+  "docs/compliance/pci/verification-record-2026-10-10.md";
 
 function filesBelow(directory: string, extension: string): string[] {
   const files: string[] = [];
