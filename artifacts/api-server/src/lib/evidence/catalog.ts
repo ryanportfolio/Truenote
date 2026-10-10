@@ -487,6 +487,34 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
       "Self-attested by the owner; the harness does not read the files' content. Proves that a review was " +
       "recorded, not its quality, and covers only the documents the statement names."
   },
+  // The operator check has no runner: the owner runs scripts/src/evidence-operator.ts as the
+  // migration role, and only that role can append a receipt of kind operator (0020_operator_receipts.sql).
+  {
+    id: "operator.monthly-verification",
+    kind: "operator",
+    title: "Owner-run check of the database controls and the append-only triggers",
+    controls: ["AU-9", "CM-6", "CA-7"],
+    objectives: ["AU-09a.", "CM-06b.", "CA-07d."],
+    cadence: "monthly",
+    cadenceStatus: "proposed",
+    passCondition:
+      "Connected as a superuser or a member of the owner of evidence_receipts, the script runs " +
+      "docs/compliance/pci/production-control-verification.sql with truenote.evidence_runtime_role set to the " +
+      "runtime role (truenote_app unless overridden), and every control row it returns (at least one) has passed " +
+      "true. Then, in one transaction that always ends in ROLLBACK, an UPDATE and a DELETE aimed at the newest row " +
+      "and a TRUNCATE, each in its own savepoint, run on evidence_receipts and on security_events, and all six " +
+      "statements are refused (raise an error). On an empty table the UPDATE and DELETE have no row to aim at and " +
+      "count as not refused; a lock or statement timeout stops the run without a receipt. After the rollback, the " +
+      "rows that existed before the tests must be unchanged (their count and the newest row's hash), else the run " +
+      "stops without a receipt. The failed controls, the sha256 of each object definition the verifier returns, " +
+      "each test's statement and error, the session user and both chain heads are recorded.",
+    limits:
+      "Self-assessment: the owner runs it against the system the owner operates, so independent assessment " +
+      "(CA-2(1)) is not met. A refusal shows the triggers were in place during the run, not between runs. The " +
+      "owner, as a superuser, could disable the triggers and rewrite the evidence chain; the monthly export to the " +
+      "private evidence repository, the timestamped chain head and the summary forwarded to the customer's " +
+      "reviewer are the anchors outside the database that would show such a rewrite."
+  },
   // The monthly summary has no runner: the first daily run of each month builds it (summary.ts).
   {
     id: "summary.monthly",
