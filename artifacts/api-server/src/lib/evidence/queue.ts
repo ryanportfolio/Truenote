@@ -15,10 +15,26 @@ export const EVIDENCE_RUN_QUEUE = "evidence-run";
 /** 05:23 UTC daily (proposed cadence). */
 export const EVIDENCE_RUN_CRON = "23 5 * * *";
 
+/**
+ * expireInSeconds must outlast the slowest possible run, or pg-boss marks a
+ * run still in progress as failed and retries it 600 s later as a second
+ * run. Worst case, every check hits its time limit in runner.ts
+ * (timeoutFor): 18 non-synthetic checks (5 github, 7 external, 3 database,
+ * 3 integrity) at 90 s = 1,620 s, plus 5 synthetic checks at 380 s
+ * (SYNTHETIC_HTTP_WORST_CASE_MS 320 s + 60 s; synthetic.login-windows reads
+ * only the database but gets the synthetic limit) = 1,900 s. Total 3,520 s,
+ * about 59 minutes, before receipt writes and the alert email. 90 minutes
+ * leaves about 31 minutes for those. Recount when a check is added or a
+ * time limit changes.
+ *
+ * pg-boss stores these options when the queue is created; a change here
+ * reaches production only through pgboss:install, which also updates the
+ * existing queue (scripts/src/pgboss-install.ts).
+ */
 export const EVIDENCE_QUEUE_POLICY = {
   retryLimit: 1,
   retryDelay: 600,
-  expireInSeconds: 30 * 60
+  expireInSeconds: 90 * 60
 } as const;
 
 export interface EvidenceRunPayload {

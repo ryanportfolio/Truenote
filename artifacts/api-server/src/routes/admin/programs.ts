@@ -30,6 +30,7 @@ export interface ProgramListItem {
   id: string;
   name: string;
   createdAt: string | null;
+  isSynthetic: boolean;
 }
 
 /**
@@ -52,7 +53,8 @@ programsRouter.get("/", adminReadLimit, async (req, res, next) => {
       .select({
         id: programs.id,
         name: programs.name,
-        createdAt: programs.createdAt
+        createdAt: programs.createdAt,
+        isSynthetic: programs.isSynthetic
       })
       .from(programs)
       .where(
@@ -66,7 +68,8 @@ programsRouter.get("/", adminReadLimit, async (req, res, next) => {
     const items: ProgramListItem[] = rows.map((r) => ({
       id: r.id,
       name: r.name,
-      createdAt: r.createdAt ? r.createdAt.toISOString() : null
+      createdAt: r.createdAt ? r.createdAt.toISOString() : null,
+      isSynthetic: r.isSynthetic
     }));
     res.json({ items });
   } catch (err) {
@@ -130,7 +133,8 @@ programsRouter.post("/", requireSuperUser, async (req, res, next) => {
         .returning({
           id: programs.id,
           name: programs.name,
-          createdAt: programs.createdAt
+          createdAt: programs.createdAt,
+          isSynthetic: programs.isSynthetic
         });
       const row = inserted[0];
       if (!row) {
@@ -140,7 +144,8 @@ programsRouter.post("/", requireSuperUser, async (req, res, next) => {
       const item: ProgramListItem = {
         id: row.id,
         name: row.name,
-        createdAt: row.createdAt ? row.createdAt.toISOString() : null
+        createdAt: row.createdAt ? row.createdAt.toISOString() : null,
+        isSynthetic: row.isSynthetic
       };
       res.status(201).json({ item });
     } catch (err) {

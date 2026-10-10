@@ -63,7 +63,10 @@ export type UserRole = (typeof userRoleEnum.enumValues)[number];
 export const programs = pgTable("programs", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow()
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  // Evidence harness test program (lib/db/sql/0019_synthetic_fence.sql).
+  // Set only by the migration role at insert; fixed afterwards.
+  isSynthetic: boolean("is_synthetic").notNull().default(false)
 });
 
 export type Program = typeof programs.$inferSelect;
@@ -241,7 +244,11 @@ export const users = pgTable("users", {
   createdBy: uuid("created_by").references(
     (): AnyPgColumn => users.id,
     { onDelete: "set null" }
-  )
+  ),
+  // Evidence harness test account (lib/db/sql/0019_synthetic_fence.sql):
+  // belongs to a synthetic program and has a .invalid email. Set only by the
+  // migration role at insert; fixed afterwards.
+  isSynthetic: boolean("is_synthetic").notNull().default(false)
 });
 
 export type User = typeof users.$inferSelect;
