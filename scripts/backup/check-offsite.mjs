@@ -112,16 +112,24 @@ async function listManifests() {
   return keys.filter((k) => /^manifests\/\d{8}T\d{6}Z\.json$/.test(k)).sort();
 }
 
+// Days after upload at which the bucket's lifecycle rules hide each prefix
+// (.claude/reference/deployment.md, Production table, row Backups).
+const HIDE_AFTER_DAYS = { "manifests/": 365, "weekly/": 35, "monthly/": 365 };
+
 // Keys under the prefixes the job writes that changed after upload: a second
-// stored version with different content, or a delete marker (B2 "hide") that
-// makes a plain read skip the key. Run ids are unique, so either means someone
-// wrote to the key again. A second version with the same ETag and size is a
-// retried upload of the same bytes (rclone retries when a response is lost)
-// and is not reported. Each entry lists the key's version times, so a restore
-// can pick an as-of time before the change.
+// stored version with different content, or a delete marker (B2 "hide") set
+// before the lifecycle rule would hide the key, which makes a plain read skip
+// it. Run ids are unique, so either means someone wrote to the key again. A
+// second version with the same ETag and size is a retried upload of the same
+// bytes (rclone retries when a response is lost) and is not reported, nor is a
+// hide from one day before the lifecycle age on, nor a marker left with no
+// version: the write key cannot delete versions, so only the lifecycle removes
+// them. Each entry lists the key's version times, so a restore can pick an
+// as-of time before the change.
 async function changedKeys() {
   const versions = new Map();
-  for (const prefix of ["manifests/", "weekly/", "monthly/"]) {
+  const changed = [];
+  for (const prefix of Object.keys(HIDE_AFTER_DAYS)) {
     let keyMarker;
     let versionMarker;
     do {
@@ -134,10 +142,15 @@ async function changedKeys() {
         if (!key) continue;
         const etag = m[2].match(/<ETag>([^<]+)<\/ETag>/)?.[1];
         const size = m[2].match(/<Size>(\d+)<\/Size>/)?.[1];
-        const v = versions.get(key) ?? { contents: new Set(), times: [] };
-        // A delete marker, or a version without ETag or size, matches no other version.
-        v.contents.add(m[1] === "Version" && etag && size ? `${etag}:${size}` : Symbol());
-        v.times.push(m[2].match(/<LastModified>([^<]+)<\/LastModified>/)?.[1] ?? "unknown");
+        const time = m[2].match(/<LastModified>([^<]+)<\/LastModified>/)?.[1] ?? "unknown";
+        const v = versions.get(key) ?? { prefix, contents: new Set(), uploads: [], hides: [], times: [] };
+        if (m[1] === "DeleteMarker") v.hides.push(time);
+        else {
+          // A version without ETag or size matches no other version.
+          v.contents.add(etag && size ? `${etag}:${size}` : Symbol());
+          v.uploads.push(time);
+        }
+        v.times.push(time);
         versions.set(key, v);
       }
       const truncated = /<IsTruncated>true<\/IsTruncated>/.test(xml);
@@ -145,9 +158,14 @@ async function changedKeys() {
       versionMarker = truncated ? xml.match(/<NextVersionIdMarker>([^<]+)<\/NextVersionIdMarker>/)?.[1] : undefined;
     } while (keyMarker);
   }
-  return [...versions]
-    .filter(([, v]) => v.contents.size > 1)
-    .map(([key, v]) => `${key} (versions at ${v.times.sort().join(", ")})`);
+  for (const [key, v] of versions) {
+    const firstUpload = Math.min(...v.uploads.map(Date.parse));
+    const earlyHide =
+      v.uploads.length > 0 &&
+      v.hides.some((h) => !(Date.parse(h) - firstUpload >= (HIDE_AFTER_DAYS[v.prefix] - 1) * 86_400_000));
+    if (v.contents.size > 1 || earlyHide) changed.push(`${key} (versions at ${v.times.sort().join(", ")})`);
+  }
+  return changed;
 }
 
 // age v1 header: version line, one or more stanzas, then "--- <MAC>".
