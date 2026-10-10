@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { listDocuments } from "@/lib/api";
+import { listDocuments, type RequestOptions } from "@/lib/api";
 import type { ContentSourceItem, CurrentUser, DocumentListItem } from "@/types/api";
 import { UploadForm } from "@/components/admin/UploadForm";
 import { DocumentList } from "@/components/admin/DocumentList";
@@ -31,10 +31,10 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
   // the per-user limit, a network blip) even though items did not change.
   const [failedRefreshes, setFailedRefreshes] = useState(0);
 
-  const refresh = useCallback(async (): Promise<void> => {
+  const refresh = useCallback(async (options: RequestOptions = {}): Promise<void> => {
     setError(null);
     try {
-      const response = await listDocuments();
+      const response = await listDocuments(options);
       setItems(response.items);
       setSources(response.sources ?? []);
       setControlsReady(response.controlsReady !== false);
@@ -83,8 +83,9 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
     const retryFailure = failedRefreshes > 0 && failedRefreshes <= 5;
     if (!hasInFlight && !retryFailure) return;
     const delay = Math.min(POLL_INTERVAL_MS * 2 ** failedRefreshes, 30_000);
+    // Background request: ingestion polling is not session activity.
     const timer = setTimeout(() => {
-      void refresh();
+      void refresh({ background: true });
     }, delay);
     return () => clearTimeout(timer);
   }, [items, refresh, failedRefreshes]);

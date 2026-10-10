@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, RefreshCw } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { RelativeTime } from "@/components/RelativeTime";
-import { getObservability } from "@/lib/api";
+import { getObservability, type RequestOptions } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type {
   CurrentUser,
@@ -48,13 +48,16 @@ function ObservabilityDashboard(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const requestGeneration = useRef(0);
 
-  const refresh = useCallback(async (initial = false): Promise<void> => {
+  const refresh = useCallback(async (
+    initial = false,
+    options: RequestOptions = {}
+  ): Promise<void> => {
     const generation = ++requestGeneration.current;
     if (initial) setLoading(true);
     else setRefreshing(true);
     setError(null);
     try {
-      const next = await getObservability(windowHours);
+      const next = await getObservability(windowHours, options);
       if (generation === requestGeneration.current) setData(next);
     } catch (reason) {
       if (generation === requestGeneration.current) {
@@ -72,7 +75,12 @@ function ObservabilityDashboard(): JSX.Element {
 
   useEffect(() => {
     void refresh(true);
-    const interval = window.setInterval(() => void refresh(false), 30_000);
+    // Timer refreshes are background requests, so an open dashboard does
+    // not keep an idle session alive.
+    const interval = window.setInterval(
+      () => void refresh(false, { background: true }),
+      30_000
+    );
     return () => {
       requestGeneration.current += 1;
       window.clearInterval(interval);

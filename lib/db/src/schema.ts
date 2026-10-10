@@ -221,6 +221,12 @@ export const users = pgTable("users", {
   isActive: boolean("is_active").notNull().default(true),
   mustResetPassword: boolean("must_reset_password").notNull().default(true),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  // Local-login lockout (lib/db/sql/0015_login_lockout.sql). Consecutive
+  // failed password attempts since the last success or lock; reset to 0
+  // when the account locks. Maintained by
+  // artifacts/api-server/src/lib/auth/lockout.ts.
+  failedLoginCount: integer("failed_login_count").notNull().default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -259,6 +265,15 @@ export const sessions = pgTable("sessions", {
     .notNull()
     .defaultNow(),
   lastUsedAt: timestamp("last_used_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  // How the session was established. The live DDL (0000_baseline.sql)
+  // holds CHECK (auth_method IN ('local','oidc')); the OIDC callback sets
+  // 'oidc' after insert.
+  authMethod: text("auth_method", { enum: ["local", "oidc"] })
+    .notNull()
+    .default("local"),
+  authTime: timestamp("auth_time", { withTimezone: true })
     .notNull()
     .defaultNow()
 });

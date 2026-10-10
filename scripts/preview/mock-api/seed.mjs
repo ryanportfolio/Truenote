@@ -1241,6 +1241,31 @@ export function buildSeed() {
     }))
   ];
 
+  // Break-glass emergency account with a second factor (lib/auth/mfa.ts).
+  // Added after every other row so the ids and random draws above stay the
+  // same. Its password step returns mfaRequired; the seeded passkey is a
+  // placeholder no real authenticator holds, so the first sign-in uses the
+  // fixture recovery code, then a passkey added on the Security page.
+  const rowan = mkUser("Rowan Hale", "emergency@truenote.example", "super_user", "restricted");
+  users.push(rowan);
+  const mfa = new Map([
+    [
+      rowan.id,
+      {
+        passkeys: [
+          {
+            id: nextId(),
+            credentialId: "Zml4dHVyZS1wbGFjZWhvbGRlci1wYXNza2V5",
+            transports: ["usb"],
+            name: "Seeded security key (fixture placeholder)",
+            createdAt: iso(daysAgo(40)),
+            lastUsedAt: iso(daysAgo(12))
+          }
+        ],
+        recoveryCodes: [{ code: "mockrecoverycode", usedAt: null }]
+      }
+    ]
+  ]);
   return {
     programs,
     users,
@@ -1260,6 +1285,9 @@ export function buildSeed() {
     sessions,
     views,
     highlights: [],
+    mfa,
+    // Fixture reset links (`mock-reset-<key>`) already used; see server.mjs.
+    usedResetTokens: new Set(),
     colors: COLORS
   };
 }

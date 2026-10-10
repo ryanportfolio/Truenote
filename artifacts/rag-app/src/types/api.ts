@@ -9,6 +9,8 @@
  * When the shape drifts on the backend, fix here too.
  */
 
+import type { PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser";
+
 export type UserRole = "super_user" | "senior_manager" | "manager" | "supervisor" | "csr";
 
 export interface CurrentUser {
@@ -43,13 +45,54 @@ export interface LoginResponse {
   user: CurrentUser;
 }
 
+export type MfaMethod = "passkey" | "recovery_code";
+
+/**
+ * POST /api/auth/login for an account with a passkey: the password was
+ * accepted, no session exists yet, and an httpOnly cookie scoped to
+ * /api/auth/mfa holds the pending challenge (5 minutes).
+ */
+export interface MfaRequiredResponse {
+  mfaRequired: true;
+  methods: MfaMethod[];
+  /** Absent when the server offers recovery codes only; methods is then ["recovery_code"]. */
+  passkeyOptions?: PublicKeyCredentialRequestOptionsJSON;
+}
+
+export type LoginResult =
+  | { status: "authenticated"; user: CurrentUser }
+  | { status: "mfa_required"; challenge: MfaRequiredResponse };
+
+export interface PasskeySummary {
+  id: string;
+  name: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface MfaStatusResponse {
+  /** False when the server has no usable WebAuthn relying-party config. */
+  passkeyAvailable: boolean;
+  passkeys: PasskeySummary[];
+  unusedRecoveryCodes: number;
+}
+
 export interface ChangePasswordResponse {
   user: CurrentUser;
 }
 
-export interface ResetPasswordResponse {
-  user: CurrentUser;
-}
+/**
+ * POST /api/auth/reset-password. The password is set and the link consumed
+ * either way. A user with a passkey (or the break_glass emergency account)
+ * gets no session and must sign in through /login and its second factor.
+ */
+export type ResetPasswordResponse =
+  | { user: CurrentUser }
+  | { passwordReset: true; signInRequired: true };
+
+export type ResetPasswordResult =
+  | { status: "authenticated"; user: CurrentUser }
+  | { status: "sign_in_required" };
 
 export interface Source {
   chunk_id: string;

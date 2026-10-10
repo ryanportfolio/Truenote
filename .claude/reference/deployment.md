@@ -21,7 +21,7 @@ The Railway CLI stores `railway link` per directory, so a fresh worktree is not 
 | Backups | Off-site copy running since 2026-10-10: service `backup` (`a7b96647-e8dd-4e3a-8290-fca4aab6bf22`), cron `17 6 * * 0` (Sunday 06:17 UTC), restart policy `NEVER`, no domain or TCP proxy. Variables: `RAILWAY_DOCKERFILE_PATH=Dockerfile.backup`, `BACKUP_DATABASE_URL` for `truenote_backup` (`${{pgvector.TRUENOTE_BACKUP_DB_PASSWORD}}` at `${{pgvector.PGHOST_PRIVATE}}`), `BACKUP_AGE_RECIPIENT`, `BACKUP_GIT_URL=https://github.com/ryanportfolio/Truenote.git`, `OFFSITE_S3_*` (the write key), and `S3_*` as references to `web`'s (`${{web.S3_ACCESS_KEY_ID}}` and so on), so a bucket credential reset also needs `railway redeploy -s backup -y`. `scripts/railway-deploy.mjs` deploys only `web` and `worker`, so the service was created with `railway add --service backup`, its settings set over the GraphQL API (`serviceInstanceUpdate`), and main `7c317327` uploaded once from a clean LF worktree with `.release-commit` (deployment `817f4f17-f9e9-478c-9136-31bc3fcd0719`, image `sha256:efe2e8c1…`, release register row) after the owner's go. That deployment ran once before the cron was set: run `20261010T120903Z`, 30,533,080 bytes, 31 bucket files, 8 of 39 referenced files missing (the 8 Replit-only demo objects, "Data copy from Replit"); `node scripts/backup/check-offsite.mjs` printed `PASS` with decryption. Design chosen by the owner on 2026-10-10 (B2 destination, weekly cadence): Railway volume backups on `pgvector-volume` (daily, weekly, monthly; off until go-live, owner decision 2026-10-10; turn on with `node scripts/railway-volume-backups.mjs --enable`), and the `backup` cron service (`Dockerfile.backup`, `scripts/backup/run-backup.sh`), a weekly `age`-encrypted copy of the database, the bucket and the code in a separate Backblaze B2 account. Procedures and keys: `docs/security/backup-restore-runbook.md` (sections 1, 4.7, 7, 8); targets: `docs/security/contingency-plan.md`. B2 set up on 2026-10-10: account region `us-east-005` (fixed at sign-up), S3 endpoint `https://s3.us-east-005.backblazeb2.com`, bucket `truenote-offsite-f630db2c` (private, SSE-B2, Object Lock governance 35 days; lifecycle `weekly/` 35 days, `monthly/` and `manifests/` 365 days, then deleted 1 day after hiding; unfinished uploads cancelled after 1 day). Bucket-limited keys `truenote-backup-write` (`listFiles`, `writeFiles`) and `truenote-backup-read` (`listFiles`, `readFiles`), stored on the owner's machine in `~/.claude/secrets/truenote-offsite-write.json` and `truenote-offsite-read.json`. Checked over the S3 API on 2026-10-10: the write key can PUT and is refused GET and version DELETE (403), the read key can GET and is refused PUT (403), and a locked object could not be deleted even with the master key until the governance bypass was used. age key pair generated on the owner's machine on 2026-10-10 by the agent at the owner's request (age 1.3.1 from its GitHub release, `C:\Users\Home\.local\age-v1.3.1`): public key `age1tf8yu94alejwlehs57trggan4m8sgtltj6xjp6cxt087vu63fs2shr0mt7`, private key in `~/.claude/secrets/truenote-backup-identity.txt` until the owner passphrase-protects it. It is a test key: make a new pair at go-live (runbook, section 7, step 4) |
 | Scanner | Not created yet (owner decision OD-A14, 2026-10-10; steps in "Scanner service"). Service `scanner`: ClamAV 1.4 LTS (clamd plus freshclam) behind an HTTP wrapper, `services/scanner/Dockerfile`, reached only at `http://scanner.railway.internal:8080/scan` over the private network; no public domain or TCP proxy |
 
-Run one replica of `web` and scale vertically: the forgot-password and login IP limiters (`artifacts/api-server/src/lib/auth/rate-limit.ts`) live in process memory. The ask and workload limits are in Postgres and hold across replicas.
+Run one replica of `web` and scale vertically: the forgot-password and login IP limiters (`artifacts/api-server/src/lib/auth/rate-limit.ts`) live in process memory, and so do the per-IP limiters on `POST /api/auth/login` (`loginPasswordIpLimit`) and on `GET /api/auth/oidc/start` and `/callback` (`oidcIpLimit`, shared), each 2000 requests per 10 minutes (`artifacts/api-server/src/lib/security/route-rate-limit.ts`). The ask and workload limits are in Postgres and hold across replicas.
 
 ### Variables
 
@@ -82,7 +82,7 @@ Rules for later changes:
 
 ### Agent account
 
-The owner authorized an agent account for operating and testing the site (2026-10-07): `claude-agent@truenote.org`, role `super_user`, user id `af8a8c7a-6369-4813-8c6e-fec0ccbf3cb6`, with the owner's data clearance. It was created directly inside the worker with the app's `hashPassword` and recorded as security event `admin.user.create`, so that no password had to pass through chat or an API response. The admin create-user route (`POST /api/admin/users`) works without email: it returns a one-time `tempPassword` in the response. The credentials live only on the owner's machine in `~/.claude/secrets/truenote-agent.json`; never print or commit them. Use the account through the app's own API (`POST /api/auth/login`, then the session cookie with `Origin` and, for program-scoped calls, `X-Program-Id: 00000000-0000-0000-0000-0000000000aa`), and log out when done. The demo set in `docs/demo-kb/` was uploaded this way. Deactivate the account from the admin users page if it is no longer wanted.
+The owner authorized an agent account for operating and testing the site (2026-10-07): `claude-agent@truenote.org`, role `super_user`, user id `af8a8c7a-6369-4813-8c6e-fec0ccbf3cb6`, with the owner's data clearance. It was created directly inside the worker with the app's `hashPassword` and recorded as security event `admin.user.create`, so that no password had to pass through chat or an API response. The admin create-user route (`POST /api/admin/users`) works without email: it returns a one-time `tempPassword` in the response. The credentials live only on the owner's machine in `~/.claude/secrets/truenote-agent.json`; never print or commit them. Use the account through the app's own API (`POST /api/auth/login`, then the session cookie with `Origin` and, for program-scoped calls, `X-Program-Id: 00000000-0000-0000-0000-0000000000aa`), and log out when done. This password-only use needs the account to have no passkey: with one, `POST /api/auth/login` answers `{ "mfaRequired": true, ... }` instead of a session, and `scripts/src/seed-showcase.ts` stops with an error. Once `LOCAL_LOGIN_MODE` is `break_glass`, a super user without a passkey cannot sign in locally at all, so this automation account stops working there. The demo set in `docs/demo-kb/` was uploaded this way. Deactivate the account from the admin users page if it is no longer wanted.
 
 ## Deploying
 
@@ -151,6 +151,70 @@ Applied: `0001_schema_migrations.sql` (2026-10-07, sha256 `f33bb30e…`), `0002_
 0007 creates the `truenote_app` role and its grants ("Database roles"); 0008 and 0009 install the `security_events` append-only and truncate guards and the document-version and content-source audit triggers. All three are additive and were applied in separate runs, so no pre-change dump was taken; a privilege sweep and rolled-back negative tests followed (receipt named in "Database roles"). 0010 is data only: it cleared 9 session titles derived from refused questions.
 
 0004 adds `supervisor` to `user_role`; 0005 adds `team_members` with its guard and users cleanup triggers; 0006 adds `kb_team_shortcuts` for supervisor-recommended sources with its document and supervisor guards and users cleanup trigger. They ran in that order, in separate runs, because Postgres cannot use a new enum value in the transaction that adds it. All three are additive (one enum value, two new tables), so no pre-change dump was taken. The demo supervisor's two recommended sources were inserted by one-off SQL after `seed:showcase teams`, because the server refuses writes from demo accounts.
+
+## SSO and emergency sign-in release (2026-10-10)
+
+Steps for the release that adds per-account lockout, SSO identity binding, SSO session limits and passkeys for the emergency local login. Variables: `secrets.md`. Tables: `data-model.md`, "Sign-in tables (0015-0017)". The list of what to ask the customer's IT for (app registration, claims, MFA policy) is in `docs/security/sso-mfa-plan-2026-10-09.md`, on branch `claude/sso-mfa-plan` (PR ryanportfolio/Truenote#209).
+
+### 1. Apply 0015, 0016, 0017 before deploying the code
+
+The new code reads the new schema on every sign-in: `POST /api/auth/login` selects `users.locked_until` and, after a correct password, lists `user_passkeys`; the OIDC callback queries `user_identities`. Deployed without the files, local login and SSO fail. All three are additive (two nullable or defaulted columns on `users`, four new tables with `truenote_app` grants), and earlier additive files (0004 to 0009) went without a pre-change dump. In order, status first:
+
+```text
+node scripts/railway-apply-sql.mjs lib/db/sql/0015_login_lockout.sql
+node scripts/railway-apply-sql.mjs lib/db/sql/0016_user_identities.sql
+node scripts/railway-apply-sql.mjs lib/db/sql/0017_break_glass_mfa.sql
+```
+
+After the owner's go, rerun each with `--apply` in the same order, inspect `\d+ users`, `\d+ user_identities`, `\d+ user_passkeys`, `\d+ user_recovery_codes` and `\d+ mfa_challenges`, and add the three files to the "Applied" list above. Then deploy `web` and `worker` from the same commit ("Deploying").
+
+### 2. Enroll the emergency passkey while `LOCAL_LOGIN_MODE=enabled`
+
+In `break_glass` a super user without a passkey cannot log in locally (`POST /api/auth/login` answers 401 and records `auth.break_glass.mfa_missing`). Super users have no program, so they cannot use SSO either. The first passkey must therefore be enrolled before the switch:
+
+1. Set `LOCAL_LOGIN_MODE=enabled` on `web` explicitly. It is not in the variable list above, and unset means `enabled` only while none of the five core OIDC variables (`OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, `OIDC_STATE_SECRET`) is set. `OIDC_TENANT_ID` or `OIDC_ALLOWED_PROGRAM_IDS` alone does not change that (`configured` in `artifacts/api-server/src/lib/auth/oidc.ts`).
+2. Passkeys need a relying party. With neither `WEBAUTHN_RP_ID` nor `WEBAUTHN_ORIGINS` set, both come from `APP_BASE_URL` (`truenote.org`, `https://truenote.org`). `www.truenote.org` answers 308 to the apex today; if it ever serves the app, set `WEBAUTHN_ORIGINS=https://truenote.org,https://www.truenote.org`.
+3. Sign in as the super user, open `/admin/security`, card "Emergency sign-in". Add a passkey (asks for the current password), then generate recovery codes. The 10 codes are shown once; store them offline. Generating again replaces the whole set.
+4. Sign out and back in: the password step now asks for the passkey or a recovery code. This applies in every mode, `enabled` included, once the account has a passkey. The password response must list `"methods":["passkey","recovery_code"]`. If it lists only `recovery_code`, the relying party is not usable: passkey sign-in is refused, `web` logs `[auth] WebAuthn is not configured; login MFA offers recovery codes only`, and the event `auth.mfa.webauthn_unconfigured` is recorded. Sign in with a recovery code and fix `WEBAUTHN_RP_ID`, `WEBAUTHN_ORIGINS` or `APP_BASE_URL` before going on.
+
+The last passkey cannot be removed while the mode is `break_glass` (409).
+
+### 3. Enable SSO
+
+From the customer's IT team: tenant ID, client ID, client secret, and the program's users already created in Truenote with the emails the directory sends. Set on `web` with `railway variable set ... --stdin --skip-deploys`, then redeploy once:
+
+| Variable | Value |
+|---|---|
+| `LOCAL_LOGIN_MODE` | `enabled` (keep it explicit: with any of the five core OIDC variables set but OIDC not usable, an unset mode means `disabled` and locks every local login) |
+| `OIDC_TENANT_ID` | the tenant ID |
+| `OIDC_ISSUER_URL` | `https://login.microsoftonline.com/<tenant ID>/v2.0` (its tenant segment must equal `OIDC_TENANT_ID`) |
+| `OIDC_CLIENT_ID` | the client ID |
+| `OIDC_CLIENT_SECRET` | the client secret (secret) |
+| `OIDC_REDIRECT_URI` | `https://truenote.org/api/auth/oidc/callback` |
+| `OIDC_STATE_SECRET` | random, at least 32 characters (secret) |
+| `OIDC_ALLOWED_PROGRAM_IDS` | the program's UUID; empty or malformed leaves SSO off |
+
+`OIDC_REQUIRE_MFA` defaults to on once OIDC is configured. After the redeploy, `GET /api/config` must show `"oidcEnabled":true` and `"localLoginMode":"enabled"`. A user's first SSO login matches the account by email once and stores the IdP's (issuer, `sub`) in `user_identities`; later logins use only that binding.
+
+### 4. Deploy checks
+
+- SSO login with MFA, as a user of an allowed program: lands on the app; the new `sessions` row has `auth_method = 'oidc'` and `expires_at` about 10 hours after `created_at` (`SSO_SESSION_MAX_HOURS`); one `user_identities` row exists for the user; security events `auth.oidc.identity_linked` and `auth.oidc.login` (success) are recorded.
+- SSO login whose token lacks `amr: ["mfa"]` (a user excluded from the IdP's MFA policy, if the IT team can provide one): redirect to `/login?sso_error=1`, no `sessions` row, `web` logs `[oidc] callback failed: OIDC token does not contain MFA evidence`.
+- A user outside `OIDC_ALLOWED_PROGRAM_IDS`: refused the same way, security event `auth.oidc.login` denied with reason `program_not_allowed`.
+- After the switch to `break_glass` (step 5): super-user password login asks for the passkey and succeeds with it (event `auth.break_glass.login`, `details.mfa = "passkey"`); a password login by any other role answers 401.
+- After the switch, the recovery-code path: super-user password login followed by one recovery code succeeds (event `auth.break_glass.login`, `details.mfa = "recovery_code"`), and the "Emergency sign-in" card shows one fewer unused code. This uses up a code; generate a new set if fewer than you want remain.
+
+### 5. Switch to `break_glass`
+
+Only after step 2 and the SSO checks pass. Set `LOCAL_LOGIN_MODE=break_glass`: local sessions of every role except `super_user` stop working on their next request, and the super user's local session ends after `SESSION_IDLE_MINUTES` (default 15) without activity. `DEMO_LOGIN_ACCOUNTS` roles are capped at `manager`, so no demo account is a super user and the public demo login stops working in `break_glass` and `disabled`.
+
+### Session after a password change
+
+`POST /api/auth/change-password` deletes the user's sessions and issues one replacement that keeps the current session's `auth_method`, `auth_time` and `expires_at`. An SSO session stays `oidc`: still under `SESSION_IDLE_MINUTES` and its original `SSO_SESSION_MAX_HOURS` end, and not refused by `break_glass` or `disabled`. A local session is replaced by a new 7-day local session. When the request's own session is gone or expired by the time the change runs (logout, revoke), the change rolls back and answers 401.
+
+### Known limitation
+
+Reset-link completion (`POST /api/auth/reset-password`) applies the login policy. When `LOCAL_LOGIN_MODE` does not allow the user, it answers 403 `Use company SSO to sign in.` and rolls back: the link stays unused and the password unchanged. For a user with a passkey, and for a `super_user` without one in `break_glass`, it sets the password, consumes the link and deletes the user's sessions, but issues no session: the response is `{ "passwordReset": true, "signInRequired": true }` and the event `auth.password_reset.sign_in_required` is recorded. That user signs in again through `/login` and its second factor; a `break_glass` super user without a passkey is still refused there (`auth.break_glass.mfa_missing`). Only a user without a passkey in `enabled` mode gets a session from the link: a 7-day `auth_method = 'local'` session, even for a user who normally signs in through SSO, so that session is not under the SSO idle and 10-hour limits.
 
 ## Data copy from Replit (2026-10-07)
 
