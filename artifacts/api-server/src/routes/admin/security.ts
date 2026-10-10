@@ -2,7 +2,8 @@ import { Router } from "express";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../lib/db-client.js";
-import { appendSecurityEvent } from "../../lib/security/audit.js";
+import { clientIpFrom } from "../../lib/auth/rate-limit.js";
+import { appendSecurityEvent, requestIdOf } from "../../lib/security/audit.js";
 import {
   getMalwareScanningPolicy,
   persistMalwareScanningPolicy,
@@ -211,6 +212,8 @@ securityRouter.patch("/malware-scanning", securitySettingWriteLimit, async (req,
           actor: user,
           resourceType: "app_setting",
           resourceId: "malware_scanning",
+          requestId: requestIdOf(res),
+          sourceIp: clientIpFrom(req),
           details: { enabled }
         },
         tx as unknown as Parameters<typeof appendSecurityEvent>[1]
@@ -248,6 +251,8 @@ securityRouter.patch("/demo-limits", securitySettingWriteLimit, async (req, res,
           actor: user,
           resourceType: "app_setting",
           resourceId: "demo_limits",
+          requestId: requestIdOf(res),
+          sourceIp: clientIpFrom(req),
           details: { enabled }
         },
         tx as unknown as Parameters<typeof appendSecurityEvent>[1]

@@ -37,6 +37,16 @@ type SqlExecutor = {
   execute(query: SQL): Promise<{ rows: unknown[] }>;
 };
 
+/**
+ * The X-Request-Id that securityAuditMiddleware set on this response, so a
+ * route's own event and the middleware's http.security_mutation event share
+ * one id.
+ */
+export function requestIdOf(res: { getHeader(name: string): unknown }): string | null {
+  const value = res.getHeader("X-Request-Id");
+  return typeof value === "string" ? value : null;
+}
+
 function nullableUuid(value: string | null | undefined) {
   return value ? sql`${value}::uuid` : sql`NULL::uuid`;
 }
