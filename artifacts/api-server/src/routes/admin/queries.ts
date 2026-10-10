@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, notExists } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../lib/db-client.js";
-import { queryLog } from "@workspace/db/schema";
+import { programs, queryLog } from "@workspace/db/schema";
 import {
   authedUser,
   requireAuth,
@@ -46,7 +46,8 @@ export interface QueryLogItem {
  * GET /api/admin/queries — list query-log rows for gap review.
  *
  * Scope (same contract as GET /api/admin/users):
- *   super_user      → all programs, narrowed by X-Program-Id when present.
+ *   super_user      → all non-synthetic programs, or the one program
+ *                     X-Program-Id selects (synthetic or not).
  *   senior_manager  → own program.
  *   manager         → own program.
  *   csr             → blocked at the router level.
@@ -72,10 +73,24 @@ queriesRouter.get("/", adminReadLimit, async (req, res, next) => {
     const actor = authedUser(req);
     const scopeProgramId = await resolveEffectiveProgramId(actor, req);
 
+    // A super_user's all-program view leaves out synthetic programs (the
+    // evidence harness's daily test questions, 0018_synthetic_fence.sql).
+    // Rows with a null program_id have no synthetic program and stay in.
+    // Selecting a synthetic program explicitly still shows its rows.
     const scopeCondition =
       actor.role === "super_user"
         ? scopeProgramId === null
-          ? undefined
+          ? notExists(
+              db
+                .select({ id: programs.id })
+                .from(programs)
+                .where(
+                  and(
+                    eq(programs.id, queryLog.programId),
+                    eq(programs.isSynthetic, true)
+                  )
+                )
+            )
           : eq(queryLog.programId, scopeProgramId)
         : // Non-super_user: programId is non-null by DB CHECK.
           eq(queryLog.programId, actor.programId as string);

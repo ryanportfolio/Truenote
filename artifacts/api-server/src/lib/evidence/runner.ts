@@ -36,21 +36,46 @@ import {
   checkEvidenceChain,
   checkSecurityEventsChain
 } from "./checks/integrity.js";
+import {
+  checkBadPasswordRefused,
+  checkClassificationCeiling,
+  checkDemoWriteBlock,
+  checkProgramIsolation,
+  checkSyntheticLoginWindows,
+  parseSyntheticConfig,
+  SyntheticConfigError,
+  SYNTHETIC_HTTP_WORST_CASE_MS,
+  syntheticDepsFromDb,
+  type SyntheticConfig,
+  type SyntheticDeps
+} from "./checks/synthetic.js";
 
 /**
  * Runs every automated check once, in catalog order, and appends one receipt
  * per check. A check that throws or times out is recorded as `error`: no
- * evidence that day, never a silent gap. The integrity checks and the
- * timestamp run last so they cover the receipts this run wrote.
+ * evidence that day, never a silent gap. On a timeout the check's signal is
+ * aborted so it sends nothing more (the synthetic checks still log out). The
+ * integrity checks and the timestamp run last so they cover the receipts
+ * this run wrote.
  */
 
 const CHECK_TIMEOUT_MS = 90_000;
+/** Synthetic checks: their HTTP worst case plus a minute for the database reads. */
+const SYNTHETIC_CHECK_TIMEOUT_MS = SYNTHETIC_HTTP_WORST_CASE_MS + 60_000;
+
+function timeoutFor(check: CheckDefinition): number {
+  return check.kind === "synthetic" ? SYNTHETIC_CHECK_TIMEOUT_MS : CHECK_TIMEOUT_MS;
+}
 
 interface RunContext {
   github: () => GithubClient;
+  /** Throws SyntheticConfigError when EVIDENCE_SYNTHETIC_ACCOUNTS is missing or bad. */
+  synthetic: () => SyntheticConfig;
+  syntheticDeps: () => SyntheticDeps;
 }
 
-type Runner = (ctx: RunContext) => Promise<CheckOutcome>;
+/** `signal` aborts when the check's time limit passes. */
+type Runner = (ctx: RunContext, signal: AbortSignal) => Promise<CheckOutcome>;
 
 export const CHECK_RUNNERS: Record<string, Runner> = {
   "github.branch-ruleset": (ctx) => checkBranchRuleset(ctx.github()),
@@ -68,6 +93,13 @@ export const CHECK_RUNNERS: Record<string, Runner> = {
   "database.runtime-role": () => checkRuntimeRole(),
   "database.audit-triggers": () => checkAuditTriggers(),
   "database.append-only-refusals": () => checkAppendOnlyRefusals(),
+  "synthetic.program-isolation": (ctx, signal) => checkProgramIsolation(ctx.synthetic(), ctx.syntheticDeps(), signal),
+  "synthetic.classification-ceiling": (ctx, signal) =>
+    checkClassificationCeiling(ctx.synthetic(), ctx.syntheticDeps(), signal),
+  "synthetic.demo-write-block": (ctx, signal) => checkDemoWriteBlock(ctx.synthetic(), ctx.syntheticDeps(), signal),
+  "synthetic.bad-password-refused": (ctx, signal) => checkBadPasswordRefused(ctx.synthetic(), ctx.syntheticDeps(), signal),
+  // Reads only the database: runs even when EVIDENCE_SYNTHETIC_ACCOUNTS is missing or invalid.
+  "synthetic.login-windows": (ctx) => checkSyntheticLoginWindows(null, ctx.syntheticDeps()),
   "integrity.evidence-chain": () => checkEvidenceChain(),
   "integrity.security-events-chain": () => checkSecurityEventsChain(),
   "integrity.chain-timestamp": () => checkChainTimestamp()
@@ -80,12 +112,19 @@ export interface RunEntry {
   receipt: StoredReceipt;
 }
 
-function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+/** Starts `start` with a signal that aborts after `ms`; rejects at that moment. */
+function withTimeout<T>(start: (signal: AbortSignal) => Promise<T>, ms: number): Promise<T> {
+  const controller = new AbortController();
   let timer: NodeJS.Timeout | undefined;
   return Promise.race([
-    work.finally(() => clearTimeout(timer)),
+    Promise.resolve()
+      .then(() => start(controller.signal))
+      .finally(() => clearTimeout(timer)),
     new Promise<T>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`check timed out after ${ms} ms`)), ms);
+      timer = setTimeout(() => {
+        controller.abort(new Error(`check timed out after ${ms} ms`));
+        reject(new Error(`check timed out after ${ms} ms`));
+      }, ms);
     })
   ]);
 }
@@ -95,7 +134,7 @@ export function errorOutcome(error: unknown): CheckOutcome {
   return {
     result: "error",
     summary:
-      error instanceof GithubConfigError
+      error instanceof GithubConfigError || error instanceof SyntheticConfigError
         ? `Not configured: ${message}`
         : "The check could not complete; no evidence for this run.",
     failures: [message.slice(0, 500)],
@@ -113,7 +152,7 @@ export async function runOneCheck(
   let outcome: CheckOutcome;
   try {
     if (!runner) throw new Error(`no runner registered for ${check.id}`);
-    outcome = await withTimeout(runner(ctx), CHECK_TIMEOUT_MS);
+    outcome = await withTimeout((signal) => runner(ctx, signal), timeoutFor(check));
   } catch (error) {
     outcome = errorOutcome(error);
   }
@@ -127,8 +166,29 @@ export async function runOneCheck(
 export async function runEvidenceChecks(onlyIds?: string[]): Promise<{ runId: string; entries: RunEntry[] }> {
   const runId = randomUUID();
   let client: GithubClient | undefined;
+  // Parsed once per run; a bad config is remembered so each synthetic check
+  // records the same "Not configured" error.
+  let synthetic: { config: SyntheticConfig } | { error: unknown } | undefined;
+  let syntheticDeps: SyntheticDeps | undefined;
   const ctx: RunContext = {
-    github: () => (client ??= githubClientFromEnv())
+    github: () => (client ??= githubClientFromEnv()),
+    synthetic: () => {
+      if (!synthetic) {
+        try {
+          synthetic = {
+            config: parseSyntheticConfig(
+              process.env.EVIDENCE_SYNTHETIC_ACCOUNTS,
+              process.env.EVIDENCE_SYNTHETIC_BASE_URL || undefined
+            )
+          };
+        } catch (error) {
+          synthetic = { error };
+        }
+      }
+      if ("error" in synthetic) throw synthetic.error;
+      return synthetic.config;
+    },
+    syntheticDeps: () => (syntheticDeps ??= syntheticDepsFromDb())
   };
   const checks = onlyIds
     ? onlyIds.map((id) => {

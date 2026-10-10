@@ -258,6 +258,105 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
     limits: "Shows the runtime role is refused; the owner's refusal is proven by the monthly operator check."
   },
   {
+    id: "synthetic.program-isolation",
+    kind: "synthetic",
+    title: "A CSR cannot reach another program's documents or sessions",
+    controls: ["AC-3", "AC-4", "SC-4"],
+    objectives: ["AC-03", "AC-04", "SC-04"],
+    cadence: "daily",
+    cadenceStatus: "proposed",
+    passCondition:
+      "The database shows canaries a and b live (active version, lifecycle_state active, is_active) in two " +
+      "different synthetic programs; users csr-a and csr-b exist, are synthetic, and sit in canary a's and " +
+      "canary b's program respectively; and b's classification is at or below csr-a's max_classification. " +
+      "Otherwise the check records error. Over HTTPS, synthetic csr-b " +
+      "logs in and asks with canary b's token: the answer cites b (positive control) and returns a session id. " +
+      "Synthetic csr-a logs in, asks with canary a's token and gets a as a source, and GET " +
+      "/api/kb/documents/<a> answers 200 (positive controls). Then, as csr-a: asking with canary b's token " +
+      "returns no source with b's doc_id, no source whose excerpt or doc_title holds b's token, and no answer " +
+      "text holding it; GET /api/kb/documents/<b> answers 404; and GET /api/sessions/<csr-b's " +
+      "session id> answers 404. A leak in any of the three probes fails and names the response field; a " +
+      "failed login, a missed positive control or an unexpected status records error.",
+    limits:
+      "Probes one pair of synthetic programs with one canary each, through the public API, run by the system " +
+      "under test. It does not prove isolation for every query, document or route."
+  },
+  {
+    id: "synthetic.classification-ceiling",
+    kind: "synthetic",
+    title: "A CSR cannot read documents above their clearance",
+    controls: ["AC-3", "AC-4"],
+    objectives: ["AC-03", "AC-04"],
+    cadence: "daily",
+    cadenceStatus: "proposed",
+    passCondition:
+      "The database shows canary aConfidential live (active version, lifecycle_state active, is_active) in " +
+      "the same synthetic program as canary a, and user csr-a synthetic, in that program, with a " +
+      "max_classification below aConfidential's classification. Otherwise the check records error. Synthetic " +
+      "csr-a logs in, asks with canary a's token and gets a as a source, and GET " +
+      "/api/kb/documents/<a> answers 200 (positive controls). Then asking with aConfidential's token returns " +
+      "no source with its doc_id, no source whose excerpt or doc_title holds its token, and no answer text " +
+      "holding it, and GET /api/kb/documents/<aConfidential> answers 404. Either leak fails and names the " +
+      "response field; a failed login, a missed positive control or an unexpected status records error.",
+    limits:
+      "Probes csr-a's one clearance level against one canary above it. It does not test other " +
+      "clearance levels, and checks run as the system under test."
+  },
+  {
+    id: "synthetic.demo-write-block",
+    kind: "synthetic",
+    title: "Published demo accounts cannot write",
+    controls: ["AC-3", "AC-6"],
+    objectives: ["AC-03", "AC-06"],
+    cadence: "daily",
+    cadenceStatus: "proposed",
+    passCondition:
+      "GET /api/config lists no demoAccounts (pass: nothing to block), or the published demo account with " +
+      "role manager logs in and POST /api/documents/upload with no body answers 403 with code demo_account. " +
+      "A 2xx, or a 4xx other than 401, 403, 408, 423 or 429 (the handler answered, so the request got past the " +
+      "block), fails. No manager demo account (a csr is refused by the role check, which does not prove the " +
+      "demo block), a failed login, or any other status (401, 403 without demo_account, 408, 423 from the " +
+      "password-reset guard that runs before the demo block, 429, 5xx, no response) records error.",
+    limits:
+      "Probes the upload route only, with an empty request that the block refuses before body parsing; " +
+      "other write routes rely on the same middleware but are not probed."
+  },
+  {
+    id: "synthetic.bad-password-refused",
+    kind: "synthetic",
+    title: "Login refuses a wrong password",
+    controls: ["IA-2"],
+    objectives: ["IA-02"],
+    cadence: "daily",
+    cadenceStatus: "proposed",
+    passCondition:
+      "Exactly one POST /api/auth/login per run for synthetic csr-a with a random wrong password answers 401. " +
+      "A 200 fails (the session is logged out); any other status (such as 400, 429 or 5xx) or no response " +
+      "records error.",
+    limits:
+      "Proves refusal of one wrong password only. It does not prove account lockout or throttling after " +
+      "repeated failures (AC-7), password strength rules (IA-5(1)) or multi-factor authentication. " +
+      "Checks run as the system under test."
+  },
+  {
+    id: "synthetic.login-windows",
+    kind: "synthetic",
+    title: "Synthetic accounts log in only during harness runs",
+    controls: ["AC-2", "AU-6", "SI-4"],
+    objectives: ["AC-02g.", "AU-06a.", "SI-04b."],
+    cadence: "daily",
+    cadenceStatus: "proposed",
+    passCondition:
+      "Every security_events row from the last 8 days with action auth.local.login, auth.break_glass.login " +
+      "or auth.oidc.login whose actor is a user with is_synthetic falls between startedAt minus 2 minutes and " +
+      "finishedAt plus 2 minutes of some synthetic evidence receipt recorded in the same period. Any login " +
+      "outside every window fails and is listed by time and email. No synthetic logins passes. Reads only " +
+      "the database, so it runs without the synthetic account configuration.",
+    limits:
+      "Relies on the audit log and the receipts written by the same system. Use of the synthetic credentials " +
+      "during a harness run cannot be told apart from the harness itself."
+  },
+  {
     id: "integrity.evidence-chain",
     kind: "integrity",
     title: "Evidence receipt chain verifies",

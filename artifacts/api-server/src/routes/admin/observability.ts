@@ -67,6 +67,10 @@ function emptyResponse(hours: number, storageReady: boolean) {
  * Cross-program live pipeline telemetry. This deliberately ignores the
  * selected-program header: only a super user may enter, and the purpose is to
  * spot system-wide provider or stage degradation.
+ *
+ * Synthetic programs (evidence harness test questions,
+ * 0018_synthetic_fence.sql) are left out. `IS NOT TRUE` keeps rows with a
+ * null program_id or no matching program, which the LEFT JOIN leaves null.
  */
 observabilityRouter.get("/", async (req, res, next) => {
   const parsed = Query.safeParse(req.query);
@@ -88,6 +92,7 @@ observabilityRouter.get("/", async (req, res, next) => {
       LEFT JOIN programs p ON p.id = q.program_id
       WHERE q.created_at >= NOW() - (${hours} * INTERVAL '1 hour')
         AND q.timing_breakdown IS NOT NULL
+        AND p.is_synthetic IS NOT TRUE
       ORDER BY q.created_at DESC
       LIMIT ${MAX_AGGREGATE_SAMPLES + 1}
     `);

@@ -106,6 +106,7 @@ export interface UserListItem {
   mustResetPassword: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  isSynthetic: boolean;
 }
 
 function toListItem(row: {
@@ -118,6 +119,7 @@ function toListItem(row: {
   mustResetPassword: boolean;
   lastLoginAt: Date | null;
   createdAt: Date;
+  isSynthetic: boolean;
 }): UserListItem {
   return {
     id: row.id,
@@ -128,8 +130,22 @@ function toListItem(row: {
     isActive: row.isActive,
     mustResetPassword: row.mustResetPassword,
     lastLoginAt: row.lastLoginAt ? row.lastLoginAt.toISOString() : null,
-    createdAt: row.createdAt.toISOString()
+    createdAt: row.createdAt.toISOString(),
+    isSynthetic: row.isSynthetic
   };
+}
+
+/**
+ * Emails ending in .invalid belong to synthetic test accounts, which only
+ * the migration role creates (lib/db/sql/0018_synthetic_fence.sql). The
+ * database refuses a real user with one (users_synthetic_email_check,
+ * 23514); checking here returns a clear 400 before any database work.
+ */
+const SYNTHETIC_EMAIL_MESSAGE =
+  "Emails ending in .invalid are reserved for synthetic test accounts";
+
+function isSyntheticEmail(email: string): boolean {
+  return email.trim().toLowerCase().endsWith(".invalid");
 }
 
 /**
@@ -202,7 +218,8 @@ usersRouter.get("/", adminReadLimit, async (req, res, next) => {
         isActive: users.isActive,
         mustResetPassword: users.mustResetPassword,
         lastLoginAt: users.lastLoginAt,
-        createdAt: users.createdAt
+        createdAt: users.createdAt,
+        isSynthetic: users.isSynthetic
       })
       .from(users)
       .where(
@@ -293,6 +310,10 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
     }
     const { role: targetRole } = parsed.data;
     const email = parsed.data.email.toLowerCase();
+    if (isSyntheticEmail(email)) {
+      res.status(400).json({ error: SYNTHETIC_EMAIL_MESSAGE });
+      return;
+    }
 
     // Resolve programId defaults so callers don't have to think about it:
     //   - explicit value (including null): honored as-is
@@ -345,7 +366,8 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
           isActive: users.isActive,
           mustResetPassword: users.mustResetPassword,
           lastLoginAt: users.lastLoginAt,
-          createdAt: users.createdAt
+          createdAt: users.createdAt,
+          isSynthetic: users.isSynthetic
         });
       const row = inserted[0];
       if (!row) {
@@ -429,6 +451,13 @@ usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userA
     if (!parsed.success) {
       const message = parsed.error.issues[0]?.message ?? "Invalid CSV emails";
       res.status(400).json({ error: message });
+      return;
+    }
+    // Refuse the whole import, like any other invalid address, before
+    // resolving scope or hashing: one .invalid row would otherwise fail
+    // the insert transaction with a database error.
+    if (parsed.data.emails.some(isSyntheticEmail)) {
+      res.status(400).json({ error: SYNTHETIC_EMAIL_MESSAGE });
       return;
     }
 
@@ -515,7 +544,8 @@ usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userA
             isActive: users.isActive,
             mustResetPassword: users.mustResetPassword,
             lastLoginAt: users.lastLoginAt,
-            createdAt: users.createdAt
+            createdAt: users.createdAt,
+            isSynthetic: users.isSynthetic
           });
         const row = inserted[0];
         if (row) created.push(toListItem(row));
@@ -683,6 +713,7 @@ usersRouter.patch("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req
       mustResetPassword: boolean;
       lastLoginAt: Date | null;
       createdAt: Date;
+      isSynthetic: boolean;
     }
     type TxResult =
       | { kind: "ok"; row: SafeUserRow }
@@ -706,7 +737,8 @@ usersRouter.patch("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req
             isActive: users.isActive,
             mustResetPassword: users.mustResetPassword,
             lastLoginAt: users.lastLoginAt,
-            createdAt: users.createdAt
+            createdAt: users.createdAt,
+            isSynthetic: users.isSynthetic
           })
           .from(users)
           .where(eq(users.id, id))
@@ -769,7 +801,8 @@ usersRouter.patch("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req
             isActive: users.isActive,
             mustResetPassword: users.mustResetPassword,
             lastLoginAt: users.lastLoginAt,
-            createdAt: users.createdAt
+            createdAt: users.createdAt,
+            isSynthetic: users.isSynthetic
           });
         const row = updated[0];
         // The SELECT FOR UPDATE above already proved the row exists
