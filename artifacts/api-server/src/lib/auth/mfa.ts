@@ -16,7 +16,7 @@ import { createSession, setSessionCookie } from "./sessions.js";
 import { getWebAuthnConfig } from "./webauthn-config.js";
 
 /**
- * Second factor for local password login (lib/db/sql/0013_break_glass_mfa.sql).
+ * Second factor for local password login (lib/db/sql/0017_break_glass_mfa.sql).
  *
  * After the password verifies, a user with at least one passkey gets no
  * session. POST /api/auth/login creates a `login` row in mfa_challenges

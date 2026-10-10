@@ -130,16 +130,16 @@ Applied: `0001_schema_migrations.sql` (2026-10-07, sha256 `f33bb30e…`), `0002_
 
 ## SSO and emergency sign-in release (2026-10-10)
 
-Steps for the release that adds per-account lockout, SSO identity binding, SSO session limits and passkeys for the emergency local login. Variables: `secrets.md`. Tables: `data-model.md`, "Sign-in tables (0011-0013)". The list of what to ask the customer's IT for (app registration, claims, MFA policy) is in `docs/security/sso-mfa-plan-2026-10-09.md`, on branch `claude/sso-mfa-plan` (PR ryanportfolio/Truenote#209).
+Steps for the release that adds per-account lockout, SSO identity binding, SSO session limits and passkeys for the emergency local login. Variables: `secrets.md`. Tables: `data-model.md`, "Sign-in tables (0015-0017)". The list of what to ask the customer's IT for (app registration, claims, MFA policy) is in `docs/security/sso-mfa-plan-2026-10-09.md`, on branch `claude/sso-mfa-plan` (PR ryanportfolio/Truenote#209).
 
-### 1. Apply 0011, 0012, 0013 before deploying the code
+### 1. Apply 0015, 0016, 0017 before deploying the code
 
 The new code reads the new schema on every sign-in: `POST /api/auth/login` selects `users.locked_until` and, after a correct password, lists `user_passkeys`; the OIDC callback queries `user_identities`. Deployed without the files, local login and SSO fail. All three are additive (two nullable or defaulted columns on `users`, four new tables with `truenote_app` grants), and earlier additive files (0004 to 0009) went without a pre-change dump. In order, status first:
 
 ```text
-node scripts/railway-apply-sql.mjs lib/db/sql/0011_login_lockout.sql
-node scripts/railway-apply-sql.mjs lib/db/sql/0012_user_identities.sql
-node scripts/railway-apply-sql.mjs lib/db/sql/0013_break_glass_mfa.sql
+node scripts/railway-apply-sql.mjs lib/db/sql/0015_login_lockout.sql
+node scripts/railway-apply-sql.mjs lib/db/sql/0016_user_identities.sql
+node scripts/railway-apply-sql.mjs lib/db/sql/0017_break_glass_mfa.sql
 ```
 
 After the owner's go, rerun each with `--apply` in the same order, inspect `\d+ users`, `\d+ user_identities`, `\d+ user_passkeys`, `\d+ user_recovery_codes` and `\d+ mfa_challenges`, and add the three files to the "Applied" list above. Then deploy `web` and `worker` from the same commit ("Deploying").

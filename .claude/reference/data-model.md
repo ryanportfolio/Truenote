@@ -217,12 +217,12 @@ CREATE UNIQUE INDEX eval_runs_program_baseline_uidx ON eval_runs (program_id)
   WHERE is_baseline = true;
 ```
 
-## Sign-in tables (0011-0013)
+## Sign-in tables (0015-0017)
 
-Lockout columns, SSO identity bindings and emergency-login second factors, from `lib/db/sql/0011_login_lockout.sql`, `0012_user_identities.sql` and `0013_break_glass_mfa.sql` (apply order and release steps: `deployment.md`, "SSO and emergency sign-in release (2026-10-10)"). `sessions.auth_method` (`'local'` or `'oidc'`, CHECK `sessions_auth_method_check`) and `sessions.auth_time` came earlier, from the P0/P1 DDL in the baseline.
+Lockout columns, SSO identity bindings and emergency-login second factors, from `lib/db/sql/0015_login_lockout.sql`, `0016_user_identities.sql` and `0017_break_glass_mfa.sql` (apply order and release steps: `deployment.md`, "SSO and emergency sign-in release (2026-10-10)"). `sessions.auth_method` (`'local'` or `'oidc'`, CHECK `sessions_auth_method_check`) and `sessions.auth_time` came earlier, from the P0/P1 DDL in the baseline.
 
 ```sql
--- 0011. Consecutive failed local sign-in attempts since the last success or
+-- 0015. Consecutive failed local sign-in attempts since the last success or
 -- lock; reset to 0 when the account locks. locked_until is NULL for an
 -- account that was never locked.
 ALTER TABLE users
@@ -231,7 +231,7 @@ ALTER TABLE users
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS locked_until timestamp with time zone;
 
--- 0012. One row ties a user to an IdP account (token iss + sub).
+-- 0016. One row ties a user to an IdP account (token iss + sub).
 CREATE TABLE user_identities (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -245,7 +245,7 @@ CREATE TABLE user_identities (
   CONSTRAINT user_identities_user_issuer_key UNIQUE (user_id, issuer)
 );
 
--- 0013. Passkeys, recovery codes and pending WebAuthn challenges.
+-- 0017. Passkeys, recovery codes and pending WebAuthn challenges.
 CREATE TABLE user_passkeys (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -293,14 +293,14 @@ Who reads and writes them (all under `artifacts/api-server/src/`):
 - `user_recovery_codes`: `lib/auth/recovery-codes.ts`. Generating a set deletes the user's old rows and inserts 10 new hashes in one transaction; the plaintext is returned once. Using a code sets `used_at` in the same transaction that consumes the login challenge, so a code is spent only if the challenge is.
 - `mfa_challenges`: `lib/auth/mfa.ts`. A `login` row is created after the password verifies and found by `token_hash` from the httpOnly `truenote_mfa` cookie (path `/api/auth/mfa`); a `register` row (no `token_hash`) belongs to a super user adding a passkey. Both are consumed once with `UPDATE ... SET consumed_at = now() WHERE consumed_at IS NULL AND expires_at > now()`. Nothing deletes consumed or expired rows; they stay until the user is deleted.
 
-Only `users.failed_login_count`, `users.locked_until`, `sessions.auth_method` and `sessions.auth_time` are bound in `lib/db/src/schema.ts`. The four new tables are not; the code above queries them with raw SQL. Every new table cascades on user delete, and 0012 and 0013 grant `truenote_app` SELECT, INSERT, UPDATE, DELETE.
+Only `users.failed_login_count`, `users.locked_until`, `sessions.auth_method` and `sessions.auth_time` are bound in `lib/db/src/schema.ts`. The four new tables are not; the code above queries them with raw SQL. Every new table cascades on user delete, and 0016 and 0017 grant `truenote_app` SELECT, INSERT, UPDATE, DELETE.
 
 ## Invariants
 
 - **`chunks.program_id` is denormalized** from `document_versions → documents → programs`. This is intentional. Retrieval queries filter on it directly to avoid joining at query time.
 - **A document has many versions.** Re-uploading does NOT update the existing row. It creates a `submitted` version. Senior-manager and super-user uploads activate after ingestion controls pass; other uploads require authorized review. Activation retires the predecessor.
 - **Search requires three controls.** Retrieval and KB reads require `is_active=true`, `lifecycle_state='active'`, and classification at or below the server-resolved user's `max_classification`. Inactive/retired versions stay for audit and citation receipts; revoked/rejected versions cannot be served through history.
-- **P0/P1 controlled-ingestion columns live in reviewed raw DDL.** `docs/security/p0-p1-security-controls.sql` adds `content_sources`, document/version lifecycle, classification, provenance, scan evidence, approval/revocation/retention, user clearance, session auth evidence, distributed rate limits, and hash-chained `security_events`. This DDL (with `append_security_event` and its constraints) is present on Railway through the 2026-10-07 copy of the Replit database. The copy lacked the file's append-only guard and its document-version and content-source audit triggers; `lib/db/sql/0008` and `0009` installed them on 2026-10-09 (0008 also blocks TRUNCATE). The application connects as `truenote_app`, which can read `security_events` and write it only through `append_security_event` (`0007`, `deployment.md` "Database roles"). Full production verification of the remaining controls is still pending (`docs/security/README.md`). The columns are not bound in `lib/db/src/schema.ts`, and routes intentionally use parameterized raw SQL for them; the exception is the session auth evidence: `sessions.auth_method` and `sessions.auth_time` are bound in `schema.ts` (see "Sign-in tables (0011-0013)"). Do not add the others to `schema.ts` as a side task.
+- **P0/P1 controlled-ingestion columns live in reviewed raw DDL.** `docs/security/p0-p1-security-controls.sql` adds `content_sources`, document/version lifecycle, classification, provenance, scan evidence, approval/revocation/retention, user clearance, session auth evidence, distributed rate limits, and hash-chained `security_events`. This DDL (with `append_security_event` and its constraints) is present on Railway through the 2026-10-07 copy of the Replit database. The copy lacked the file's append-only guard and its document-version and content-source audit triggers; `lib/db/sql/0008` and `0009` installed them on 2026-10-09 (0008 also blocks TRUNCATE). The application connects as `truenote_app`, which can read `security_events` and write it only through `append_security_event` (`0007`, `deployment.md` "Database roles"). Full production verification of the remaining controls is still pending (`docs/security/README.md`). The columns are not bound in `lib/db/src/schema.ts`, and routes intentionally use parameterized raw SQL for them; the exception is the session auth evidence: `sessions.auth_method` and `sessions.auth_time` are bound in `schema.ts` (see "Sign-in tables (0015-0017)"). Do not add the others to `schema.ts` as a side task.
 - **Monitoring state lives in two small raw-SQL tables.** `lib/db/sql/0011_monitoring_state.sql` adds `service_heartbeats` (the worker's row, rewritten every 30 seconds and read by `GET /health/ready`) and `security_monitor_state` (one row: the last `security_events.sequence` the worker's security monitor printed and checked). Neither is bound in `schema.ts`. The monitor relies on events committing in `sequence` order, which `append_security_event`'s transaction-scoped advisory lock guarantees; keep that lock if the function changes. Design: `docs/security/monitoring.md`.
 - **SIEM delivery is designed as a database-triggered outbox, and only half of it is on Railway.** `docs/security/p1-siem-delivery-outbox.sql` creates one `siem_delivery_outbox` row for every `security_events` insert in the same transaction and backfills existing events. Claims use `FOR UPDATE SKIP LOCKED`, bounded leases, and per-claim tokens; only the matching token may complete or retry a row. On Railway (checked 2026-10-07) the `siem_delivery_outbox` table exists with 0 rows against 179 `security_events`, but the functions (`enqueue_security_event_for_siem`, `claim_siem_deliveries`, `complete_siem_delivery`, `fail_siem_delivery`, `get_siem_delivery_health`) and the `security_events_siem_enqueue` trigger are absent. Railway inherited this state from Replit, whose Publish step omitted them. `SIEM_WEBHOOK_URL` is unset, so nothing fails today, but the control is not in place and enabling SIEM delivery would fail until the rest of the file is applied.
 

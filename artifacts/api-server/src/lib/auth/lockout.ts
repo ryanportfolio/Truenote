@@ -7,7 +7,7 @@ import { isDemoEmail } from "./demo-accounts.js";
 
 /**
  * Per-account lockout (users.failed_login_count, users.locked_until;
- * lib/db/sql/0011_login_lockout.sql). The per-IP limiter in rate-limit.ts
+ * lib/db/sql/0015_login_lockout.sql). The per-IP limiter in rate-limit.ts
  * allows 2000 attempts per 10 minutes per address, so a guesser spread over
  * many addresses could otherwise try one account without limit.
  *

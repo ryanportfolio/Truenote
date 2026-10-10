@@ -3,7 +3,7 @@ import { db } from "../db-client.js";
 import { appendSecurityEvent, type SecurityEventInput } from "../security/audit.js";
 
 /**
- * OIDC account bindings in `user_identities` (lib/db/sql/0012_user_identities.sql).
+ * OIDC account bindings in `user_identities` (lib/db/sql/0016_user_identities.sql).
  * The table is not bound in Drizzle, so every query here is raw SQL.
  */
 

@@ -161,7 +161,7 @@ const passkeyRow = {
   last_used_at: null
 };
 
-// The break_glass super_user needs a passkey (lib/db/sql/0013_break_glass_mfa.sql).
+// The break_glass super_user needs a passkey (lib/db/sql/0017_break_glass_mfa.sql).
 // Without one, the correct password still gets the generic 401 and an
 // auth.break_glass.mfa_missing event. With one, the password is accepted but
 // no session is issued until routes/mfa.ts verifies the second factor;

@@ -221,7 +221,7 @@ export const users = pgTable("users", {
   isActive: boolean("is_active").notNull().default(true),
   mustResetPassword: boolean("must_reset_password").notNull().default(true),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
-  // Local-login lockout (lib/db/sql/0011_login_lockout.sql). Consecutive
+  // Local-login lockout (lib/db/sql/0015_login_lockout.sql). Consecutive
   // failed password attempts since the last success or lock; reset to 0
   // when the account locks. Maintained by
   // artifacts/api-server/src/lib/auth/lockout.ts.

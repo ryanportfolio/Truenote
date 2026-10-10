@@ -4,7 +4,7 @@ import { db } from "../db-client.js";
 
 /**
  * Single-use recovery codes for the break-glass second factor
- * (`user_recovery_codes`, lib/db/sql/0013_break_glass_mfa.sql).
+ * (`user_recovery_codes`, lib/db/sql/0017_break_glass_mfa.sql).
  *
  * Each code is 10 random bytes (80 bits) written as 16 base32 characters in
  * four groups of four. Only the SHA-256 hex of the normalized code is
