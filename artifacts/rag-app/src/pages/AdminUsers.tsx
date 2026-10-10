@@ -90,10 +90,11 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
     email: string;
     password: string;
   } | null>(null);
-  // Set when a created account signs in with company SSO: it has no
-  // password to reveal, only an invitation email that did or didn't send.
+  // Set when a created account has no password sign-in: nothing to reveal,
+  // only an SSO invitation that did or didn't send, or no way in yet.
   const [ssoNotice, setSsoNotice] = useState<{
     email: string;
+    kind: "sso" | "none";
     emailSent: boolean;
   } | null>(null);
 
@@ -158,7 +159,11 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
     }
     setSsoNotice(
       response.invitation
-        ? { email: item.email, emailSent: response.invitation.emailSent }
+        ? {
+            email: item.email,
+            kind: response.invitation.kind,
+            emailSent: response.invitation.emailSent
+          }
         : null
     );
   }
@@ -195,8 +200,8 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
       <h1 className="sr-only">Users</h1>
       {teamView ? (
         <p className="text-sm text-muted-foreground">
-          {items.length > 0 && items.every((u) => !u.localLoginAllowed)
-            ? "The CSRs on your team. They sign in with company SSO, so there are no passwords to reset here."
+          {items.length > 0 && items.every((u) => u.signInMethod !== "password")
+            ? "The CSRs on your team. None of them sign in with a password, so there are no passwords to reset here."
             : "The CSRs on your team. You can reset their passwords here."}
         </p>
       ) : null}
@@ -212,6 +217,7 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
       {ssoNotice ? (
         <SsoInvitationNotice
           email={ssoNotice.email}
+          kind={ssoNotice.kind}
           emailSent={ssoNotice.emailSent}
           onDismiss={() => setSsoNotice(null)}
         />
@@ -408,7 +414,13 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
               : ""}
             .
           </p>
-          {result.invitedCount > 0 ? (
+          {result.invitationKind === "none" && result.created.length > 0 ? (
+            <p className="mt-1">
+              No invitations sent. Password sign-in is turned off for CSRs and
+              company SSO isn't set up for this program, so these users can't
+              sign in yet.
+            </p>
+          ) : result.invitedCount > 0 ? (
             result.invitationKind === "sso" ? (
               <p className="mt-1">
                 Sent {result.invitedCount} invitation
@@ -449,18 +461,21 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
 
 interface SsoInvitationNoticeProps {
   email: string;
+  kind: "sso" | "none";
   emailSent: boolean;
   onDismiss: () => void;
 }
 
 /**
- * Shown after creating an account that signs in with company SSO. There is
- * no password to share; the server either emailed a link to the sign-in
- * page or could not, in which case the admin tells the user directly. The
- * quoted button label matches the Login page.
+ * Shown after creating an account without password sign-in. There is no
+ * password to share. "sso": the server either emailed a link to the
+ * sign-in page or could not, in which case the admin tells the user
+ * directly; the quoted button label matches the Login page. "none": SSO
+ * isn't set up for the account either, so no email went out.
  */
 function SsoInvitationNotice({
   email,
+  kind,
   emailSent,
   onDismiss
 }: SsoInvitationNoticeProps): JSX.Element {
@@ -469,16 +484,23 @@ function SsoInvitationNotice({
     <div
       role="status"
       className={
-        emailSent
+        kind === "sso" && emailSent
           ? "flex items-start justify-between gap-3 rounded-lg border border-success/30 bg-success/10 p-4 text-sm"
           : "flex items-start justify-between gap-3 rounded-lg border border-warning/50 bg-warning/10 p-4 text-sm"
       }
     >
       <div className="flex-1 space-y-1">
         <p className="font-medium">
-          <span className="font-mono">{email}</span> signs in with company SSO
+          <span className="font-mono">{email}</span>
+          {kind === "sso" ? " signs in with company SSO" : " can't sign in yet"}
         </p>
-        {emailSent ? (
+        {kind === "none" ? (
+          <p className="text-xs text-muted-foreground">
+            Password sign-in is turned off for their role and company SSO isn't
+            set up for them, so no invitation was sent. An administrator needs
+            to set up SSO for their program first.
+          </p>
+        ) : emailSent ? (
           <p className="text-xs text-muted-foreground">
             We emailed them a link to the sign-in page. They choose "Continue
             with company SSO"; there is no password to share.
@@ -905,8 +927,9 @@ function UserRow({
   const manageable = canManageUserClient(actor, item);
   // A supervisor's only action is resetting a team member's password.
   const resetOnly = !manageable && canResetTeamPasswordClient(actor, item);
-  // SSO-only accounts have no password; the server refuses a reset (409).
-  const ssoOnly = !item.localLoginAllowed;
+  // Without password sign-in there is no password; the server refuses a
+  // reset (409).
+  const ssoOnly = item.signInMethod !== "password";
   const teamView = actor.role === "supervisor";
 
   async function handleSaveName(): Promise<void> {
@@ -1011,9 +1034,13 @@ function UserRow({
                 Inactive
               </span>
             ) : null}
-            {ssoOnly ? (
+            {item.signInMethod === "sso" ? (
               <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                 Company SSO
+              </span>
+            ) : item.signInMethod === "none" ? (
+              <span className="rounded-full bg-warning/20 px-2 py-0.5 text-xs text-warning-foreground">
+                No sign-in
               </span>
             ) : item.mustResetPassword ? (
               <span className="rounded-full bg-warning/20 px-2 py-0.5 text-xs text-warning-foreground">

@@ -16,7 +16,7 @@ import {
   SESSION_DURATION_MS
 } from "../lib/auth/sessions.js";
 import { getOidcConfig } from "../lib/auth/oidc.js";
-import { isLocalLoginAllowed } from "../lib/auth/local-login-policy.js";
+import { isLocalLoginAllowed, signInMethodFor } from "../lib/auth/local-login-policy.js";
 import {
   invalidateMfaChallenges,
   listPasskeys,
@@ -53,6 +53,7 @@ import { resolveAppBaseUrl } from "../lib/email/links.js";
 import { recordAppError } from "../lib/observability/error-log.js";
 import {
   renderResetEmail,
+  renderSignInUnavailableNoticeEmail,
   renderSsoResetNoticeEmail
 } from "../lib/email/templates.js";
 import { recordSecurityEventBestEffort } from "../lib/security/audit.js";
@@ -574,9 +575,10 @@ authRouter.post("/change-password", requireAuth, workloadRateLimitMiddleware("pa
  * thread. Send failures are logged; the user sees the same outcome
  * either way (no email arrives → they retry).
  *
- * An account LOCAL_LOGIN_MODE does not allow local login (company SSO
- * only) gets an email pointing at the sign-in page instead of a reset
- * link; no token is minted. The response is still the same 204.
+ * An account LOCAL_LOGIN_MODE does not allow local login gets no token.
+ * When SSO can work for it (signInMethodFor gives "sso") the email points
+ * at the sign-in page; otherwise ("none") it says password sign-in is off
+ * and to contact an administrator. The response is still the same 204.
  *
  * Rate limiting is intentionally NOT included in Phase 2.5 — a real
  * deployment should add per-email + per-IP limits to avoid being a
@@ -649,6 +651,7 @@ authRouter.post("/forgot-password", async (req, res, next) => {
             email: users.email,
             name: users.name,
             role: users.role,
+            programId: users.programId,
             isActive: users.isActive
           })
           .from(users)
@@ -657,13 +660,14 @@ authRouter.post("/forgot-password", async (req, res, next) => {
         const row = rows[0];
         if (!row || !row.isActive) return;
 
-        // An SSO-only account has no password to reset, and reset-password
-        // would refuse the link, so mint no token and point it at SSO.
-        // Decided before the base-URL check: in development baseUrl can
-        // come from request headers, and it must only shape the link,
-        // never sit in front of the login policy (CodeQL
-        // js/user-controlled-bypass).
-        const ssoOnly = !isLocalLoginAllowed(getOidcConfig().localLoginMode, row.role);
+        // An account LOCAL_LOGIN_MODE excludes has no password to reset, and
+        // reset-password would refuse the link, so mint no token. Point it
+        // at SSO only when SSO can work for it; otherwise say an
+        // administrator has to help. Decided before the base-URL check: in
+        // development baseUrl can come from request headers, and it must
+        // only shape the link, never sit in front of the login policy
+        // (CodeQL js/user-controlled-bypass).
+        const signInMethod = signInMethodFor(getOidcConfig(), row.role, row.programId);
 
         if (baseUrl === null) {
           console.warn(
@@ -679,11 +683,16 @@ authRouter.post("/forgot-password", async (req, res, next) => {
           return;
         }
 
-        if (ssoOnly) {
+        if (signInMethod === "sso") {
           const notice = renderSsoResetNoticeEmail({
             name: row.name,
             signInUrl: `${baseUrl}/login`
           });
+          await getEmailSender().send({ to: row.email, ...notice });
+          return;
+        }
+        if (signInMethod === "none") {
+          const notice = renderSignInUnavailableNoticeEmail({ name: row.name });
           await getEmailSender().send({ to: row.email, ...notice });
           return;
         }
@@ -818,12 +827,20 @@ authRouter.post("/reset-password", async (req, res, next) => {
         throw new ResetPasswordRejectedError(400, "This reset link is invalid or has expired");
       }
 
-      const localLoginMode = getOidcConfig().localLoginMode;
-      if (!isLocalLoginAllowed(localLoginMode, user.role)) {
+      const oidcConfig = getOidcConfig();
+      const localLoginMode = oidcConfig.localLoginMode;
+      const signInMethod = signInMethodFor(oidcConfig, user.role, user.programId);
+      if (signInMethod !== "password") {
         // Reset and invite completion can issue a local session, so the same
         // policy as /login applies. Throw to roll back token consumption;
         // returning a denial here would commit it and burn the reset link.
-        throw new ResetPasswordRejectedError(403, "Use company SSO to sign in.");
+        // Point at SSO only when SSO can serve this account.
+        throw new ResetPasswordRejectedError(
+          403,
+          signInMethod === "sso"
+            ? "Use company SSO to sign in."
+            : "Password sign-in is turned off for your account. Contact a Truenote administrator."
+        );
       }
 
       await tx
