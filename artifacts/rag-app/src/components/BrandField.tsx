@@ -287,11 +287,17 @@ function StaticBlobs(): JSX.Element {
  * component should fall back to the CSS blobs (onFallback has already
  * been called in that case — it may also fire later on context loss).
  */
+interface Field {
+  dispose: () => void;
+  /** Recolor in place on a theme change: new uniforms, one redraw. */
+  setPalette: (palette: Record<Ink, string>) => void;
+}
+
 function initField(
   canvas: HTMLCanvasElement,
   palette: Record<Ink, string>,
   onFallback: () => void
-): (() => void) | null {
+): Field | null {
   const gl = canvas.getContext("webgl", {
     alpha: false,
     antialias: false,
@@ -337,9 +343,11 @@ function initField(
   const uPointer = gl.getUniformLocation(program, "u_pointer");
   const uLens = gl.getUniformLocation(program, "u_lens");
   const uOctaves = gl.getUniformLocation(program, "u_octaves");
-  for (const ink of INKS) {
-    gl.uniform3fv(gl.getUniformLocation(program, `u_${ink}`), rgb(palette[ink]));
+  const uInks = INKS.map((ink) => gl.getUniformLocation(program, `u_${ink}`));
+  function applyPalette(next: Record<Ink, string>): void {
+    INKS.forEach((ink, i) => gl?.uniform3fv(uInks[i] ?? null, rgb(next[ink])));
   }
+  applyPalette(palette);
 
   // No usable GPU: even a governed loop taxes the CPU the whole page
   // runs on. Hold one curated static frame instead, and flag the page
@@ -385,8 +393,11 @@ function initField(
     }
   }
 
+  let lastTime = 0;
+
   function draw(timeSeconds: number): void {
     if (!gl) return;
+    lastTime = timeSeconds;
     resize();
     gl.uniform2f(uRes, canvas.width, canvas.height);
     gl.uniform1f(uTime, timeSeconds);
@@ -499,7 +510,14 @@ function initField(
   }
   reveal();
 
-  return () => {
+  function setPalette(next: Record<Ink, string>): void {
+    applyPalette(next);
+    // A running loop picks the colors up on its next frame; static,
+    // frozen and hidden fields redraw their last frame now.
+    if (!running) draw(lastTime);
+  }
+
+  const dispose = (): void => {
     stopLoop();
     ro.disconnect();
     window.removeEventListener("pointermove", onPointerMove);
@@ -516,22 +534,26 @@ function initField(
     gl.deleteShader(frag);
     gl.deleteBuffer(buf);
   };
+
+  return { dispose, setPalette };
 }
 
 export function BrandField(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fallback, setFallback] = useState(false);
   const theme = useTheme();
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
+  const fieldRef = useRef<Field | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    let dispose: (() => void) | null = null;
     let cancelled = false;
     const boot = (): void => {
       if (cancelled) return;
-      dispose = initField(canvas, PALETTES[theme], () => setFallback(true));
+      fieldRef.current = initField(canvas, PALETTES[themeRef.current], () => setFallback(true));
     };
 
     // Boot at idle: the shader compile can take 100ms+ under a software
@@ -548,8 +570,13 @@ export function BrandField(): JSX.Element {
       cancelled = true;
       if (hasIdle) window.cancelIdleCallback(handle);
       else window.clearTimeout(handle);
-      dispose?.();
+      fieldRef.current?.dispose();
+      fieldRef.current = null;
     };
+  }, []);
+
+  useEffect(() => {
+    fieldRef.current?.setPalette(PALETTES[theme]);
   }, [theme]);
 
   return (

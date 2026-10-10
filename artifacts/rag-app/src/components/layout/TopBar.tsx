@@ -52,9 +52,12 @@ export function TopBar({
         onPointerEnter={() => onNavigateIntent(homeHref)}
         onFocus={() => onNavigateIntent(homeHref)}
         className="brand-home-link"
+        aria-label="Truenote home"
       >
         <BrandMark className="h-8 w-8" />
-        <span className="flex flex-col">
+        {/* Below 360px the mark alone carries the brand, so the theme
+          * switch and Sign out fit on one line. */}
+        <span className="hidden flex-col min-[360px]:flex">
           <span className="font-display text-lg font-semibold leading-none tracking-tight">
             Truenote
           </span>
@@ -63,9 +66,9 @@ export function TopBar({
           </span>
         </span>
       </Link>
-      <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-4">
         <ProgramSelector user={user} />
-        <div className="flex min-w-0 items-center gap-2 text-sm">
+        <div className="flex min-w-0 items-center gap-1.5 text-sm sm:gap-2">
           <span className="hidden text-muted-foreground sm:inline">{user.email}</span>
           <span className="hidden rounded-full bg-muted px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground md:inline-flex">
             {ROLE_LABEL[user.role]}
@@ -74,7 +77,7 @@ export function TopBar({
           <button
             type="button"
             onClick={handleLogout}
-            className="btn-whisper px-3 py-1"
+            className="btn-whisper whitespace-nowrap px-3 py-1"
           >
             Sign out
           </button>

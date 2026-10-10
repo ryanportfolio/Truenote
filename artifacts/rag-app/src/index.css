@@ -59,6 +59,10 @@
     --archive-coral: 66.5% 0.145 43;
     --archive-green: 64% 0.075 176;
     --archive-ink: 29% 0.11 260;
+    /* The hero's glass core (login demo portals): brand cobalt in light and
+     * dark, bronze in warm. Not a UI color. */
+    --archive-cobalt: 41.41% 0.1807 261.2;
+    --archive-cobalt-vivid: 52.37% 0.2194 260.5;
   }
 
   /* Dark and warm themes (src/lib/theme.ts sets data-theme on <html>;
@@ -108,7 +112,7 @@
    * a saturated blue. */
   :root[data-theme="warm"] {
     --background: 88.5% 0.068 92; /* #E9D8A6 */
-    --foreground: 25% 0.035 62; /* #301F12, 11.41:1 on bg */
+    --foreground: 25% 0.035 62; /* #2E1E0F, 11.41:1 on bg */
     --card: 93% 0.052 94; /* #F3E8C1 */
     --card-foreground: 25% 0.035 62;
     --popover: 93% 0.052 94;
@@ -138,6 +142,8 @@
     --archive-coral: 62% 0.15 45;
     --archive-green: 58% 0.08 130;
     --archive-ink: 28% 0.05 55;
+    --archive-cobalt: 36% 0.035 72;
+    --archive-cobalt-vivid: 52% 0.06 72;
   }
 }
 
@@ -769,6 +775,9 @@
     --align: 150deg;
     --pencil: var(--align);
     --reg: 186deg;
+    /* Highlights in the art (stars, specular, flash, flecks, sheen): the
+     * card's near-white in light and warm, the cream ink in dark. */
+    --pp-light: var(--card);
     position: relative;
     isolation: isolate;
     display: grid;
@@ -783,6 +792,10 @@
     text-align: left;
     box-shadow: inset 0 1px 0 oklch(var(--card)),
       0 5px 16px oklch(var(--archive-ink) / 0.06);
+  }
+
+  :root[data-theme="dark"] .auth-demo-role {
+    --pp-light: var(--foreground);
   }
 
   /* Wide, short cards (one account; three stacked below sm): the label
@@ -949,8 +962,8 @@
     overflow: hidden;
     background: radial-gradient(
       9rem circle at var(--mx, 50%) var(--my, 0%),
-      oklch(var(--card) / 0.12),
-      oklch(var(--card) / 0) 70%
+      oklch(var(--pp-light) / 0.12),
+      oklch(var(--pp-light) / 0) 70%
     );
   }
 
@@ -963,7 +976,7 @@
     background: linear-gradient(
       90deg,
       transparent,
-      oklch(var(--card) / 0.5) 45%,
+      oklch(var(--pp-light) / 0.5) 45%,
       oklch(var(--archive-green) / 0.16) 60%,
       transparent
     );
@@ -1043,7 +1056,7 @@
   }
 
   .pp-grid-mineral {
-    stroke: oklch(var(--card) / 0.3);
+    stroke: oklch(var(--pp-light) / 0.3);
   }
 
   /* Stops use plain tokens; the @supports block below refines them with
@@ -1074,19 +1087,19 @@
   }
 
   .pp-stop-mottle {
-    stop-color: oklch(var(--card) / 0.28);
+    stop-color: oklch(var(--pp-light) / 0.28);
   }
 
   .pp-stop-mottle-clear {
-    stop-color: oklch(var(--card) / 0);
+    stop-color: oklch(var(--pp-light) / 0);
   }
 
   .pp-stop-glass-hot {
-    stop-color: oklch(var(--accent));
+    stop-color: oklch(var(--archive-cobalt-vivid));
   }
 
   .pp-stop-glass {
-    stop-color: oklch(var(--primary));
+    stop-color: oklch(var(--archive-cobalt));
   }
 
   .pp-stop-glass-deep {
@@ -1098,7 +1111,7 @@
   }
 
   .pp-stop-flash {
-    stop-color: oklch(var(--card) / 0.95);
+    stop-color: oklch(var(--pp-light) / 0.95);
   }
 
   .pp-stop-flash-mid {
@@ -1207,7 +1220,7 @@
     }
 
     .pp-stop-glass-deep {
-      stop-color: color-mix(in oklab, oklch(var(--primary)) 50%, oklch(var(--archive-ink)));
+      stop-color: color-mix(in oklab, oklch(var(--archive-cobalt)) 50%, oklch(var(--archive-ink)));
     }
 
     .pp-stop-glass-edge {
@@ -1228,7 +1241,7 @@
 
   .pp-bezel-light {
     fill: none;
-    stroke: oklch(var(--card));
+    stroke: oklch(var(--pp-light));
     stroke-linecap: round;
     stroke-width: 1.1;
   }
@@ -1241,16 +1254,16 @@
 
   .pp-orbits {
     fill: none;
-    stroke: oklch(var(--card) / 0.5);
+    stroke: oklch(var(--pp-light) / 0.5);
     stroke-width: 0.4;
   }
 
   .pp-star {
-    fill: oklch(var(--card) / 0.85);
+    fill: oklch(var(--pp-light) / 0.85);
   }
 
   .pp-crescent {
-    fill: oklch(var(--card) / 0.9);
+    fill: oklch(var(--pp-light) / 0.9);
   }
 
   .pp-halo {
@@ -1264,18 +1277,18 @@
 
   .pp-crescent-glow {
     fill: none;
-    stroke: oklch(var(--card) / 0.32);
+    stroke: oklch(var(--pp-light) / 0.32);
     stroke-linecap: round;
     stroke-width: 3.4;
   }
 
   .pp-glint {
-    fill: oklch(var(--card));
+    fill: oklch(var(--pp-light));
   }
 
   .pp-flare {
     fill: none;
-    stroke: oklch(var(--card) / 0.85);
+    stroke: oklch(var(--pp-light) / 0.85);
     stroke-linecap: round;
     stroke-width: 0.4;
   }
@@ -1295,13 +1308,13 @@
 
   .pp-beam-line {
     fill: none;
-    stroke: oklch(var(--card) / 0.85);
+    stroke: oklch(var(--pp-light) / 0.85);
     stroke-linecap: round;
     stroke-width: 0.7;
   }
 
   .pp-fleck {
-    fill: oklch(var(--card));
+    fill: oklch(var(--pp-light));
     stroke: oklch(var(--archive-ink) / 0.35);
     stroke-width: 0.4;
     opacity: 0;
@@ -1309,7 +1322,7 @@
   }
 
   .pp-fleck-cobalt {
-    fill: oklch(var(--primary));
+    fill: oklch(var(--archive-cobalt));
     stroke: none;
   }
 
@@ -1591,15 +1604,15 @@
   }
 
   /* The hero is one cream photograph, so the themes tint it instead of
-   * swapping assets: dark dims it toward the page, warm turns it fully
-   * sepia so the cobalt core becomes bronze and no saturated blue remains. Planes are copies of the same image and take the
+   * swapping assets: dark dims it toward the page, warm turns it sepia so
+   * the cobalt core becomes bronze and no saturated blue remains. Planes are copies of the same image and take the
    * same filter, so the bands stay registered. */
   :root[data-theme="dark"] .archive-visual {
     background: oklch(var(--background));
   }
 
   :root[data-theme="dark"] :is(.archive-image, .archive-layer-image) {
-    filter: brightness(0.6) contrast(1.06) saturate(0.92);
+    filter: brightness(0.34) contrast(1.1) saturate(0.9);
   }
 
   :root[data-theme="warm"] .archive-visual {
@@ -1607,7 +1620,7 @@
   }
 
   :root[data-theme="warm"] :is(.archive-image, .archive-layer-image) {
-    filter: sepia(1) saturate(1.1);
+    filter: sepia(0.95) saturate(0.9) brightness(0.88);
   }
 
   .archive-image,
