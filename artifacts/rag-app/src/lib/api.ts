@@ -159,10 +159,21 @@ export async function fetchConfig(): Promise<AppConfig> {
   return asJson<AppConfig>(response);
 }
 
+const ME_RATE_LIMIT_RETRIES = 3;
+
 export async function fetchMe(): Promise<CurrentUser | null> {
   // /api/me never consumes program scope. Keep this request header-free so
   // it exactly matches index.html's credentialed fetch preload.
-  const response = await fetch("/api/me", { credentials: "include" });
+  let response = await fetch("/api/me", { credentials: "include" });
+  // A 429 means the session is valid but the per-user limit is spent (a
+  // shared demo account, many tabs). Wait and retry instead of letting the
+  // caller treat the error as signed out.
+  for (let attempt = 0; response.status === 429 && attempt < ME_RATE_LIMIT_RETRIES; attempt++) {
+    const retryAfter = Number(response.headers.get("Retry-After"));
+    const waitSeconds = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 30) : 5;
+    await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+    response = await fetch("/api/me", { credentials: "include" });
+  }
   if (response.status === 401) return null;
   const json = await asJson<{ user: CurrentUser }>(response);
   return json.user;

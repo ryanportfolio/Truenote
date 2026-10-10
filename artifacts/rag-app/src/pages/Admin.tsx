@@ -27,6 +27,10 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
   // prompt instead of "no documents" (which is ambiguous).
   const [noProgramSelected, setNoProgramSelected] = useState(false);
 
+  // Counts failed refreshes so polling re-arms after an error (a 429 from
+  // the per-user limit, a network blip) even though items did not change.
+  const [failedRefreshes, setFailedRefreshes] = useState(0);
+
   const refresh = useCallback(async (): Promise<void> => {
     setError(null);
     try {
@@ -35,8 +39,10 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
       setSources(response.sources ?? []);
       setControlsReady(response.controlsReady !== false);
       setNoProgramSelected(response.noProgramSelected === true);
+      setFailedRefreshes(0);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load documents");
+      setFailedRefreshes((count) => count + 1);
     } finally {
       setLoading(false);
     }
@@ -66,17 +72,19 @@ export function AdminPage({ user }: AdminPageProps): JSX.Element {
   // as every doc reaches a review or terminal state so an idle page
   // costs nothing. The setTimeout is scheduled fresh on each items change,
   // so a successful refresh that resolves all in-flight docs naturally
-  // breaks the chain.
+  // breaks the chain. After a failed refresh the next poll waits longer,
+  // up to 30 seconds, instead of stopping.
   useEffect(() => {
     const hasInFlight = items.some((item) =>
       ["submitted", "scanning", "parsing"].includes(item.lifecycleState)
     );
     if (!hasInFlight) return;
+    const delay = Math.min(POLL_INTERVAL_MS * 2 ** failedRefreshes, 30_000);
     const timer = setTimeout(() => {
       void refresh();
-    }, POLL_INTERVAL_MS);
+    }, delay);
     return () => clearTimeout(timer);
-  }, [items, refresh]);
+  }, [items, refresh, failedRefreshes]);
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
