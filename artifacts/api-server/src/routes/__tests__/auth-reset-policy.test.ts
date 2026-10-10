@@ -21,7 +21,11 @@ const fake = vi.hoisted(() => ({
   // Rows of user_passkeys for the reset user, read inside the transaction.
   passkeys: [] as Array<Record<string, unknown>>,
   passkeyQuery: vi.fn(),
-  audit: vi.fn()
+  audit: vi.fn(),
+  // The pending-MFA invalidation, run on the transaction's executor and
+  // committed only with the rest of the transaction.
+  mfaInvalidate: vi.fn(),
+  mfaCommitted: [] as string[]
 }));
 
 vi.mock("../../lib/db-client.js", () => ({ db: { transaction: fake.transaction } }));
@@ -100,12 +104,14 @@ beforeEach(() => {
   fake.consumeAllowed = true;
   fake.insertError = null;
   fake.passkeys = [];
+  fake.mfaCommitted = [];
   fake.lookupResetTokenUserId.mockResolvedValue(user.id);
   fake.hashPassword.mockResolvedValue("new-password-hash");
   // Model transaction commit only after callback success; rejected callbacks
   // discard every pending write, including token consumption.
   fake.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => {
     const pending: string[] = [];
+    const pendingMfa: string[] = [];
     const tx = {
       update: (table: unknown) => ({ set: (values: unknown) => ({ where: (condition: unknown) => {
         if (table === passwordResetTokens) return { returning: async () => {
@@ -133,12 +139,19 @@ beforeEach(() => {
       } }),
       execute: async (query: SQL) => {
         const { sql: text, params } = new PgDialect().sqlToQuery(query);
-        fake.passkeyQuery(text.replace(/\s+/g, " ").trim(), params);
+        const compact = text.replace(/\s+/g, " ").trim();
+        if (compact.startsWith("DELETE FROM mfa_challenges")) {
+          fake.mfaInvalidate(compact, params, [...pending]);
+          pendingMfa.push("invalidate-mfa-challenges");
+          return { rows: [] };
+        }
+        fake.passkeyQuery(compact, params);
         return { rows: fake.passkeys.filter((row) => row.user_id === params[0]) };
       }
     };
     const result = await callback(tx);
     fake.committed.push(...pending);
+    fake.mfaCommitted.push(...pendingMfa);
     return result;
   });
 });
@@ -153,7 +166,21 @@ async function expectDenied(status = 403, error = "Use company SSO to sign in.")
   expect.soft(fake.passwordUpdate).not.toHaveBeenCalled();
   expect.soft(fake.revoke).not.toHaveBeenCalled();
   expect.soft(fake.insert).not.toHaveBeenCalled();
+  expect.soft(fake.mfaCommitted).toEqual([]);
   expect(result.next).not.toHaveBeenCalled();
+}
+
+// Finding: a pending MFA login started with the old password must not
+// survive the reset. Every unconsumed challenge of the user is deleted on the
+// transaction's executor (the db mock has no execute), right after the
+// password write, and commits with it.
+function expectMfaInvalidatedInTransaction() {
+  expect(fake.mfaInvalidate).toHaveBeenCalledTimes(1);
+  const [text, params, writtenBefore] = fake.mfaInvalidate.mock.calls[0]!;
+  expect(text).toBe("DELETE FROM mfa_challenges WHERE user_id = $1::uuid AND consumed_at IS NULL");
+  expect(params).toEqual([user.id]);
+  expect(writtenBefore).toEqual(["consume-token", "update-password"]);
+  expect(fake.mfaCommitted).toEqual(["invalidate-mfa-challenges"]);
 }
 
 async function expectSuccess() {
@@ -181,6 +208,7 @@ async function expectSuccess() {
   expect(condition.sql).toContain('"password_reset_tokens"."expires_at" >');
   expect(condition.sql).toContain('"password_reset_tokens"."used_at" is null');
   expectPasskeyCheckedInTransaction();
+  expectMfaInvalidatedInTransaction();
   expect(fake.audit).not.toHaveBeenCalled();
 }
 
@@ -217,6 +245,7 @@ async function expectSignInRequired(reason: "second_factor_required" | "break_gl
   const condition = new PgDialect().sqlToQuery(fake.consume.mock.calls[0]![1]);
   expect(condition.sql).toContain('"password_reset_tokens"."used_at" is null');
   expectPasskeyCheckedInTransaction();
+  expectMfaInvalidatedInTransaction();
   expect(fake.audit).toHaveBeenCalledTimes(1);
   expect(fake.audit).toHaveBeenCalledWith({
     action: "auth.password_reset.sign_in_required",
@@ -314,6 +343,9 @@ describe("reset policy defaults and rejected links", () => {
     expect(fake.insert).not.toHaveBeenCalled();
     expect(fake.audit).not.toHaveBeenCalled();
     expect(result.next).toHaveBeenCalledWith(failure);
+    // The invalidation ran in the transaction and rolled back with it.
+    expect(fake.mfaInvalidate).toHaveBeenCalledTimes(1);
+    expect(fake.mfaCommitted).toEqual([]);
   });
   it.each(["bad", "used", "expired"])("rejects %s token at preflight", async () => {
     fake.lookupResetTokenUserId.mockResolvedValue(null);
@@ -339,6 +371,8 @@ describe("reset policy defaults and rejected links", () => {
     expect(fake.committed).toEqual([]);
     expect(result.cookie).not.toHaveBeenCalled();
     expect(result.next).toHaveBeenCalledWith(fake.insertError);
+    expect(fake.mfaInvalidate).toHaveBeenCalledTimes(1);
+    expect(fake.mfaCommitted).toEqual([]);
   });
   it("change-password rejects unauthenticated callers before password or transaction work", async () => {
     const result = await invokeFirstHandler("/change-password");

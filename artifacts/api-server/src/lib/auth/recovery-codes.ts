@@ -58,12 +58,20 @@ export function hashRecoveryCode(normalized: string): string {
  * POST /api/auth/mfa/recovery-codes (routes/mfa.ts) passes a transaction
  * that also appends the `auth.mfa.recovery_codes.generated` audit event, so
  * the replacement and its event commit or roll back together.
+ *
+ * The user's row is locked first (SELECT ... FOR UPDATE), so two overlapping
+ * generations run one after the other: without it both could delete before
+ * either inserts, leaving 20 valid codes. The lock lasts until the caller's
+ * transaction ends; on a bare `db` executor it would end at once.
  */
 export async function replaceRecoveryCodes(
   userId: string,
   executor: SqlExecutor = db as unknown as SqlExecutor
 ): Promise<string[]> {
   const codes = Array.from({ length: RECOVERY_CODE_COUNT }, generateRecoveryCode);
+  await executor.execute(sql`
+    SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE
+  `);
   await executor.execute(sql`
     DELETE FROM user_recovery_codes WHERE user_id = ${userId}::uuid
   `);

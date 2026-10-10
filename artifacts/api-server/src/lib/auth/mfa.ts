@@ -198,6 +198,23 @@ export async function findLoginChallenge(token: string | undefined): Promise<Mfa
   return toChallenge(result.rows[0]);
 }
 
+/**
+ * Delete every unconsumed challenge of the user, login and register alike.
+ * Each transaction that writes the user's password hash calls this on its
+ * own executor, so a challenge started under the old password cannot
+ * complete after the change commits. A completion racing the change either
+ * consumed its row first or finds it gone (consumeChallenge returns false).
+ */
+export async function invalidateMfaChallenges(
+  userId: string,
+  executor: SqlExecutor
+): Promise<void> {
+  await executor.execute(sql`
+    DELETE FROM mfa_challenges
+    WHERE user_id = ${userId}::uuid AND consumed_at IS NULL
+  `);
+}
+
 export async function createRegisterChallenge(userId: string, challenge: string): Promise<void> {
   await db.execute(sql`
     INSERT INTO mfa_challenges (user_id, purpose, challenge, expires_at)

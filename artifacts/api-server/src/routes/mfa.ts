@@ -40,7 +40,7 @@ import {
 } from "../lib/auth/recovery-codes.js";
 import { getWebAuthnConfig } from "../lib/auth/webauthn-config.js";
 import { clientIpFrom, loginIpLimiter } from "../lib/auth/rate-limit.js";
-import { authedUser, requireAuth, requireSuperUser } from "../middleware/current-user.js";
+import { authedUser, requireAuth, requireFreshPassword, requireSuperUser } from "../middleware/current-user.js";
 import { appendSecurityEvent, recordSecurityEventBestEffort } from "../lib/security/audit.js";
 
 /**
@@ -52,7 +52,9 @@ import { appendSecurityEvent, recordSecurityEventBestEffort } from "../lib/secur
  *   POST /recovery-code  { code }
  *
  * Enrollment (signed-in super_user, own account; every change requires the
- * current password, and a wrong password counts toward lockout):
+ * current password, and a wrong password counts toward lockout; while the
+ * account still has a temporary password (must_reset_password) every route
+ * below answers 423 until the password is changed):
  *   GET    /status
  *   POST   /passkeys/options  { password }
  *   POST   /passkeys          { password, name?, response }
@@ -369,7 +371,7 @@ const UNAVAILABLE = {
   code: "webauthn_unconfigured"
 } as const;
 
-mfaRouter.get("/status", requireAuth, requireSuperUser, async (req, res, next) => {
+mfaRouter.get("/status", requireAuth, requireSuperUser, requireFreshPassword, async (req, res, next) => {
   try {
     const user = authedUser(req);
     const [passkeys, unusedRecoveryCodes] = await Promise.all([
@@ -391,7 +393,7 @@ mfaRouter.get("/status", requireAuth, requireSuperUser, async (req, res, next) =
   }
 });
 
-mfaRouter.post("/passkeys/options", requireAuth, requireSuperUser, async (req, res, next) => {
+mfaRouter.post("/passkeys/options", requireAuth, requireSuperUser, requireFreshPassword, async (req, res, next) => {
   try {
     const config = getWebAuthnConfig();
     if (!config) {
@@ -422,7 +424,7 @@ mfaRouter.post("/passkeys/options", requireAuth, requireSuperUser, async (req, r
   }
 });
 
-mfaRouter.post("/passkeys", requireAuth, requireSuperUser, async (req, res, next) => {
+mfaRouter.post("/passkeys", requireAuth, requireSuperUser, requireFreshPassword, async (req, res, next) => {
   try {
     const config = getWebAuthnConfig();
     if (!config) {
@@ -492,7 +494,7 @@ mfaRouter.post("/passkeys", requireAuth, requireSuperUser, async (req, res, next
   }
 });
 
-mfaRouter.delete("/passkeys/:id", requireAuth, requireSuperUser, async (req, res, next) => {
+mfaRouter.delete("/passkeys/:id", requireAuth, requireSuperUser, requireFreshPassword, async (req, res, next) => {
   try {
     const passkeyId = req.params.id ?? "";
     if (!UUID_PATTERN.test(passkeyId)) {
@@ -538,7 +540,7 @@ mfaRouter.delete("/passkeys/:id", requireAuth, requireSuperUser, async (req, res
   }
 });
 
-mfaRouter.post("/recovery-codes", requireAuth, requireSuperUser, async (req, res, next) => {
+mfaRouter.post("/recovery-codes", requireAuth, requireSuperUser, requireFreshPassword, async (req, res, next) => {
   try {
     const user = await requireCurrentPassword(req, res);
     if (!user) return;

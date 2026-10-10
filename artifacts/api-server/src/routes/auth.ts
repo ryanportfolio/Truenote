@@ -17,7 +17,12 @@ import {
 } from "../lib/auth/sessions.js";
 import { getOidcConfig } from "../lib/auth/oidc.js";
 import { isLocalLoginAllowed } from "../lib/auth/local-login-policy.js";
-import { listPasskeys, startLoginChallenge, type SqlExecutor } from "../lib/auth/mfa.js";
+import {
+  invalidateMfaChallenges,
+  listPasskeys,
+  startLoginChallenge,
+  type SqlExecutor
+} from "../lib/auth/mfa.js";
 import {
   isAccountLocked,
   recordAuthFailure,
@@ -425,6 +430,7 @@ authRouter.post("/change-password", requireAuth, workloadRateLimitMiddleware("pa
         .update(users)
         .set({ passwordHash, mustResetPassword: false })
         .where(eq(users.id, user.id));
+      await invalidateMfaChallenges(user.id, tx as unknown as SqlExecutor);
       await tx.delete(sessions).where(eq(sessions.userId, user.id));
       const token = generateToken();
       const tokenHash = hashToken(token);
@@ -700,6 +706,8 @@ authRouter.post("/reset-password", async (req, res, next) => {
         .update(users)
         .set({ passwordHash, mustResetPassword: false })
         .where(eq(users.id, userId));
+      // A pending MFA login started with the old password dies with it.
+      await invalidateMfaChallenges(userId, tx as unknown as SqlExecutor);
       await tx.delete(sessions).where(eq(sessions.userId, userId));
 
       // The reset link proves only email access. Issue a session only where

@@ -6,6 +6,7 @@ import cookieParser from "cookie-parser";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
+import { passwordResetTokens } from "@workspace/db/schema";
 
 // Break-glass second factor, end to end over HTTP: the real auth and MFA
 // routers, lib/auth/mfa.ts, recovery-codes.ts, webauthn-config.ts and
@@ -65,7 +66,9 @@ const fake = vi.hoisted(() => ({
   rowLocks: new Map<string, Promise<void>>(),
   // For each appendSecurityEvent call: did it run on a transaction executor?
   auditInTx: [] as boolean[],
-  appendFailure: null as Error | null
+  appendFailure: null as Error | null,
+  // Drizzle builder writes made inside a transaction (reset-password).
+  txWrites: [] as string[]
 }));
 
 function now() {
@@ -161,6 +164,13 @@ function runSql(query: SQL): { rows: unknown[] } {
     row.used_at = now();
     return { rows: [{ id: row.id }] };
   }
+  if (text === "DELETE FROM mfa_challenges WHERE user_id = $1::uuid AND consumed_at IS NULL") {
+    t.challenges = t.challenges.filter((r) => !(r.user_id === p[0] && r.consumed_at === null));
+    return { rows: [] };
+  }
+  if (text === "SELECT 1 FROM users WHERE id = $1::uuid FOR UPDATE") {
+    return { rows: [{ "?column?": 1 }] };
+  }
   if (text.startsWith("SELECT count(*)::int AS unused FROM user_recovery_codes")) {
     return { rows: [{ unused: t.codes.filter((r) => r.user_id === p[0] && r.used_at === null).length }] };
   }
@@ -203,8 +213,23 @@ vi.mock("../../lib/db-client.js", () => {
           }
           return runSql(query);
         };
+        // The Drizzle builder calls of POST /api/auth/reset-password; the
+        // password write and session revoke are recorded in order.
+        const builder = {
+          update: (table: unknown) => ({ set: (values: Record<string, unknown>) => ({ where: () => {
+            if (table === passwordResetTokens) {
+              return { returning: async () => [{ userId: SUPER.id }] };
+            }
+            fake.txWrites.push("update-password");
+            Object.assign(fake.user, values);
+            return Promise.resolve();
+          } }) }),
+          select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ ...fake.user }] }) }) }),
+          delete: () => ({ where: async () => { fake.txWrites.push("revoke-sessions"); } }),
+          insert: () => ({ values: async (values: unknown) => { fake.sessionInsert(values); } })
+        };
         try {
-          return await work({ execute: txExecute, isTx: true });
+          return await work({ execute: txExecute, isTx: true, ...builder } as unknown as { execute: typeof execute; isTx: true });
         } catch (err) {
           fake.tables = snapshot;
           throw err;
@@ -240,6 +265,12 @@ vi.mock("../../lib/auth/lockout.js", async (importOriginal) => ({
   recordAuthFailure: fake.recordAuthFailure,
   recordAuthSuccess: fake.recordAuthSuccess
 }));
+// The reset link's preflight lookup; the in-transaction consume is the
+// builder fake above.
+vi.mock("../../lib/auth/password-reset.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/auth/password-reset.js")>()),
+  lookupResetTokenUserId: async () => "00000000-0000-4000-8000-0000000000a1"
+}));
 vi.mock("@simplewebauthn/server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@simplewebauthn/server")>()),
   verifyAuthenticationResponse: fake.verifyAuthentication,
@@ -249,6 +280,7 @@ vi.mock("@simplewebauthn/server", async (importOriginal) => ({
 import { authRouter } from "../auth.js";
 import { mfaRouter } from "../mfa.js";
 import { SESSION_COOKIE_NAME } from "../../lib/auth/sessions.js";
+import { findLoginChallenge } from "../../lib/auth/mfa.js";
 import type { CurrentUser } from "../../lib/auth/current-user.js";
 
 const SUPER: CurrentUser = {
@@ -260,6 +292,8 @@ const SUPER: CurrentUser = {
   mustResetPassword: false
 };
 const MANAGER: CurrentUser = { ...SUPER, id: "00000000-0000-4000-8000-0000000000a2", role: "manager", email: "manager@example.com" };
+// A super_user still on a temporary password (must_reset_password).
+const STALE: CurrentUser = { ...SUPER, id: "00000000-0000-4000-8000-0000000000a3", mustResetPassword: true };
 const PASSWORD = "correct-password";
 const CREDENTIAL_ID = "c3ludGhldGljLWNyZWRlbnRpYWw";
 
@@ -273,7 +307,7 @@ beforeAll(async () => {
   // Stand-in for attachCurrentUser: the session lookup is not under test.
   app.use((req, _res, next) => {
     const id = req.header("x-test-user");
-    req.user = id === SUPER.id ? SUPER : id === MANAGER.id ? MANAGER : null;
+    req.user = id === SUPER.id ? SUPER : id === MANAGER.id ? MANAGER : id === STALE.id ? STALE : null;
     next();
   });
   app.use("/api/auth", authRouter);
@@ -308,6 +342,7 @@ beforeEach(() => {
   fake.rowLocks.clear();
   fake.auditInTx = [];
   fake.appendFailure = null;
+  fake.txWrites = [];
   fake.verifyPassword.mockImplementation(async (password: string, hash: string) =>
     hash === "stored-password-hash" && password === PASSWORD);
   fake.recordAuthFailure.mockResolvedValue({ locked: false, lockedNow: false, lockedUntil: null });
@@ -846,5 +881,118 @@ describe("enrollment", () => {
     expect(reply.body).toMatchObject({ code: "webauthn_unconfigured" });
     const status = await call("GET", "/api/auth/mfa/status", undefined, asSuper());
     expect(status.body).toMatchObject({ passkeyAvailable: false });
+  });
+});
+
+// Finding: a challenge created with the old password used to stay usable
+// for its 5 minutes after a password reset revoked every session.
+describe("a password reset ends pending MFA", () => {
+  const RESET_TOKEN = "synthetic_reset_token_at_least_16_chars";
+  const NEW_PASSWORD = "synthetic-new-password-long-enough-for-policy";
+
+  it("refuses the old login challenge afterwards and deletes every unconsumed challenge in the reset transaction", async () => {
+    const codes = (await call("POST", "/api/auth/mfa/recovery-codes", { password: PASSWORD }, asSuper())).body!.codes as string[];
+    enrollPasskey();
+
+    // One completed login (its consumed row stays), one pending login and
+    // one pending passkey registration.
+    const done = await passwordStep();
+    expect((await call("POST", "/api/auth/mfa/recovery-code", { code: codes[0] }, { cookie: done.cookie })).status).toBe(200);
+    const pending = await passwordStep();
+    expect(await findLoginChallenge(pending.token)).not.toBeNull();
+    expect((await call("POST", "/api/auth/mfa/passkeys/options", { password: PASSWORD }, asSuper())).status).toBe(200);
+    expect(fake.tables.challenges.map((r) => [r.purpose, r.consumed_at === null])).toEqual([
+      ["login", false], ["login", true], ["register", true]
+    ]);
+    const sessionsBefore = fake.sessionInsert.mock.calls.length;
+
+    fake.sql = [];
+    const reset = await call("POST", "/api/auth/reset-password", { token: RESET_TOKEN, newPassword: NEW_PASSWORD });
+    expect(reset.status).toBe(200);
+    expect(reset.body).toEqual({ passwordReset: true, signInRequired: true });
+    expect(fake.user.passwordHash).toBe("dummy-password-hash");
+    expect(fake.txWrites).toEqual(["update-password", "revoke-sessions"]);
+    expect(fake.sql).toContain("DELETE FROM mfa_challenges WHERE user_id = $1::uuid AND consumed_at IS NULL");
+    expect(fake.tables.challenges).toHaveLength(1);
+    expect(fake.tables.challenges[0]!.consumed_at).not.toBeNull();
+
+    // The old challenge no longer resolves, and the recovery-code step
+    // refuses it without spending the code or issuing a session.
+    expect(await findLoginChallenge(pending.token)).toBeNull();
+    const late = await call("POST", "/api/auth/mfa/recovery-code", { code: codes[1] }, { cookie: pending.cookie });
+    expect(late.status).toBe(401);
+    expect(late.body).toMatchObject({ code: "mfa_expired" });
+    expect(cookieValue(late.cookies, SESSION_COOKIE_NAME)).toBeUndefined();
+    expect(fake.tables.codes.filter((r) => r.used_at !== null)).toHaveLength(1);
+    expect(fake.sessionInsert).toHaveBeenCalledTimes(sessionsBefore);
+  });
+});
+
+// Finding: MFA management used to work while the account still had a
+// temporary password. The login-step routes need no session and stay open.
+describe("MFA management with a temporary password", () => {
+  it.each([
+    ["GET", "/api/auth/mfa/status"],
+    ["POST", "/api/auth/mfa/passkeys/options"],
+    ["POST", "/api/auth/mfa/passkeys"],
+    ["DELETE", "/api/auth/mfa/passkeys/00000000-0000-4000-8000-000000000001"],
+    ["POST", "/api/auth/mfa/recovery-codes"]
+  ])("%s %s answers 423 until the password is changed", async (method, path) => {
+    const body = method === "GET" ? undefined : { password: PASSWORD, name: "Key", response: { id: "x", rawId: "x", type: "public-key", response: { clientDataJSON: "e30", attestationObject: "o2NmbXRkbm9uZQ" }, clientExtensionResults: {} } };
+    const reply = await call(method, path, body, { "x-test-user": STALE.id });
+    expect(reply.status).toBe(423);
+    expect(reply.body).toEqual({ error: "Password reset required" });
+    expect(fake.verifyPassword).not.toHaveBeenCalled();
+    expect(fake.verifyRegistration).not.toHaveBeenCalled();
+    expect(fake.sql).toEqual([]);
+    expect(fake.tables).toEqual({ challenges: [], passkeys: [], codes: [] });
+  });
+
+  it("leaves the login-step routes reachable", async () => {
+    const codes = (await call("POST", "/api/auth/mfa/recovery-codes", { password: PASSWORD }, asSuper())).body!.codes as string[];
+    enrollPasskey();
+
+    const first = await passwordStep();
+    const passkey = await call("POST", "/api/auth/mfa/passkey", assertion, { cookie: first.cookie, "x-test-user": STALE.id });
+    expect(passkey.status).toBe(200);
+
+    const second = await passwordStep();
+    const recovery = await call("POST", "/api/auth/mfa/recovery-code", { code: codes[0] }, { cookie: second.cookie });
+    expect(recovery.status).toBe(200);
+    expect(fake.sessionInsert).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Finding: two overlapping generations could both delete before either
+// inserted, leaving 20 valid codes. The user's row is locked first.
+describe("concurrent recovery-code generation", () => {
+  it("leaves exactly one set of 10 codes", async () => {
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => { open = resolve; });
+    let arrived = 0;
+    fake.verifyPassword.mockImplementation(async (password: string, hash: string) => {
+      arrived += 1;
+      await gate;
+      return hash === "stored-password-hash" && password === PASSWORD;
+    });
+    const a = call("POST", "/api/auth/mfa/recovery-codes", { password: PASSWORD }, asSuper());
+    const b = call("POST", "/api/auth/mfa/recovery-codes", { password: PASSWORD }, asSuper());
+    await vi.waitFor(() => expect(arrived).toBe(2));
+    open();
+    const replies = await Promise.all([a, b]);
+    expect(replies.map((r) => r.status)).toEqual([200, 200]);
+
+    expect(fake.tables.codes).toHaveLength(10);
+    const stored = fake.tables.codes.map((r) => r.code_hash).sort();
+    const hashesOf = (codes: string[]) =>
+      codes.map((c) => createHash("sha256").update(c.replace(/-/g, "")).digest("hex")).sort();
+    const sets = replies.map((r) => hashesOf(r.body!.codes as string[]));
+    expect(sets.filter((set) => JSON.stringify(set) === JSON.stringify(stored))).toHaveLength(1);
+
+    // Each generation locks the user's row before its DELETE.
+    const kinds = fake.sql
+      .filter((s) => s === "SELECT 1 FROM users WHERE id = $1::uuid FOR UPDATE" || s.startsWith("DELETE FROM user_recovery_codes"))
+      .map((s) => (s.startsWith("SELECT") ? "lock" : "delete"));
+    expect(kinds).toEqual(["lock", "delete", "lock", "delete"]);
   });
 });
