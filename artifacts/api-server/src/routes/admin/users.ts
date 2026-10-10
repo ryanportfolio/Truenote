@@ -39,7 +39,15 @@ import {
   isEmailDeliveryConfigured
 } from "../../lib/email/sender.js";
 import { resolveAppBaseUrl } from "../../lib/email/links.js";
-import { renderInviteEmail } from "../../lib/email/templates.js";
+import {
+  renderInviteEmail,
+  renderSsoInviteEmail
+} from "../../lib/email/templates.js";
+import { getOidcConfig } from "../../lib/auth/oidc.js";
+import {
+  invitationKindFor,
+  type InvitationKind
+} from "../../lib/auth/local-login-policy.js";
 import { recordAppError } from "../../lib/observability/error-log.js";
 import { adminReadLimit, userAdminWriteLimit } from "../../lib/security/route-rate-limit.js";
 import { workloadRateLimitMiddleware } from "../../middleware/workload-rate-limit.js";
@@ -146,6 +154,84 @@ function toListItem(row: {
  */
 function generateTempPassword(): string {
   return randomBytes(16).toString("base64url");
+}
+
+/**
+ * Hash input for an account nobody signs in to with a password (bulk
+ * invites before the link is used, SSO-only accounts). Discarded at once,
+ * so the stored hash matches no known password.
+ */
+function generateUnusablePassword(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+/** The sign-in page an SSO invitation links to. */
+function ssoSignInUrl(baseUrl: string): string {
+  return `${baseUrl}/login`;
+}
+
+/**
+ * How long single create waits for the SSO invitation send. The account
+ * already exists by then, and the email provider has no deadline of its
+ * own, so a stalled send would otherwise hold the create request open
+ * until the client gives up and a retry gets 409.
+ */
+const SSO_INVITE_SEND_TIMEOUT_MS = 10_000;
+
+function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
+  });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Email one SSO invitation from the single-create path and report whether
+ * it was confirmed sent. The account works without it (the user can open
+ * the sign-in page and use SSO), so every failure, including a send still
+ * running at the deadline, is logged and returned as false instead of
+ * failing the request.
+ */
+async function sendSsoInvitation(
+  invite: { userId: string; email: string; name: string },
+  baseUrl: string | null
+): Promise<boolean> {
+  if (baseUrl === null) {
+    console.warn(
+      `[admin] create user: APP_BASE_URL not set; SSO invitation to ${invite.email} not sent`
+    );
+    return false;
+  }
+  if (process.env.NODE_ENV === "production" && !isEmailDeliveryConfigured()) {
+    console.warn(
+      `[admin] create user: email delivery not configured; SSO invitation to ${invite.email} not sent`
+    );
+    return false;
+  }
+  try {
+    const { subject, html, text } = renderSsoInviteEmail({
+      name: invite.name,
+      signInUrl: ssoSignInUrl(baseUrl)
+    });
+    await withDeadline(
+      getEmailSender().send({ to: invite.email, subject, html, text }),
+      SSO_INVITE_SEND_TIMEOUT_MS
+    );
+    return true;
+  } catch (err) {
+    console.warn(
+      `[admin] create user: SSO invitation to ${invite.email} failed:`,
+      err instanceof Error ? err.message : err
+    );
+    void recordAppError({
+      source: "email",
+      operation: "sso-invite-send",
+      error: err,
+      userId: invite.userId
+    });
+    return false;
+  }
 }
 
 /**
@@ -276,12 +362,18 @@ export const CreateBody = z.object({
  * DB touch. A 23505 unique-violation on the email maps to 409.
  *
  * Response shape:
- *   { item: UserListItem, tempPassword?: string }
+ *   { item: UserListItem, tempPassword?: string, invitation?: { kind: "sso", emailSent: boolean } }
  *
  * `tempPassword` is present ONLY when the server generated it (i.e. the
  * client did not supply `password`). This is the single response surface
  * that exposes a plaintext password — admins are expected to communicate
  * it out-of-band to the new user.
+ *
+ * SSO accounts (invitationKindFor gives "sso": LOCAL_LOGIN_MODE is
+ * break_glass or disabled and the role may not use local login) get no
+ * usable password. A caller-supplied password is refused with 400, no
+ * tempPassword is returned, and the user is emailed a link to the sign-in
+ * page instead; `invitation.emailSent` says whether that email went out.
  */
 usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), userAdminWriteLimit, requireManagerOrAbove, async (req, res, next) => {
   try {
@@ -314,7 +406,25 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
       return;
     }
 
-    const generatedPassword = parsed.data.password ?? generateTempPassword();
+    // reset-password and local login refuse a user the mode does not allow,
+    // so a temp password or setup link for one would be unusable.
+    const invitationKind = invitationKindFor(
+      getOidcConfig().localLoginMode,
+      targetRole
+    );
+    if (invitationKind === "sso" && parsed.data.password !== undefined) {
+      res.status(400).json({
+        error: "This user signs in with company SSO, so the account can't have a password"
+      });
+      return;
+    }
+    // Read from the live request before any await on the send path.
+    const baseUrl = invitationKind === "sso" ? resolveAppBaseUrl(req) : null;
+
+    const generatedPassword =
+      invitationKind === "sso"
+        ? generateUnusablePassword()
+        : parsed.data.password ?? generateTempPassword();
     const passwordHash = await hashPassword(generatedPassword);
 
     // No pre-flight existence check — that path skipped argon2 and
@@ -356,10 +466,22 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
       // Echo the temp password only when WE generated it. Caller-supplied
       // passwords are already known to the caller; bouncing them back
       // would only enlarge the leak surface (logs, network captures).
-      const body: { item: UserListItem; tempPassword?: string } = {
+      const body: {
+        item: UserListItem;
+        tempPassword?: string;
+        invitation?: { kind: "sso"; emailSent: boolean };
+      } = {
         item: toListItem(row)
       };
-      if (parsed.data.password === undefined) {
+      if (invitationKind === "sso") {
+        body.invitation = {
+          kind: "sso",
+          emailSent: await sendSsoInvitation(
+            { userId: row.id, email: row.email, name: row.name },
+            baseUrl
+          )
+        };
+      } else if (parsed.data.password === undefined) {
         body.tempPassword = generatedPassword;
       }
       res.status(201).json(body);
@@ -422,6 +544,12 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
  * Because the account is unreachable without the emailed link, we refuse
  * up-front (creating nothing) if email delivery isn't wired in
  * production — otherwise we'd mint accounts no one can ever log into.
+ *
+ * Under SSO (invitationKindFor gives "sso" for CSRs: LOCAL_LOGIN_MODE is
+ * break_glass or disabled) no setup token is minted. The email links to
+ * the sign-in page and tells the user to sign in with company SSO; the
+ * first SSO sign-in binds their identity. `invitationKind` in the response
+ * says which email went out.
  */
 usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userAdminWriteLimit, requireManagerOrAbove, async (req, res, next) => {
   try {
@@ -471,6 +599,12 @@ usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userA
       return;
     }
 
+    // Bulk import creates CSRs only, so one invitation kind covers the batch.
+    const invitationKind: InvitationKind = invitationKindFor(
+      getOidcConfig().localLoginMode,
+      "csr"
+    );
+
     const emails = normalizeBulkEmails(parsed.data.emails);
     // Sequential hashing intentionally bounds memory. Each Argon2 operation
     // uses ~19 MiB; Promise.all over a 100-row import could exhaust a small
@@ -489,7 +623,7 @@ usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userA
       candidates.push({
         email,
         name: nameFromEmail(email),
-        passwordHash: await hashPassword(randomBytes(32).toString("base64url"))
+        passwordHash: await hashPassword(generateUnusablePassword())
       });
     }
 
@@ -530,21 +664,38 @@ usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userA
     // it runs fire-and-forget after the response — same posture as
     // forgot-password. A per-user token/send failure is logged, not fatal:
     // that user recovers via the standard forgot-password flow.
-    const invites: Array<{
-      userId: string;
-      email: string;
-      name: string;
-      setupUrl: string;
-      expiresAt: Date;
-    }> = [];
+    // SSO invitations carry no token; the sign-in link works for everyone.
+    const invites: Array<
+      { userId: string; email: string; name: string } & (
+        | { kind: "password_setup"; setupUrl: string; expiresAt: Date }
+        | { kind: "sso"; signInUrl: string }
+      )
+    > = [];
     for (const row of created) {
+      if (invitationKind === "sso") {
+        invites.push({
+          kind: "sso",
+          userId: row.id,
+          email: row.email,
+          name: row.name,
+          signInUrl: ssoSignInUrl(baseUrl)
+        });
+        continue;
+      }
       try {
         const { token, expiresAt } = await createResetToken(
           row.id,
           INVITE_TOKEN_DURATION_MS
         );
         const setupUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
-        invites.push({ userId: row.id, email: row.email, name: row.name, setupUrl, expiresAt });
+        invites.push({
+          kind: "password_setup",
+          userId: row.id,
+          email: row.email,
+          name: row.name,
+          setupUrl,
+          expiresAt
+        });
       } catch (err) {
         console.warn(
           `[admin] bulk import: failed to mint invite token for ${row.email}:`,
@@ -563,6 +714,7 @@ usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userA
       created,
       skippedEmails,
       invitedCount: invites.length,
+      invitationKind,
       forcedPasswordReset: true
     });
 
@@ -573,11 +725,17 @@ usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userA
         const sender = getEmailSender();
         for (const invite of invites) {
           try {
-            const { subject, html, text } = renderInviteEmail({
-              name: invite.name,
-              setupUrl: invite.setupUrl,
-              expiresAt: invite.expiresAt
-            });
+            const { subject, html, text } =
+              invite.kind === "sso"
+                ? renderSsoInviteEmail({
+                    name: invite.name,
+                    signInUrl: invite.signInUrl
+                  })
+                : renderInviteEmail({
+                    name: invite.name,
+                    setupUrl: invite.setupUrl,
+                    expiresAt: invite.expiresAt
+                  });
             await sender.send({ to: invite.email, subject, html, text });
           } catch (err) {
             console.warn(

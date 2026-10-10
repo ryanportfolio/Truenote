@@ -143,3 +143,50 @@ export function renderInviteEmail(args: {
   ].join("\n");
   return { subject, html, text };
 }
+
+/** The SSO button label on the Login page (artifacts/rag-app/src/pages/Login.tsx); keep them equal. */
+export const SSO_SIGN_IN_LABEL = "Continue with company SSO";
+
+/**
+ * Render the invitation for an account that signs in only through company
+ * SSO (invitationKindFor returned "sso"). There is no password to choose
+ * and no token in the link: it points at the sign-in page, and the first
+ * SSO sign-in binds the company identity to this account (routes/oidc.ts).
+ */
+export function renderSsoInviteEmail(args: {
+  name: string;
+  signInUrl: string;
+}): RenderedEmail {
+  const subject = "You've been added: sign in with company SSO";
+  const safeName = escapeHtml(args.name);
+  const safeUrl = escapeHtml(args.signInUrl);
+  const safeLabel = escapeHtml(SSO_SIGN_IN_LABEL);
+  const html = `
+<!doctype html>
+<html>
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #0f172a; background: #f8fafc; padding: 24px;">
+    <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
+      <h1 style="margin: 0 0 16px; font-size: 18px;">Your account is ready</h1>
+      <p>Hi ${safeName},</p>
+      <p>An account has been created for you. You sign in with your company account, so there is no password to set. Open the sign-in page and choose <strong>${safeLabel}</strong>.</p>
+      <p style="text-align: center; margin: 24px 0;">
+        <a href="${safeUrl}" style="display: inline-block; background: #0f172a; color: #ffffff; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: 500;">Go to sign-in</a>
+      </p>
+      <p style="font-size: 13px; color: #64748b;">If the button doesn't work, paste this URL into your browser:</p>
+      <p style="font-size: 13px; word-break: break-all;"><a href="${safeUrl}">${safeUrl}</a></p>
+      <p style="font-size: 13px; color: #64748b;">If you weren't expecting this email, you can ignore it.</p>
+    </div>
+  </body>
+</html>`.trim();
+  const text = [
+    `Hi ${args.name},`,
+    "",
+    "An account has been created for you. You sign in with your company account, so there is no password to set.",
+    `Open the sign-in page below and choose "${SSO_SIGN_IN_LABEL}":`,
+    "",
+    args.signInUrl,
+    "",
+    "If you weren't expecting this email, you can ignore it."
+  ].join("\n");
+  return { subject, html, text };
+}
