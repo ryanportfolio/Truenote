@@ -4,6 +4,8 @@ import { and, eq, gt, lt } from "drizzle-orm";
 import { db } from "../db-client.js";
 import { sessions, users } from "@workspace/db/schema";
 import type { UserRole } from "@workspace/db/schema";
+import { getOidcConfig } from "./oidc.js";
+import { isLocalLoginAllowed } from "./local-login-policy.js";
 
 /**
  * Cookie name used both server-side (read on every request) and surfaced
@@ -80,7 +82,8 @@ export async function createSession(userId: string): Promise<{
 /**
  * Look up a session by its cookie token. Returns the joined user payload
  * suitable for attaching to req.user, or null if the token is missing,
- * expired, or points at an inactive user.
+ * expired, points at an inactive user, or is a local (password) session
+ * whose user the current LOCAL_LOGIN_MODE no longer allows.
  *
  * Expiry is filtered in SQL (not just in app code) so the index on
  * sessions(expires_at) actually helps, and expired rows don't waste
@@ -104,7 +107,8 @@ export async function findSessionByToken(
       programId: users.programId,
       name: users.name,
       isActive: users.isActive,
-      mustResetPassword: users.mustResetPassword
+      mustResetPassword: users.mustResetPassword,
+      authMethod: sessions.authMethod
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
@@ -116,6 +120,16 @@ export async function findSessionByToken(
   const row = rows[0];
   if (!row) return null;
   if (!row.isActive) return null;
+  // A password session lives only as long as LOCAL_LOGIN_MODE would still
+  // let this user log in locally, so switching to break_glass or disabled
+  // ends existing password sessions at once. OIDC sessions are not
+  // governed by the local mode.
+  if (
+    row.authMethod !== "oidc" &&
+    !isLocalLoginAllowed(getOidcConfig().localLoginMode, row.role)
+  ) {
+    return null;
+  }
 
   // Best-effort last-used-at touch. Failure must not break the request
   // (the session is still valid even if the touch doesn't land), but log

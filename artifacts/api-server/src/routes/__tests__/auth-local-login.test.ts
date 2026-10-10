@@ -10,14 +10,21 @@ const fake = vi.hoisted(() => ({
   values: vi.fn(),
   verifyPassword: vi.fn(),
   hashPassword: vi.fn(),
-  audit: vi.fn()
+  audit: vi.fn(),
+  updateRows: [] as unknown[]
 }));
 
 vi.mock("../../lib/db-client.js", () => ({
   db: {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => fake.rows }) }) }),
     insert: fake.insert,
-    update: () => ({ set: () => ({ where: async () => undefined }) })
+    update: () => ({
+      set: () => ({
+        where: () => Object.assign(Promise.resolve(undefined), {
+          returning: async () => fake.updateRows
+        })
+      })
+    })
   }
 }));
 vi.mock("../../lib/auth/passwords.js", () => ({
@@ -34,7 +41,8 @@ vi.mock("../../lib/auth/rate-limit.js", () => ({
 
 const oidcVariables = [
   "OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET",
-  "OIDC_REDIRECT_URI", "OIDC_STATE_SECRET", "LOCAL_LOGIN_MODE"
+  "OIDC_REDIRECT_URI", "OIDC_STATE_SECRET", "LOCAL_LOGIN_MODE",
+  "OIDC_TENANT_ID", "OIDC_ALLOWED_PROGRAM_IDS"
 ];
 const user = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -55,6 +63,7 @@ function configureOidc(state: string) {
   vi.stubEnv("OIDC_CLIENT_SECRET", "synthetic-test-value");
   vi.stubEnv("OIDC_REDIRECT_URI", "https://app.example.com/api/auth/oidc/callback");
   vi.stubEnv("OIDC_STATE_SECRET", "synthetic-test-state-material-at-least-32-chars");
+  vi.stubEnv("OIDC_ALLOWED_PROGRAM_IDS", "00000000-0000-4000-8000-0000000000a1");
   if (state === "invalid-url") vi.stubEnv("OIDC_ISSUER_URL", "not-a-url");
   if (state === "short-state-secret") vi.stubEnv("OIDC_STATE_SECRET", "short");
 }
@@ -92,17 +101,29 @@ beforeEach(() => {
   fake.hashPassword.mockResolvedValue("dummy-password-hash");
   fake.insert.mockReturnValue({ values: fake.values });
   fake.values.mockResolvedValue(undefined);
+  fake.updateRows = [{ failedLoginCount: 1, lockedUntil: null }];
 });
 afterEach(() => vi.unstubAllEnvs());
 
+// A policy-refused account gets the generic credential failure, and its
+// stored hash is never verified, so the response cannot confirm a correct
+// password. The refusal is audited without password data.
 async function expectDenied() {
   const result = await login();
-  expect.soft(result.status).toBe(403);
-  expect.soft(result.body).toEqual({ error: "Use company SSO to sign in." });
+  expect.soft(result.status).toBe(401);
+  expect.soft(result.body).toEqual({ error: "Invalid credentials" });
   expect.soft(result.cookie).not.toHaveBeenCalled();
   expect.soft(fake.insert).not.toHaveBeenCalled();
-  expect.soft(fake.audit).not.toHaveBeenCalled();
-  expect(fake.verifyPassword).toHaveBeenCalledWith("supplied-password", user.passwordHash);
+  expect.soft(fake.audit).toHaveBeenCalledTimes(1);
+  expect.soft(fake.audit).toHaveBeenCalledWith(expect.objectContaining({
+    action: "auth.local.login",
+    outcome: "denied",
+    details: expect.objectContaining({ reason: "local_login_mode" })
+  }));
+  expect.soft(JSON.stringify(fake.audit.mock.calls)).not.toContain("supplied-password");
+  expect(fake.verifyPassword).toHaveBeenCalledTimes(1);
+  expect(fake.verifyPassword).toHaveBeenCalledWith("supplied-password", "dummy-password-hash");
+  expect(fake.verifyPassword).not.toHaveBeenCalledWith(expect.anything(), user.passwordHash);
 }
 
 async function expectSession(action: string) {
@@ -175,9 +196,14 @@ describe("local login defaults", () => {
   });
 });
 
-describe("credential failures remain indistinguishable before policy checks", () => {
-  it.each(["missing", "inactive", "wrong-password"])("verifies a password and returns generic 401 for %s", async (failure) => {
-    vi.stubEnv("LOCAL_LOGIN_MODE", "disabled");
+describe("credential failures remain indistinguishable", () => {
+  // In "disabled" the existing account is policy-refused before its hash is
+  // read, so even the wrong-password case verifies the dummy hash.
+  it.each([
+    ["enabled", "missing"], ["enabled", "inactive"], ["enabled", "wrong-password"],
+    ["disabled", "missing"], ["disabled", "inactive"]
+  ])("in %s mode verifies a password and returns generic 401 for %s", async (mode, failure) => {
+    vi.stubEnv("LOCAL_LOGIN_MODE", mode);
     if (failure === "missing") fake.rows = [];
     if (failure === "inactive") fake.rows[0]!.isActive = false;
     fake.verifyPassword.mockResolvedValue(false);
@@ -191,5 +217,24 @@ describe("credential failures remain indistinguishable before policy checks", ()
     expect(fake.insert).not.toHaveBeenCalled();
     expect(result.cookie).not.toHaveBeenCalled();
     expect(fake.audit).not.toHaveBeenCalled();
+  });
+});
+
+describe("policy refusal does not reveal a correct password", () => {
+  it.each([
+    ["break_glass", "csr"], ["break_glass", "manager"], ["disabled", "csr"], ["disabled", "super_user"]
+  ])("in %s a %s gets the same response for correct and wrong passwords", async (mode, role) => {
+    vi.stubEnv("LOCAL_LOGIN_MODE", mode);
+    fake.rows[0]!.role = role;
+    fake.verifyPassword.mockResolvedValue(true);
+    const correct = await login();
+    fake.verifyPassword.mockResolvedValue(false);
+    const wrong = await login();
+    expect(correct.status).toBe(401);
+    expect({ status: correct.status, body: correct.body })
+      .toEqual({ status: wrong.status, body: wrong.body });
+    expect(fake.verifyPassword).toHaveBeenCalledTimes(2);
+    expect(fake.verifyPassword).not.toHaveBeenCalledWith(expect.anything(), user.passwordHash);
+    expect(fake.insert).not.toHaveBeenCalled();
   });
 });

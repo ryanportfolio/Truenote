@@ -41,7 +41,8 @@ const resetToken = "synthetic_reset_token_at_least_16_chars";
 const newPassword = "synthetic-new-password-long-enough-for-policy";
 const envNames = [
   "OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET",
-  "OIDC_REDIRECT_URI", "OIDC_STATE_SECRET", "LOCAL_LOGIN_MODE", "DEMO_LOGIN_ACCOUNTS"
+  "OIDC_REDIRECT_URI", "OIDC_STATE_SECRET", "LOCAL_LOGIN_MODE", "DEMO_LOGIN_ACCOUNTS",
+  "OIDC_TENANT_ID", "OIDC_ALLOWED_PROGRAM_IDS"
 ];
 
 function configureOidc(state: string) {
@@ -52,6 +53,7 @@ function configureOidc(state: string) {
   vi.stubEnv("OIDC_CLIENT_SECRET", "synthetic-test-value");
   vi.stubEnv("OIDC_REDIRECT_URI", "https://app.example.com/api/auth/oidc/callback");
   vi.stubEnv("OIDC_STATE_SECRET", "synthetic-test-state-material-at-least-32-chars");
+  vi.stubEnv("OIDC_ALLOWED_PROGRAM_IDS", "00000000-0000-4000-8000-0000000000a1");
   if (state === "invalid-url") vi.stubEnv("OIDC_ISSUER_URL", "not-a-url");
   if (state === "short-state-secret") vi.stubEnv("OIDC_STATE_SECRET", "short");
 }

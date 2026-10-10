@@ -16,6 +16,12 @@ import {
   SESSION_DURATION_MS
 } from "../lib/auth/sessions.js";
 import { getOidcConfig } from "../lib/auth/oidc.js";
+import { isLocalLoginAllowed } from "../lib/auth/local-login-policy.js";
+import {
+  isAccountLocked,
+  recordAuthFailure,
+  recordAuthSuccess
+} from "../lib/auth/lockout.js";
 import {
   createResetToken,
   hashResetToken,
@@ -113,7 +119,8 @@ function getDummyHash(): Promise<string> {
  * Email+password login. Returns the user payload AND sets a session
  * cookie. On any failure path the response is a generic 401 with the same
  * body so we don't leak which of (email-not-found, wrong-password,
- * user-deactivated) tripped the rejection — a hostile script can't
+ * user-deactivated, refused by LOCAL_LOGIN_MODE, locked out) tripped the
+ * rejection; a hostile script can't
  * enumerate accounts from the response shape.
  */
 authRouter.post("/login", async (req, res, next) => {
@@ -148,40 +155,91 @@ authRouter.post("/login", async (req, res, next) => {
         programId: users.programId,
         name: users.name,
         isActive: users.isActive,
-        mustResetPassword: users.mustResetPassword
+        mustResetPassword: users.mustResetPassword,
+        lockedUntil: users.lockedUntil
       })
       .from(users)
       .where(eq(users.email, email))
       .limit(1);
 
     const row = rows[0];
-    if (!row || !row.isActive) {
-      // Dummy verify against a cached random-password hash so the timing
-      // of "email not found / user deactivated" matches the "wrong
-      // password" branch. See getDummyHash() for rationale.
+    const oidc = getOidcConfig();
+
+    // Every refusal below runs a dummy verify against a cached
+    // random-password hash and returns the same 401, so neither timing nor
+    // response shape tells a missing, deactivated, policy-refused or
+    // locked account apart from a wrong password. The stored hash is
+    // verified only for an account allowed to log in right now, so a
+    // refused or locked account never confirms a correct password.
+    const refuse = async () => {
       await verifyPassword(password, await getDummyHash());
       res.status(401).json({ error: "Invalid credentials" });
+    };
+
+    if (!row || !row.isActive) {
+      await refuse();
+      return;
+    }
+
+    const actor = { id: row.id, email: row.email, role: row.role };
+    if (!isLocalLoginAllowed(oidc.localLoginMode, row.role)) {
+      recordSecurityEventBestEffort({
+        action: "auth.local.login",
+        outcome: "denied",
+        actor,
+        programId: row.programId,
+        resourceType: "session",
+        sourceIp: ip,
+        details: {
+          authMethod: "local",
+          reason: "local_login_mode",
+          localLoginMode: oidc.localLoginMode
+        }
+      });
+      await refuse();
+      return;
+    }
+
+    if (isAccountLocked(row)) {
+      recordSecurityEventBestEffort({
+        action: "auth.local.login",
+        outcome: "denied",
+        actor,
+        programId: row.programId,
+        resourceType: "session",
+        sourceIp: ip,
+        details: { authMethod: "local", reason: "account_locked" }
+      });
+      await refuse();
       return;
     }
 
     const ok = await verifyPassword(password, row.passwordHash);
     if (!ok) {
+      // Not awaited: an extra DB round trip only on this branch would let
+      // a stopwatch tell an existing account from a missing one. A failed
+      // write is logged; the attempt is still refused.
+      void recordAuthFailure(
+        { id: row.id, email: row.email, role: row.role, programId: row.programId },
+        { factor: "password", sourceIp: ip }
+      ).catch((err: unknown) => {
+        console.warn(
+          "[auth] failed-login count update failed:",
+          err instanceof Error ? err.message : err
+        );
+        void recordAppError({
+          severity: "warning",
+          source: "auth",
+          operation: "login-failure-count",
+          error: err,
+          userId: row.id
+        });
+      });
       res.status(401).json({ error: "Invalid credentials" });
       return;
     }
 
-    const oidc = getOidcConfig();
-    if (oidc.localLoginMode === "disabled") {
-      res.status(403).json({ error: "Use company SSO to sign in." });
-      return;
-    }
-    if (
-      oidc.localLoginMode === "break_glass" &&
-      row.role !== "super_user"
-    ) {
-      res.status(403).json({ error: "Use company SSO to sign in." });
-      return;
-    }
+    await recordAuthSuccess(row.id);
 
     const { token } = await createSession(row.id);
     setSessionCookie(res, token);
@@ -585,11 +643,7 @@ authRouter.post("/reset-password", async (req, res, next) => {
         throw new ResetPasswordRejectedError(400, "This reset link is invalid or has expired");
       }
 
-      const { localLoginMode } = getOidcConfig();
-      if (
-        localLoginMode === "disabled" ||
-        (localLoginMode === "break_glass" && user.role !== "super_user")
-      ) {
+      if (!isLocalLoginAllowed(getOidcConfig().localLoginMode, user.role)) {
         // Reset and invite completion issue a local session, so the same
         // policy as /login applies. Throw to roll back token consumption;
         // returning a denial here would commit it and burn the reset link.

@@ -20,7 +20,46 @@ export interface OidcConfig {
   requiredAcr: string | null;
   requireMfa: boolean;
   allowedDomains: string[];
+  /** OIDC_TENANT_ID, lowercased; id tokens must carry a matching `tid`. */
+  tenantId: string | null;
+  /** OIDC_ALLOWED_PROGRAM_IDS, lowercased UUIDs; empty when unset or invalid. */
+  allowedProgramIds: string[];
   localLoginMode: LocalLoginMode;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const ENTRA_ISSUER_HOST = "login.microsoftonline.com";
+
+/**
+ * Parse OIDC_ALLOWED_PROGRAM_IDS (comma-separated UUIDs). One malformed entry
+ * rejects the whole list, which leaves OIDC disabled: a typo must not quietly
+ * shrink or widen which programs may sign in through SSO.
+ */
+function parseAllowedProgramIds(value: string | undefined): string[] {
+  const entries = (value ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  if (entries.some((entry) => !UUID_PATTERN.test(entry))) return [];
+  return [...new Set(entries)];
+}
+
+/**
+ * An Entra issuer is tenant specific (https://login.microsoftonline.com/<tid>/v2.0).
+ * It is accepted only when OIDC_TENANT_ID is a tenant GUID naming that same
+ * tenant, so a multi-tenant endpoint (/common, /organizations) or a
+ * copy-paste from another tenant stays disabled.
+ */
+function entraTenantMatches(issuerUrl: string, tenantId: string | null): boolean {
+  let url: URL;
+  try {
+    url = new URL(issuerUrl);
+  } catch {
+    return false;
+  }
+  if (url.hostname.toLowerCase() !== ENTRA_ISSUER_HOST) return true;
+  const issuerTenant = url.pathname.split("/").filter(Boolean)[0]?.toLowerCase() ?? "";
+  return Boolean(tenantId && UUID_PATTERN.test(tenantId) && issuerTenant === tenantId);
 }
 
 function truthy(value: string | undefined): boolean {
@@ -43,15 +82,21 @@ export function getOidcConfig(): OidcConfig {
   const clientSecret = process.env.OIDC_CLIENT_SECRET?.trim() ?? "";
   const redirectUri = process.env.OIDC_REDIRECT_URI?.trim() ?? "";
   const stateSecret = process.env.OIDC_STATE_SECRET?.trim() ?? "";
+  const tenantId = process.env.OIDC_TENANT_ID?.trim().toLowerCase() || null;
+  const allowedProgramIds = parseAllowedProgramIds(process.env.OIDC_ALLOWED_PROGRAM_IDS);
   const configured = Boolean(
     issuerUrl || clientId || clientSecret || redirectUri || stateSecret
   );
+  // No allowed program means no SSO user could pass the per-login program
+  // check, so the integration counts as not configured.
   const enabled = Boolean(
     isAllowedOidcUrl(issuerUrl) &&
     isAllowedOidcUrl(redirectUri) &&
     clientId &&
     clientSecret &&
-    stateSecret.length >= 32
+    stateSecret.length >= 32 &&
+    allowedProgramIds.length > 0 &&
+    entraTenantMatches(issuerUrl, tenantId)
   );
   const requestedMode = process.env.LOCAL_LOGIN_MODE?.trim();
   let localLoginMode: LocalLoginMode;
@@ -85,6 +130,8 @@ export function getOidcConfig(): OidcConfig {
       .split(",")
       .map((domain) => domain.trim().toLowerCase())
       .filter(Boolean),
+    tenantId,
+    allowedProgramIds,
     localLoginMode
   };
 }
@@ -223,6 +270,10 @@ export interface OidcClaims {
   exp?: unknown;
   nbf?: unknown;
   nonce?: unknown;
+  sub?: unknown;
+  tid?: unknown;
+  oid?: unknown;
+  xms_edov?: unknown;
   email?: unknown;
   preferred_username?: unknown;
   upn?: unknown;
@@ -265,7 +316,14 @@ export async function verifyOidcIdToken(input: {
   nonce: string;
   config: OidcConfig;
   discovery: OidcDiscovery;
-}): Promise<{ claims: OidcClaims; email: string; name: string | null }> {
+}): Promise<{
+  claims: OidcClaims;
+  subject: string;
+  tenantId: string | null;
+  objectId: string | null;
+  email: string;
+  name: string | null;
+}> {
   const parts = input.idToken.split(".");
   if (parts.length !== 3) throw new Error("OIDC id_token is malformed");
   const [encodedHeader, encodedClaims, encodedSignature] = parts;
@@ -312,6 +370,14 @@ export async function verifyOidcIdToken(input: {
     throw new Error("OIDC id_token is not active yet");
   }
   if (claims.nonce !== input.nonce) throw new Error("OIDC nonce mismatch");
+  // `sub` is the stable per-app identifier the account binding keys on.
+  if (typeof claims.sub !== "string" || claims.sub.trim() === "") {
+    throw new Error("OIDC id_token has no subject");
+  }
+  const tokenTenant = typeof claims.tid === "string" ? claims.tid.trim().toLowerCase() : null;
+  if (input.config.tenantId && tokenTenant !== input.config.tenantId) {
+    throw new Error("OIDC tenant mismatch");
+  }
   if (input.config.requiredAcr && claims.acr !== input.config.requiredAcr) {
     throw new Error("OIDC authentication context does not meet policy");
   }
@@ -334,6 +400,9 @@ export async function verifyOidcIdToken(input: {
   }
   return {
     claims,
+    subject: claims.sub,
+    tenantId: tokenTenant,
+    objectId: typeof claims.oid === "string" && claims.oid ? claims.oid : null,
     email,
     name: typeof claims.name === "string" ? claims.name.trim().slice(0, 200) : null
   };

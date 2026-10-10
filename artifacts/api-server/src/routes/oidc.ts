@@ -1,7 +1,13 @@
 import { Router } from "express";
-import { eq, sql } from "drizzle-orm";
-import { users } from "@workspace/db/schema";
+import { eq, sql, type SQL } from "drizzle-orm";
+import { users, type User } from "@workspace/db/schema";
 import { db } from "../lib/db-client.js";
+import {
+  findIdentityBySubject,
+  linkIdentity,
+  recordIdentityLogin,
+  userHasIdentityForIssuer
+} from "../lib/auth/identities.js";
 import {
   codeChallenge,
   createOidcState,
@@ -19,9 +25,47 @@ import {
   setSessionCookie
 } from "../lib/auth/sessions.js";
 import { clientIpFrom } from "../lib/auth/rate-limit.js";
-import { recordSecurityEvent } from "../lib/security/audit.js";
+import {
+  recordSecurityEvent,
+  recordSecurityEventBestEffort
+} from "../lib/security/audit.js";
 
 export const oidcRouter = Router();
+
+type OidcUser = Pick<User, "id" | "email" | "role" | "programId" | "isActive">;
+
+/** A policy refusal; `reason` is the short code recorded in the audit event. */
+class OidcRefusal extends Error {
+  constructor(readonly reason: string, readonly user?: OidcUser) {
+    super(`OIDC login refused: ${reason}`);
+  }
+}
+
+async function loadUser(where: SQL): Promise<OidcUser | undefined> {
+  const rows = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      role: users.role,
+      programId: users.programId,
+      isActive: users.isActive
+    })
+    .from(users)
+    .where(where)
+    .limit(1);
+  return rows[0];
+}
+
+/**
+ * Checked on every SSO login, before any session exists. Users without a
+ * program (super_user) cannot use SSO; their access goes through local login.
+ */
+function assertEligible(user: OidcUser, allowedProgramIds: string[]): void {
+  if (!user.isActive) throw new OidcRefusal("inactive", user);
+  if (!user.programId || !allowedProgramIds.includes(user.programId.toLowerCase())) {
+    throw new OidcRefusal("program_not_allowed", user);
+  }
+}
 
 const STATE_COOKIE = "truenote_oidc_state";
 const STATE_MAX_AGE_MS = 10 * 60 * 1000;
@@ -104,19 +148,47 @@ oidcRouter.get("/callback", async (req, res) => {
       config,
       discovery
     });
-    const rows = await db
-      .select({
-        id: users.id,
-        email: users.email,
-        role: users.role,
-        programId: users.programId,
-        isActive: users.isActive
-      })
-      .from(users)
-      .where(eq(users.email, identity.email))
-      .limit(1);
-    const user = rows[0];
-    if (!user?.isActive) throw new Error("OIDC identity has no active Truenote account");
+    const issuer = discovery.issuer;
+    const sourceIp = clientIpFrom(req);
+    const bound = await findIdentityBySubject(issuer, identity.subject);
+    let user: OidcUser | undefined;
+    if (bound) {
+      // Later logins: the binding decides the account. The token's email
+      // claims are mutable and play no part here.
+      user = await loadUser(eq(users.id, bound.userId));
+      if (!user) throw new OidcRefusal("no_account");
+      assertEligible(user, config.allowedProgramIds);
+      await recordIdentityLogin(bound.id);
+    } else {
+      // First login: an existing account is matched once by email, then bound.
+      user = await loadUser(eq(users.email, identity.email));
+      if (!user) throw new OidcRefusal("no_account");
+      if (identity.claims.xms_edov === false || identity.claims.xms_edov === "false") {
+        throw new OidcRefusal("email_domain_unverified", user);
+      }
+      assertEligible(user, config.allowedProgramIds);
+      if (await userHasIdentityForIssuer(user.id, issuer)) {
+        throw new OidcRefusal("already_bound", user);
+      }
+      const linked = await linkIdentity(
+        {
+          userId: user.id,
+          issuer,
+          subject: identity.subject,
+          tenantId: identity.tenantId,
+          objectId: identity.objectId
+        },
+        {
+          action: "auth.oidc.identity_linked",
+          outcome: "success",
+          actor: { id: user.id, email: user.email, role: user.role },
+          programId: user.programId,
+          sourceIp,
+          details: { issuer }
+        }
+      );
+      if (!linked) throw new OidcRefusal("link_conflict", user);
+    }
 
     const created = await createSession(user.id);
     sessionToken = created.token;
@@ -139,13 +211,26 @@ oidcRouter.get("/callback", async (req, res) => {
       actor: { id: user.id, email: user.email, role: user.role },
       programId: user.programId,
       resourceType: "session",
-      sourceIp: clientIpFrom(req),
-      details: { issuer: discovery.issuer, authMethod: "oidc" }
+      sourceIp,
+      details: { issuer, authMethod: "oidc" }
     });
     setSessionCookie(res, created.token);
     res.redirect(302, state.returnTo);
   } catch (error) {
     if (sessionToken) await deleteSessionByToken(sessionToken).catch(() => undefined);
+    if (error instanceof OidcRefusal) {
+      recordSecurityEventBestEffort({
+        action: "auth.oidc.login",
+        outcome: "denied",
+        actor: error.user
+          ? { id: error.user.id, email: error.user.email, role: error.user.role }
+          : null,
+        programId: error.user?.programId ?? null,
+        resourceType: "session",
+        sourceIp: clientIpFrom(req),
+        details: { reason: error.reason, authMethod: "oidc" }
+      });
+    }
     console.warn("[oidc] callback failed:", error instanceof Error ? error.message : error);
     redirectWithError(res);
   }
