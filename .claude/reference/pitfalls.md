@@ -2,6 +2,10 @@
 
 > Living list. Grows via `/recall save <text>` when something bites you. Read before non-trivial work.
 
+## 2026-10-10: A PR without the change record fails CI
+
+PR #215 was opened with a free-form body; the "Verify pull-request change record" step of "Typecheck, build, tests" failed with `missing field: ...` for every field of `.github/pull_request_template.md`, and the PR had to be edited. Fill the template (Change ID `TN-CHG-<year>-<PR number>`, `Author: @ryanportfolio`, single-owner wording for 6.5.4 and the reviewer as in recent merged PRs) and check it before `gh pr create`: `corepack pnpm --filter @workspace/scripts run verify:change-record -- --body <file> --allow-pending`. Without `--allow-pending` it also demands `approved` and a named reviewer, which CI does not.
+
 ## 2026-10-10: `railway ssh -- sh -c '<script>'` runs only the first word
 
 `railway ssh` joins the words after `--` with spaces into one remote command line, so the remote shell re-splits the quoted script: `sh -c 'psql -h localhost ...'` ran `psql` with no arguments, which used the container's stale `PGHOST` and tried to log in to an unrelated server. Pass a script as base64 (`"echo <b64> | base64 -d | sh"`, as `scripts/railway-set-app-db-password.mjs` does) or pass the command's own words with no `sh -c`, quoting any SQL twice: `railway ssh ... -- psql -h localhost -p 5432 -U postgres -d railway -X -At -c "'select 1'"`. In Git Bash also set `MSYS_NO_PATHCONV=1`, or remote paths such as `/var/lib/postgresql` arrive as `C:/Program Files/Git/var/lib/postgresql`.
