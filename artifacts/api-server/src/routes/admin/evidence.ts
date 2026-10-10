@@ -23,6 +23,7 @@ import {
 } from "../../lib/evidence/catalog.js";
 import nist from "../../lib/evidence/nist-800-53r5-moderate.json" with { type: "json" };
 import { enqueueEvidenceRun } from "../../lib/evidence/queue.js";
+import { summaryCounts } from "../../lib/evidence/summary.js";
 import {
   authedUser,
   blockDemoWrites,
@@ -286,6 +287,35 @@ evidenceRouter.get("/chain", evidenceReadLimit, async (_req, res, next) => {
         "receipt_hash = sha256(previous_hash || '|' || id || '|' || recorded_at_text || '|' || sha256(payload)); previous_hash '' for the first receipt",
       integrity: (integrity.rows as unknown as ReceiptRow[]).map(receiptDetail)
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Monthly summaries (summary.ts), newest first; counts total the checks by latest result.
+evidenceRouter.get("/summaries", evidenceReadLimit, async (_req, res, next) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT id::text, sequence, recorded_at_text, receipt_hash, payload
+      FROM evidence_receipts
+      WHERE check_kind = 'summary'
+      ORDER BY sequence DESC
+    `);
+    const summaries = (
+      result.rows as Array<{ id: string; sequence: string | number; recorded_at_text: string; receipt_hash: string; payload: string }>
+    ).map((row) => {
+      const payload = JSON.parse(row.payload) as { inputs?: { month?: unknown }; outputs?: { chainHead?: unknown } };
+      return {
+        id: row.id,
+        sequence: Number(row.sequence),
+        recordedAt: row.recorded_at_text,
+        month: typeof payload.inputs?.month === "string" ? payload.inputs.month : null,
+        receiptHash: row.receipt_hash,
+        chainHead: payload.outputs?.chainHead ?? null,
+        counts: summaryCounts(payload.outputs)
+      };
+    });
+    res.json({ statement: ASSESSMENT_STATEMENT, summaries });
   } catch (error) {
     next(error);
   }

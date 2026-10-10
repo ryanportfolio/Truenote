@@ -486,6 +486,29 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
     limits:
       "Self-attested by the owner; the harness does not read the files' content. Proves that a review was " +
       "recorded, not its quality, and covers only the documents the statement names."
+  },
+  // The monthly summary has no runner: the first daily run of each month builds it (summary.ts).
+  {
+    id: "summary.monthly",
+    kind: "summary",
+    title: "Monthly continuous monitoring summary is recorded and sent to the owner",
+    controls: ["CA-7"],
+    objectives: ["CA-07e.", "CA-07g.[01]"],
+    cadence: "monthly",
+    cadenceStatus: "proposed",
+    passCondition:
+      "In the first daily run of each UTC month, one summary receipt for the previous calendar month exists: " +
+      "for every other catalog check, its pass, fail and error counts over the month and its latest result; " +
+      "for every control, its checks counted by latest result; the checks whose latest result is fail or " +
+      "error; the active known-gap links; the attestation checks with their latest pass and whether they " +
+      "were due at the month's end; and the chain head (sequence, receipt_hash) the summary receipt is " +
+      "appended after. The summary is emailed once to EVIDENCE_ALERT_EMAIL (else SECURITY_ALERT_EMAIL); an " +
+      "email that fails is sent by a later run.",
+    limits:
+      "Counts what the harness recorded; it does not rerun any check. The receipt records that a summary was " +
+      "built, not that the email reached anyone or was forwarded; the chain head is anchored outside the " +
+      "owner's control only when the customer's reviewer keeps the forwarded copy. Self-assessment, like " +
+      "every receipt."
   }
 ];
 

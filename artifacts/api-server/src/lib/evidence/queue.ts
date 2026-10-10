@@ -4,6 +4,7 @@ import { recordAppError } from "../observability/error-log.js";
 import { remindDueAttestations } from "./attestations.js";
 import { notifyRun } from "./notify.js";
 import { runEvidenceChecks } from "./runner.js";
+import { ensureMonthlySummary, productionSummaryDeps } from "./summary.js";
 
 /**
  * Daily evidence run on pg-boss. The queue is created by
@@ -24,10 +25,11 @@ export const EVIDENCE_RUN_CRON = "23 5 * * *";
  * 3 integrity) at 90 s = 1,620 s, plus 5 synthetic checks at 380 s
  * (SYNTHETIC_HTTP_WORST_CASE_MS 320 s + 60 s; synthetic.login-windows reads
  * only the database but gets the synthetic limit) = 1,900 s. Total 3,520 s,
- * about 59 minutes, before receipt writes, the alert email and the
- * attestation reminder email (attestation checks have no runner and add no
- * check time). 90 minutes leaves about 31 minutes for those. Recount when a
- * check is added or a time limit changes.
+ * about 59 minutes, before receipt writes, the alert email, the attestation
+ * reminder email and the monthly summary (a few queries, one receipt and one
+ * email at 30 s per recipient; attestation and summary checks have no runner
+ * and add no check time). 90 minutes leaves about 31 minutes for those.
+ * Recount when a check is added or a time limit changes.
  *
  * pg-boss stores these options when the queue is created; a change here
  * reaches production only through pgboss:install, which also updates the
@@ -75,6 +77,27 @@ async function executeEvidenceRun(payload: EvidenceRunPayload): Promise<void> {
         severity: "warning",
         source: "evidence",
         operation: "evidence-attestation-reminders",
+        error,
+        context: { runId }
+      });
+    }
+    try {
+      // The first run of each UTC month appends the previous month's summary;
+      // every run retries its email until one is sent (summary.ts).
+      const summary = await ensureMonthlySummary(new Date(), productionSummaryDeps());
+      if (summary.created || summary.emailed) {
+        console.log(
+          `[evidence] run ${runId}: summary ${summary.month} ${summary.created ? "recorded" : "exists"}` +
+            `${summary.emailed ? ", emailed" : ""}`
+        );
+      }
+    } catch (error) {
+      // The summary is not part of this run's checks; a failure must not retry the run.
+      console.warn("[evidence] monthly summary failed:", error instanceof Error ? error.message : error);
+      void recordAppError({
+        severity: "warning",
+        source: "evidence",
+        operation: "evidence-monthly-summary",
         error,
         context: { runId }
       });
