@@ -13,7 +13,10 @@ import {
   type ApprovedModelRoute
 } from "./model-routing.js";
 import { scanTextForSensitiveContent } from "../security/content-scan.js";
-import { protectProviderText } from "../security/provider-input-firewall.js";
+import {
+  protectApprovedDocumentText,
+  protectProviderText
+} from "../security/provider-input-firewall.js";
 import { findUngroundedFigure } from "./figure-grounding.js";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -374,14 +377,13 @@ export async function generateAnswer(
     };
   }
 
-  // The provider firewall covers the system prompt and the typed question.
-  // Excerpts go verbatim: they come from approved documents that the upload
-  // scan already quarantines for payment cards, SSNs and secrets, and redacting
-  // their contact emails or phone numbers left the model unable to answer.
+  // The full provider firewall covers the system prompt and the typed
+  // question. Excerpts from approved documents get only the blocking classes
+  // (secrets, SSNs, cards): redacting their contact emails or phone numbers
+  // left the model unable to answer questions about them.
   const systemPrompt = protectProviderText(buildSystemPrompt(input.programName)).text;
-  const userPrompt = buildUserPrompt(
-    protectProviderText(input.question).text,
-    input.chunks
+  const userPrompt = protectApprovedDocumentText(
+    buildUserPrompt(protectProviderText(input.question).text, input.chunks)
   );
 
   // Walk the admin-ordered ZDR-only OpenRouter chain. Any request error, empty

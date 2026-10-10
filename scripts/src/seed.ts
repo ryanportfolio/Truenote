@@ -319,7 +319,12 @@ async function main(): Promise<void> {
     const sourceId = sourceResult.rows[0]?.["id"];
     if (typeof sourceId !== "string") throw new Error("Failed to create demo source.");
 
-    const seedQuestions = SEED_EVAL_QUESTIONS.map((question) => question.question);
+    // Retired seed questions are removed too, so a rerun on an older seed
+    // does not leave them pointing at deleted documents.
+    const seedQuestions = [
+      ...SEED_EVAL_QUESTIONS.map((question) => question.question),
+      "What state laws override the standard cancellation policy?"
+    ];
     await tx.delete(evalQuestions).where(
       and(
         eq(evalQuestions.programId, programId),
