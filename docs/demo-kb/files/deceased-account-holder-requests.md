@@ -1,10 +1,10 @@
 # Deceased Account Holder Requests
 
-Larkspur Cloud Customer Support · Procedure CS-PRO-029 · Version 2 · Effective August 15, 2026 · Owner: Legal and Privacy
+Cloudshelf Customer Support · Procedure CS-PRO-029 · Version 2 · Effective August 15, 2026 · Owner: Legal and Privacy
 
 ## When to use this
 
-Use this procedure when a family member, executor or friend calls to tell us that a Larkspur Cloud account holder has died, and asks to close the account, stop charges, or get access to the files.
+Use this procedure when a family member, executor or friend calls to tell us that a Cloudshelf account holder has died, and asks to close the account, stop charges, or get access to the files.
 
 ## How to speak with the caller
 
@@ -32,7 +32,7 @@ There is no cancellation fee when an account is closed because the holder has di
 4. Ask for the caller's name, relationship and an email address for follow-up.
 5. Open a ticket in queue LP-PRIV with that information and the request.
 6. Tell the caller that Legal and Privacy will email them within 2 business days with a secure link to upload the death certificate and any court documents. Agents never collect documents by email or phone.
-7. Add an account note: "Bereavement report, billing paused, LP-PRIV ticket (number)."
+7. Add an account note: "Death reported, billing paused, LP-PRIV ticket (number)."
 
 ## Enterprise accounts
 
@@ -48,4 +48,4 @@ Never give anyone the password or sign them in to the account. Approved represen
 
 If the caller seems unsure the person has died, or you suspect the report is false (for example, the account holder signed in today), do not pause billing. Escalate to a Tier 2 supervisor within 15 minutes.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.

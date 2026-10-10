@@ -1,6 +1,6 @@
 # Updating a Payment Method
 
-Larkspur Cloud Customer Support · Procedure CS-PRO-011 · Version 3 · Effective September 1, 2026 · Owner: Billing Operations
+Cloudshelf Customer Support · Procedure CS-PRO-011 · Version 3 · Effective September 1, 2026 · Owner: Billing Operations
 
 ## When to use this
 
@@ -51,4 +51,4 @@ After a failed renewal the system retries 3 times over 7 days. If every retry fa
 - Do not promise that a declined card will work on a second try.
 - Do not waive or refund a renewal charge because the card was updated late. Courtesy refunds need a Tier 2 supervisor.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.

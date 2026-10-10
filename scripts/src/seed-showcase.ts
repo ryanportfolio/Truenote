@@ -200,14 +200,14 @@ const TEAMS: Array<{ supervisorEmail: string | null; members: UserKey[] }> = [
 const ANSWERABLE: Array<[string, number]> = [
   ["What is the cancellation fee for a Pro plan?", 2],
   ["how much does it cost to cancel basic", 2],
-  ["Is there a cancellation fee for customers in California?", 2],
+  ["Is there a cancellation fee after a price increase?", 2],
   ["Customer signed up in 2021, do they pay a cancellation fee?", 2],
   ["Can an Enterprise team member cancel the account?", 1],
   ["How long do files stay available after cancelling?", 1],
   ["Can a customer cancel while a chargeback is open?", 1],
   ["What are the steps to cancel a subscription?", 2],
   ["enterprise cancellation fee", 1],
-  ["Customer is in New York and wants to cancel, is there a fee?", 2],
+  ["Customer got a price-increase notice last week and wants to cancel, is there a fee?", 2],
   ["How long is the refund window?", 2],
   ["How long does a refund take to post to the card?", 2],
   ["Which reason code do I use for a courtesy refund?", 2],
@@ -354,16 +354,16 @@ const SHARED: Array<{ variants: string[]; users: UserKey[] }> = [
 
 const OUT_OF_SCOPE: string[] = [
   "What is the cancellation fee for the Platinum plan?",
-  "Does Larkspur Cloud offer a moon-rocket plan?",
-  "How do I connect Larkspur to Dropbox?",
+  "Does Cloudshelf offer a moon-rocket plan?",
+  "How do I connect Cloudshelf to Dropbox?",
   "What is our parental leave policy?",
   "How do I request PTO?",
   "What's the wifi password for the office?",
-  "Does Larkspur have a data center in Germany?",
+  "Does Cloudshelf offer on-premises hosting?",
   "Which TLS version does the desktop app use?",
   "How do I install the Linux sync client?",
   "What is the referral bonus for customers?",
-  "Who is the CEO of Larkspur Cloud?",
+  "Who is the CEO of Cloudshelf?",
   "Is there a family plan?",
   "What is the API rate limit for developers?",
   "How do I file an expense report?",
@@ -504,7 +504,7 @@ interface PersonalSpec {
 }
 
 const NOTE_TEXT: Record<string, string> = {
-  [T.cancellation]: "Check the state before quoting a fee. California and New York pay nothing, and anyone who joined before January 1, 2022 pays nothing.",
+  [T.cancellation]: "Check the notice date before quoting a fee. Anyone cancelling within 14 days of a price-increase notice pays nothing, and neither does anyone who joined before January 1, 2022.",
   [T.refund]: "RF-05 needs the Tier 2 approval ID before the console lets you submit. Get it before you promise anything.",
   [T.identity]: "4-digit PINs stopped working October 1. Ask for the 6-digit PIN or send the one-time code.",
   [T.decline]: "D41: never say lost or stolen. Just ask for a different card and do not retry.",

@@ -1,6 +1,6 @@
 # Enterprise Seat Management
 
-Larkspur Cloud Customer Support · Procedure CS-PRO-016 · Version 2 · Effective September 1, 2026 · Owner: Billing Operations
+Cloudshelf Customer Support · Procedure CS-PRO-016 · Version 2 · Effective September 1, 2026 · Owner: Billing Operations
 
 ## When to use this
 
@@ -46,7 +46,7 @@ When an employee leaves, the administrator can reassign the seat to a new person
 
 ## Single sign-on
 
-Enterprise organizations can require single sign-on (SSO). When SSO is required, users cannot reset their Larkspur password, because sign-in goes through the company's identity provider. Send those users to their own IT team.
+Enterprise organizations can require single sign-on (SSO). When SSO is required, users cannot reset their Cloudshelf password, because sign-in goes through the company's identity provider. Send those users to their own IT team.
 
 ## Escalations
 
@@ -54,4 +54,4 @@ Enterprise organizations can require single sign-on (SSO). When SSO is required,
 - A request for a discount on seats for a nonprofit or school goes to Billing Operations with proof of status (2 business days).
 - If the person calling cannot be verified as the administrator but insists on changing seats, do not make the change. If you suspect an account takeover, lock the account and escalate to Security Response within 1 hour.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.
