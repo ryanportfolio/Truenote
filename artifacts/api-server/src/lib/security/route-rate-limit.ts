@@ -51,3 +51,6 @@ export const evidenceReadLimit = perUserLimit(60, 60_000);
 
 /** Evidence harness writes (known-gap links, manual runs): 10 a minute per user. */
 export const evidenceWriteLimit = perUserLimit(10, 60_000);
+
+/** Compliance document reads (list and documents): 60 a minute per user. */
+export const complianceReadLimit = perUserLimit(60, 60_000);
