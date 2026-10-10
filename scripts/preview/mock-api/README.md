@@ -65,7 +65,7 @@ The login page lists three demo accounts (CSR, Supervisor, Manager), from `demoA
 | `/api/__mock/reset` | Reseed all state (library, questions, views, pins, notes, teams, recommended lists, Ask examples) |
 | `/api/__mock/fail?path=/api/kb/documents` | That exact path now returns 500 (error states); `/api/__mock/fail` clears all |
 | `/api/__mock/delay?ms=1500` | Delay every API response (loading skeletons); `ms=0` turns it off |
-| `/api/__mock/login-mode?mode=break_glass` | Sets the `LOCAL_LOGIN_MODE` stand-in (`enabled`, `break_glass`, `disabled`; reset restores `enabled`). `/api/config` reports it, and Users admin create and bulk import answer with SSO invitations for roles it excludes. A name containing `__mock_email_fail` makes the single-create invitation report an unsent email |
+| `/api/__mock/login-mode?mode=break_glass` | Sets the `LOCAL_LOGIN_MODE` stand-in (`enabled`, `break_glass`, `disabled`; reset restores `enabled`). `/api/config` reports it, and Users admin create and bulk import answer with SSO invitations for roles it excludes. Those users list with `localLoginAllowed: false`, and their password reset answers 409. A name containing `__mock_email_fail` makes the single-create invitation report an unsent email |
 | `/api/__mock/audit` | Writes recorded with the server's action names (`kb.library.*`, `team.assign`, `ask.examples.set`) |
 | `/api/__mock` | Users, ids, current failures and delay |
 

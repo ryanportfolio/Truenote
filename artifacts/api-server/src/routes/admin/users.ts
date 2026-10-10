@@ -46,6 +46,7 @@ import {
 import { getOidcConfig } from "../../lib/auth/oidc.js";
 import {
   invitationKindFor,
+  isLocalLoginAllowed,
   type InvitationKind
 } from "../../lib/auth/local-login-policy.js";
 import { recordAppError } from "../../lib/observability/error-log.js";
@@ -115,6 +116,12 @@ export interface UserListItem {
   mustResetPassword: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  /**
+   * Whether LOCAL_LOGIN_MODE lets this user sign in with a password right
+   * now (isLocalLoginAllowed). False means company SSO only: no password
+   * reset applies, so the admin page hides that action.
+   */
+  localLoginAllowed: boolean;
 }
 
 function toListItem(row: {
@@ -137,7 +144,8 @@ function toListItem(row: {
     isActive: row.isActive,
     mustResetPassword: row.mustResetPassword,
     lastLoginAt: row.lastLoginAt ? row.lastLoginAt.toISOString() : null,
-    createdAt: row.createdAt.toISOString()
+    createdAt: row.createdAt.toISOString(),
+    localLoginAllowed: isLocalLoginAllowed(getOidcConfig().localLoginMode, row.role)
   };
 }
 
@@ -999,6 +1007,11 @@ usersRouter.patch("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req
  * Sets must_reset_password=true unconditionally so the user is bounced
  * to the change-password page on first login with the temp credential.
  *
+ * A target LOCAL_LOGIN_MODE does not allow local login (company SSO only)
+ * gets 409 and nothing changes: local login would refuse the temp password,
+ * so issuing one would only revoke their sessions for nothing. The check
+ * runs after the scope check, so an out-of-scope id still reads as 404.
+ *
  * Atomicity: the scope re-check + password/flag UPDATE + session revoke ALL
  * run inside one transaction with `SELECT ... FOR UPDATE` on the target row,
  * mirroring PATCH/DELETE. A plain pre-tx load (the old shape) left a TOCTOU
@@ -1025,8 +1038,13 @@ usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_
     // nothing is written.
     const tempPassword = generateTempPassword();
     const passwordHash = await hashPassword(tempPassword);
+    const localLoginMode = getOidcConfig().localLoginMode;
 
-    type TxResult = { kind: "ok" } | { kind: "not-found" } | { kind: "demo" };
+    type TxResult =
+      | { kind: "ok" }
+      | { kind: "not-found" }
+      | { kind: "demo" }
+      | { kind: "sso" };
     const txResult = await db.transaction(async (tx): Promise<TxResult> => {
       // SELECT FOR UPDATE — locks the row so any concurrent PATCH/reset on
       // the same user_id queues behind us, and re-reads the CURRENT
@@ -1074,6 +1092,7 @@ usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_
       // convention as the documents routes.
       if (!allowed) return { kind: "not-found" };
       if (demoTargetLocked(actor, target.email)) return { kind: "demo" };
+      if (!isLocalLoginAllowed(localLoginMode, target.role)) return { kind: "sso" };
 
       // Atomic: update password + force-reset flag + revoke every existing
       // session. If we ran them as separate writes, a transient DB failure
@@ -1097,6 +1116,12 @@ usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_
     }
     if (txResult.kind === "demo") {
       res.status(403).json({ error: DEMO_WRITE_BLOCKED_MESSAGE });
+      return;
+    }
+    if (txResult.kind === "sso") {
+      res.status(409).json({
+        error: "This user signs in with company SSO and has no password to reset"
+      });
       return;
     }
 

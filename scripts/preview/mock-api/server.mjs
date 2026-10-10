@@ -1468,7 +1468,8 @@ function userList(user, req) {
       isActive: u.isActive,
       mustResetPassword: u.mustResetPassword,
       lastLoginAt: u.lastLoginAt,
-      createdAt: u.createdAt
+      createdAt: u.createdAt,
+      localLoginAllowed: invitationKindFor(u.role) === "password_setup"
     }));
   return { items };
 }
@@ -1508,6 +1509,9 @@ function resetUserPassword(user, id) {
   if (!allowed) throw notFound();
   // routes/admin/users.ts demoTargetLocked: only a super user resets a demo account.
   if (target.isDemo && user.role !== "super_user") throw new HttpError(403, DEMO_MESSAGE);
+  if (invitationKindFor(target.role) === "sso") {
+    throw new HttpError(409, "This user signs in with company SSO and has no password to reset");
+  }
   target.mustResetPassword = true;
   return { tempPassword: randomBytes(12).toString("base64url") };
 }
@@ -1543,7 +1547,8 @@ function addUser(actor, { email, name, role, programId }) {
     isActive: created.isActive,
     mustResetPassword: created.mustResetPassword,
     lastLoginAt: created.lastLoginAt,
-    createdAt: created.createdAt
+    createdAt: created.createdAt,
+    localLoginAllowed: invitationKindFor(created.role) === "password_setup"
   };
 }
 

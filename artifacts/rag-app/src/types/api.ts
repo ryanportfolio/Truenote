@@ -862,6 +862,12 @@ export interface UserListItem {
   mustResetPassword: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  /**
+   * False when the server's LOCAL_LOGIN_MODE does not allow this user a
+   * password sign-in (company SSO only); the server refuses a password
+   * reset for them with 409.
+   */
+  localLoginAllowed: boolean;
 }
 
 export interface UserListResponse {
