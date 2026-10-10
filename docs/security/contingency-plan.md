@@ -3,7 +3,7 @@
 **Status:** Draft for adoption. The recovery targets in section 3 were approved by the owner on 2026-10-10; every recovery time stays provisional until a timed test meets it (section 6). No contingency test has been run yet.
 **Owner:** Truenote maintainer
 **Related:** [`backup-restore-runbook.md`](./backup-restore-runbook.md) (cited below as the runbook; it holds every command), [`incident-response-plan.md`](./incident-response-plan.md), [`.claude/reference/deployment.md`](../../.claude/reference/deployment.md).
-**Stage (owner statement, 2026-10-07):** pre-pilot. Production holds demo data only and no CSRs use it. This plan applies in full from the first real customer data.
+**Stage (owner statement, 2026-10-07):** pre-pilot. Production holds demo data only and no CSRs use it. This plan applies in full from the first real customer data. At that point, turn on Railway volume backups with `node scripts/railway-volume-backups.mjs --enable`; they stay off until then (owner decision, 2026-10-10), so scenario A falls back to the off-site copy and its 7-day RPO.
 
 ## 1. What must keep working
 
