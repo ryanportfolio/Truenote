@@ -4,17 +4,25 @@
 -- The monthly operator check runs as the migration role and appends receipts
 -- of kind 'operator'; the kind claims that the owner ran the check. Under 0012
 -- the application role truenote_app could append a receipt of that kind as
--- well, so the claim proved nothing. This file replaces
+-- well, so the claim proved nothing. Readers attach a receipt to a catalog
+-- check by check id and kind together, but a receipt naming
+-- operator.monthly-verification under another kind would still sit in the
+-- chain as a claim about the owner's check. This file replaces
 -- append_evidence_receipt(text) with the same function plus one rule:
 --
--- * A payload whose kind is 'operator' (compared case-insensitively) is
---   refused unless session_user, the role that logged in, is a member of the
---   function's owner, the migration role. Inside a SECURITY DEFINER function
---   current_user is always the owner, so the rule checks session_user and
---   looks the owner up in pg_proc. truenote_app (0007_app_runtime_role.sql)
---   is not a member of the owner, so it gets an exception.
--- * Every other kind is stored exactly as before. The hash rule, the stored
---   columns, SECURITY DEFINER and the pinned search_path do not change.
+-- * A payload is an operator claim when its kind is 'operator' or its
+--   checkId starts with 'operator.', both compared case-insensitively. An
+--   operator claim is refused unless all three hold: session_user, the role
+--   that logged in, is a member of the function's owner, the migration role;
+--   the kind is exactly 'operator'; and the checkId starts with 'operator.'
+--   in lower case. Inside a SECURITY DEFINER function current_user is always
+--   the owner, so the rule checks session_user and looks the owner up in
+--   pg_proc. truenote_app (0007_app_runtime_role.sql) is not a member of the
+--   owner, so it gets an exception for every operator claim; the owner gets
+--   one for a claim whose kind and checkId disagree.
+-- * Every other payload is stored exactly as before. The hash rule, the
+--   stored columns, SECURITY DEFINER and the pinned search_path do not
+--   change.
 --
 -- CREATE OR REPLACE keeps the owner and the grants; they are stated again at
 -- the end so the file alone shows them. The file runs again without changes.
@@ -51,13 +59,16 @@ BEGIN
     RAISE EXCEPTION 'evidence payload is missing checkId, kind, result, controls or objectives';
   END IF;
 
-  IF lower(v_doc->>'kind') = 'operator' THEN
+  IF lower(v_doc->>'kind') = 'operator' OR lower(v_doc->>'checkId') LIKE 'operator.%' THEN
     SELECT p.proowner
     INTO v_owner
     FROM pg_proc p
     WHERE p.oid = 'public.append_evidence_receipt(text)'::regprocedure;
     IF v_owner IS NULL OR NOT pg_has_role(session_user, v_owner, 'MEMBER') THEN
-      RAISE EXCEPTION 'only the migration role can append an evidence receipt of kind operator';
+      RAISE EXCEPTION 'only the migration role can append an evidence receipt of kind operator or with an operator. check id';
+    END IF;
+    IF v_doc->>'kind' <> 'operator' OR v_doc->>'checkId' NOT LIKE 'operator.%' THEN
+      RAISE EXCEPTION 'an operator receipt needs kind operator and a check id starting with operator.';
     END IF;
   END IF;
 

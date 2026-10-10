@@ -3,6 +3,7 @@ import { db } from "../db-client.js";
 import { getEmailSender } from "../email/sender.js";
 import { escapeHtml } from "../email/templates.js";
 import { securityAlertRecipients, withDeadline } from "../monitoring/alert-email.js";
+import { getCheck } from "./catalog.js";
 import type { CheckResult } from "./receipts.js";
 import type { RunEntry } from "./runner.js";
 
@@ -77,13 +78,16 @@ export async function classifyRun(
   if (entries.length === 0) return [];
   const ids = entries.map((entry) => entry.checkId);
   const firstSequence = Math.min(...entries.map((entry) => entry.receipt.sequence));
+  // Prior receipts count only under the check's catalog kind; an entry
+  // outside the catalog matches no prior receipt.
+  const pairs = entries.map((entry) => sql`(${entry.checkId}::text, ${getCheck(entry.checkId)?.kind ?? null}::text)`);
   const priorRows = await executor.execute(sql`
     SELECT check_id, result, recorded_at_text
     FROM (
       SELECT check_id, result, recorded_at_text,
              row_number() OVER (PARTITION BY check_id ORDER BY sequence DESC) AS rn
       FROM evidence_receipts
-      WHERE check_id IN ${ids} AND sequence < ${firstSequence}
+      WHERE (check_id, check_kind) IN (${sql.join(pairs, sql`, `)}) AND sequence < ${firstSequence}
     ) ranked
     WHERE rn <= 2
     ORDER BY check_id, rn

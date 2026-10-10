@@ -23,7 +23,7 @@ import {
 } from "../../lib/evidence/catalog.js";
 import nist from "../../lib/evidence/nist-800-53r5-moderate.json" with { type: "json" };
 import { enqueueEvidenceRun } from "../../lib/evidence/queue.js";
-import { summaryCounts } from "../../lib/evidence/summary.js";
+import { catalogCheckMatch, summaryCounts } from "../../lib/evidence/summary.js";
 import {
   authedUser,
   blockDemoWrites,
@@ -92,10 +92,19 @@ const RECEIPT_COLUMNS = sql`
   controls, objectives, payload, payload_sha256, previous_hash, receipt_hash
 `;
 
+/**
+ * A receipt counts for a catalog check only under that check's catalog kind,
+ * so a receipt naming a catalog check id under another kind is ignored.
+ * Receipts whose check id is not in the catalog (retired checks) are kept as
+ * they are and attributed to no catalog check.
+ */
+const ATTRIBUTABLE = sql`(${catalogCheckMatch(EVIDENCE_CHECKS)} OR check_id NOT IN ${EVIDENCE_CHECKS.map((check) => check.id)})`;
+
 async function latestPerCheck(): Promise<ReceiptRow[]> {
   const result = await db.execute(sql`
     SELECT DISTINCT ON (check_id) ${RECEIPT_COLUMNS}
     FROM evidence_receipts
+    WHERE ${ATTRIBUTABLE}
     ORDER BY check_id, sequence DESC
   `);
   return result.rows as unknown as ReceiptRow[];
@@ -225,7 +234,7 @@ evidenceRouter.get("/failures", evidenceReadLimit, async (_req, res, next) => {
       `),
       db.execute(sql`
         SELECT check_id, max(sequence) AS last_pass
-        FROM evidence_receipts WHERE result = 'pass' GROUP BY check_id
+        FROM evidence_receipts WHERE result = 'pass' AND ${ATTRIBUTABLE} GROUP BY check_id
       `)
     ]);
     const today = new Date().toISOString().slice(0, 10);
@@ -273,7 +282,7 @@ evidenceRouter.get("/chain", evidenceReadLimit, async (_req, res, next) => {
     const integrity = await db.execute(sql`
       SELECT DISTINCT ON (check_id) ${RECEIPT_COLUMNS}
       FROM evidence_receipts
-      WHERE check_kind = 'integrity'
+      WHERE ${catalogCheckMatch(EVIDENCE_CHECKS.filter((check) => check.kind === "integrity"))}
       ORDER BY check_id, sequence DESC
     `);
     const row = head.rows[0] as Record<string, unknown>;
@@ -298,7 +307,7 @@ evidenceRouter.get("/summaries", evidenceReadLimit, async (_req, res, next) => {
     const result = await db.execute(sql`
       SELECT id::text, sequence, recorded_at_text, receipt_hash, payload
       FROM evidence_receipts
-      WHERE check_kind = 'summary'
+      WHERE ${catalogCheckMatch(EVIDENCE_CHECKS.filter((check) => check.kind === "summary"))}
       ORDER BY sequence DESC
     `);
     const summaries = (

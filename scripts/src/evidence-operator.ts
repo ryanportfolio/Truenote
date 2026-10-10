@@ -6,12 +6,14 @@
  * The application role cannot show that the append-only triggers also refuse
  * the owner, and cannot run the PCI catalog verifier as the owner. Once a
  * month the owner runs this script from their own machine, through an SSH
- * tunnel to `pgvector`, as the migration role:
+ * tunnel to `pgvector`, as the migration role. In Windows PowerShell, set the
+ * connection once, then run the dry run, the run that appends, and the
+ * export:
  *
- *   DATABASE_URL=postgresql://postgres@127.0.0.1:5434/railway \
- *     pnpm --filter @workspace/scripts run evidence:operator
- *   ... evidence:operator -- --apply
- *   ... evidence:operator -- --apply --export-dir ~/truenote-evidence [--month 2026-09] [--push]
+ *   $env:DATABASE_URL = 'postgresql://postgres@127.0.0.1:5434/railway'
+ *   pnpm --filter @workspace/scripts run evidence:operator
+ *   pnpm --filter @workspace/scripts run evidence:operator -- --apply
+ *   pnpm --filter @workspace/scripts run evidence:operator -- --apply --export-dir ~/truenote-evidence [--month 2026-09] [--push]
  *
  * Steps, all over one database connection:
  *
@@ -43,7 +45,7 @@
  *    - the top level of a Git repository whose origin URL ends in
  *      truenote-evidence (or truenote-evidence.git), and which is not the
  *      repository this script runs from or a worktree of it, gets the files
- *      and a commit of the month folder; --push runs `git push origin HEAD`;
+ *      and a commit of those files only; --push runs `git push origin HEAD`;
  *    - anything else is refused.
  *    The month (--month YYYY-MM, default the previous UTC month) is a
  *    contiguous sequence range: from the first sequence recorded at or after
@@ -57,8 +59,11 @@
  *    month included; a mismatch writes nothing and names the first bad
  *    sequence. <dir>/<YYYY-MM>/ then gets receipts.jsonl, attachments.json and
  *    chain-head.json, with no export time in them, so the same chain state
- *    gives the same bytes and an unchanged re-export makes no commit. A failed
- *    commit unstages the month folder.
+ *    gives the same bytes and an unchanged re-export makes no commit. Git
+ *    stages and commits exactly these three paths, so other files in the
+ *    month folder and anything already staged elsewhere stay out of the
+ *    commit and keep their state. A failed commit unstages the three files
+ *    only.
  *
  * Exits non-zero on any error. Never prints DATABASE_URL, its password, or
  * credentials in a URL (the origin's https://user:token@host/... included,
@@ -530,12 +535,19 @@ async function resolveExportTarget(dir: string, push: boolean): Promise<ExportTa
   return { dir, repository: true };
 }
 
-/** Undo `git add` of the month folder after a failed commit. */
-async function unstage(dir: string, month: string): Promise<boolean> {
-  const reset = await git(dir, ["reset", "-q", "--", month]);
+/** The three files the export writes, as pathspecs relative to the repository's top level. */
+const EXPORT_FILES = ["receipts.jsonl", "attachments.json", "chain-head.json"] as const;
+
+function exportPaths(month: string): string[] {
+  return EXPORT_FILES.map((file) => `${month}/${file}`);
+}
+
+/** Undo `git add` of the export's own files after a failed commit; nothing else changes. */
+async function unstage(dir: string, paths: string[]): Promise<boolean> {
+  const reset = await git(dir, ["reset", "-q", "--", ...paths]);
   if (reset.ok) return true;
   // An unborn branch has no HEAD to reset to on older Git versions.
-  const rm = await git(dir, ["rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", month]);
+  const rm = await git(dir, ["rm", "-q", "--cached", "--ignore-unmatch", "--", ...paths]);
   return rm.ok;
 }
 
@@ -626,12 +638,15 @@ async function exportMonth(client: Client, opts: Options, target: ExportTarget):
     say("export: the directory is not in a Git repository; nothing committed");
     return;
   }
-  const add = await git(target.dir, ["add", "--", opts.month]);
+  // Only the files written above, so the owner's other files in the month
+  // folder and anything already staged elsewhere stay out of the commit.
+  const paths = exportPaths(opts.month);
+  const add = await git(target.dir, ["add", "--", ...paths]);
   if (!add.ok) {
-    await unstage(target.dir, opts.month);
+    await unstage(target.dir, paths);
     throw new Error(`git add failed: ${add.stderr.trim()}`);
   }
-  const staged = await git(target.dir, ["diff", "--cached", "--quiet", "--", opts.month]);
+  const staged = await git(target.dir, ["diff", "--cached", "--quiet", "--", ...paths]);
   if (staged.ok) {
     say(`export: ${opts.month} is already committed with this content; no new commit`);
   } else if (staged.code === 1) {
@@ -644,20 +659,20 @@ async function exportMonth(client: Client, opts: Options, target: ExportTarget):
       `${monthRows.length} receipts of ${opts.month} (UTC), sequences ${fromSequence} to ${toSequence - 1}. ` +
         `Chain head at export: sequence ${head.sequence ?? "none"}, receipt_hash ${head.receiptHash ?? "none"}.`,
       "--",
-      opts.month
+      ...paths
     ]);
     if (!commit.ok) {
-      const unstaged = await unstage(target.dir, opts.month);
+      const unstaged = await unstage(target.dir, paths);
       throw new Error(
         `git commit failed: ${(commit.stderr || commit.stdout).trim()}; ` +
           (unstaged
-            ? `${opts.month} was unstaged and its files stay in the working tree`
-            : `unstaging ${opts.month} also failed; run git reset -- ${opts.month} in ${target.dir}`)
+            ? `the export files of ${opts.month} were unstaged and stay in the working tree`
+            : `unstaging them also failed; run git reset -- ${paths.join(" ")} in ${target.dir}`)
       );
     }
-    say(`export: committed ${opts.month}`);
+    say(`export: committed ${paths.join(", ")}`);
   } else {
-    await unstage(target.dir, opts.month);
+    await unstage(target.dir, paths);
     throw new Error(`git diff --cached failed: ${staged.stderr.trim()}`);
   }
   if (opts.push) {

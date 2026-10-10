@@ -28,6 +28,8 @@ All routes under `/api/admin/evidence` require a signed-in `super_user` session 
 
 `result` is `pass`, `fail` or `error`. `error` means the check could not run: no evidence, not a pass. `controls` use the SSP's unpadded labels; `objectives` use NIST's SP 800-53A labels exactly (`AC-02a.[01]`, `AU-09(04)`).
 
+A receipt counts for a catalog check only when its `kind` equals that check's kind in `GET /catalog`. `GET /controls`, `GET /failures`, `GET /chain`, `GET /summaries` and the monthly summary ignore a receipt that names a catalog check id under another kind. `GET /receipts` filters by `checkId` alone and lists such a receipt with its own `kind`.
+
 ## Routes
 
 ### `GET /catalog`
@@ -237,4 +239,4 @@ Every monthly summary receipt (kind `summary`), newest first. Read limit.
 { "lastReceiptAt": "2026-10-11T05:23:09.000000Z", "ageHours": 3.1, "staleAfterHours": 26, "stale": false }
 ```
 
-`503` with `stale: true` when the store cannot be read. It reveals nothing but the time of the last receipt.
+`lastReceiptAt` is the time of the newest receipt from an automated run of the worker, scheduled or started with `POST /runs`: a receipt with a run id (`run_id` set). Attestation uploads, monthly summaries and operator receipts carry no run id and do not count, so they cannot make a stopped worker look fresh. `503` with `stale: true` when the store cannot be read. It reveals nothing but that time.

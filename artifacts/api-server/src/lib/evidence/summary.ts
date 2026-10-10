@@ -93,6 +93,18 @@ const HASH_CHAIN_LOCK = "truenote.evidence_receipts.hash_chain";
 
 export const SUMMARY_EMAIL_KEY_PREFIX = "evidence_summary_email_";
 
+/**
+ * SQL condition: the receipt's check_id is one of `checks` and its check_kind
+ * is that check's catalog kind. A receipt that names a catalog check id under
+ * another kind is not evidence for that check. `checks` must not be empty.
+ */
+export function catalogCheckMatch(checks: readonly CheckDefinition[]): SQL {
+  return sql`(check_id, check_kind) IN (${sql.join(
+    checks.map((check) => sql`(${check.id}::text, ${check.kind}::text)`),
+    sql`, `
+  )})`;
+}
+
 function summaryCheck(): CheckDefinition {
   const check = EVIDENCE_CHECKS.find((c) => c.kind === "summary");
   if (!check) throw new Error("the evidence catalog has no check of kind summary");
@@ -143,21 +155,20 @@ async function buildOutputs(
   today: string
 ): Promise<Omit<SummaryOutputs, "chainHead">> {
   const checks = EVIDENCE_CHECKS.filter((check) => check.kind !== "summary");
-  const ids = checks.map((check) => check.id);
   const start = window.start.toISOString();
   const end = window.end.toISOString();
 
   const countRows = await executor.execute(sql`
     SELECT check_id, result, count(*)::int AS n
     FROM evidence_receipts
-    WHERE check_id IN ${ids} AND recorded_at >= ${start}::timestamptz AND recorded_at < ${end}::timestamptz
+    WHERE ${catalogCheckMatch(checks)} AND recorded_at >= ${start}::timestamptz AND recorded_at < ${end}::timestamptz
     GROUP BY check_id, result
   `);
   const latestRows = await executor.execute(sql`
     SELECT DISTINCT ON (check_id) check_id, result, sequence, recorded_at_text,
            (payload::jsonb ->> 'summary') AS summary
     FROM evidence_receipts
-    WHERE check_id IN ${ids} AND recorded_at >= ${start}::timestamptz AND recorded_at < ${end}::timestamptz
+    WHERE ${catalogCheckMatch(checks)} AND recorded_at >= ${start}::timestamptz AND recorded_at < ${end}::timestamptz
     ORDER BY check_id, sequence DESC
   `);
   const gapRows = await executor.execute(sql`
