@@ -4,6 +4,7 @@ import { safeErrorMessage } from "../observability/error-log.js";
 import {
   deliverSecurityAlerts,
   logJsonLine,
+  withDeadline,
   type SecurityAlert
 } from "./alert-email.js";
 
@@ -40,6 +41,7 @@ const DENIED_TOTAL = 50;
 const FAILED_PASSES_BEFORE_ALERT = 5;
 const LINES_PER_ALERT = 20;
 const LOCK_KEY = "truenote.security_monitor";
+const PASS_DEADLINE_MS = 120_000;
 
 export interface MonitoredEvent {
   sequence: number;
@@ -59,7 +61,10 @@ export interface MonitoredEvent {
   eventHash: string;
 }
 
-const ACCOUNT_ROUTE = /^(POST|PUT|PATCH|DELETE) \/api\/admin\/users(\/|$)/;
+// Express routes case-insensitively and ignores a trailing slash, and the
+// audit middleware keeps the request's spelling after the mount base, so
+// route ids are compared case-insensitively here and in windowCounts.
+const ACCOUNT_ROUTE = /^(POST|PUT|PATCH|DELETE) \/api\/admin\/users(\/|$)/i;
 
 /** The single-event rules. Returns null when the event raises no alert. */
 export function eventAlertRule(
@@ -131,13 +136,19 @@ function toEvent(row: Record<string, unknown>): MonitoredEvent {
   };
 }
 
+/**
+ * `alertSinceMs` is one hour before the cursor last advanced (or before now,
+ * on the first pass). Older rows are history being caught up. Anchoring to
+ * the cursor rather than the clock keeps a batch alertable while its email
+ * keeps failing, and alerts on events from a worker outage once it restarts.
+ */
 export function eventAlerts(
   events: MonitoredEvent[],
-  nowMs: number
+  alertSinceMs: number
 ): SecurityAlert[] {
   const byRule = new Map<string, { summary: string; events: MonitoredEvent[] }>();
   for (const event of events) {
-    if (nowMs - new Date(event.occurredAt).getTime() > ALERT_FRESHNESS_MS) continue;
+    if (new Date(event.occurredAt).getTime() < alertSinceMs) continue;
     const match = eventAlertRule(event);
     if (!match) continue;
     const entry = byRule.get(match.rule) ?? { summary: match.summary, events: [] };
@@ -169,7 +180,7 @@ async function windowCounts(executor: SqlExecutor): Promise<WindowCounts> {
     FROM security_events
     WHERE occurred_at > now() - make_interval(mins => ${WINDOW_MINUTES})
       AND action = 'http.security_mutation'
-      AND resource_id = 'POST /api/auth/login'
+      AND lower(rtrim(resource_id, '/')) = 'post /api/auth/login'
       AND outcome = 'denied'
     GROUP BY 1
   `);
@@ -239,10 +250,15 @@ async function runPass(
   now: () => number
 ): Promise<void> {
   const cursorResult = await executor.execute(sql`
-    SELECT last_sequence FROM security_monitor_state WHERE id
+    SELECT last_sequence, updated_at FROM security_monitor_state WHERE id
   `);
-  const cursorRow = cursorResult.rows[0] as { last_sequence?: unknown } | undefined;
+  const cursorRow = cursorResult.rows[0] as
+    | { last_sequence?: unknown; updated_at?: unknown }
+    | undefined;
   const lastSequence = cursorRow ? Number(cursorRow.last_sequence) : 0;
+  const advancedAtMs = cursorRow
+    ? new Date(cursorRow.updated_at as string | Date).getTime()
+    : now();
 
   const result = await executor.execute(sql`
     SELECT sequence, id::text, occurred_at, action, outcome,
@@ -258,7 +274,8 @@ async function runPass(
 
   const nowMs = now();
   const windows = windowAlerts(await windowCounts(executor), cooldowns, nowMs);
-  const alerts = [...eventAlerts(events, nowMs), ...windows.alerts];
+  const alertSinceMs = Math.min(nowMs, advancedAtMs) - ALERT_FRESHNESS_MS;
+  const alerts = [...eventAlerts(events, alertSinceMs), ...windows.alerts];
   if (!(await deliverSecurityAlerts(alerts))) {
     throw new Error("alert email failed; the batch will be retried");
   }
@@ -293,7 +310,18 @@ export function startSecurityMonitor(
     try {
       // One pass at a time across processes: during a deploy the old and new
       // worker overlap briefly, and both would otherwise email the same batch.
-      await withPgAdvisoryLock(LOCK_KEY, () => runPass(executor, cooldowns, now));
+      // The pool sets no query or connect timeout, so a pass that hangs is
+      // abandoned at the deadline and counted as failed. It keeps its lock
+      // until it ends, so later passes fail on the lock too and the failure
+      // alert still fires.
+      const locked = await withDeadline(
+        withPgAdvisoryLock(LOCK_KEY, () => runPass(executor, cooldowns, now)),
+        PASS_DEADLINE_MS,
+        "security monitor pass"
+      );
+      if (!locked) {
+        throw new Error("another security monitor pass holds the lock");
+      }
       failedPasses = 0;
       failureAlerted = false;
       lastError = "";

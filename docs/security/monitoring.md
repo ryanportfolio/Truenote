@@ -34,7 +34,9 @@ On 2026-10-10 the four Railway log streams added up to about 0.9 MB a day, mostl
 2. It checks those rows and the last 15 minutes against the rules below, prints one `[security-alert] {json}` line per alert, and emails all alerts from the pass as one message to `SECURITY_ALERT_EMAIL`.
 3. It advances the cursor only after the email was sent. If sending fails, the next pass prints and checks the same rows again; the event `id` identifies the repeated lines.
 
-A session advisory lock keeps two workers (old and new, during a deploy) from processing the same batch. Rows older than one hour are printed but never alerted on, so the first catch-up pass does not email the whole history.
+A session advisory lock keeps two workers (old and new, during a deploy) from processing the same batch. A pass that has not finished after 2 minutes is abandoned and counted as failed; while it still holds the lock, later passes fail too, so a stalled database or email call ends in the `security_monitor_failing` alert. Email sends time out after 30 seconds.
+
+Rows that occurred more than one hour before the cursor last advanced are printed but not alerted on. On the first pass that means rows older than one hour, so the history catch-up does not email the whole chain. Because the reference point is the cursor, a batch whose email keeps failing stays alertable, and events written while the worker was down are alerted when it comes back.
 
 ## Alert rules
 
@@ -52,7 +54,7 @@ A session advisory lock keeps two workers (old and new, during a deploy) from pr
 | `security_monitor_failing` | Five passes in a row failed | Email once until a pass succeeds |
 | Health failure | `GET /health/ready` failed twice in a row | Issue in `ryanportfolio/truenote-ops`, which GitHub emails to the owner (planned) |
 
-A denied login is any 4xx answer to `POST /api/auth/login`: wrong password, unknown account, blocked role, or the per-IP limit. These rows record the source address but not the attempted account.
+A denied login is any 4xx answer to `POST /api/auth/login`: wrong password, unknown account, blocked role, or the per-IP limit. These rows record the source address but not the attempted account. Route ids are compared without regard to case or a trailing slash, because Express routes `/api/auth/LOGIN` and `/api/auth/login/` to the same handler and the audit row keeps the request's spelling.
 
 ## Readiness
 

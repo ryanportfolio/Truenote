@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "../db-client.js";
 import { safeErrorMessage } from "../observability/error-log.js";
+import { withDeadline } from "./alert-email.js";
 
 type SqlExecutor = {
   execute(query: SQL): Promise<{ rows: unknown[] }>;
@@ -63,29 +64,18 @@ export interface Readiness {
   worker: "ok" | "stale" | "missing" | "unknown";
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  return Promise.race([
-    promise,
-    new Promise<T>((_resolve, reject) => {
-      timer = setTimeout(() => reject(new Error("readiness query timed out")), ms);
-    })
-  ]).finally(() => {
-    if (timer) clearTimeout(timer);
-  });
-}
-
 export async function checkReadiness(
   executor: SqlExecutor = db as unknown as SqlExecutor,
   now: () => number = Date.now
 ): Promise<Readiness> {
   let beatAt: unknown;
   try {
-    const result = await withTimeout(
+    const result = await withDeadline(
       executor.execute(sql`
         SELECT beat_at FROM service_heartbeats WHERE service = 'worker'
       `),
-      READINESS_QUERY_TIMEOUT_MS
+      READINESS_QUERY_TIMEOUT_MS,
+      "readiness query"
     );
     beatAt = (result.rows[0] as { beat_at?: unknown } | undefined)?.beat_at;
   } catch (error) {

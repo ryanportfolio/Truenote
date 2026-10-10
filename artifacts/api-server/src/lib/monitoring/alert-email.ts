@@ -54,6 +54,24 @@ export function logJsonLine(prefix: string, value: unknown): void {
   );
 }
 
+/** Reject when `promise` has not settled within `ms`. */
+export function withDeadline<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    promise,
+    new Promise<T>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms} ms`)), ms);
+    })
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+const SEND_DEADLINE_MS = 30_000;
 let missingRecipientWarned = false;
 
 /**
@@ -94,12 +112,16 @@ export async function deliverSecurityAlerts(
   try {
     const sender = getEmailSender();
     for (const to of recipients) {
-      await sender.send({
-        to,
-        subject,
-        text: `${text}\n\nSource: Truenote security monitor. Review in security_events and the exported logs.`,
-        html: `${html}<p>Source: Truenote security monitor. Review in security_events and the exported logs.</p>`
-      });
+      await withDeadline(
+        sender.send({
+          to,
+          subject,
+          text: `${text}\n\nSource: Truenote security monitor. Review in security_events and the exported logs.`,
+          html: `${html}<p>Source: Truenote security monitor. Review in security_events and the exported logs.</p>`
+        }),
+        SEND_DEADLINE_MS,
+        "alert email"
+      );
     }
     return true;
   } catch (error) {
