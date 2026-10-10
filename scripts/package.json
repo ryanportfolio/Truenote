@@ -34,12 +34,12 @@
     "@workspace/api-server": "workspace:*",
     "@workspace/db": "workspace:*",
     "drizzle-orm": "catalog:",
-    "pg": "^8.13.0"
+    "pg": "^8.13.0",
+    "tsx": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "@types/pg": "^8.11.10",
-    "tsx": "catalog:",
     "typescript": "catalog:"
   }
 }

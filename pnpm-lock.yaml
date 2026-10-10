@@ -117,6 +117,9 @@ importers:
       resend:
         specifier: ^6.32.1
         version: 6.32.1
+      tsx:
+        specifier: 'catalog:'
+        version: 4.22.2
       zod:
         specifier: 'catalog:'
         version: 3.25.76
@@ -139,9 +142,6 @@ importers:
       '@types/pg':
         specifier: ^8.11.10
         version: 8.20.0
-      tsx:
-        specifier: 'catalog:'
-        version: 4.22.2
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -252,6 +252,9 @@ importers:
       pg:
         specifier: ^8.13.0
         version: 8.21.0
+      tsx:
+        specifier: 'catalog:'
+        version: 4.22.2
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -259,9 +262,6 @@ importers:
       '@types/pg':
         specifier: ^8.11.10
         version: 8.20.0
-      tsx:
-        specifier: 'catalog:'
-        version: 4.22.2
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
