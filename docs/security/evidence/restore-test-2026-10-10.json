@@ -16,7 +16,7 @@
     "checkBeforeRestore": "node scripts/backup/check-offsite.mjs printed PASS, including decryption with the local identity"
   },
   "target": {
-    "project": "truenote-restore-test (f1248739-1c13-41f0-a478-2847d7b8a045), created for this test and deleted after it",
+    "project": "truenote-restore-test (f1248739-1c13-41f0-a478-2847d7b8a045), created for this test; deletion requested after it (services removed at once, project deletion scheduled by Railway for 2026-10-12T15:37:32Z, not yet confirmed)",
     "region": "us-west2 for both services (deployment metadata multiRegionConfig); bucket truenote-restore-files in sjc",
     "sourceCommit": "29bf48672e327fe51906643bc0db38ab90fd6a1c (main), uploaded from a clean LF worktree with .release-commit",
     "services": [
@@ -77,5 +77,5 @@
     "Steps 4 and 5 ran against the API with a Node script; the browser check was not run.",
     "The SSH config block was written to a scratch file instead of ~/.ssh/config, so nothing needed removing there; the tunnel process was stopped and the scratch files deleted."
   ],
-  "cleanup": "Test project deletion requested at about 15:37 UTC (services REMOVED, project and bucket deleted by Railway on 2026-10-12). Local scratch files with the generated test passwords deleted; the scratch directory unlinked from Railway."
+  "cleanup": "Test project deletion requested at about 15:37 UTC (both services showed REMOVED at once; Railway scheduled the project's deletion, bucket included, for 2026-10-12T15:37:32Z; that the deletion completed is not yet confirmed: check that railway list --json no longer lists the project). Local scratch files with the generated test passwords deleted; the scratch directory unlinked from Railway."
 }
