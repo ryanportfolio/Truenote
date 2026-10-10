@@ -3,7 +3,7 @@
 // Shapes mirror artifacts/rag-app/src/types/api.ts.
 
 import http from "node:http";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { buildSeed, CLEARANCE_RANK, nextId } from "./seed.mjs";
 
 const PORT = Number(process.env.MOCK_PORT) || 5099;
@@ -1782,6 +1782,59 @@ route("PATCH", /^\/api\/admin\/security\/demo-limits$/, ({ user, body }) => {
   });
   return securityDashboard();
 });
+// routes/compliance.ts: super users only. Fixture text is invented; real
+// documents live only in object storage.
+const COMPLIANCE_FIXTURES = [
+  {
+    slug: "fixture-plan-of-action",
+    title: "Fixture plan of action and milestones",
+    version: "0.1",
+    date: "2026-10-10",
+    markdown: [
+      "# Fixture plan of action",
+      "",
+      "Invented rows for the local preview. No real weakness is described here.",
+      "",
+      "| Item | Control | Status | Target date |",
+      "| --- | --- | --- | --- |",
+      "| FX-1 | Example access control | Open | 2026-12-01 |",
+      "| FX-2 | Example logging control | In progress | 2027-01-15 |",
+      "| FX-3 | Example backup control | Closed | 2026-09-30 |",
+      "",
+      "## Notes",
+      "",
+      "- Each row would link to its evidence in the real document.",
+      "- `FX` identifiers exist only in this fixture."
+    ].join("\n")
+  },
+  {
+    slug: "fixture-system-security-plan",
+    title: "Fixture system security plan",
+    version: "0.2",
+    date: "2026-10-08",
+    markdown: "# Fixture system security plan\n\nPlaceholder text for the local preview."
+  }
+].map((doc) => {
+  const body = Buffer.from(doc.markdown, "utf8");
+  return { ...doc, sha256: createHash("sha256").update(body).digest("hex"), size: body.length };
+});
+
+route("GET", /^\/api\/compliance\/documents$/, ({ user }) => {
+  requireRole(user, "super_user");
+  return { documents: COMPLIANCE_FIXTURES.map(({ markdown: _markdown, ...doc }) => doc) };
+});
+route("GET", /^\/api\/compliance\/documents\/([^/]+)$/, ({ user, params }) => {
+  requireRole(user, "super_user");
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(params[0]) || params[0].length > 80) {
+    throw badRequest("Invalid document id");
+  }
+  const doc = COMPLIANCE_FIXTURES.find((candidate) => candidate.slug === params[0]);
+  if (!doc) throw notFound();
+  audit.push({ at: iso(Date.now()), action: "compliance.document_read", actor: user.email, slug: doc.slug, sha256: doc.sha256 });
+  const { size: _size, ...body } = doc;
+  return body;
+});
+
 route("GET", /^\/api\/me$/, ({ req }) => ({ user: publicUser(requireUser(req)) }));
 route("POST", /^\/api\/auth\/login$/, ({ body, res }) => {
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
