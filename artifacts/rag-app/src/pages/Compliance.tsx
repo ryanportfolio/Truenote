@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import { ArrowLeft, FileLock2, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { getComplianceDocument, getComplianceDocuments } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type {
   ComplianceDocumentResponse,
   ComplianceDocumentSummary,
@@ -309,8 +310,8 @@ function ComplianceMarkdown({ markdown }: { markdown: string }): JSX.Element {
         h1: ({ children }) => (
           <h2 className="mb-2 mt-5 font-display text-xl font-semibold tracking-tight first:mt-0">{children}</h2>
         ),
-        h2: ({ children }) => (
-          <h3 className="mb-2 mt-5 font-display text-lg font-semibold tracking-tight first:mt-0">{children}</h3>
+        h2: ({ id, className, children }) => (
+          <h3 id={id} className={cn("mb-2 mt-5 font-display text-lg font-semibold tracking-tight first:mt-0", className)}>{children}</h3>
         ),
         h3: ({ children }) => <h4 className="mb-2 mt-4 text-base font-semibold first:mt-0">{children}</h4>,
         h4: ({ children }) => <h5 className="mb-1.5 mt-4 text-sm font-semibold first:mt-0">{children}</h5>,
@@ -330,16 +331,22 @@ function ComplianceMarkdown({ markdown }: { markdown: string }): JSX.Element {
           <th className="border-b border-border px-2 py-1.5 text-left font-medium">{children}</th>
         ),
         td: ({ children }) => <td className="border-t border-border px-2 py-1.5 align-top">{children}</td>,
-        a: ({ href, children }) => (
-          <a
-            href={href}
-            target="_blank"
-            rel="noreferrer"
-            className="text-primary underline underline-offset-2 hover:text-primary/80"
-          >
-            {children}
-          </a>
-        ),
+        // Keep the attributes react-markdown generates (footnote ids, aria and
+        // data attributes) so footnote references and backlinks pair up; only
+        // external links open a new tab.
+        a: ({ node: _node, href, className, children, ...generated }) => {
+          const external = typeof href === "string" && /^https?:\/\//i.test(href);
+          return (
+            <a
+              {...generated}
+              href={href}
+              {...(external ? { target: "_blank", rel: "noreferrer" } : {})}
+              className={cn("text-primary underline underline-offset-2 hover:text-primary/80", className)}
+            >
+              {children}
+            </a>
+          );
+        },
         img: ({ alt }) => (
           <span className="my-2 block rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             [image{alt ? `: ${alt}` : ""}]

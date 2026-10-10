@@ -1803,8 +1803,10 @@ const COMPLIANCE_FIXTURES = [
       "",
       "## Notes",
       "",
-      "- Each row would link to its evidence in the real document.",
-      "- `FX` identifiers exist only in this fixture."
+      "- Each row would link to its evidence in the real document.[^1]",
+      "- `FX` identifiers exist only in this fixture. See the [NIST catalog](https://csrc.nist.gov/).",
+      "",
+      "[^1]: Fixture footnote, used to check footnote links in the viewer."
     ].join("\n")
   },
   {
