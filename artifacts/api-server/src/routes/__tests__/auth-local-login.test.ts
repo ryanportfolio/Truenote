@@ -22,24 +22,29 @@ const fake = vi.hoisted(() => ({
   execute: vi.fn()
 }));
 
-vi.mock("../../lib/db-client.js", () => ({
-  db: {
-    select: () => ({ from: () => ({ where: () => ({ limit: async () => fake.rows }) }) }),
-    execute: fake.execute,
-    insert: fake.insert,
-    // The login's challenge or session insert runs in a transaction that
-    // first locks the user row and rereads its password hash (lockUserRow).
-    transaction: async (work: (tx: unknown) => Promise<unknown>) =>
-      work({ execute: fake.execute, insert: fake.insert }),
-    update: () => ({
-      set: () => ({
-        where: () => Object.assign(Promise.resolve(undefined), {
-          returning: async () => fake.updateRows
-        })
+vi.mock("../../lib/db-client.js", () => {
+  const update = () => ({
+    set: () => ({
+      where: () => Object.assign(Promise.resolve(undefined), {
+        returning: async () => fake.updateRows
       })
     })
-  }
-}));
+  });
+  return {
+    db: {
+      select: () => ({ from: () => ({ where: () => ({ limit: async () => fake.rows }) }) }),
+      execute: fake.execute,
+      insert: fake.insert,
+      // The login's challenge or session insert runs in a transaction that
+      // first locks the user row and rereads its password hash, is_active
+      // and locked_until (lockUserAccount); the password-only session's
+      // lockout reset (recordAuthSuccess) runs in it too.
+      transaction: async (work: (tx: unknown) => Promise<unknown>) =>
+        work({ execute: fake.execute, insert: fake.insert, update }),
+      update
+    }
+  };
+});
 vi.mock("../../lib/auth/passwords.js", () => ({
   verifyPassword: fake.verifyPassword,
   hashPassword: fake.hashPassword
@@ -118,7 +123,13 @@ beforeEach(() => {
   fake.passkeys = [];
   fake.execute.mockImplementation(async (query: SQL) =>
     /FOR UPDATE/.test(dialect.sqlToQuery(query).sql)
-      ? { rows: [{ password_hash: fake.rows[0]?.passwordHash }] }
+      ? {
+          rows: [{
+            password_hash: fake.rows[0]?.passwordHash,
+            is_active: fake.rows[0]?.isActive,
+            locked_until: fake.rows[0]?.lockedUntil ?? null
+          }]
+        }
       : { rows: fake.passkeys });
 });
 afterEach(() => vi.unstubAllEnvs());

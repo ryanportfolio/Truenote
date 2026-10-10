@@ -172,4 +172,17 @@ describe("recordAuthSuccess", () => {
     );
     expect(params).toEqual([0, null, account.id, 0]);
   });
+
+  it("sends the same UPDATE on the caller's transaction", async () => {
+    const { db } = await import("../../db-client.js");
+    await db.transaction(async (tx) => {
+      await recordAuthSuccess(account.id, tx);
+    });
+    expect(fake.queries.map((q) => q.text)).toEqual([
+      "begin",
+      'update "users" set "failed_login_count" = $1, "locked_until" = $2 ' +
+      'where ("users"."id" = $3 and ("users"."failed_login_count" <> $4 or "users"."locked_until" is not null))',
+      "commit"
+    ]);
+  });
 });

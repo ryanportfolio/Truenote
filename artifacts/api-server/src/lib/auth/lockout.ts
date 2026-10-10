@@ -191,12 +191,25 @@ export async function recordAuthFailure(
   return { locked: true, lockedNow: true, lockedUntil: row.lockedUntil };
 }
 
+/** `db`, or a transaction from `db.transaction`. */
+export type LockoutWriter = Pick<typeof db, "update">;
+
 /**
  * Reset the count and clear any lock after a successful attempt. The WHERE
  * skips the write for accounts with nothing to clear.
+ *
+ * The sign-in paths (POST /api/auth/login's password-only session and
+ * completeMfaLogin in mfa.ts) pass their session transaction as `executor`,
+ * after they locked the user row and found the account unlocked
+ * (lockUserAccount). The reset then commits with the session, and a lock
+ * that committed after the caller's unlocked isAccountLocked check is
+ * refused instead of cleared.
  */
-export async function recordAuthSuccess(userId: string): Promise<void> {
-  await db
+export async function recordAuthSuccess(
+  userId: string,
+  executor: LockoutWriter = db
+): Promise<void> {
+  await executor
     .update(users)
     .set({ failedLoginCount: 0, lockedUntil: null })
     .where(

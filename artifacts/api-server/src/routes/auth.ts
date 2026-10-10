@@ -20,7 +20,7 @@ import { isLocalLoginAllowed } from "../lib/auth/local-login-policy.js";
 import {
   invalidateMfaChallenges,
   listPasskeys,
-  lockUserRow,
+  lockUserAccount,
   startLoginChallenge,
   type SqlExecutor
 } from "../lib/auth/mfa.js";
@@ -296,24 +296,49 @@ authRouter.post("/login", async (req, res, next) => {
       return;
     }
 
-    await recordAuthSuccess(row.id);
-
-    // The passkey list above was read before any lock. Under the user's
-    // row lock, read it again: a first passkey enrolled since then means
-    // this attempt needs the second factor, so it gets no session and the
-    // generic 401 (the next attempt starts the MFA step). Passkey writes
-    // in routes/mfa.ts take the same row lock first.
-    const token = await db.transaction(async (tx) => {
+    // The lock state and the passkey list above were read before any lock.
+    // Under the user's row lock, read them again:
+    //   - a lock committed since the isAccountLocked check (a concurrent
+    //     failure reached the threshold), or a deactivation, refuses this
+    //     attempt as a locked attempt is refused, and the lock stays;
+    //   - a first passkey enrolled since then means this attempt needs the
+    //     second factor, so it gets no session and the generic 401 (the
+    //     next attempt starts the MFA step). Passkey writes in
+    //     routes/mfa.ts take the same row lock first.
+    // The lockout reset runs in the same transaction, so it commits only
+    // together with the session.
+    const outcome = await db.transaction(async (tx) => {
       const executor = tx as unknown as SqlExecutor;
-      const current = await lockUserRow(row.id, executor);
-      if (current !== row.passwordHash) return null;
-      if ((await listPasskeys(row.id, executor)).length > 0) return null;
-      return (await createSession(row.id, tx)).token;
+      const current = await lockUserAccount(row.id, executor);
+      if (!current || current.passwordHash !== row.passwordHash || !current.isActive) {
+        return { refused: "changed" as const };
+      }
+      if (isAccountLocked({ email: row.email, lockedUntil: current.lockedUntil })) {
+        return { refused: "account_locked" as const };
+      }
+      if ((await listPasskeys(row.id, executor)).length > 0) {
+        return { refused: "changed" as const };
+      }
+      const { token: sessionToken } = await createSession(row.id, tx);
+      await recordAuthSuccess(row.id, tx);
+      return { token: sessionToken };
     });
-    if (!token) {
+    if (outcome.refused) {
+      if (outcome.refused === "account_locked") {
+        recordSecurityEventBestEffort({
+          action: "auth.local.login",
+          outcome: "denied",
+          actor,
+          programId: row.programId,
+          resourceType: "session",
+          sourceIp: ip,
+          details: { authMethod: "local", reason: "account_locked" }
+        });
+      }
       res.status(401).json({ error: "Invalid credentials" });
       return;
     }
+    const token = outcome.token;
     setSessionCookie(res, token);
     recordSecurityEventBestEffort({
       action: row.role === "super_user" && oidc.localLoginMode === "break_glass"
@@ -386,6 +411,9 @@ authRouter.post("/logout", async (req, res, next) => {
   }
 });
 
+/** change-password found the request's session gone or expired under lock. */
+class CurrentSessionGone extends Error {}
+
 /**
  * Change own password. Required for first-login users (`must_reset_password
  * = true`) — but ALSO callable by any authenticated user to rotate their
@@ -394,7 +422,8 @@ authRouter.post("/logout", async (req, res, next) => {
  * Side effect: every existing session for this user is deleted, including
  * the one they're using right now. We immediately issue a fresh session so
  * the actor doesn't get logged out by their own password change. Stolen
- * cookies on the old password are dead instantly.
+ * cookies on the old password are dead instantly. The fresh session of an
+ * oidc sign-in keeps the original auth_method, auth_time and expires_at.
  */
 authRouter.post("/change-password", requireAuth, workloadRateLimitMiddleware("password_change"), async (req, res, next) => {
   try {
@@ -439,33 +468,76 @@ authRouter.post("/change-password", requireAuth, workloadRateLimitMiddleware("pa
     }
 
     const passwordHash = await hashPassword(newPassword);
+    const sessionToken =
+      typeof req.cookies?.[SESSION_COOKIE_NAME] === "string"
+        ? (req.cookies[SESSION_COOKIE_NAME] as string)
+        : undefined;
 
     // Password change is one ATOMIC transaction:
     //   (1) update the password hash + clear must_reset_password
-    //   (2) delete every existing session (including this one)
-    //   (3) insert the replacement session
+    //   (2) read and lock the session this request runs on
+    //   (3) delete every existing session (including this one)
+    //   (4) insert the replacement session
     //
-    // Without the transaction, a transient DB failure between (1) and (2)
+    // Without the transaction, a transient DB failure between (1) and (3)
     // would leave the password new but the OLD sessions — including any
     // stolen cookies — still valid. The whole point of revoke-then-reissue
     // is the security contract "stolen cookies on the old password are
     // dead instantly"; that contract requires all-or-nothing.
-    const newToken = await db.transaction(async (tx) => {
+    //
+    // The replacement of an oidc session keeps its auth_method, auth_time
+    // and expires_at, so the SSO idle and absolute limits still apply and
+    // LOCAL_LOGIN_MODE does not end it as a password session. A local
+    // session is replaced by a new 7-day local session. The users row is
+    // locked by (1) before the session row, the order the password resets
+    // use. When the current session is gone or expired by (2) (logout,
+    // revoke), the change rolls back and the request gets 401.
+    const replaced = await db.transaction(async (tx) => {
       await tx
         .update(users)
         .set({ passwordHash, mustResetPassword: false })
         .where(eq(users.id, user.id));
+      const current = sessionToken
+        ? (
+            await tx
+              .select({
+                authMethod: sessions.authMethod,
+                authTime: sessions.authTime,
+                expiresAt: sessions.expiresAt
+              })
+              .from(sessions)
+              .where(
+                and(
+                  eq(sessions.tokenHash, hashToken(sessionToken)),
+                  eq(sessions.userId, user.id),
+                  gt(sessions.expiresAt, new Date())
+                )
+              )
+              .for("update")
+              .limit(1)
+          )[0]
+        : undefined;
+      if (!current) throw new CurrentSessionGone();
       await invalidateMfaChallenges(user.id, tx as unknown as SqlExecutor);
       await tx.delete(sessions).where(eq(sessions.userId, user.id));
-      const token = generateToken();
-      const tokenHash = hashToken(token);
-      const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
-      await tx
-        .insert(sessions)
-        .values({ userId: user.id, tokenHash, expiresAt });
-      return token;
+      const carryOver = current.authMethod === "oidc" ? current : undefined;
+      const created = await createSession(user.id, tx, carryOver);
+      return { ...created, carriedOver: carryOver !== undefined };
+    }).catch((err: unknown) => {
+      if (err instanceof CurrentSessionGone) return null;
+      throw err;
     });
-    setSessionCookie(res, newToken);
+    if (!replaced) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    setSessionCookie(
+      res,
+      replaced.token,
+      replaced.carriedOver
+        ? { maxAgeMs: Math.max(0, replaced.expiresAt.getTime() - Date.now()) }
+        : {}
+    );
 
     res.json({
       user: {

@@ -17,11 +17,18 @@ const fake = vi.hoisted(() => ({
   audit: vi.fn(),
   insert: vi.fn(),
   failureUpdates: 0,
-  successUpdates: 0
+  successUpdates: 0,
+  // Success UPDATEs sent on a transaction executor, and whether a
+  // transaction is open.
+  successUpdatesInTx: 0,
+  inTx: false,
+  // When set, runs once as the next transaction starts: a write another
+  // connection commits after the request's unlocked checks.
+  beforeNextTransaction: null as (() => void) | null
 }));
 
 vi.mock("../../lib/db-client.js", () => {
-  const applyUpdate = (values: Record<string, unknown>) => {
+  const applyUpdate = (values: Record<string, unknown>, onTx: boolean) => {
     const a = fake.account;
     if (values.failedLoginCount instanceof SQL) {
       fake.failureUpdates += 1;
@@ -39,21 +46,40 @@ vi.mock("../../lib/db-client.js", () => {
     }
     if (values.failedLoginCount === 0) {
       fake.successUpdates += 1;
+      if (onTx && fake.inTx) fake.successUpdatesInTx += 1;
       a.failedLoginCount = 0;
       a.lockedUntil = values.lockedUntil;
     }
     return [];
   };
   // No passkeys enrolled (lib/auth/mfa.ts listPasskeys). The user-row lock
-  // of the session transaction (lockUserRow) reads the stored hash.
+  // of the session transaction (lockUserAccount) reads the stored hash,
+  // is_active and locked_until.
   const execute = async (query: SQL) =>
     query.queryChunks.some((chunk) => String((chunk as { value?: unknown }).value ?? "").includes("FOR UPDATE"))
-      ? { rows: [{ password_hash: fake.account.passwordHash }] }
+      ? {
+          rows: [{
+            password_hash: fake.account.passwordHash,
+            is_active: fake.account.isActive,
+            locked_until: fake.account.lockedUntil
+          }]
+        }
       : { rows: [] };
   const insert = () => {
     fake.insert();
     return { values: async () => undefined };
   };
+  const update = (onTx: boolean) => () => ({
+    set: (values: Record<string, unknown>) => ({
+      where: () => {
+        let rows: unknown[] | null = null;
+        const run = () => (rows ??= applyUpdate(values, onTx));
+        return Object.assign(Promise.resolve().then(run), {
+          returning: async () => run()
+        });
+      }
+    })
+  });
   return {
     db: {
       select: () => ({
@@ -61,18 +87,18 @@ vi.mock("../../lib/db-client.js", () => {
       }),
       execute,
       insert,
-      transaction: async (work: (tx: unknown) => Promise<unknown>) => work({ execute, insert }),
-      update: () => ({
-        set: (values: Record<string, unknown>) => ({
-          where: () => {
-            let rows: unknown[] | null = null;
-            const run = () => (rows ??= applyUpdate(values));
-            return Object.assign(Promise.resolve().then(run), {
-              returning: async () => run()
-            });
-          }
-        })
-      })
+      transaction: async (work: (tx: unknown) => Promise<unknown>) => {
+        const before = fake.beforeNextTransaction;
+        fake.beforeNextTransaction = null;
+        before?.();
+        fake.inTx = true;
+        try {
+          return await work({ execute, insert, update: update(true) });
+        } finally {
+          fake.inTx = false;
+        }
+      },
+      update: update(false)
     }
   };
 });
@@ -140,6 +166,9 @@ beforeEach(() => {
   fake.now = () => new Date();
   fake.failureUpdates = 0;
   fake.successUpdates = 0;
+  fake.successUpdatesInTx = 0;
+  fake.inTx = false;
+  fake.beforeNextTransaction = null;
   fake.account = {
     id: "00000000-0000-4000-8000-000000000001",
     email: "person@example.com",
@@ -280,5 +309,65 @@ describe("local login lockout", () => {
     ]));
     fake.account.lockedUntil = new Date(Date.now() + 60 * 60_000);
     expect((await login(CORRECT)).status).toBe(200);
+  });
+});
+
+// Finding: a correct password that passed the unlocked isAccountLocked check
+// could still get a session after a concurrent failure locked the account,
+// and the following recordAuthSuccess cleared that lock.
+describe("lockout rechecked under the user row lock", () => {
+  it("refuses a correct password when the account locked after the unlocked check, and leaves the lock", async () => {
+    await failTimes(4);
+    const lockedUntil = new Date(Date.now() + 30 * 60_000);
+    // The fifth failure, on another connection, commits between this
+    // request's unlocked checks and its locking transaction.
+    fake.beforeNextTransaction = () => {
+      fake.account.failedLoginCount = 0;
+      fake.account.lockedUntil = lockedUntil;
+    };
+    fake.audit.mockClear();
+    const updatesBefore = fake.failureUpdates;
+
+    const result = await login(CORRECT);
+    expect(result.status).toBe(401);
+    expect(result.body).toEqual({ error: "Invalid credentials" });
+    expect(result.cookie).not.toHaveBeenCalled();
+    expect(fake.insert).not.toHaveBeenCalled();
+    expect(fake.successUpdates).toBe(0);
+    expect(fake.failureUpdates).toBe(updatesBefore);
+    expect(fake.account.failedLoginCount).toBe(0);
+    expect(fake.account.lockedUntil).toBe(lockedUntil);
+    expect(fake.audit).toHaveBeenCalledTimes(1);
+    expect(fake.audit).toHaveBeenCalledWith(expect.objectContaining({
+      action: "auth.local.login",
+      outcome: "denied",
+      details: { authMethod: "local", reason: "account_locked" }
+    }));
+
+    // The lock still refuses the next correct attempt.
+    expect((await login(CORRECT)).status).toBe(401);
+    expect(fake.account.lockedUntil).toBe(lockedUntil);
+  });
+
+  it("resets the count inside the session transaction", async () => {
+    await failTimes(4);
+    const result = await login(CORRECT);
+    expect(result.status).toBe(200);
+    expect(fake.insert).toHaveBeenCalledTimes(1);
+    expect(fake.successUpdates).toBe(1);
+    expect(fake.successUpdatesInTx).toBe(1);
+    expect(fake.account.failedLoginCount).toBe(0);
+    expect(fake.account.lockedUntil).toBeNull();
+  });
+
+  it("still lets a demo account in when a lock appears after the unlocked check", async () => {
+    vi.stubEnv("DEMO_LOGIN_ACCOUNTS", JSON.stringify([
+      { label: "CSR", email: "person@example.com", password: CORRECT }
+    ]));
+    fake.beforeNextTransaction = () => {
+      fake.account.lockedUntil = new Date(Date.now() + 60 * 60_000);
+    };
+    expect((await login(CORRECT)).status).toBe(200);
+    expect(fake.insert).toHaveBeenCalledTimes(1);
   });
 });

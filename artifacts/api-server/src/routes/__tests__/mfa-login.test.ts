@@ -74,7 +74,11 @@ const fake = vi.hoisted(() => ({
   txLog: [] as Array<{ tx: number; op: string }>,
   txCounter: 0,
   // When set, a session insert inside a transaction throws it.
-  sessionInsertFailure: null as Error | null
+  sessionInsertFailure: null as Error | null,
+  // When set, runs once as the next transaction starts, before its first
+  // statement: a write another connection commits after the request's
+  // unlocked reads and before its locking transaction.
+  beforeNextTransaction: null as (() => void) | null
 }));
 
 function now() {
@@ -177,8 +181,12 @@ function runSql(query: SQL): { rows: unknown[] } {
   if (text === "SELECT 1 FROM users WHERE id = $1::uuid FOR UPDATE") {
     return { rows: [{ "?column?": 1 }] };
   }
-  if (text === "SELECT password_hash FROM users WHERE id = $1::uuid FOR UPDATE") {
-    return { rows: p[0] === fake.user.id ? [{ password_hash: fake.user.passwordHash }] : [] };
+  if (text === "SELECT password_hash, is_active, locked_until FROM users WHERE id = $1::uuid FOR UPDATE") {
+    return {
+      rows: p[0] === fake.user.id
+        ? [{ password_hash: fake.user.passwordHash, is_active: fake.user.isActive, locked_until: fake.user.lockedUntil }]
+        : []
+    };
   }
   if (text === "SELECT sign_count FROM user_passkeys WHERE id = $1::uuid AND user_id = $2::uuid FOR UPDATE") {
     const row = t.passkeys.find((r) => r.id === p[0] && r.user_id === p[1]);
@@ -213,6 +221,9 @@ vi.mock("../../lib/db-client.js", () => {
       // for a row lock it holds (the MFA management routes lock the user row
       // and then the passkey or user row again under the same key).
       transaction: async <T>(work: (tx: { execute: typeof execute; isTx: true }) => Promise<T>): Promise<T> => {
+        const before = fake.beforeNextTransaction;
+        fake.beforeNextTransaction = null;
+        before?.();
         const snapshot = cloneTables(fake.tables);
         const releases: Array<() => void> = [];
         const held = new Set<string>();
@@ -373,6 +384,7 @@ beforeEach(() => {
   fake.txWrites = [];
   fake.txLog = [];
   fake.sessionInsertFailure = null;
+  fake.beforeNextTransaction = null;
   // The route limiters keep in-memory counts for the whole file.
   mfaManageLimit.resetKey(SUPER.id);
   mfaLoginIpLimit.resetKey("203.0.113.9");
@@ -484,7 +496,8 @@ describe("login with an enrolled passkey", () => {
     // The MFA cookie is cleared.
     expect(reply.cookies.find((c) => c.startsWith("truenote_mfa="))).toMatch(/Expires=Thu, 01 Jan 1970/);
     expect(fake.sessionInsert).toHaveBeenCalledTimes(1);
-    expect(fake.recordAuthSuccess).toHaveBeenCalledWith(SUPER.id);
+    // The reset runs on the completion transaction's executor.
+    expect(fake.recordAuthSuccess).toHaveBeenCalledWith(SUPER.id, expect.objectContaining({ isTx: true }));
     expect(fake.recordAuthFailure).not.toHaveBeenCalled();
 
     const verifyArgs = fake.verifyAuthentication.mock.calls[0]![0];
@@ -1036,7 +1049,7 @@ describe("concurrent recovery-code generation", () => {
 // consume, the factor's write and the session insert now share one
 // transaction, and the cookie is set only after it commits.
 describe("MFA completion in one transaction", () => {
-  const USER_LOCK = "SELECT password_hash FROM users WHERE id = $1::uuid FOR UPDATE";
+  const USER_LOCK = "SELECT password_hash, is_active, locked_until FROM users WHERE id = $1::uuid FOR UPDATE";
   const CONSUME = "UPDATE mfa_challenges SET consumed_at = now()";
 
   function sessionTxOps(): string[] {
@@ -1163,7 +1176,7 @@ describe("login rechecks the password hash under the user row lock", () => {
     expect(reply.cookies).toEqual([]);
     expect(fake.tables.challenges).toHaveLength(0);
     expect(fake.sessionInsert).not.toHaveBeenCalled();
-    expect(fake.txLog.map((e) => e.op)).toEqual(["SELECT password_hash FROM users WHERE id = $1::uuid FOR UPDATE"]);
+    expect(fake.txLog.map((e) => e.op)).toEqual(["SELECT password_hash, is_active, locked_until FROM users WHERE id = $1::uuid FOR UPDATE"]);
   });
 
   it("creates the challenge in the locking transaction when the hash is unchanged", async () => {
@@ -1171,7 +1184,7 @@ describe("login rechecks the password hash under the user row lock", () => {
     const { reply } = await passwordStep();
     expect(reply.status).toBe(200);
     const ops = fake.txLog.map((e) => e.op);
-    expect(ops[0]).toBe("SELECT password_hash FROM users WHERE id = $1::uuid FOR UPDATE");
+    expect(ops[0]).toBe("SELECT password_hash, is_active, locked_until FROM users WHERE id = $1::uuid FOR UPDATE");
     expect(ops[1]).toMatch(/^INSERT INTO mfa_challenges \(user_id, purpose, challenge, token_hash, expires_at\)/);
     expect(new Set(fake.txLog.map((e) => e.tx)).size).toBe(1);
   });
@@ -1191,7 +1204,7 @@ describe("login rechecks the password hash under the user row lock", () => {
     const { reply } = await passwordStep();
     expect(reply.status).toBe(200);
     expect(fake.txLog.map((e) => e.op)).toEqual([
-      "SELECT password_hash FROM users WHERE id = $1::uuid FOR UPDATE",
+      "SELECT password_hash, is_active, locked_until FROM users WHERE id = $1::uuid FOR UPDATE",
       PASSKEY_LIST,
       "insert-session"
     ]);
@@ -1202,9 +1215,9 @@ describe("login rechecks the password hash under the user row lock", () => {
   // issue a session. The list is reread under the user row lock.
   it("issues no session on the password-only path when a passkey was enrolled after the first read", async () => {
     vi.stubEnv("LOCAL_LOGIN_MODE", "enabled");
-    // recordAuthSuccess runs after the unlocked passkey read and before the
-    // locking transaction: the enrollment commits in that window.
-    fake.recordAuthSuccess.mockImplementationOnce(async () => { enrollPasskey(); });
+    // The enrollment commits after the unlocked passkey read and before the
+    // locking transaction.
+    fake.beforeNextTransaction = enrollPasskey;
     const { reply } = await passwordStep();
     expect(reply.status).toBe(401);
     expect(reply.body).toEqual({ error: "Invalid credentials" });
@@ -1213,7 +1226,7 @@ describe("login rechecks the password hash under the user row lock", () => {
     expect(fake.tables.challenges).toHaveLength(0);
     expect(fake.audit).not.toHaveBeenCalledWith(expect.objectContaining({ outcome: "success" }));
     expect(fake.txLog.map((e) => e.op)).toEqual([
-      "SELECT password_hash FROM users WHERE id = $1::uuid FOR UPDATE",
+      "SELECT password_hash, is_active, locked_until FROM users WHERE id = $1::uuid FOR UPDATE",
       PASSKEY_LIST
     ]);
 
@@ -1231,7 +1244,7 @@ describe("login rechecks the password hash under the user row lock", () => {
 // (which revokes the session) did not stop it. Each write now locks the
 // user row first and rechecks the hash the password was verified against.
 describe("MFA management rechecks the password under the user row lock", () => {
-  const USER_LOCK = "SELECT password_hash FROM users WHERE id = $1::uuid FOR UPDATE";
+  const USER_LOCK = "SELECT password_hash, is_active, locked_until FROM users WHERE id = $1::uuid FOR UPDATE";
   const registration = {
     id: "bmV3LWNyZWRlbnRpYWw",
     rawId: "bmV3LWNyZWRlbnRpYWw",
@@ -1397,5 +1410,124 @@ describe("passkey row checks under lock", () => {
     expect(fake.tables.passkeys[0]!.sign_count).toBe(0);
     expect(fake.tables.passkeys[0]!.last_used_at).toBeInstanceOf(Date);
     expect(fake.tables.challenges[0]!.consumed_at).not.toBeNull();
+  });
+});
+
+// Finding: a request that passed the unlocked isAccountLocked check could
+// still create a session after a concurrent failure locked the account, and
+// its recordAuthSuccess then cleared the lock. Lock state and is_active are
+// read with the hash under the user row lock, and the lockout reset runs in
+// the session transaction.
+describe("lockout rechecked under the user row lock", () => {
+  const USER_LOCK = "SELECT password_hash, is_active, locked_until FROM users WHERE id = $1::uuid FOR UPDATE";
+  const LOCKED_UNTIL = new Date(Date.now() + 30 * 60_000);
+
+  // A failure on another connection reaches the threshold and commits after
+  // the request's unlocked checks, before its locking transaction.
+  function lockBeforeTransaction() {
+    fake.beforeNextTransaction = () => {
+      fake.user.failedLoginCount = 0;
+      fake.user.lockedUntil = LOCKED_UNTIL;
+    };
+  }
+
+  function expectStillLocked() {
+    expect(fake.user.lockedUntil).toBe(LOCKED_UNTIL);
+    expect(fake.user.failedLoginCount).toBe(0);
+    expect(fake.recordAuthSuccess).not.toHaveBeenCalled();
+    expect(fake.recordAuthFailure).not.toHaveBeenCalled();
+  }
+
+  function lockingTxOps(): string[] {
+    const first = fake.txLog.find((e) => e.op === USER_LOCK);
+    expect(first).toBeDefined();
+    return fake.txLog.filter((e) => e.tx === first!.tx).map((e) => e.op);
+  }
+
+  it("passkey: refuses with the generic 401, consumes nothing and leaves the lock", async () => {
+    enrollPasskey();
+    const { cookie } = await passwordStep();
+    lockBeforeTransaction();
+    fake.txLog = [];
+    const reply = await call("POST", "/api/auth/mfa/passkey", assertion, { cookie });
+    expect(reply).toMatchObject({ status: 401, body: { error: "Invalid credentials" } });
+    expect(cookieValue(reply.cookies, SESSION_COOKIE_NAME)).toBeUndefined();
+    expect(reply.cookies.find((c) => c.startsWith("truenote_mfa="))).toBeUndefined();
+    expect(fake.sessionInsert).not.toHaveBeenCalled();
+    expect(fake.tables.challenges[0]!.consumed_at).toBeNull();
+    expect(fake.tables.passkeys[0]!.sign_count).toBe(3);
+    expect(lockingTxOps()).toEqual([USER_LOCK]);
+    expect(fake.audit).not.toHaveBeenCalledWith(expect.objectContaining({ outcome: "success" }));
+    expectStillLocked();
+  });
+
+  it("recovery code: refuses with the generic 401, spends no code and leaves the lock", async () => {
+    const codes = (await call("POST", "/api/auth/mfa/recovery-codes", { password: PASSWORD }, asSuper())).body!.codes as string[];
+    enrollPasskey();
+    const { cookie } = await passwordStep();
+    lockBeforeTransaction();
+    fake.txLog = [];
+    const reply = await call("POST", "/api/auth/mfa/recovery-code", { code: codes[0] }, { cookie });
+    expect(reply).toMatchObject({ status: 401, body: { error: "Invalid credentials" } });
+    expect(cookieValue(reply.cookies, SESSION_COOKIE_NAME)).toBeUndefined();
+    expect(fake.sessionInsert).not.toHaveBeenCalled();
+    expect(fake.tables.challenges[0]!.consumed_at).toBeNull();
+    expect(fake.tables.codes.every((r) => r.used_at === null)).toBe(true);
+    expect(lockingTxOps()).toEqual([USER_LOCK]);
+    expectStillLocked();
+  });
+
+  it("refuses an account deactivated after the unlocked check", async () => {
+    enrollPasskey();
+    const { cookie } = await passwordStep();
+    fake.beforeNextTransaction = () => { fake.user.isActive = false; };
+    const reply = await call("POST", "/api/auth/mfa/passkey", assertion, { cookie });
+    expect(reply).toMatchObject({ status: 401, body: { error: "Invalid credentials" } });
+    expect(fake.sessionInsert).not.toHaveBeenCalled();
+    expect(fake.recordAuthSuccess).not.toHaveBeenCalled();
+    expect(fake.tables.challenges[0]!.consumed_at).toBeNull();
+  });
+
+  it("password-only login: refuses with the generic 401 and an account_locked event, and leaves the lock", async () => {
+    vi.stubEnv("LOCAL_LOGIN_MODE", "enabled");
+    lockBeforeTransaction();
+    const { reply } = await passwordStep();
+    expect(reply).toMatchObject({ status: 401, body: { error: "Invalid credentials" } });
+    expect(reply.cookies).toEqual([]);
+    expect(fake.sessionInsert).not.toHaveBeenCalled();
+    expect(fake.txLog.map((e) => e.op)).toEqual([USER_LOCK]);
+    expect(fake.audit).toHaveBeenCalledWith(expect.objectContaining({
+      action: "auth.local.login",
+      outcome: "denied",
+      details: { authMethod: "local", reason: "account_locked" }
+    }));
+    expect(fake.audit).not.toHaveBeenCalledWith(expect.objectContaining({ outcome: "success" }));
+    expectStillLocked();
+  });
+
+  it.each([
+    ["passkey", "/api/auth/mfa/passkey"],
+    ["recovery code", "/api/auth/mfa/recovery-code"],
+    ["password-only login", "/api/auth/login"]
+  ])("%s: resets the count on the session transaction, after the session insert", async (_name, path) => {
+    let body: unknown;
+    let headers: Record<string, string> = {};
+    if (path === "/api/auth/login") {
+      vi.stubEnv("LOCAL_LOGIN_MODE", "enabled");
+      body = { email: SUPER.email, password: PASSWORD };
+    } else {
+      const codes = (await call("POST", "/api/auth/mfa/recovery-codes", { password: PASSWORD }, asSuper())).body!.codes as string[];
+      enrollPasskey();
+      const { cookie } = await passwordStep();
+      headers = { cookie };
+      body = path.endsWith("/passkey") ? assertion : { code: codes[0] };
+    }
+    const reply = await call("POST", path, body, headers);
+    expect(reply.status).toBe(200);
+    expect(fake.recordAuthSuccess).toHaveBeenCalledTimes(1);
+    expect(fake.recordAuthSuccess).toHaveBeenCalledWith(SUPER.id, expect.objectContaining({ isTx: true }));
+    expect(fake.sessionInsert).toHaveBeenCalledTimes(1);
+    expect(fake.recordAuthSuccess.mock.invocationCallOrder[0]!)
+      .toBeGreaterThan(fake.sessionInsert.mock.invocationCallOrder[0]!);
   });
 });

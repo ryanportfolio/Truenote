@@ -76,6 +76,13 @@ export function hashToken(token: string): string {
 /** `db`, or a transaction from `db.transaction`. */
 export type SessionWriter = Pick<typeof db, "insert">;
 
+/** Fields a replacement session copies from the session it replaces. */
+export interface SessionCarryOver {
+  authMethod: "local" | "oidc";
+  authTime: Date;
+  expiresAt: Date;
+}
+
 /**
  * Create a new session row for the given user and return the plaintext
  * token. The caller is responsible for setting this as the session cookie
@@ -83,16 +90,29 @@ export type SessionWriter = Pick<typeof db, "insert">;
  *
  * Pass a transaction as `executor` to insert the row inside it; set the
  * cookie only after that transaction commits.
+ *
+ * `carryOver` copies auth_method, auth_time and expires_at from a session
+ * being replaced (POST /api/auth/change-password), so the replacement keeps
+ * the original sign-in's method and limits. Without it the row is a local
+ * session that expires SESSION_DURATION_MS from now.
  */
 export async function createSession(
   userId: string,
-  executor: SessionWriter = db
+  executor: SessionWriter = db,
+  carryOver?: SessionCarryOver
 ): Promise<{
   token: string;
   expiresAt: Date;
 }> {
   const token = generateToken();
   const tokenHash = hashToken(token);
+  if (carryOver) {
+    const { authMethod, authTime, expiresAt } = carryOver;
+    await executor
+      .insert(sessions)
+      .values({ userId, tokenHash, expiresAt, authMethod, authTime });
+    return { token, expiresAt };
+  }
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
   await executor.insert(sessions).values({ userId, tokenHash, expiresAt });
   return { token, expiresAt };

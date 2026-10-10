@@ -30,6 +30,7 @@ import {
   lockPasskeySignCount,
   lockUserRow,
   MFA_COOKIE_NAME,
+  MfaAccountRefused,
   MfaChallengeGone,
   transportsCsv,
   type MfaChallenge,
@@ -223,8 +224,10 @@ function sessionUser(user: MfaUser) {
 
 /**
  * Run completeMfaLogin for the pending login. Responds and returns false
- * when the challenge is gone (EXPIRED) or the factor's write refused
- * (INVALID; counted toward lockout and audited as a rejected factor).
+ * when the challenge is gone (EXPIRED), the account is locked or inactive
+ * under the user row lock (INVALID; not counted), or the factor's write
+ * refused (INVALID; counted toward lockout and audited as a rejected
+ * factor).
  */
 async function completeLogin(
   req: Request,
@@ -245,6 +248,12 @@ async function completeLogin(
   } catch (err) {
     if (err instanceof MfaChallengeGone) {
       res.status(401).json(EXPIRED);
+      return false;
+    }
+    // Locked (or deactivated) after pendingLogin's unlocked check: the same
+    // answer pendingLogin gives a locked account.
+    if (err instanceof MfaAccountRefused) {
+      res.status(401).json(INVALID);
       return false;
     }
     if (err instanceof FactorRejected) {

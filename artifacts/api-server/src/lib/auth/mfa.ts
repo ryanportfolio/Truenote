@@ -10,7 +10,7 @@ import { users, type UserRole } from "@workspace/db/schema";
 import { db } from "../db-client.js";
 import { recordAppError } from "../observability/error-log.js";
 import { recordSecurityEventBestEffort } from "../security/audit.js";
-import { recordAuthSuccess } from "./lockout.js";
+import { isAccountLocked, recordAuthSuccess } from "./lockout.js";
 import type { LocalLoginMode } from "./oidc.js";
 import { createSession, setSessionCookie } from "./sessions.js";
 import { getWebAuthnConfig } from "./webauthn-config.js";
@@ -147,24 +147,52 @@ export function isCounterAccepted(newCounter: number, storedCounter: number): bo
   return newCounter > storedCounter || (newCounter === 0 && storedCounter === 0);
 }
 
+/** The user row as read under its lock (lockUserAccount). */
+export interface LockedUserAccount {
+  passwordHash: string | null;
+  isActive: boolean;
+  lockedUntil: Date | null;
+}
+
+function toDate(value: unknown): Date | null {
+  if (value == null) return null;
+  return value instanceof Date ? value : new Date(String(value));
+}
+
 /**
  * Lock the user's row until the caller's transaction ends and return its
- * current password hash, or null when the row is gone. Every password write
- * (change-password, reset-password, the admin reset) updates this row in
- * its own transaction, so a sign-in step holding the lock and a password
- * write run one after the other. POST /api/auth/login (password-only
- * session), completeMfaLogin, startLoginChallenge and the MFA management
- * writes in routes/mfa.ts take it as their first lock.
+ * password hash, is_active and locked_until, or null when the row is gone.
+ * Every password write (change-password, reset-password, the admin reset)
+ * updates this row in its own transaction, so a sign-in step holding the
+ * lock and a password write run one after the other. recordAuthFailure
+ * writes the same row, so a lock it commits is visible here: POST
+ * /api/auth/login (password-only session) and completeMfaLogin check
+ * locked_until and is_active under this lock before they issue a session.
+ * Those two, startLoginChallenge and the MFA management writes in
+ * routes/mfa.ts take it as their first lock.
  */
+export async function lockUserAccount(
+  userId: string,
+  executor: SqlExecutor
+): Promise<LockedUserAccount | null> {
+  const result = await executor.execute(sql`
+    SELECT password_hash, is_active, locked_until FROM users WHERE id = ${userId}::uuid FOR UPDATE
+  `);
+  const row = result.rows[0] as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    passwordHash: typeof row.password_hash === "string" ? row.password_hash : null,
+    isActive: row.is_active === true,
+    lockedUntil: toDate(row.locked_until)
+  };
+}
+
+/** lockUserAccount for callers that need only the current password hash. */
 export async function lockUserRow(
   userId: string,
   executor: SqlExecutor
 ): Promise<string | null> {
-  const result = await executor.execute(sql`
-    SELECT password_hash FROM users WHERE id = ${userId}::uuid FOR UPDATE
-  `);
-  const row = result.rows[0] as { password_hash?: unknown } | undefined;
-  return typeof row?.password_hash === "string" ? row.password_hash : null;
+  return (await lockUserAccount(userId, executor))?.passwordHash ?? null;
 }
 
 const TRANSPORT_PATTERN = /^[a-z-]{1,20}$/;
@@ -268,7 +296,7 @@ export async function findLoginChallenge(token: string | undefined): Promise<Mfa
  * Each transaction that writes the user's password hash calls this on its
  * own executor, so a challenge started under the old password cannot
  * complete after the change commits. The password write's UPDATE users
- * and completeMfaLogin's lockUserRow take the same row lock, so a racing
+ * and completeMfaLogin's lockUserAccount take the same row lock, so a racing
  * completion either commits first (and the write then revokes the session
  * it created) or finds its row gone (consumeChallenge returns false).
  */
@@ -336,6 +364,12 @@ export interface LocalLoginUser {
 /** The challenge was consumed, expired or deleted (password write) meanwhile. */
 export class MfaChallengeGone extends Error {}
 
+/**
+ * Under the user row lock the account is locked (a failure reached the
+ * threshold after the unlocked check) or no longer active.
+ */
+export class MfaAccountRefused extends Error {}
+
 export interface MfaCompletion {
   user: LocalLoginUser;
   challengeId: string;
@@ -346,22 +380,26 @@ export interface MfaCompletion {
 
 /**
  * Finish the second factor and issue the session. One transaction:
- *   (1) lock the user's row (lockUserRow),
+ *   (1) lock the user's row (lockUserAccount); when the account is locked
+ *       or inactive now, throw MfaAccountRefused and write nothing,
  *   (2) consume the challenge (throws MfaChallengeGone when it is gone),
  *   (3) `applyFactor`: the factor's own write on the same executor (passkey
  *       counter, or recovery code); it throws to refuse, which rolls back
  *       steps (1) to (3) and leaves the challenge unconsumed,
- *   (4) insert the session row.
+ *   (4) insert the session row,
+ *   (5) reset the lockout count (recordAuthSuccess on the same executor).
  * A password write updates the same user row, so it either commits first
  * (and its invalidateMfaChallenges makes step 2 fail) or waits for this
- * commit and then revokes the new session with the others.
+ * commit and then revokes the new session with the others. A failure that
+ * locks the account (recordAuthFailure) also writes this row: it either
+ * commits first and step 1 refuses, or waits and counts after this
+ * success. The lockout reset and the session therefore commit together,
+ * and a lock never gets cleared by an attempt that passed the unlocked
+ * check before it.
  *
- * After the commit: reset the lockout count, set the session cookie, clear
- * the MFA cookie, audit the login with the factor used, and stamp
- * lastLoginAt (best effort, as POST /login does). The lockout reset runs
- * after the commit because it writes the locked user row on another
- * connection; if it fails the request fails before any cookie is set, and
- * the session row stays unusable because its token never left the server.
+ * After the commit: set the session cookie, clear the MFA cookie, audit the
+ * login with the factor used, and stamp lastLoginAt (best effort, as
+ * POST /login does).
  */
 export async function completeMfaLogin(
   res: Response,
@@ -371,12 +409,17 @@ export async function completeMfaLogin(
   const { user, challengeId, factor, localLoginMode, sourceIp } = completion;
   const token = await db.transaction(async (tx) => {
     const executor = tx as unknown as SqlExecutor;
-    if ((await lockUserRow(user.id, executor)) === null) throw new MfaChallengeGone();
+    const account = await lockUserAccount(user.id, executor);
+    if (account === null) throw new MfaChallengeGone();
+    if (!account.isActive || isAccountLocked({ email: user.email, lockedUntil: account.lockedUntil })) {
+      throw new MfaAccountRefused();
+    }
     if (!(await consumeChallenge(challengeId, executor))) throw new MfaChallengeGone();
     await applyFactor(executor);
-    return (await createSession(user.id, tx)).token;
+    const { token: sessionToken } = await createSession(user.id, tx);
+    await recordAuthSuccess(user.id, tx);
+    return sessionToken;
   });
-  await recordAuthSuccess(user.id);
   setSessionCookie(res, token);
   clearMfaCookie(res);
   recordSecurityEventBestEffort({

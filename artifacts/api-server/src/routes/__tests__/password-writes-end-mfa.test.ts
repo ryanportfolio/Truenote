@@ -18,7 +18,9 @@ const fake = vi.hoisted(() => ({
   mfaParams: [] as unknown[][],
   failRevoke: null as Error | null,
   passwordRow: [] as Array<Record<string, unknown>>,
-  targetRow: [] as Array<Record<string, unknown>>
+  targetRow: [] as Array<Record<string, unknown>>,
+  // change-password reads the request's session row inside its transaction.
+  sessionRow: [] as Array<Record<string, unknown>>
 }));
 
 vi.mock("../../lib/db-client.js", () => ({
@@ -33,10 +35,10 @@ vi.mock("../../lib/db-client.js", () => ({
         pending.push(entry);
       };
       const tx = {
-        select: () => ({ from: () => ({ where: () => ({
-          for: () => ({ limit: async () => fake.targetRow }),
-          limit: async () => fake.targetRow
-        }) }) }),
+        select: () => ({ from: (table: unknown) => ({ where: () => {
+          const rows = table === sessions ? fake.sessionRow : fake.targetRow;
+          return { for: () => ({ limit: async () => rows }), limit: async () => rows };
+        } }) }),
         update: (table: unknown) => ({ set: () => ({ where: async () => {
           expect(table).toBe(users);
           record("update-password");
@@ -132,6 +134,11 @@ beforeEach(() => {
   fake.mfaParams = [];
   fake.failRevoke = null;
   fake.passwordRow = [{ passwordHash: "old-password-hash" }];
+  fake.sessionRow = [{
+    authMethod: "local",
+    authTime: new Date(Date.now() - 60_000),
+    expiresAt: new Date(Date.now() + 60 * 60_000)
+  }];
   fake.targetRow = [{
     id: TARGET_ID, email: "target@example.com", role: "csr",
     programId: "00000000-0000-4000-8000-0000000000f1"
@@ -140,9 +147,12 @@ beforeEach(() => {
 
 describe("POST /api/auth/change-password", () => {
   const body = { currentPassword: "old-password-value", newPassword: "synthetic-new-password-long-enough-for-policy" };
+  // The handler reads the request's session row (by its cookie token) in
+  // the transaction.
+  const cookies = { kbase_session: "synthetic-current-session-token" };
 
   it("deletes the user's unconsumed MFA challenges in the password transaction", async () => {
-    const result = await invoke(lastHandler(authRouter, "/change-password"), { user: SELF, body });
+    const result = await invoke(lastHandler(authRouter, "/change-password"), { user: SELF, body, cookies });
     expect(result.next).not.toHaveBeenCalled();
     expect(result.status).toBe(200);
     expect(fake.mfaParams).toEqual([[SELF.id]]);
@@ -151,7 +161,7 @@ describe("POST /api/auth/change-password", () => {
 
   it("rolls the invalidation back with the password write", async () => {
     fake.failRevoke = new Error("synthetic revoke failure");
-    const result = await invoke(lastHandler(authRouter, "/change-password"), { user: SELF, body });
+    const result = await invoke(lastHandler(authRouter, "/change-password"), { user: SELF, body, cookies });
     expect(result.next).toHaveBeenCalledWith(fake.failRevoke);
     expect(fake.log).toEqual(["update-password", "invalidate-mfa"]);
     expect(fake.committed).toEqual([]);
