@@ -1,0 +1,14 @@
+# Image for the `backup` cron service (scripts/backup/run-backup.sh) and for
+# the database of a restore test (scripts/backup/restore-offsite.sh, run inside
+# it over `railway ssh`). Base: the exact image production's `pgvector`
+# service runs (digest read from Railway's deployment metadata on 2026-10-10),
+# so pg_dump, pg_restore and the restore-test server match production. When
+# production's pgvector image changes, update this digest in the same change.
+FROM pgvector/pgvector@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends age rclone git ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+COPY scripts/backup/ /opt/truenote-backup/
+# The backup service runs this. A restore-test database service overrides the
+# start command with `docker-entrypoint.sh postgres` (runbook section 4.7).
+CMD ["sh", "/opt/truenote-backup/run-backup.sh"]

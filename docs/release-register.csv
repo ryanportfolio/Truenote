@@ -1,0 +1,5 @@
+deployed_at_utc,commit,ci_run_id,service,railway_deployment_id,status,image_digest,message
+2026-10-10T12:08:29.810Z,7c31732723303e2555e0b51477f4dd79372f7d4c,38029772473,backup,817f4f17-f9e9-478c-9136-31bc3fcd0719,SUCCESS,sha256:efe2e8c11828f0b9d5d24799849e4b32980d477ba298eecd53b126c3a2dc783a,7c3173272330 backup: first deploy and first off-site run
+2026-10-10T14:44:24.488Z,02f540be6492e9f9504efbef89ca58aa0c5be2c7,38051624035,worker,,UPLOAD_FAILED,,02f540be6492 ci 38051624035 run 239b641b: Evidence check skips superseded CI runs (#224)
+2026-10-10T14:57:01.087Z,02f540be6492e9f9504efbef89ca58aa0c5be2c7,38051624035,worker,010527a0-ff43-4521-aace-a4b01f7c3b2f,SUCCESS,sha256:f7d82ecd6ffe78bd9eb9e535abc4c36bd4599cba7e8ab575650864c435cd0c5b,02f540be6492 ci 38051624035 run 0fdb47d1: Evidence check skips superseded CI runs (#224)
+2026-10-10T15:10:27.925Z,c0e947f5cdedb6d5c32f11eef86f924983407364,38061989630,web,1261e822-4ff3-4997-9287-bbc9eb6916bd,SUCCESS,sha256:40fa96277bf79ceb3dbe1ef42a554be15b63f3b4ba9ca84ec68cf41b1064c877,c0e947f5cded ci 38061989630 run 1a13e9e4: Rate limits (#210) and root-owned image (#217) on web

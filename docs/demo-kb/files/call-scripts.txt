@@ -1,11 +1,11 @@
-LARKSPUR CLOUD CUSTOMER SUPPORT
+CLOUDSHELF CUSTOMER SUPPORT
 CALL SCRIPTS
 Reference CS-SCR-001, Version 7, effective September 1, 2026. Owner: Support Operations.
 
 Read the required lines word for word. The other lines are guidance; use your own words.
 
 1. OPENING (required)
-"Thank you for calling Larkspur Cloud, this is (your first name). This call may be recorded for quality and training. Can I start with the email address on your account?"
+"Thank you for calling Cloudshelf, this is (your first name). This call may be recorded for quality and training. Can I start with the email address on your account?"
 
 2. IDENTITY VERIFICATION
 Verify two factors before discussing or changing anything on the account. See the Identity Verification procedure for the accepted factors.
@@ -27,9 +27,9 @@ Never ask a customer to read a full card number or security code aloud. If they 
 
 6. CLOSING (required)
 "Is there anything else I can help you with today?"
-If no: "Thank you for choosing Larkspur Cloud. You'll get a short survey by email about this call. Have a good day."
+If no: "Thank you for choosing Cloudshelf. You'll get a short survey by email about this call. Have a good day."
 
 7. AFTER THE CALL
 Add a note to the account within 5 minutes of hanging up: reason for the call, what you did, and any follow-up promised with its date.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.

@@ -2,6 +2,14 @@
 
 > Living list. Grows via `/recall save <text>` when something bites you. Read before non-trivial work.
 
+## 2026-10-10: A PR without the change record fails CI
+
+PR #215 was opened with a free-form body; the "Verify pull-request change record" step of "Typecheck, build, tests" failed with `missing field: ...` for every field of `.github/pull_request_template.md`, and the PR had to be edited. Fill the template (Change ID `TN-CHG-<year>-<PR number>`, `Author: @ryanportfolio`, single-owner wording for 6.5.4 and the reviewer as in recent merged PRs) and check it before `gh pr create`: `corepack pnpm --filter @workspace/scripts run verify:change-record -- --body <file> --allow-pending`. Without `--allow-pending` it also demands `approved` and a named reviewer, which CI does not.
+
+## 2026-10-10: `railway ssh -- sh -c '<script>'` runs only the first word
+
+`railway ssh` joins the words after `--` with spaces into one remote command line, so the remote shell re-splits the quoted script: `sh -c 'psql -h localhost ...'` ran `psql` with no arguments, which used the container's stale `PGHOST` and tried to log in to an unrelated server. Pass a script as base64 (`"echo <b64> | base64 -d | sh"`, as `scripts/railway-set-app-db-password.mjs` does) or pass the command's own words with no `sh -c`, quoting any SQL twice: `railway ssh ... -- psql -h localhost -p 5432 -U postgres -d railway -X -At -c "'select 1'"`. In Git Bash also set `MSYS_NO_PATHCONV=1`, or remote paths such as `/var/lib/postgresql` arrive as `C:/Program Files/Git/var/lib/postgresql`.
+
 ## 2026-10-09: Railway SSH needs an existing SSH client on the process PATH
 
 In the Codex desktop shell, `railway ssh` authenticated but failed with `Failed to execute ssh command: program not found`. Windows OpenSSH was absent; Git's client existed at `C:\Program Files\Git\usr\bin\ssh.exe`. Prepending that directory to the current process PATH made the same read-only catalog command succeed. Check existing clients before treating this as missing Railway access or installing anything. No persistent PATH or account change is needed. Cost: one failed catalog attempt.
@@ -91,3 +99,7 @@ A `railway variable set` without `--skip-deploys` and `railway redeploy` both re
 ### 2026-10-09: `SET ROLE` in a superuser `psql` session can escape a role test
 
 Privilege tests that `SET LOCAL ROLE truenote_app` inside the `pgvector` container still run with `postgres` as the session user, so a `SET ROLE postgres` in the test list succeeds and every later statement runs as the superuser (it disabled the append-only trigger inside a rolled-back test transaction). Never include `SET ROLE` among the statements under test; check membership with `pg_has_role('truenote_app', 'postgres', 'MEMBER')` instead, and keep such tests in a transaction that ends in `ROLLBACK`.
+
+### 2026-10-10: Two CI gates fail on content, not code
+
+`Typecheck, build, tests` runs two document gates before the tests. (1) `verify:change-record` parses the pull-request body: every heading and `- Field:` line of `.github/pull_request_template.md` must be present and filled, so a free-form PR body fails with `missing field: ...`. Copy the template sections into the body (a merged PR such as #205 shows filled values) and check locally with `verifyChangeRecord` from `scripts/src/change-record.ts`. Editing the body reruns the check. (2) `verify:pci-evidence` pins the LF SHA-256 of `docs/compliance/pci/threat-model.md` in the newest dated `verification-record-*.md`. Any threat-model edit makes it stale: add a new dated record (copy the previous one, pin `git show HEAD:<path> | sha256sum` with `MSYS_NO_PATHCONV=1`), point `CURRENT_VERIFICATION_RECORD` in `scripts/src/verify-pci-evidence.ts` at it, and link it from `docs/compliance/pci/README.md`. Run locally on Windows, the gate always reports both pinned hashes stale because of CRLF checkouts; only CI's result counts. Cost on #221: two failed CI runs.

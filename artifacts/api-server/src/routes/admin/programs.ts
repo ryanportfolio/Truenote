@@ -11,6 +11,7 @@ import {
   requireManagerOrAbove,
   requireSuperUser
 } from "../../middleware/current-user.js";
+import { adminReadLimit } from "../../lib/security/route-rate-limit.js";
 
 export const programsRouter = Router();
 
@@ -44,7 +45,7 @@ export interface ProgramListItem {
  * fetch — a moving picker is a real footgun when a super_user is
  * switching contexts fast.
  */
-programsRouter.get("/", async (req, res, next) => {
+programsRouter.get("/", adminReadLimit, async (req, res, next) => {
   try {
     const user = authedUser(req);
     const rows = await db

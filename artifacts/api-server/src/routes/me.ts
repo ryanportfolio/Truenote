@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth, authedUser } from "../middleware/current-user.js";
+import { currentUserReadLimit } from "../lib/security/route-rate-limit.js";
 
 export const meRouter = Router();
 
@@ -9,7 +10,7 @@ export const meRouter = Router();
  * rather than parse the body. `mustResetPassword` lets the frontend
  * redirect to the change-password screen when needed.
  */
-meRouter.get("/", requireAuth, (req, res) => {
+meRouter.get("/", requireAuth, currentUserReadLimit, (req, res) => {
   const user = authedUser(req);
   res.json({
     user: {

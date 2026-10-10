@@ -56,6 +56,10 @@ hooks, and `.claude/skills/` exactly as before.
   migrations, deploy, install runtime dependencies, or modify external
   checkouts without explicit current-session approval.
 - Stage explicit paths and preserve unrelated user changes.
+- A pull-request body is the change record in `.github/pull_request_template.md`,
+  every field filled; CI's "Typecheck, build, tests" job fails without it.
+  Change ID `TN-CHG-<year>-<PR number>`. Check the body before creating the PR:
+  `corepack pnpm --filter @workspace/scripts run verify:change-record -- --body <file> --allow-pending`.
 - Verify before claiming completion. State exactly what ran and identify any
   authoritative check that must happen in CI, deployment, or the user's
   environment.

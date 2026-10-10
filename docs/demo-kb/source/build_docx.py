@@ -9,8 +9,8 @@ from docx.shared import Pt, RGBColor
 NAVY = RGBColor(0x1F, 0x2A, 0x44)
 TEAL = RGBColor(0x1C, 0x9C, 0x8C)
 FOOTER = (
-    "Synthetic document for the Truenote demonstration. Larkspur Cloud is a "
-    "fictional company; all names and numbers are invented."
+    "Synthetic demonstration document. Cloudshelf is a fictional company; "
+    "all policies and numbers are invented."
 )
 
 
@@ -20,7 +20,7 @@ def new_doc(title, meta):
     style.font.name = "Calibri"
     style.font.size = Pt(11)
     brand = doc.add_paragraph()
-    run = brand.add_run("LARKSPUR CLOUD · CUSTOMER SUPPORT")
+    run = brand.add_run("CLOUDSHELF · CUSTOMER SUPPORT")
     run.bold = True
     run.font.size = Pt(9)
     run.font.color.rgb = TEAL
@@ -101,7 +101,7 @@ def refund_procedure(out):
         ["Code", "Use when", "Approval"],
         ["RF-01", "Service not as described", "None"],
         ["RF-02", "Duplicate charge", "None; also open a Billing Operations ticket"],
-        ["RF-03", "Accidental purchase or renewal", "None"],
+        ["RF-03", "Unintended purchase or renewal", "None"],
         ["RF-05", "Courtesy refund", "Tier 2 supervisor approval ID required"],
     ])
     para(doc, "RF-04 is retired. Enterprise outage credits are not refunds: they go on the next invoice through Credits > Outage credit in the billing console, never to a card (see the Outages and Service Credits FAQ).", "Outage credits: ")
@@ -127,7 +127,7 @@ def identity_verification(out):
         ["One-time code", "Send a 6-digit code to the account email from the console; the caller reads it back"],
         ["Account PIN", "6-digit PIN only; 4-digit PINs stopped working on October 1, 2026"],
         ["Billing ZIP code", "Must match the ZIP of the card on file"],
-        ["Last 4 digits of the card on file", "Shown in the console; the caller states them"],
+        ["Last 4 digits of the card on file", "Visible in the console; the caller states them"],
     ])
     h(doc, "Never ask for")
     bullets(doc, [

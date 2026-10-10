@@ -168,7 +168,7 @@ securityRouter.get("/", async (_req, res, next) => {
   }
 });
 
-securityRouter.patch("/malware-scanning", async (req, res, next) => {
+securityRouter.patch("/malware-scanning", securitySettingWriteLimit, async (req, res, next) => {
   const parsed = UpdateMalwareScanningBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Provide the malware-scanning state" });

@@ -1,6 +1,6 @@
 # Two-Factor Authentication Reset
 
-Larkspur Cloud Customer Support · Procedure CS-PRO-019 · Version 4 · Effective October 1, 2026 · Owner: Security Response
+Cloudshelf Customer Support · Procedure CS-PRO-019 · Version 4 · Effective October 1, 2026 · Owner: Security Response
 
 ## When to use this
 
@@ -38,7 +38,7 @@ If the customer replies to the security alert saying they did not ask for the re
 | Verified with PIN or email code | Reset two-factor in admin tools | 24 hours |
 | Cannot verify, wants the account email changed | Treat as suspected takeover | Lock the account; Security Response within 1 hour |
 | Enterprise user | Send to their account administrator, who resets 2FA in the admin console | Set by the administrator |
-| Enterprise organization that requires SSO | Send to the company's IT team; Larkspur 2FA is not used | Not applicable |
+| Enterprise organization that requires SSO | Send to the company's IT team; Cloudshelf 2FA is not used | Not applicable |
 
 ## Never do this
 
@@ -50,4 +50,4 @@ If the customer replies to the security alert saying they did not ask for the re
 
 Signs include a caller who cannot verify but wants to change the account email or turn off 2FA, several reset requests in one day, or a customer who reports sign-in alerts they did not cause. Lock the account and escalate to Security Response within 1 hour. Tell the customer that Security Response will contact them at the email on file.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.

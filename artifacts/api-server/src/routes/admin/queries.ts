@@ -9,6 +9,7 @@ import {
   requireFreshPassword,
   requireManagerOrAbove
 } from "../../middleware/current-user.js";
+import { adminReadLimit } from "../../lib/security/route-rate-limit.js";
 import { resolveEffectiveProgramId } from "../../lib/auth/effective-program.js";
 
 export const queriesRouter = Router();
@@ -60,7 +61,7 @@ export interface QueryLogItem {
  * canned string, and non-refused answers can be long — the reviewer's
  * unit of work is the question. Row cap 200.
  */
-queriesRouter.get("/", async (req, res, next) => {
+queriesRouter.get("/", adminReadLimit, async (req, res, next) => {
   try {
     const parsed = ListQuery.safeParse(req.query);
     if (!parsed.success) {

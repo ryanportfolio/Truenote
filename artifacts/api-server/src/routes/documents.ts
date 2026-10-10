@@ -16,6 +16,7 @@ import {
   requireSeniorManagerOrAbove,
   requireSuperUser
 } from "../middleware/current-user.js";
+import { documentLifecycleWriteLimit, documentReadLimit } from "../lib/security/route-rate-limit.js";
 import { workloadRateLimitMiddleware } from "../middleware/workload-rate-limit.js";
 import { canAccessProgram, hasAtLeastRole } from "../lib/auth/current-user.js";
 import { resolveEffectiveProgramId } from "../lib/auth/effective-program.js";
@@ -144,7 +145,7 @@ documentsRouter.use(
   blockDemoWrites
 );
 
-documentsRouter.get("/", async (req, res, next) => {
+documentsRouter.get("/", documentReadLimit, async (req, res, next) => {
   try {
     const user = authedUser(req);
     const maxClassification = await getUserMaxClassification(user.id);
@@ -303,6 +304,7 @@ documentsRouter.get("/", async (req, res, next) => {
 
 documentsRouter.post(
   "/sources",
+  documentLifecycleWriteLimit,
   requireSeniorManagerOrAbove,
   async (req, res, next) => {
     try {
@@ -560,12 +562,12 @@ documentsRouter.post(
   }
 );
 
-documentsRouter.get("/:versionId/preview", async (req, res, next) => {
+documentsRouter.get("/:versionId/preview", documentReadLimit, async (req, res, next) => {
   try {
     const user = authedUser(req);
     const maxClassification = await getUserMaxClassification(user.id);
     const versionId = req.params.versionId;
-    if (!UUID_RE.test(versionId)) {
+    if (typeof versionId !== "string" || !UUID_RE.test(versionId)) {
       res.status(404).json({ error: "Not found" });
       return;
     }
@@ -700,6 +702,7 @@ async function effectiveDocumentProgram(
 
 documentsRouter.post(
   "/:versionId/approve",
+  documentLifecycleWriteLimit,
   requireSeniorManagerOrAbove,
   async (req, res, next) => {
     try {
@@ -801,6 +804,7 @@ documentsRouter.post(
 
 documentsRouter.post(
   "/:versionId/reject",
+  documentLifecycleWriteLimit,
   requireSeniorManagerOrAbove,
   async (req, res, next) => {
     try {
@@ -904,6 +908,7 @@ documentsRouter.post("/:versionId/rescan", workloadRateLimitMiddleware("document
 
 documentsRouter.post(
   "/:versionId/revoke",
+  documentLifecycleWriteLimit,
   requireSeniorManagerOrAbove,
   async (req, res, next) => {
     try {
@@ -969,12 +974,12 @@ documentsRouter.post(
 );
 
 /** Normal removal is reversible retirement. Evidence and source bytes remain. */
-documentsRouter.delete("/:id", async (req, res, next) => {
+documentsRouter.delete("/:id", documentLifecycleWriteLimit, async (req, res, next) => {
   try {
     const user = authedUser(req);
     const maxClassification = await getUserMaxClassification(user.id);
     const id = req.params.id;
-    if (!UUID_RE.test(id)) {
+    if (typeof id !== "string" || !UUID_RE.test(id)) {
       res.status(400).json({ ok: false, error: "Invalid document id" });
       return;
     }
@@ -1054,6 +1059,7 @@ const PurgeBody = z.object({
  */
 documentsRouter.post(
   "/:id/purge",
+  documentLifecycleWriteLimit,
   requireSuperUser,
   async (req, res, next) => {
     try {

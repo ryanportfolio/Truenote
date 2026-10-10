@@ -1,6 +1,6 @@
 # Storage Limits and Overage
 
-Larkspur Cloud Customer Support · Reference CS-REF-018 · Version 2 · Effective September 1, 2026 · Owner: Product Marketing
+Cloudshelf Customer Support · Reference CS-REF-018 · Version 2 · Effective September 1, 2026 · Owner: Product Marketing
 
 ## When to use this
 
@@ -10,7 +10,7 @@ Use this reference when a customer says uploads stopped working, received a stor
 
 | Plan | Storage | Version history | Trash kept for |
 |---|---|---|---|
-| Basic | 200 GB | 30 days | 30 days |
+| Basic | 200 gigabytes | 30 days | 30 days |
 | Pro | 2 TB shared by up to 5 users | 90 days | 30 days |
 | Enterprise | 5 TB per user | 1 year | 30 days |
 
@@ -18,7 +18,7 @@ Files in Trash and older file versions count toward storage. Emptying Trash free
 
 ## There are no overage charges
 
-Larkspur Cloud never bills for storage above the plan limit and does not sell add-on storage packs. When an account reaches its limit, uploads pause instead. The only way to get more space is to delete files or upgrade to a larger plan.
+Cloudshelf never bills for storage above the plan limit and does not sell add-on storage packs. When an account reaches its limit, uploads pause instead. The only way to get more space is to delete files or upgrade to a larger plan.
 
 ## What the customer sees
 
@@ -41,14 +41,14 @@ You do not need to verify the caller to explain plan limits. Verify with two fac
 
 ## Downgrades and storage
 
-Downgrades take effect at the next renewal. If usage is above the lower plan's limit on that date, the account becomes read-only until the customer deletes files or upgrades again. Always check usage before scheduling a downgrade and tell the customer the number they need to get under. Example: a Pro customer using 450 GB who downgrades to Basic must get below 200 GB before the renewal date.
+Downgrades take effect at the next renewal. If usage is above the lower plan's limit on that date, the account becomes read-only until the customer deletes files or upgrades again. Always check usage before scheduling a downgrade and tell the customer the number they need to get under. Example: a Pro customer using 450 gigabytes who downgrades to Basic must get below 200 gigabytes before the renewal date.
 
 ## Common questions
 
 **"Will you delete my files if I'm over?"** No. Files are never deleted because an account is over its limit.
 
-**"Can I buy 100 GB extra?"** No add-on storage exists. Offer the next plan up.
+**"Can I buy 100 gigabytes extra?"** No add-on storage exists. Offer the next plan up.
 
 **"My Pro team is out of space but I only use a little."** Pro storage is shared by all users on the plan. The account owner can see each user's share on the Storage page.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.
