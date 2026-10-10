@@ -33,9 +33,17 @@ describe("evidence check catalog", () => {
     }
   });
 
-  it("registers a runner for every check and a check for every runner", () => {
-    const ids = EVIDENCE_CHECKS.map((check) => check.id).sort();
-    expect(Object.keys(CHECK_RUNNERS).sort()).toEqual(ids);
+  it("registers a runner for every automated check and a check for every runner", () => {
+    // Recorded outside the daily runners: attestation by upload, summary at the
+    // run's end, operator by an owner-run script.
+    const notRun = new Set(["attestation", "summary", "operator"]);
+    for (const check of EVIDENCE_CHECKS) {
+      expect(Object.hasOwn(CHECK_RUNNERS, check.id), `${check.id} (${check.kind})`).toBe(!notRun.has(check.kind));
+    }
+    const ids = new Set(EVIDENCE_CHECKS.map((check) => check.id));
+    for (const id of Object.keys(CHECK_RUNNERS)) {
+      expect(ids.has(id), id).toBe(true);
+    }
   });
 
   it("states a pass condition and a proposed or approved cadence for every check", () => {

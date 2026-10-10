@@ -1,6 +1,7 @@
 import { withPgAdvisoryLock } from "../db-client.js";
 import { ensureQueue, getBoss } from "../jobs/boss.js";
 import { recordAppError } from "../observability/error-log.js";
+import { remindDueAttestations } from "./attestations.js";
 import { notifyRun } from "./notify.js";
 import { runEvidenceChecks } from "./runner.js";
 
@@ -23,9 +24,10 @@ export const EVIDENCE_RUN_CRON = "23 5 * * *";
  * 3 integrity) at 90 s = 1,620 s, plus 5 synthetic checks at 380 s
  * (SYNTHETIC_HTTP_WORST_CASE_MS 320 s + 60 s; synthetic.login-windows reads
  * only the database but gets the synthetic limit) = 1,900 s. Total 3,520 s,
- * about 59 minutes, before receipt writes and the alert email. 90 minutes
- * leaves about 31 minutes for those. Recount when a check is added or a
- * time limit changes.
+ * about 59 minutes, before receipt writes, the alert email and the
+ * attestation reminder email (attestation checks have no runner and add no
+ * check time). 90 minutes leaves about 31 minutes for those. Recount when a
+ * check is added or a time limit changes.
  *
  * pg-boss stores these options when the queue is created; a change here
  * reaches production only through pgboss:install, which also updates the
@@ -62,6 +64,20 @@ async function executeEvidenceRun(payload: EvidenceRunPayload): Promise<void> {
       // Receipts are already recorded; a failed email must not retry the run.
       console.warn("[evidence] notification failed:", error instanceof Error ? error.message : error);
       void recordAppError({ severity: "warning", source: "evidence", operation: "evidence-notify", error, context: { runId } });
+    }
+    try {
+      const reminded = await remindDueAttestations();
+      if (reminded > 0) console.log(`[evidence] run ${runId}: ${reminded} attestation reminder(s) queued`);
+    } catch (error) {
+      // Reminders are not part of the run's evidence; a failure must not retry the run.
+      console.warn("[evidence] attestation reminders failed:", error instanceof Error ? error.message : error);
+      void recordAppError({
+        severity: "warning",
+        source: "evidence",
+        operation: "evidence-attestation-reminders",
+        error,
+        context: { runId }
+      });
     }
   });
   if (!ran) console.warn("[evidence] another evidence run holds the lock; skipped");

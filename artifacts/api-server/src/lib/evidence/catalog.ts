@@ -412,6 +412,80 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
       "`openssl ts -verify`.",
     limits:
       "Proves the chain head existed by the token's time. Only the hash leaves the system."
+  },
+  // Attestations: proof the owner supplies through POST /api/admin/evidence/attestations/:checkId.
+  // They have no runner; the daily run only reminds the owner when one is due (attestations.ts).
+  {
+    id: "attestation.operator-mfa",
+    kind: "attestation",
+    title: "Operator accounts require multi-factor authentication",
+    controls: ["IA-2(1)"],
+    objectives: ["IA-02(01)"],
+    cadence: "quarterly",
+    cadenceStatus: "proposed",
+    passCondition:
+      "The owner uploads screenshots or exported reports of the sign-in security settings of every account " +
+      "that can change the deployed system or its data (hosting, source control and CI, the identity provider " +
+      "tenant, DNS, and the mailbox that receives security alerts), each showing multi-factor authentication " +
+      "enabled or required for the operator's account, with the date visible, and a statement naming the " +
+      "accounts covered. A pass is the owner's own statement with those files; the receipt records the " +
+      "sha256 of each file.",
+    limits:
+      "Self-attested by the owner; the harness does not read the files' content. A screenshot shows a setting " +
+      "at one moment, not that it stayed on between attestations, and covers only the accounts it shows."
+  },
+  {
+    id: "attestation.workstation-patch-malware",
+    kind: "attestation",
+    title: "Operator workstation is patched and anti-malware is current",
+    controls: ["SI-2", "SI-3"],
+    objectives: ["SI-02c.", "SI-03b.", "SI-03c.01"],
+    cadence: "monthly",
+    cadenceStatus: "proposed",
+    passCondition:
+      "For each workstation used to administer the system, the owner uploads its operating system update " +
+      "status (no pending security update, date of the last install) and its anti-malware status (real-time " +
+      "protection on, signature version and date, date and result of the last scan), with the date visible, " +
+      "and a statement naming the workstations. A pass is the owner's own statement with those files; the " +
+      "receipt records the sha256 of each file.",
+    limits:
+      "Self-attested by the owner; the harness does not read the files' content. Shows the state on the day " +
+      "of the capture only, and only for the workstations the statement names."
+  },
+  {
+    id: "attestation.access-review",
+    kind: "attestation",
+    title: "Accounts and privileges are reviewed",
+    controls: ["AC-2", "AC-6(7)"],
+    objectives: ["AC-02j.", "AC-06(07)(a)", "AC-06(07)(b)"],
+    cadence: "quarterly",
+    cadenceStatus: "proposed",
+    passCondition:
+      "The owner uploads the review record: the list of Truenote user accounts with their roles and programs, " +
+      "and the operator accounts on the hosting, source control and identity provider platforms, as reviewed, " +
+      "with each account marked kept, changed or removed, and a statement giving the review date and the " +
+      "changes made. A pass is the owner's own statement with those files; the receipt records the sha256 of " +
+      "each file.",
+    limits:
+      "Self-attested by the owner; the harness does not read the files' content or compare the list with the " +
+      "database. Proves that a review was recorded, not that every account was assessed correctly."
+  },
+  {
+    id: "attestation.policy-review",
+    kind: "attestation",
+    title: "Security policies and plans are reviewed",
+    controls: ["PL-1", "PL-2", "IR-1", "CP-2"],
+    objectives: ["PL-01c.01[01]", "PL-01c.02[01]", "PL-02c.", "IR-01c.02[01]", "CP-02d."],
+    cadence: "annual",
+    cadenceStatus: "proposed",
+    passCondition:
+      "The owner uploads the review record of the security policy set, the system security plan, the incident " +
+      "response plan and the contingency plan: for each document, the version reviewed, the review date, the " +
+      "reviewer and whether it changed, and a statement naming each document and the outcome. A pass is the " +
+      "owner's own statement with those files; the receipt records the sha256 of each file.",
+    limits:
+      "Self-attested by the owner; the harness does not read the files' content. Proves that a review was " +
+      "recorded, not its quality, and covers only the documents the statement names."
   }
 ];
 
