@@ -131,6 +131,13 @@ oidcRouter.get("/callback", oidcIpLimit, async (req, res) => {
     if (!state || req.query.state !== state.state || typeof req.query.code !== "string") {
       throw new Error("OIDC callback state is invalid or expired");
     }
+    if (state.authenticatedAfter === undefined && isIdleReauthRequired(req, res)) {
+      // The session ended after an unforced /start (for example it idled
+      // out while the user was at Entra). Restart so Entra is sent
+      // prompt=login; /start now sees the requirement, so this cannot loop.
+      res.redirect(302, `/api/auth/oidc/start?returnTo=${encodeURIComponent(state.returnTo)}`);
+      return;
+    }
     const discovery = await loadOidcDiscovery(config);
     const tokenResponse = await fetch(discovery.token_endpoint, {
       method: "POST",
