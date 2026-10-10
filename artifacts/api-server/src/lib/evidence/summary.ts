@@ -44,8 +44,9 @@ export interface SummaryDeps {
   /** Sends one email to one recipient; throws on failure. */
   sendEmail: (to: string, email: SummaryEmail) => Promise<void>;
   /**
-   * Called after a failed send (with the recipient) and once per call when no
-   * recipient is configured (without one). The email stays pending either way.
+   * Called after a failed send or a send whose record could not be written
+   * (with the recipient), and once per call when no recipient is configured
+   * (without one). The email stays pending in every case.
    */
   reportEmailError?: (error: unknown, context: { month: string; receiptId: string; recipient?: string }) => Promise<void>;
 }
@@ -54,7 +55,7 @@ export interface SummaryResult {
   created: boolean;
   month: string;
   receiptId: string | null;
-  /** Recipients this call sent the month's summary to. */
+  /** Recipients this call sent the month's summary to and recorded as sent. */
   sentTo: string[];
   /** Configured recipients still without a send record for the month after this call. */
   pending: string[];
@@ -482,8 +483,9 @@ async function readSummary(checkId: string, month: string): Promise<StoredSummar
  * Append the summary of every month that lacks one (see monthsToCreate), then
  * send the summaries of the previous month and the two before it to each
  * configured recipient without a send record for that month. Each successful
- * send is recorded at once; a failed send is reported and stays pending for
- * a later call. Never appends a second receipt for a month.
+ * send is recorded at once; a failed send, or a send whose record cannot be
+ * written, is reported and stays pending for a later call. Never appends a
+ * second receipt for a month.
  */
 export async function ensureMonthlySummaries(now: Date, deps: SummaryDeps): Promise<SummaryResult[]> {
   const check = summaryCheck();
@@ -532,7 +534,19 @@ export async function ensureMonthlySummaries(now: Date, deps: SummaryDeps): Prom
         result.pending.push(recipient.to);
         continue;
       }
-      await markRecipientSent(month, stored.id, recipient.key);
+      try {
+        await markRecipientSent(month, stored.id, recipient.key);
+      } catch (error) {
+        // The email went out but its send record did not. The recipient stays
+        // pending, so the next call sends this month's summary to it again.
+        console.warn(
+          `[evidence] summary email for ${month} sent to ${recipient.to}, but its send record was not written:`,
+          error instanceof Error ? error.message : error
+        );
+        await deps.reportEmailError?.(error, { month, receiptId: stored.id, recipient: recipient.to });
+        result.pending.push(recipient.to);
+        continue;
+      }
       result.sentTo.push(recipient.to);
     }
   }

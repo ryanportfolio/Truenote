@@ -60,7 +60,9 @@
  *    gives the same bytes and an unchanged re-export makes no commit. A failed
  *    commit unstages the month folder.
  *
- * Exits non-zero on any error. Never prints DATABASE_URL or its password.
+ * Exits non-zero on any error. Never prints DATABASE_URL, its password, or
+ * credentials in a URL (the origin's https://user:token@host/... included,
+ * also inside git's stderr); see redact().
  */
 import { execFile } from "node:child_process";
 import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
@@ -93,11 +95,39 @@ const run = promisify(execFile);
 
 // ------------------------------------------------------------- redaction
 
+// Every printed line goes through redact(): the known secrets (DATABASE_URL,
+// its user info, the origin URL's credentials) are replaced, then any
+// "scheme://user:secret@" or "scheme://token@" left in the text (git stderr,
+// pg errors) loses its user info, and so does a libpq "password=..." pair.
 const secrets = new Set<string>();
+const URL_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)[^\s/?#'"<>]+@/gi;
+const PASSWORD_PAIR = /\b(password\s*=\s*)('(?:[^'\\]|\\.)*'|[^\s&;]+)/gi;
 function redact(line: string): string {
   let out = line;
-  for (const s of secrets) out = out.split(s).join("[redacted]");
-  return out;
+  for (const s of [...secrets].sort((a, b) => b.length - a.length)) out = out.split(s).join("[redacted]");
+  return out.replace(URL_USERINFO, "$1[redacted]@").replace(PASSWORD_PAIR, "$1[redacted]");
+}
+
+/** Adds the credentials in a URL (password, or a username that carries a token) to the redaction list. */
+function addUrlSecrets(value: string, opts: { tokenUsername: boolean }): void {
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    return;
+  }
+  // https://<token>@host carries the token as the username; ssh://git@host does not.
+  const usernameIsToken = opts.tokenUsername && !url.password && /^https?:$/.test(url.protocol);
+  for (const raw of [url.password, usernameIsToken ? url.username : ""]) {
+    if (!raw) continue;
+    secrets.add(raw);
+    try {
+      const decoded = decodeURIComponent(raw);
+      if (decoded) secrets.add(decoded);
+    } catch {
+      // Not valid percent-encoding; the raw form is already listed.
+    }
+  }
 }
 function say(line: string): void {
   console.log(redact(`${LOG} ${line}`));
@@ -153,12 +183,9 @@ function readOptions(argv: string[]): Options {
   const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
   if (!databaseUrl) throw new Error("DATABASE_URL is not set; point it at the migration role through the SSH tunnel");
   secrets.add(databaseUrl);
-  try {
-    const password = decodeURIComponent(new URL(databaseUrl).password);
-    if (password) secrets.add(password);
-  } catch {
-    // Not a URL; pg reports the problem when it connects.
-  }
+  // Not a URL: pg reports the problem when it connects, and redact() still
+  // hides the whole value and any password=... pair in it.
+  addUrlSecrets(databaseUrl, { tokenUsername: false });
   return {
     apply,
     push,
@@ -494,6 +521,8 @@ async function resolveExportTarget(dir: string, push: boolean): Promise<ExportTa
 
   const origin = await git(dir, ["remote", "get-url", "origin"]);
   if (!origin.ok || !origin.stdout.trim()) throw refuse("the repository has no origin remote");
+  // Git may echo the origin URL, credentials included, on a failed commit or push.
+  addUrlSecrets(origin.stdout, { tokenUsername: true });
   const name = remoteRepositoryName(origin.stdout);
   if (name !== EVIDENCE_REPO_NAME) {
     throw refuse(`the repository's origin is ${name || "unnamed"}, not ${EVIDENCE_REPO_NAME}`);

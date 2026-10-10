@@ -1,8 +1,8 @@
 # Evidence API
 
-Read API of the [evidence harness](evidence-harness.md) for the gated compliance pages. The pages are built elsewhere; this file is the contract between them and `artifacts/api-server/src/routes/admin/evidence.ts`.
+API of the [evidence harness](evidence-harness.md) for the gated compliance pages. The pages are built elsewhere; this file is the contract between them and `artifacts/api-server/src/routes/admin/evidence.ts`.
 
-All routes under `/api/admin/evidence` require a signed-in `super_user` session with a current password, as the other admin routes do. Reads are limited to 60 requests a minute per user, writes to 10. Times are UTC ISO 8601 strings. Receipts cannot be edited or deleted through any route.
+All routes under `/api/admin/evidence` require a signed-in `super_user` session with a current password, as the other admin routes do. Reads are limited to 60 requests a minute per user, writes to 10. Times are UTC ISO 8601 strings. Receipts cannot be edited or deleted through any route. The attestation upload is the only route that appends a receipt itself; `POST /runs` has the worker append them.
 
 ## Shared shapes
 
@@ -163,6 +163,72 @@ Returns `{ "retired": true }` or `404`. Recorded as `evidence.known_gap.retired`
 
 Body `{}` for all automated checks or `{ "checkIds": ["external.tls"] }`. Queues a run in the worker and returns `202 { "queued": true, "jobId": "..." }`; `queued` is false when a run was queued in the last 10 minutes. Recorded as `evidence.run.requested`.
 
+### `POST /attestations/:checkId`
+
+Uploads the proof for one attestation check (`kind: "attestation"` in `GET /catalog`) and appends its receipt. Write limit. Request: `multipart/form-data` with
+
+- `files`: 1 to 10 files, each at most 20 MiB and not empty. Accepted: `.png` sent as `image/png`, `.jpg` or `.jpeg` as `image/jpeg`, `.pdf` as `application/pdf`, `.txt` as `text/plain`, `.csv` as `text/csv`. The declared type (before any `;`) must match the extension, and PNG, JPEG and PDF files must start with their format's magic bytes.
+- `statement`: what the files show, 1 to 2,000 characters after trimming.
+
+The body is parsed in memory. Every file is checked before anything is stored. Returns `201`:
+
+```json
+{
+  "receipt": { "id": "uuid", "sequence": 130, "recordedAt": "...", "receiptHash": "64 hex" },
+  "attachments": [
+    {
+      "key": "evidence/attestations/attestation.access-review/<uuid>/0-<first 16 hex of sha256>.pdf",
+      "sha256": "64 hex",
+      "bytes": 48213,
+      "contentType": "application/pdf"
+    }
+  ]
+}
+```
+
+Status codes: `404` for an unknown check id; `400` for a check that is not an attestation (checked before the body is read), a missing or too long statement, no file, a file type that is not accepted or does not match its extension, an empty file, content that does not start with the format's magic bytes, a file in a field other than `files`, or a malformed body; `413` for a file over 20 MiB or more than 10 files.
+
+Side effects: each file is stored in the bucket under `evidence/attestations/<checkId>/<uuid>/<i>-<sha16><ext>`. One transaction appends a receipt of kind `attestation`, result `pass`, whose payload holds the statement, the uploader's id and email, the file names (base name only; letters, digits, `.`, `_`, `-` and spaces; at most 120 characters) and the `attachments` list above, and records the security event `evidence.attestation.recorded` with the check id, receipt sequence and each attachment's key, sha256 and size. When a step after storing fails, the stored objects are deleted, best effort.
+
+### `GET /receipts/:id/attachments/:index`
+
+Downloads attachment `index` (0-based, as listed in the receipt's `payload.attachments`) after checking it against the receipt. Read limit. The file is read from the bucket and its sha256 recomputed; the bytes are served only when it matches the sha256 in the receipt.
+
+`200` with the file as the body, `Content-Type` the recorded type (`application/octet-stream` when it is not one of the five accepted types), `Content-Disposition: attachment` with the recorded file name, `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`.
+
+Status codes: `400` for an id that is not a UUID; `404` when the receipt does not exist, has no attachment at that index (an index that is not 1 to 4 digits included), or the attachment's key is not under `evidence/`; `409` when the stored file is missing or its sha256 does not match the receipt, with nothing served:
+
+```json
+{ "error": "The stored file does not match the sha256 in the receipt; it is not served." }
+```
+
+An error reading the bucket for a file that exists answers `500`.
+
+Side effect of a `409`: the security event `evidence.attestation.attachment_check`, outcome `failure`, with the index, the key, the reason (`missing` or `mismatch`) and the expected and actual sha256 (null for a missing file).
+
+### `GET /summaries`
+
+Every monthly summary receipt (kind `summary`), newest first. Read limit.
+
+```json
+{
+  "statement": "Self-assessment. ...",
+  "summaries": [
+    {
+      "id": "uuid",
+      "sequence": 140,
+      "recordedAt": "2026-11-01T05:31:12.000000Z",
+      "month": "2026-10",
+      "receiptHash": "64 hex",
+      "chainHead": { "sequence": 139, "receiptHash": "64 hex", "recordedAt": "..." },
+      "counts": { "pass": 20, "fail": 1, "error": 2, "none": 5 }
+    }
+  ]
+}
+```
+
+`month` is the UTC calendar month summarized. `chainHead` is the receipt the summary was appended after (null when there was none). `counts` totals the checks summarized by their latest result in the month; `none` counts checks without a receipt that month. The full summary is the receipt's payload (`GET /receipts/:id`, `payload.outputs`). No side effects.
+
 ## Public route
 
 `GET /api/evidence/heartbeat`, no sign-in:
@@ -172,7 +238,3 @@ Body `{}` for all automated checks or `{ "checkIds": ["external.tls"] }`. Queues
 ```
 
 `503` with `stale: true` when the store cannot be read. It reveals nothing but the time of the last receipt.
-
-## Planned (phases 2 and 3)
-
-These will be added without changing the routes above: an attestation upload route (`POST /attestations/:checkId`, multipart, stored in the bucket under `evidence/`), attachment downloads for receipts, and `GET /summaries` for the monthly summaries.
