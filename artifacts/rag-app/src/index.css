@@ -664,6 +664,8 @@
     --art-r: 30px;
     --art-t: 30px;
     --align: 150deg;
+    --pencil: var(--align);
+    --reg: 186deg;
     position: relative;
     isolation: isolate;
     display: grid;
@@ -680,10 +682,15 @@
       0 5px 16px oklch(var(--archive-ink) / 0.06);
   }
 
+  /* Wide, short cards (one account; three stacked below sm): the label
+   * sits far left, so the pencil arcs open downward and the register bars
+   * sit upper left of the core, where the card has height. */
   .auth-demo-grid[data-count="1"] .auth-demo-role {
     --art-r: 64px;
     --art-t: 41px;
     --align: 176deg;
+    --pencil: 90deg;
+    --reg: 202deg;
     min-height: 5.15rem;
   }
 
@@ -691,13 +698,17 @@
     --art-r: 56px;
     --art-t: 38px;
     --align: 175deg;
+    --pencil: 90deg;
+    --reg: 202deg;
   }
 
   @media (min-width: 640px) {
     .auth-demo-grid[data-count="3"] .auth-demo-role {
       --art-r: 28px;
-      --art-t: 28px;
+      --art-t: 26px;
       --align: 135deg;
+      --pencil: 135deg;
+      --reg: 182deg;
     }
   }
 
@@ -705,7 +716,7 @@
     --k: 0;
     --beam: 1;
     border-color: oklch(var(--primary) / 0.5);
-    background: color-mix(in oklab, oklch(var(--card)) 95%, oklch(var(--accent)));
+    background: oklch(var(--card));
     box-shadow: inset 0 0 0 1px oklch(var(--primary) / 0.1),
       0 8px 22px oklch(var(--primary) / 0.13);
   }
@@ -713,6 +724,10 @@
   .auth-demo-role:disabled {
     cursor: not-allowed;
     opacity: 0.55;
+  }
+
+  .auth-demo-role:disabled .pp-layer {
+    transform: none;
   }
 
   .auth-demo-role:focus-visible,
@@ -746,6 +761,13 @@
     color: oklch(var(--primary));
   }
 
+  /* Long labels wrap up into the art, so they sit on a paper index plate. */
+  .auth-demo-role-long .auth-demo-role-name {
+    border-radius: 0.3rem;
+    background: oklch(var(--card) / 0.92);
+    box-shadow: 0 0 0 0.2rem oklch(var(--card) / 0.92);
+  }
+
   /* Light that follows the pointer: a rim on the border and a glass sheen. */
   .pp-rim,
   .pp-sheen {
@@ -756,14 +778,14 @@
   }
 
   .pp-rim {
-    inset: -1px;
+    inset: 0;
     z-index: 3;
-    padding: 1px;
+    padding: 1.5px;
     background: radial-gradient(
-      7rem circle at var(--mx) var(--my),
-      oklch(var(--accent) / 0.85),
-      oklch(var(--primary) / 0.25) 45%,
-      oklch(var(--primary) / 0) 75%
+      6rem circle at var(--mx) var(--my),
+      oklch(var(--accent)),
+      oklch(var(--accent) / 0.35) 45%,
+      oklch(var(--primary) / 0) 80%
     );
     -webkit-mask: linear-gradient(black, black) content-box, linear-gradient(black, black);
     -webkit-mask-composite: xor;
@@ -820,7 +842,14 @@
     transform: rotate(calc(var(--align) + var(--off) * var(--k)));
   }
 
-  .pp-pencil-axis,
+  .pp-spin-register {
+    transform: rotate(calc(var(--reg) + var(--off) * var(--k)));
+  }
+
+  .pp-pencil-axis {
+    transform: rotate(var(--pencil));
+  }
+
   .pp-beam-axis {
     transform: rotate(var(--align));
   }
@@ -866,40 +895,31 @@
     stroke: oklch(var(--card) / 0.3);
   }
 
+  /* Stops use plain tokens; the @supports block below refines them with
+   * color-mix (warm paper, grey sage mineral, deep cobalt glass). Without
+   * the guard a browser lacking color-mix would compute black stops. */
   .pp-stop-card {
     stop-color: oklch(var(--card));
   }
 
   .pp-stop-paper {
-    stop-color: color-mix(
-      in oklab,
-      color-mix(in oklab, oklch(var(--card)) 90%, oklch(var(--warning))),
-      oklch(var(--archive-coral)) 5%
-    );
+    stop-color: oklch(var(--card));
   }
 
   .pp-stop-paper-deep {
-    stop-color: color-mix(
-      in oklab,
-      color-mix(in oklab, oklch(var(--background)) 88%, oklch(var(--warning))),
-      oklch(var(--archive-coral)) 6%
-    );
+    stop-color: oklch(var(--background));
   }
 
   .pp-stop-mineral-light {
-    stop-color: color-mix(in oklab, oklch(var(--archive-green)) 34%, oklch(var(--background)));
+    stop-color: oklch(var(--archive-green) / 0.3);
   }
 
   .pp-stop-mineral {
-    stop-color: color-mix(in oklab, oklch(var(--archive-green)) 55%, oklch(var(--background)));
+    stop-color: oklch(var(--archive-green) / 0.45);
   }
 
   .pp-stop-mineral-deep {
-    stop-color: color-mix(
-      in oklab,
-      color-mix(in oklab, oklch(var(--archive-green)) 68%, oklch(var(--background))),
-      oklch(var(--archive-ink)) 10%
-    );
+    stop-color: oklch(var(--archive-green) / 0.6);
   }
 
   .pp-stop-mottle {
@@ -911,19 +931,19 @@
   }
 
   .pp-stop-glass-hot {
-    stop-color: color-mix(in oklab, oklch(var(--accent)) 78%, oklch(var(--card)));
-  }
-
-  .pp-stop-glass {
     stop-color: oklch(var(--accent));
   }
 
-  .pp-stop-glass-deep {
+  .pp-stop-glass {
     stop-color: oklch(var(--primary));
   }
 
+  .pp-stop-glass-deep {
+    stop-color: oklch(var(--archive-ink));
+  }
+
   .pp-stop-glass-edge {
-    stop-color: color-mix(in oklab, oklch(var(--archive-ink)) 75%, oklch(var(--foreground)));
+    stop-color: oklch(var(--archive-ink));
   }
 
   .pp-stop-flash {
@@ -939,8 +959,11 @@
   }
 
   .pp-stop-streak {
-    stop-color: color-mix(in oklab, oklch(var(--accent)) 45%, oklch(var(--card))) ;
-    stop-opacity: 0.5;
+    stop-color: oklch(var(--accent) / 0.55);
+  }
+
+  .pp-stop-streak-clear {
+    stop-color: oklch(var(--accent) / 0);
   }
 
   .pp-stop-halo {
@@ -949,10 +972,6 @@
 
   .pp-stop-halo-clear {
     stop-color: oklch(var(--accent) / 0);
-  }
-
-  .pp-stop-streak-clear {
-    stop-color: oklch(var(--card) / 0);
   }
 
   .pp-stop-beam {
@@ -967,9 +986,75 @@
     stop-color: oklch(var(--primary) / 0);
   }
 
+  @supports (color: color-mix(in oklab, red, blue)) {
+    .auth-demo-role-active {
+      background: color-mix(in oklab, oklch(var(--card)) 95%, oklch(var(--accent)));
+    }
+
+    /* Persimmon plus mineral mixes to a yellow ochre, which warms the
+     * paper toward the hero's cream without a status token. */
+    .pp-stop-paper {
+      stop-color: color-mix(
+        in oklab,
+        color-mix(in oklab, oklch(var(--card)) 95%, oklch(var(--archive-coral))),
+        oklch(var(--archive-green)) 5%
+      );
+    }
+
+    .pp-stop-paper-deep {
+      stop-color: color-mix(
+        in oklab,
+        color-mix(in oklab, oklch(var(--background)) 95%, oklch(var(--archive-coral))),
+        oklch(var(--archive-green)) 6%
+      );
+    }
+
+    /* Grey sage: green over the cream canvas, its cyan cancelled by a
+     * touch of persimmon and settled with warm ink. */
+    .pp-stop-mineral-light {
+      stop-color: color-mix(
+        in oklab,
+        color-mix(in oklab, oklch(var(--background)) 70%, oklch(var(--archive-green))),
+        oklch(var(--archive-coral)) 6%
+      );
+    }
+
+    .pp-stop-mineral {
+      stop-color: color-mix(
+        in oklab,
+        color-mix(
+          in oklab,
+          color-mix(in oklab, oklch(var(--background)) 58%, oklch(var(--archive-green))),
+          oklch(var(--archive-coral)) 9%
+        ),
+        oklch(var(--foreground)) 3%
+      );
+    }
+
+    .pp-stop-mineral-deep {
+      stop-color: color-mix(
+        in oklab,
+        color-mix(
+          in oklab,
+          color-mix(in oklab, oklch(var(--background)) 48%, oklch(var(--archive-green))),
+          oklch(var(--archive-coral)) 9%
+        ),
+        oklch(var(--foreground)) 9%
+      );
+    }
+
+    .pp-stop-glass-deep {
+      stop-color: color-mix(in oklab, oklch(var(--primary)) 55%, oklch(var(--archive-ink)));
+    }
+
+    .pp-stop-glass-edge {
+      stop-color: color-mix(in oklab, oklch(var(--archive-ink)) 80%, oklch(var(--foreground)));
+    }
+  }
+
   .pp-bar {
     fill: oklch(var(--archive-coral));
-    stroke: color-mix(in oklab, oklch(var(--archive-coral)) 70%, oklch(var(--archive-ink)));
+    stroke: oklch(var(--archive-ink) / 0.35);
     stroke-width: 0.35;
   }
 
@@ -993,8 +1078,8 @@
 
   .pp-orbits {
     fill: none;
-    stroke: oklch(var(--card) / 0.32);
-    stroke-width: 0.35;
+    stroke: oklch(var(--card) / 0.5);
+    stroke-width: 0.4;
   }
 
   .pp-star {
@@ -1154,7 +1239,6 @@
 
     .auth-demo-role:active:not(:disabled) {
       --press: 0.975;
-      --lift: 0px;
     }
 
     .auth-demo-role:active:not(:disabled) .pp-core {
@@ -1199,11 +1283,11 @@
     }
 
     .pp-fleck {
-      animation: pp-gather 620ms cubic-bezier(0.5, 0, 0.2, 1) calc(var(--i) * 18ms) both;
+      animation: pp-gather 620ms cubic-bezier(0.25, 1, 0.5, 1) calc(var(--i) * 18ms) both;
     }
 
     .pp-burst .pp-flash {
-      animation: pp-flash 1s linear both;
+      animation: pp-flash 1s cubic-bezier(0.25, 1, 0.5, 1) both;
     }
 
     .pp-wave {
@@ -1215,7 +1299,7 @@
     }
 
     .auth-demo-role-active .pp-orbits {
-      animation: pp-orbit 22s linear infinite;
+      animation: pp-orbit 16s linear infinite;
     }
 
     :root[data-perf="low"] .auth-demo-role-active .pp-orbits {
@@ -1226,6 +1310,10 @@
   @media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
     .auth-demo-role:hover:not(:disabled) {
       --lift: -3px;
+    }
+
+    .auth-demo-role:hover:active:not(:disabled) {
+      --lift: 0px;
     }
 
     .auth-demo-role:hover:not(:disabled) .pp-sheen::after {

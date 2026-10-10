@@ -23,7 +23,7 @@ import type { DemoAccount } from "@/types/api";
 type Role = DemoAccount["role"];
 
 interface RoleArt {
-  /** Rest offsets in degrees, per ring, from the aligned angle. */
+  /** Rest offsets in degrees, per ring, from the aligned angle (register: from --reg). */
   offsets: { inner: number; mineral: number; outer: number; register: number };
   /** Narrow seams, degrees in each ring's own frame (main gap sits at 0). */
   seams: { inner: number[]; mineral: number[]; outer: number[] };
@@ -35,19 +35,19 @@ interface RoleArt {
 
 const ROLE_ART: Record<Role, RoleArt> = {
   csr: {
-    offsets: { inner: 118, mineral: -96, outer: 64, register: -30 },
+    offsets: { inner: 118, mineral: -96, outer: 64, register: -10 },
     seams: { inner: [130, 250], mineral: [200], outer: [95, 170, 290] },
     tabs: [1],
     bars: 1
   },
   supervisor: {
-    offsets: { inner: -132, mineral: 84, outer: -70, register: -8 },
+    offsets: { inner: -132, mineral: 84, outer: -70, register: 9 },
     seams: { inner: [100, 220, 300], mineral: [150, 260], outer: [60, 200] },
     tabs: [2],
     bars: 2
   },
   manager: {
-    offsets: { inner: 96, mineral: 140, outer: -112, register: -20 },
+    offsets: { inner: 96, mineral: 140, outer: -112, register: -7 },
     seams: { inner: [180], mineral: [110, 230, 300], outer: [80, 150, 240, 310] },
     tabs: [0, 3],
     bars: 3
@@ -167,7 +167,7 @@ export function DemoPortal({
   const outer = ring(R.outer[0], R.outer[1], GAP.outer, art.seams.outer, 4.5);
 
   function track(e: PointerEvent<HTMLButtonElement>): void {
-    if (e.pointerType === "touch") return;
+    if (e.pointerType === "touch" || disabled) return;
     const el = ref.current;
     if (!el) return;
     const { clientX, clientY } = e;
@@ -226,7 +226,12 @@ export function DemoPortal({
       aria-pressed={selected}
       aria-label={`Use the ${account.label} demo`}
       disabled={disabled}
-      className={cn("auth-demo-role", selected && "auth-demo-role-active", className)}
+      className={cn(
+        "auth-demo-role",
+        selected && "auth-demo-role-active",
+        account.label.length > 12 && "auth-demo-role-long",
+        className
+      )}
     >
       <span className="pp-rim" aria-hidden />
       <span className="pp-sheen" aria-hidden />
@@ -310,7 +315,7 @@ export function DemoPortal({
         <g className="pp-layer pp-depth-5">
           <g className="pp-spin pp-spin-register" style={spin(art.offsets.register, 150)}>
             {R.bars.slice(0, art.bars).map(([r0, r1], i) => (
-              <path key={i} className="pp-bar" d={sector(r0, r1, -73 + i * 2, -47 - i * 3)} />
+              <path key={i} className="pp-bar" d={sector(r0, r1, -13 + i * 2, 11 - i * 3)} />
             ))}
           </g>
         </g>
@@ -385,9 +390,9 @@ export function DemoPortal({
             <g clipPath={`url(#${id("glassClip")})`}>
               <rect x="70" y="70" width="60" height="60" fill={`url(#${id("streak")})`} className="pp-streak" />
               <g className="pp-orbits">
-                <ellipse cx={C} cy={C} rx="17" ry="8.5" transform="rotate(-24 100 100)" />
+                <ellipse cx={C} cy={C} rx="17" ry="8.5" style={{ transform: "rotate(-24deg)" }} />
                 <ellipse cx={C} cy={C} rx="12.5" ry="12.5" />
-                <ellipse cx={C} cy={C} rx="8" ry="15" transform="rotate(32 100 100)" />
+                <ellipse cx={C} cy={C} rx="8" ry="15" style={{ transform: "rotate(32deg)" }} />
               </g>
               {STARS.map(([x, y, o], i) => (
                 <circle key={i} cx={C + x} cy={C + y} r={o} className="pp-star" />
@@ -395,7 +400,10 @@ export function DemoPortal({
             </g>
             <circle cx={C} cy={C} r={R.core - 0.6} className="pp-recess" />
             <g className="pp-spec">
-              <path d={sector(17.6, 20.2, 12, 104)} className="pp-crescent" />
+              <path
+                d={`M${polar(20, 14)}A20 20 0 0 1 ${polar(20, 106)}A34 34 0 0 0 ${polar(20, 14)}Z`}
+                className="pp-crescent"
+              />
               <circle cx={C + 19 * Math.cos(0.96)} cy={C + 19 * Math.sin(0.96)} r="1.3" className="pp-glint" />
               <path
                 className="pp-flare"
@@ -406,7 +414,7 @@ export function DemoPortal({
         </g>
 
         {/* Selection: flecks gather into the core, then a shockwave leaves it. */}
-        {selected && burst > 0 ? (
+        {burst > 0 ? (
           <g key={burst} className="pp-burst">
             {FLECKS.map((a, i) => (
               <rect
