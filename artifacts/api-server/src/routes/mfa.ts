@@ -25,8 +25,11 @@ import {
   findLoginChallenge,
   findPasskeyByCredentialId,
   findRegisterChallenge,
+  isCounterAccepted,
   listPasskeys,
+  lockPasskeySignCount,
   MFA_COOKIE_NAME,
+  MfaChallengeGone,
   transportsCsv,
   type MfaChallenge,
   type MfaFactor,
@@ -40,6 +43,7 @@ import {
 } from "../lib/auth/recovery-codes.js";
 import { getWebAuthnConfig } from "../lib/auth/webauthn-config.js";
 import { clientIpFrom, loginIpLimiter } from "../lib/auth/rate-limit.js";
+import { mfaLoginIpLimit, mfaManageLimit } from "../lib/security/route-rate-limit.js";
 import { authedUser, requireAuth, requireFreshPassword, requireSuperUser } from "../middleware/current-user.js";
 import { appendSecurityEvent, recordSecurityEventBestEffort } from "../lib/security/audit.js";
 
@@ -60,6 +64,11 @@ import { appendSecurityEvent, recordSecurityEventBestEffort } from "../lib/secur
  *   POST   /passkeys          { password, name?, response }
  *   DELETE /passkeys/:id      { password }
  *   POST   /recovery-codes    { password }
+ *
+ * Request limits (lib/security/route-rate-limit.ts): the two login-step
+ * routes share a per-IP limit (mfaLoginIpLimit) on top of loginIpLimiter;
+ * the enrollment routes share a per-user limit (mfaManageLimit) right after
+ * requireAuth. Both answer 429 with a JSON error.
  */
 export const mfaRouter = Router();
 
@@ -104,8 +113,12 @@ const RegistrationBody = z.object({
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-class ChallengeGone extends Error {}
-class FactorRejected extends Error {}
+/** The factor's write refused under lock; `reason` goes to the audit event. */
+class FactorRejected extends Error {
+  constructor(readonly reason: string) {
+    super(reason);
+  }
+}
 
 interface MfaUser {
   id: string;
@@ -207,7 +220,43 @@ function sessionUser(user: MfaUser) {
   };
 }
 
-mfaRouter.post("/passkey", async (req, res, next) => {
+/**
+ * Run completeMfaLogin for the pending login. Responds and returns false
+ * when the challenge is gone (EXPIRED) or the factor's write refused
+ * (INVALID; counted toward lockout and audited as a rejected factor).
+ */
+async function completeLogin(
+  req: Request,
+  res: Response,
+  pending: PendingLogin,
+  factor: MfaFactor,
+  applyFactor: (executor: SqlExecutor) => Promise<void>
+): Promise<boolean> {
+  const { challenge, user } = pending;
+  const ip = clientIpFrom(req);
+  try {
+    await completeMfaLogin(
+      res,
+      { user, challengeId: challenge.id, factor, localLoginMode: getOidcConfig().localLoginMode, sourceIp: ip },
+      applyFactor
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof MfaChallengeGone) {
+      res.status(401).json(EXPIRED);
+      return false;
+    }
+    if (err instanceof FactorRejected) {
+      await countFailure(user, factor, ip);
+      auditFailure(user, factor, ip, err.reason);
+      res.status(401).json(INVALID);
+      return false;
+    }
+    throw err;
+  }
+}
+
+mfaRouter.post("/passkey", mfaLoginIpLimit, async (req, res, next) => {
   try {
     const ip = clientIpFrom(req);
     if (!loginIpLimiter.hit(ip)) {
@@ -251,30 +300,28 @@ mfaRouter.post("/passkey", async (req, res, next) => {
       return;
     }
 
+    // Challenge, counter and session commit together (completeMfaLogin).
+    // Under the passkey row lock the row must still exist (a removal may
+    // have committed since the assertion was checked) and the counter must
+    // not fall back below what a concurrent sign-in stored meanwhile.
     const counter = newCounter;
-    const consumed = await db.transaction(async (tx) => {
-      const executor = tx as unknown as SqlExecutor;
-      if (!(await consumeChallenge(challenge.id, executor))) return false;
+    const completed = await completeLogin(req, res, pending, "passkey", async (executor) => {
+      const stored = await lockPasskeySignCount(passkey.id, user.id, executor);
+      if (stored === null) throw new FactorRejected("passkey_removed");
+      if (!isCounterAccepted(counter, stored)) throw new FactorRejected("counter_not_increased");
       await executor.execute(sql`
         UPDATE user_passkeys
         SET sign_count = ${counter}, last_used_at = now()
         WHERE id = ${passkey.id}::uuid
       `);
-      return true;
     });
-    if (!consumed) {
-      res.status(401).json(EXPIRED);
-      return;
-    }
-
-    await completeMfaLogin(res, user, "passkey", getOidcConfig().localLoginMode, ip);
-    res.json({ user: sessionUser(user) });
+    if (completed) res.json({ user: sessionUser(user) });
   } catch (err) {
     next(err);
   }
 });
 
-mfaRouter.post("/recovery-code", async (req, res, next) => {
+mfaRouter.post("/recovery-code", mfaLoginIpLimit, async (req, res, next) => {
   try {
     const ip = clientIpFrom(req);
     if (!loginIpLimiter.hit(ip)) {
@@ -283,40 +330,23 @@ mfaRouter.post("/recovery-code", async (req, res, next) => {
     }
     const pending = await pendingLogin(req, res);
     if (!pending) return;
-    const { challenge, user } = pending;
+    const { user } = pending;
 
     const parsed = RecoveryCodeBody.safeParse(req.body);
-    let outcome: "ok" | "rejected" | "gone" = "rejected";
-    if (parsed.success) {
-      try {
-        // The code is spent only together with the challenge: if the
-        // challenge was consumed meanwhile, the rollback keeps the code.
-        await db.transaction(async (tx) => {
-          const executor = tx as unknown as SqlExecutor;
-          if (!(await consumeRecoveryCode(user.id, parsed.data.code, executor))) {
-            throw new FactorRejected();
-          }
-          if (!(await consumeChallenge(challenge.id, executor))) throw new ChallengeGone();
-        });
-        outcome = "ok";
-      } catch (err) {
-        if (err instanceof ChallengeGone) outcome = "gone";
-        else if (!(err instanceof FactorRejected)) throw err;
-      }
-    }
-    if (outcome === "gone") {
-      res.status(401).json(EXPIRED);
-      return;
-    }
-    if (outcome === "rejected") {
+    if (!parsed.success) {
       await countFailure(user, "recovery_code", ip);
       auditFailure(user, "recovery_code", ip, "code_rejected");
       res.status(401).json(INVALID);
       return;
     }
-
-    await completeMfaLogin(res, user, "recovery_code", getOidcConfig().localLoginMode, ip);
-    res.json({ user: sessionUser(user) });
+    // The code is spent only together with the challenge and the session:
+    // a wrong code, or a challenge consumed meanwhile, rolls back both.
+    const completed = await completeLogin(req, res, pending, "recovery_code", async (executor) => {
+      if (!(await consumeRecoveryCode(user.id, parsed.data.code, executor))) {
+        throw new FactorRejected("code_rejected");
+      }
+    });
+    if (completed) res.json({ user: sessionUser(user) });
   } catch (err) {
     next(err);
   }
@@ -371,7 +401,7 @@ const UNAVAILABLE = {
   code: "webauthn_unconfigured"
 } as const;
 
-mfaRouter.get("/status", requireAuth, requireSuperUser, requireFreshPassword, async (req, res, next) => {
+mfaRouter.get("/status", requireAuth, mfaManageLimit, requireSuperUser, requireFreshPassword, async (req, res, next) => {
   try {
     const user = authedUser(req);
     const [passkeys, unusedRecoveryCodes] = await Promise.all([
@@ -393,7 +423,7 @@ mfaRouter.get("/status", requireAuth, requireSuperUser, requireFreshPassword, as
   }
 });
 
-mfaRouter.post("/passkeys/options", requireAuth, requireSuperUser, requireFreshPassword, async (req, res, next) => {
+mfaRouter.post("/passkeys/options", requireAuth, mfaManageLimit, requireSuperUser, requireFreshPassword, async (req, res, next) => {
   try {
     const config = getWebAuthnConfig();
     if (!config) {
@@ -424,7 +454,7 @@ mfaRouter.post("/passkeys/options", requireAuth, requireSuperUser, requireFreshP
   }
 });
 
-mfaRouter.post("/passkeys", requireAuth, requireSuperUser, requireFreshPassword, async (req, res, next) => {
+mfaRouter.post("/passkeys", requireAuth, mfaManageLimit, requireSuperUser, requireFreshPassword, async (req, res, next) => {
   try {
     const config = getWebAuthnConfig();
     if (!config) {
@@ -494,7 +524,7 @@ mfaRouter.post("/passkeys", requireAuth, requireSuperUser, requireFreshPassword,
   }
 });
 
-mfaRouter.delete("/passkeys/:id", requireAuth, requireSuperUser, requireFreshPassword, async (req, res, next) => {
+mfaRouter.delete("/passkeys/:id", requireAuth, mfaManageLimit, requireSuperUser, requireFreshPassword, async (req, res, next) => {
   try {
     const passkeyId = req.params.id ?? "";
     if (!UUID_PATTERN.test(passkeyId)) {
@@ -540,7 +570,7 @@ mfaRouter.delete("/passkeys/:id", requireAuth, requireSuperUser, requireFreshPas
   }
 });
 
-mfaRouter.post("/recovery-codes", requireAuth, requireSuperUser, requireFreshPassword, async (req, res, next) => {
+mfaRouter.post("/recovery-codes", requireAuth, mfaManageLimit, requireSuperUser, requireFreshPassword, async (req, res, next) => {
   try {
     const user = await requireCurrentPassword(req, res);
     if (!user) return;

@@ -1,4 +1,5 @@
 import { rateLimit, type RateLimitRequestHandler } from "express-rate-limit";
+import { clientIpFrom } from "../auth/rate-limit.js";
 
 /**
  * Per-user request limits for authenticated API routes.
@@ -7,6 +8,8 @@ import { rateLimit, type RateLimitRequestHandler } from "express-rate-limit";
  * limiter: production runs one `web` replica (.claude/reference/deployment.md).
  * The limits sit well above what a person clicking through the UI produces;
  * they stop a script or a stuck client from hammering the database.
+ * The exception is mfaLoginIpLimit at the end: its routes run before
+ * sign-in, so it counts per client IP.
  */
 function perUserLimit(limit: number, windowMs: number): RateLimitRequestHandler {
   return rateLimit({
@@ -75,3 +78,26 @@ export const evidenceWriteLimit = perUserLimit(10, 60_000);
 
 /** Compliance document reads (list and documents): 60 a minute per user. */
 export const complianceReadLimit = perUserLimit(60, 60_000);
+
+/** Emergency sign-in card (passkeys, recovery codes, status): 30 a minute per user. */
+export const mfaManageLimit = perUserLimit(30, 60_000);
+
+/**
+ * Second login step (POST /api/auth/mfa/passkey and /recovery-code), which
+ * runs before any session exists, so it is keyed by client IP the way
+ * loginIpLimiter keys it (clientIpFrom). 2000 per 10 minutes, the same as
+ * loginIpLimiter, so a call center behind one shared address is never
+ * blocked; the per-account lockout bounds guessing on a single account.
+ * The two routes share the budget.
+ */
+export const mfaLoginIpLimit = rateLimit({
+  windowMs: 10 * 60_000,
+  limit: 2000,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: (req) => clientIpFrom(req),
+  validate: false,
+  handler: (_req, res) => {
+    res.status(429).json({ error: "Too many login attempts. Try again in a few minutes." });
+  }
+});

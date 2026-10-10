@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authRouter } from "../auth.js";
 import { sessions } from "@workspace/db/schema";
 import { hashToken, SESSION_COOKIE_NAME } from "../../lib/auth/sessions.js";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
+
+const dialect = new PgDialect();
 
 const fake = vi.hoisted(() => ({
   rows: [] as Array<Record<string, unknown>>,
@@ -23,6 +27,10 @@ vi.mock("../../lib/db-client.js", () => ({
     select: () => ({ from: () => ({ where: () => ({ limit: async () => fake.rows }) }) }),
     execute: fake.execute,
     insert: fake.insert,
+    // The login's challenge or session insert runs in a transaction that
+    // first locks the user row and rereads its password hash (lockUserRow).
+    transaction: async (work: (tx: unknown) => Promise<unknown>) =>
+      work({ execute: fake.execute, insert: fake.insert }),
     update: () => ({
       set: () => ({
         where: () => Object.assign(Promise.resolve(undefined), {
@@ -108,7 +116,10 @@ beforeEach(() => {
   fake.values.mockResolvedValue(undefined);
   fake.updateRows = [{ failedLoginCount: 1, lockedUntil: null }];
   fake.passkeys = [];
-  fake.execute.mockImplementation(async () => ({ rows: fake.passkeys }));
+  fake.execute.mockImplementation(async (query: SQL) =>
+    /FOR UPDATE/.test(dialect.sqlToQuery(query).sql)
+      ? { rows: [{ password_hash: fake.rows[0]?.passwordHash }] }
+      : { rows: fake.passkeys });
 });
 afterEach(() => vi.unstubAllEnvs());
 

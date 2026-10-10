@@ -116,6 +116,55 @@ export async function findPasskeyByCredentialId(
   return result.rows[0] ? toPasskey(result.rows[0]) : null;
 }
 
+/**
+ * Lock one passkey row of the user until the caller's transaction ends and
+ * return its stored sign_count, or null when the row is gone (removed since
+ * the assertion was checked). DELETE /api/auth/mfa/passkeys/:id locks the
+ * same rows, so a removal and a sign-in with that passkey run one after the
+ * other.
+ */
+export async function lockPasskeySignCount(
+  passkeyId: string,
+  userId: string,
+  executor: SqlExecutor
+): Promise<number | null> {
+  const result = await executor.execute(sql`
+    SELECT sign_count FROM user_passkeys
+    WHERE id = ${passkeyId}::uuid AND user_id = ${userId}::uuid
+    FOR UPDATE
+  `);
+  const row = result.rows[0] as { sign_count?: unknown } | undefined;
+  return row ? Number(row.sign_count ?? 0) : null;
+}
+
+/**
+ * WebAuthn signature counter rule under the passkey row lock: accept a
+ * counter above the stored one, or 0 over a stored 0 (authenticators that do
+ * not count). Anything else could be a cloned key or a concurrent assertion
+ * that would lower the stored value; refuse it.
+ */
+export function isCounterAccepted(newCounter: number, storedCounter: number): boolean {
+  return newCounter > storedCounter || (newCounter === 0 && storedCounter === 0);
+}
+
+/**
+ * Lock the user's row until the caller's transaction ends and return its
+ * current password hash, or null when the row is gone. Every password write
+ * (change-password, reset-password, the admin reset) updates this row in
+ * its own transaction, so a sign-in step holding the lock and a password
+ * write run one after the other.
+ */
+export async function lockUserRow(
+  userId: string,
+  executor: SqlExecutor
+): Promise<string | null> {
+  const result = await executor.execute(sql`
+    SELECT password_hash FROM users WHERE id = ${userId}::uuid FOR UPDATE
+  `);
+  const row = result.rows[0] as { password_hash?: unknown } | undefined;
+  return typeof row?.password_hash === "string" ? row.password_hash : null;
+}
+
 const TRANSPORT_PATTERN = /^[a-z-]{1,20}$/;
 
 /** Transports go in as one comma list so the driver passes a single parameter. */
@@ -143,12 +192,20 @@ export function clearMfaCookie(res: Response): void {
  * created, but it offers recovery codes only and carries no passkey options.
  * Its stored challenge is then random bytes no client sees, and
  * POST /api/auth/mfa/passkey refuses while the configuration is unusable.
+ *
+ * The insert runs in a transaction that first locks the user's row and
+ * rechecks that users.password_hash still equals `verifiedHash`, the hash
+ * the password was checked against. When a password write committed in
+ * between, nothing is inserted, no cookie is set, and the result is null;
+ * the caller answers with its generic credential failure. The cookie is set
+ * only after the insert commits.
  */
 export async function startLoginChallenge(
   res: Response,
   userId: string,
-  passkeys: readonly StoredPasskey[]
-): Promise<LoginMfaResponse> {
+  passkeys: readonly StoredPasskey[],
+  verifiedHash: string
+): Promise<LoginMfaResponse | null> {
   const config = getWebAuthnConfig();
   const passkeyOptions = config
     ? await generateAuthenticationOptions({
@@ -163,13 +220,19 @@ export async function startLoginChallenge(
     : null;
   const challenge = passkeyOptions?.challenge ?? randomBytes(32).toString("base64url");
   const token = randomBytes(32).toString("base64url");
-  await db.execute(sql`
-    INSERT INTO mfa_challenges (user_id, purpose, challenge, token_hash, expires_at)
-    VALUES (
-      ${userId}::uuid, 'login', ${challenge}, ${hashMfaToken(token)},
-      now() + make_interval(secs => ${MFA_CHALLENGE_TTL_MS / 1000}::integer)
-    )
-  `);
+  const created = await db.transaction(async (tx) => {
+    const executor = tx as unknown as SqlExecutor;
+    if ((await lockUserRow(userId, executor)) !== verifiedHash) return false;
+    await executor.execute(sql`
+      INSERT INTO mfa_challenges (user_id, purpose, challenge, token_hash, expires_at)
+      VALUES (
+        ${userId}::uuid, 'login', ${challenge}, ${hashMfaToken(token)},
+        now() + make_interval(secs => ${MFA_CHALLENGE_TTL_MS / 1000}::integer)
+      )
+    `);
+    return true;
+  });
+  if (!created) return null;
   setMfaCookie(res, token);
   return passkeyOptions
     ? { mfaRequired: true, methods: [...MFA_METHODS], passkeyOptions }
@@ -202,8 +265,10 @@ export async function findLoginChallenge(token: string | undefined): Promise<Mfa
  * Delete every unconsumed challenge of the user, login and register alike.
  * Each transaction that writes the user's password hash calls this on its
  * own executor, so a challenge started under the old password cannot
- * complete after the change commits. A completion racing the change either
- * consumed its row first or finds it gone (consumeChallenge returns false).
+ * complete after the change commits. The password write's UPDATE users
+ * and completeMfaLogin's lockUserRow take the same row lock, so a racing
+ * completion either commits first (and the write then revokes the session
+ * it created) or finds its row gone (consumeChallenge returns false).
  */
 export async function invalidateMfaChallenges(
   userId: string,
@@ -266,20 +331,50 @@ export interface LocalLoginUser {
   mustResetPassword: boolean;
 }
 
+/** The challenge was consumed, expired or deleted (password write) meanwhile. */
+export class MfaChallengeGone extends Error {}
+
+export interface MfaCompletion {
+  user: LocalLoginUser;
+  challengeId: string;
+  factor: MfaFactor;
+  localLoginMode: LocalLoginMode;
+  sourceIp: string | null;
+}
+
 /**
- * Issue the session after both factors passed: reset the lockout count,
- * create the session, audit the login with the factor used, and stamp
- * lastLoginAt (best effort, as POST /login does).
+ * Finish the second factor and issue the session. One transaction:
+ *   (1) lock the user's row (lockUserRow),
+ *   (2) consume the challenge (throws MfaChallengeGone when it is gone),
+ *   (3) `applyFactor`: the factor's own write on the same executor (passkey
+ *       counter, or recovery code); it throws to refuse, which rolls back
+ *       steps (1) to (3) and leaves the challenge unconsumed,
+ *   (4) insert the session row.
+ * A password write updates the same user row, so it either commits first
+ * (and its invalidateMfaChallenges makes step 2 fail) or waits for this
+ * commit and then revokes the new session with the others.
+ *
+ * After the commit: reset the lockout count, set the session cookie, clear
+ * the MFA cookie, audit the login with the factor used, and stamp
+ * lastLoginAt (best effort, as POST /login does). The lockout reset runs
+ * after the commit because it writes the locked user row on another
+ * connection; if it fails the request fails before any cookie is set, and
+ * the session row stays unusable because its token never left the server.
  */
 export async function completeMfaLogin(
   res: Response,
-  user: LocalLoginUser,
-  factor: MfaFactor,
-  localLoginMode: LocalLoginMode,
-  sourceIp: string | null
+  completion: MfaCompletion,
+  applyFactor: (executor: SqlExecutor) => Promise<void>
 ): Promise<void> {
+  const { user, challengeId, factor, localLoginMode, sourceIp } = completion;
+  const token = await db.transaction(async (tx) => {
+    const executor = tx as unknown as SqlExecutor;
+    if ((await lockUserRow(user.id, executor)) === null) throw new MfaChallengeGone();
+    if (!(await consumeChallenge(challengeId, executor))) throw new MfaChallengeGone();
+    await applyFactor(executor);
+    return (await createSession(user.id, tx)).token;
+  });
   await recordAuthSuccess(user.id);
-  const { token } = await createSession(user.id);
   setSessionCookie(res, token);
   clearMfaCookie(res);
   recordSecurityEventBestEffort({

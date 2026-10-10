@@ -44,17 +44,24 @@ vi.mock("../../lib/db-client.js", () => {
     }
     return [];
   };
+  // No passkeys enrolled (lib/auth/mfa.ts listPasskeys). The user-row lock
+  // of the session transaction (lockUserRow) reads the stored hash.
+  const execute = async (query: SQL) =>
+    query.queryChunks.some((chunk) => String((chunk as { value?: unknown }).value ?? "").includes("FOR UPDATE"))
+      ? { rows: [{ password_hash: fake.account.passwordHash }] }
+      : { rows: [] };
+  const insert = () => {
+    fake.insert();
+    return { values: async () => undefined };
+  };
   return {
     db: {
       select: () => ({
         from: () => ({ where: () => ({ limit: async () => [{ ...fake.account }] }) })
       }),
-      // No passkeys enrolled (lib/auth/mfa.ts listPasskeys).
-      execute: async () => ({ rows: [] }),
-      insert: () => {
-        fake.insert();
-        return { values: async () => undefined };
-      },
+      execute,
+      insert,
+      transaction: async (work: (tx: unknown) => Promise<unknown>) => work({ execute, insert }),
       update: () => ({
         set: (values: Record<string, unknown>) => ({
           where: () => {

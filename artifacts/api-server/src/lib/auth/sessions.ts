@@ -73,19 +73,28 @@ export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+/** `db`, or a transaction from `db.transaction`. */
+export type SessionWriter = Pick<typeof db, "insert">;
+
 /**
  * Create a new session row for the given user and return the plaintext
  * token. The caller is responsible for setting this as the session cookie
  * value. We never log or persist the plaintext token.
+ *
+ * Pass a transaction as `executor` to insert the row inside it; set the
+ * cookie only after that transaction commits.
  */
-export async function createSession(userId: string): Promise<{
+export async function createSession(
+  userId: string,
+  executor: SessionWriter = db
+): Promise<{
   token: string;
   expiresAt: Date;
 }> {
   const token = generateToken();
   const tokenHash = hashToken(token);
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
-  await db.insert(sessions).values({ userId, tokenHash, expiresAt });
+  await executor.insert(sessions).values({ userId, tokenHash, expiresAt });
   return { token, expiresAt };
 }
 

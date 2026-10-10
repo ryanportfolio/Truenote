@@ -20,6 +20,7 @@ import { isLocalLoginAllowed } from "../lib/auth/local-login-policy.js";
 import {
   invalidateMfaChallenges,
   listPasskeys,
+  lockUserRow,
   startLoginChallenge,
   type SqlExecutor
 } from "../lib/auth/mfa.js";
@@ -249,9 +250,18 @@ authRouter.post("/login", async (req, res, next) => {
     // session here: the response starts the MFA step, and routes/mfa.ts
     // resets the lockout count and issues the session once a passkey or
     // recovery code verifies.
+    //
+    // Both the challenge insert and the session insert below run in a
+    // transaction that locks the user's row and rechecks the password hash
+    // just verified: a password write that committed after the check makes
+    // this attempt fail with the generic 401 and write nothing.
     const passkeys = await listPasskeys(row.id);
     if (passkeys.length > 0) {
-      const challenge = await startLoginChallenge(res, row.id, passkeys);
+      const challenge = await startLoginChallenge(res, row.id, passkeys, row.passwordHash);
+      if (!challenge) {
+        res.status(401).json({ error: "Invalid credentials" });
+        return;
+      }
       if (!challenge.methods.includes("passkey")) {
         // WebAuthn is not usably configured (lib/auth/webauthn-config.ts).
         // The second factor still applies: the challenge offers recovery
@@ -288,7 +298,15 @@ authRouter.post("/login", async (req, res, next) => {
 
     await recordAuthSuccess(row.id);
 
-    const { token } = await createSession(row.id);
+    const token = await db.transaction(async (tx) => {
+      const current = await lockUserRow(row.id, tx as unknown as SqlExecutor);
+      if (current !== row.passwordHash) return null;
+      return (await createSession(row.id, tx)).token;
+    });
+    if (!token) {
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
     setSessionCookie(res, token);
     recordSecurityEventBestEffort({
       action: row.role === "super_user" && oidc.localLoginMode === "break_glass"
