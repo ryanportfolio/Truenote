@@ -1,0 +1,86 @@
+name: Scanner image
+
+# Builds the `scanner` service image (services/scanner/Dockerfile), runs it,
+# and checks the real ClamAV engine through the HTTP contract: clean files
+# pass, EICAR and zips nested past the recursion limit are infected, a wrong
+# token or HMAC gets 401, an oversize body is refused. Also runs the wrapper's
+# contract tests against a fake clamd and a report-only Grype scan of the image. Every action is pinned to a full commit SHA.
+on:
+  pull_request:
+    paths:
+      - services/scanner/**
+      - .github/workflows/scanner-image.yml
+  push:
+    branches: [main]
+    paths:
+      - services/scanner/**
+      - .github/workflows/scanner-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scanner-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scanner:
+    name: Build and test the scanner image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Wrapper contract tests (fake clamd)
+        run: node --test services/scanner/test/server.test.mjs
+      - name: Build the image
+        run: docker build --file services/scanner/Dockerfile --tag "truenote-scanner:${GITHUB_SHA}" .
+      - name: Start the scanner
+        run: |
+          echo "SCANNER_TOKEN=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "SCANNER_HMAC_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+      - name: Run the container
+        run: |
+          docker run --detach --name scanner --publish 127.0.0.1:8080:8080 \
+            --env SCANNER_TOKEN --env SCANNER_HMAC_KEY \
+            "truenote-scanner:${GITHUB_SHA}"
+      - name: EICAR and contract smoke test against ClamAV
+        run: node services/scanner/test/smoke.mjs http://127.0.0.1:8080
+      - name: Check the processes run as a non-root user
+        run: |
+          uid=$(docker exec scanner id -u)
+          echo "uid ${uid}"
+          test "$uid" != "0"
+      - name: Record memory use
+        if: always()
+        run: |
+          {
+            echo "### Scanner container"
+            echo "- Image ID: \`$(docker image inspect --format '{{.Id}}' "truenote-scanner:${GITHUB_SHA}")\`"
+            echo "- Memory after the smoke test: \`$(docker stats --no-stream --format '{{.MemUsage}}' scanner)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Container logs
+        if: always()
+        run: docker logs scanner 2>&1 | tail -n 200
+      - name: Grype report
+        id: report
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: truenote-scanner:${{ github.sha }}
+          fail-build: false
+          severity-cutoff: high
+          output-format: sarif
+      - name: Upload SARIF to code scanning
+        if: always() && steps.report.outputs.sarif != ''
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: ${{ steps.report.outputs.sarif }}
+          category: /container/scanner

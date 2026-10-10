@@ -513,6 +513,9 @@ kbRouter.get("/documents/:id", async (req, res, next) => {
         and(
           eq(documentVersions.documentId, documents.id),
           eq(documentVersions.parseStatus, "ready"),
+          // A version found infected stays unreadable whatever its lifecycle
+          // later becomes (retiring the document turns quarantined into retired).
+          sql`document_versions.scan_status <> 'infected'`,
           classificationSqlPredicate(
             sql.raw("document_versions.classification"),
             maxClassification

@@ -239,9 +239,36 @@ export function hasBlockingFindings(findings: SecurityFinding[]): boolean {
 }
 
 /**
+ * Production transport rule for the scanner URL: HTTPS, or plain HTTP to a
+ * Railway private host (`<service>.railway.internal`), which only resolves
+ * inside the project's private network and travels over Railway's encrypted
+ * WireGuard mesh. Any other HTTP host is refused. Outside production every
+ * URL is allowed so local tests can use a loopback scanner.
+ */
+export function isScannerTransportAllowed(
+  url: string,
+  nodeEnv: string | undefined = process.env.NODE_ENV
+): boolean {
+  if (nodeEnv !== "production") return true;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol === "https:") return true;
+  return (
+    parsed.protocol === "http:" &&
+    parsed.hostname.endsWith(".railway.internal") &&
+    parsed.username === "" &&
+    parsed.password === ""
+  );
+}
+
+/**
  * Adapter contract for an organization-approved scanner. Raw bytes are sent
- * only when an HTTPS endpoint is configured. No public scanning vendor is
- * selected by the application.
+ * only to an endpoint that passes isScannerTransportAllowed. Production uses
+ * the self-hosted `scanner` Railway service (services/scanner/).
  */
 export async function scanForMalware(input: {
   buffer: Buffer;
@@ -267,7 +294,7 @@ export async function scanForMalware(input: {
       ]
     };
   }
-  if (process.env.NODE_ENV === "production" && !url.startsWith("https://")) {
+  if (!isScannerTransportAllowed(url)) {
     return {
       status: "error",
       engine: null,
@@ -278,7 +305,8 @@ export async function scanForMalware(input: {
           ruleId: "malware.scanner_insecure_transport",
           severity: "critical",
           count: 1,
-          message: "Malware scanner URL must use HTTPS in production.",
+          message:
+            "Malware scanner URL must use HTTPS, or HTTP to a Railway private host, in production.",
           blocking: true
         }
       ]

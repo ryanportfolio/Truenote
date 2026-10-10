@@ -54,6 +54,22 @@ export function logJsonLine(prefix: string, value: unknown): void {
   );
 }
 
+/**
+ * Message of the innermost `cause`. Drizzle wraps a database error as
+ * "Failed query: <sql> params: ..." and keeps Postgres' own reason (for
+ * example "permission denied for function ...") in `cause`, which is the
+ * part a responder needs.
+ */
+export function rootErrorMessage(error: unknown): string {
+  let current = error;
+  for (let depth = 0; depth < 5; depth += 1) {
+    const cause = (current as { cause?: unknown } | null)?.cause;
+    if (cause === undefined || cause === null) break;
+    current = cause;
+  }
+  return safeErrorMessage(current);
+}
+
 /** Reject when `promise` has not settled within `ms`. */
 export function withDeadline<T>(
   promise: Promise<T>,
@@ -146,7 +162,7 @@ export function reportAuditWriteFailure(
   error: unknown,
   now: () => number = Date.now
 ): void {
-  const message = safeErrorMessage(error).slice(0, 300);
+  const message = rootErrorMessage(error).slice(0, 300);
   console.error(
     `[security-audit] append failed ${JSON.stringify({ action, outcome, error: message })}`
   );

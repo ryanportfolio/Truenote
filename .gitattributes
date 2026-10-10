@@ -2,3 +2,5 @@
 *.sh text eol=lf
 # Schema files are fed to psql and hashed; keep them byte-identical on every checkout.
 lib/db/sql/*.sql text eol=lf
+# Scanner config and scripts are read inside a Linux container.
+services/scanner/** text eol=lf

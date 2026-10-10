@@ -1744,22 +1744,45 @@ route("GET", /^\/api\/config$/, () => ({
 }));
 route("GET", /^\/api\/health$/, () => ({ ok: true }));
 
-// routes/admin/security.ts: super users only. The scanner part is a fixed
-// "on, not configured" stub; the demo-limits switch works.
+// routes/admin/security.ts: super users only. The scanner counts as
+// configured; the bypass switch (24-hour expiry), the scan-only rescan of
+// unscanned versions and the demo-limits switch work on fixture state.
+const malwareScanning = {
+  stored: { enabled: true },
+  updatedAt: null,
+  updatedByName: null,
+  updatedByEmail: null
+};
+const mockScanState = { awaitingScan: 3, disabled: 3 };
+function malwareScanningState() {
+  const { stored } = malwareScanning;
+  const until = stored.enabled ? null : Date.parse(stored.disabledUntil);
+  const active = until !== null && until > Date.now();
+  return {
+    enabled: !active,
+    disabledUntil: active ? stored.disabledUntil : null,
+    bypassExpiredAt: until !== null && !active ? stored.disabledUntil : null,
+    persistenceReady: true,
+    disabledStatusReady: true,
+    scannerConfigured: true,
+    scannerTransportSecure: true,
+    updatedAt: malwareScanning.updatedAt,
+    updatedByName: malwareScanning.updatedByName,
+    updatedByEmail: malwareScanning.updatedByEmail
+  };
+}
 function securityDashboard() {
   return {
-    malwareScanning: {
-      enabled: true,
-      persistenceReady: true,
-      disabledStatusReady: true,
-      scannerConfigured: false,
-      scannerTransportSecure: false,
-      updatedAt: null,
-      updatedByName: null,
-      updatedByEmail: null
-    },
+    malwareScanning: malwareScanningState(),
     demoLimits: { ...demoLimits, persistenceReady: true, demoAccountsConfigured: true },
-    summary: { quarantined: 0, unavailable: 0, errors: 0, infected: 0, disabled: 0 },
+    summary: {
+      quarantined: 0,
+      unavailable: 0,
+      errors: 0,
+      infected: 0,
+      disabled: mockScanState.disabled,
+      awaitingScan: mockScanState.awaitingScan
+    },
     scans: [],
     controlEvents: securityEvents.slice(0, 50)
   };
@@ -1781,6 +1804,37 @@ route("PATCH", /^\/api\/admin\/security\/demo-limits$/, ({ user, body }) => {
     details: { enabled: body.enabled }
   });
   return securityDashboard();
+});
+route("PATCH", /^\/api\/admin\/security\/malware-scanning$/, ({ user, body }) => {
+  requireRole(user, "super_user");
+  if (typeof body?.enabled !== "boolean") throw badRequest("Provide the malware-scanning state");
+  const at = iso(Date.now());
+  malwareScanning.stored = body.enabled
+    ? { enabled: true }
+    : { enabled: false, disabledUntil: iso(Date.now() + 24 * 3_600_000) };
+  Object.assign(malwareScanning, { updatedAt: at, updatedByName: user.name, updatedByEmail: user.email });
+  securityEvents.unshift({
+    id: `sec-${securityEvents.length + 1}`,
+    occurredAt: at,
+    action: `security.malware_scanning.${body.enabled ? "enabled" : "disabled"}`,
+    actorEmail: user.email,
+    details: malwareScanning.stored
+  });
+  return securityDashboard();
+});
+route("POST", /^\/api\/admin\/security\/malware-rescan$/, ({ user }) => {
+  requireRole(user, "super_user");
+  const queued = mockScanState.awaitingScan;
+  mockScanState.awaitingScan = 0;
+  mockScanState.disabled = 0;
+  securityEvents.unshift({
+    id: `sec-${securityEvents.length + 1}`,
+    occurredAt: iso(Date.now()),
+    action: "security.malware_rescan.requested",
+    actorEmail: user.email,
+    details: { queued }
+  });
+  return { ...securityDashboard(), queued };
 });
 // routes/compliance.ts: super users only. Fixture text is invented; real
 // documents live only in object storage.
