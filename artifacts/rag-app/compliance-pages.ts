@@ -111,13 +111,20 @@ const MARKDOWN_COMPONENTS: Components = {
     createElement("div", { className: "table-scroll" }, createElement("table", null, children)),
   img: ({ alt }) =>
     createElement("span", { className: "image-placeholder" }, alt ? `Image: ${alt}` : "Image"),
-  a: ({ href, children }) => {
+  // Keep the attributes react-markdown generates (footnote ids, aria and data
+  // attributes) so footnote references and backlinks still pair up. Raw HTML
+  // is never enabled, so these come only from the Markdown syntax tree.
+  a: ({ node: _node, href, children, ...generated }) => {
     // react-markdown empties unsafe URLs (javascript: and similar).
-    if (typeof href !== "string" || href === "") return createElement("span", null, children);
+    if (typeof href !== "string" || href === "") {
+      return createElement("span", { id: generated.id }, children);
+    }
     const external = /^https?:\/\//i.test(href);
     return createElement(
       "a",
-      external ? { href, target: "_blank", rel: "noreferrer" } : { href },
+      external
+        ? { ...generated, href, target: "_blank", rel: "noreferrer" }
+        : { ...generated, href },
       children
     );
   }

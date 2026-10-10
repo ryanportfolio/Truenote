@@ -92,6 +92,13 @@ describe("public compliance pages", () => {
     assert.ok(html.includes("&lt;script&gt;"));
   });
 
+  it("keeps footnote reference ids so backlinks have a target", () => {
+    const html = renderComplianceMarkdown("Claim[^1].\n\n[^1]: Supporting evidence.");
+    const backlink = /href="#(user-content-fnref-[^"]+)"/.exec(html)?.[1];
+    assert.ok(backlink, "footnote backlink missing");
+    assert.ok(html.includes(`id="${backlink}"`), "footnote reference has no matching id");
+  });
+
   it("refuses source files with unsafe names or missing front matter", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "compliance-src-"));
     try {
