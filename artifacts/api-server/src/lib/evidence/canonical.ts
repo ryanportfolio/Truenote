@@ -50,7 +50,7 @@ export function sha256Hex(input: string | Buffer): string {
 }
 
 /**
- * The chain rule from lib/db/sql/0011_evidence_receipts.sql, for verifiers
+ * The chain rule from lib/db/sql/0012_evidence_receipts.sql, for verifiers
  * outside the database (the monthly export, tests).
  */
 export function receiptHash(

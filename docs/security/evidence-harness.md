@@ -11,7 +11,7 @@ Plan approved by the owner on 2026-10-10. The API contract for the gated complia
 1. The check catalog (`artifacts/api-server/src/lib/evidence/catalog.ts`) lists every check: the controls and 800-53A objectives it covers, how often it runs, and its exact pass condition. Objective labels are copied from NIST's OSCAL Moderate baseline (Rev. 5.2.0) into `nist-800-53r5-moderate.json` by `scripts/src/evidence-nist-ids.ts`, and a unit test rejects any label the baseline does not contain.
 2. A daily pg-boss job in the `worker` service (`evidence-run`, 05:23 UTC) runs every automated check and appends one receipt per check.
 3. A receipt records the check id, its controls and objectives, the catalog version, start and finish times, the deployed commit, what the check read (inputs), what it observed (outputs), and `pass`, `fail` or `error`. `error` means the check could not run, so there is no evidence for that day.
-4. Receipts go to the append-only `evidence_receipts` table (`lib/db/sql/0011_evidence_receipts.sql`). A database function computes the hash chain, so an edited, removed or reordered receipt breaks every later hash:
+4. Receipts go to the append-only `evidence_receipts` table (`lib/db/sql/0012_evidence_receipts.sql`). A database function computes the hash chain, so an edited, removed or reordered receipt breaks every later hash:
 
    ```text
    receipt_hash = sha256(previous_hash | id | recorded_at_text | sha256(payload))
@@ -19,7 +19,7 @@ Plan approved by the owner on 2026-10-10. The API contract for the gated complia
 
    The application role can read receipts and call the append function; it cannot insert, update or delete rows. Triggers refuse UPDATE, DELETE and TRUNCATE for every role, the owner included.
 5. Every day the harness re-verifies the evidence chain and the `security_events` chain, then sends the chain head hash (and only the hash) to a public RFC 3161 time-stamping authority. The token is accepted only after its CMS signature, message digest, nonce and timeStamping key usage verify and its signer chains to a pinned root (`checks/tsa-trust.ts`: FreeTSA Root CA, DigiCert Trusted Root G4); then it goes into a receipt. Anyone can later check with `openssl ts -verify` that the chain existed at that time, which narrows how far back an owner with database access could rewrite history to about a day.
-6. When a run changes something that needs attention, the owner gets one email: a new failure, a known-gap link that expired, or a check that could not run twice in a row. A failure that stays failing does not repeat daily. An alert that could not be sent (mail outage, `EVIDENCE_ALERT_EMAIL` unset) stays pending in `app_settings` and is resent with every run until delivery succeeds.
+6. When a run changes something that needs attention, the owner gets one email: a new failure, a known-gap link that expired, or a check that could not run twice in a row. A failure that stays failing does not repeat daily. An alert that could not be sent (mail outage, no recipient configured) stays pending in `app_settings` and is resent with every run until delivery succeeds.
 7. A public endpoint, `/api/evidence/heartbeat`, returns only the time of the last receipt. The `Evidence harness watch` GitHub Action reads it daily from outside Railway and fails, which emails the owner, when receipts are more than 26 hours old. The same Action repeats the passive public checks from GitHub's network.
 
 ## Check types
@@ -66,7 +66,7 @@ All cadences are proposals until the owner approves the organization-defined par
 | Variable | Service | Purpose |
 |---|---|---|
 | `EVIDENCE_GITHUB_TOKEN` | worker | Fine-grained token, Truenote repository only, read-only: Administration, Actions, Code scanning alerts, Dependabot alerts, Secret scanning alerts, Metadata. Maximum one-year expiry; the `github.credential-expiry` check fails 30 days before. |
-| `EVIDENCE_ALERT_EMAIL` | worker | Where alert emails go. Without it the alert is logged and not sent. |
+| `EVIDENCE_ALERT_EMAIL` | worker | Optional, comma-separated. Where evidence alerts go; defaults to the security monitor's `SECURITY_ALERT_EMAIL` (`docs/security/monitoring.md`). With neither set, alerts stay pending. |
 | `EVIDENCE_GITHUB_REPO` | worker | Optional; defaults to `ryanportfolio/Truenote`. |
 | `EVIDENCE_WATCH_ENABLED` | GitHub repository variable | `true` turns on the daily schedule of the watch Action. |
 
@@ -76,9 +76,9 @@ The deployed commit comes from `.release-commit`, written before `railway up` (`
 
 Each step changes production and waits for the owner's go.
 
-1. Apply the schema: `node scripts/railway-apply-sql.mjs lib/db/sql/0011_evidence_receipts.sql` (dry run), then with `--apply`.
+1. Apply the schema: `node scripts/railway-apply-sql.mjs lib/db/sql/0012_evidence_receipts.sql` (dry run), then with `--apply`.
 2. Create the queue as the migration role: `pnpm --filter @workspace/scripts run pgboss:install` through the SSH tunnel (`docs/security/backup-restore-runbook.md`, section 4.4, step 5). Without it the worker logs `[evidence] worker not started` and keeps ingesting.
-3. Create the GitHub token and set `EVIDENCE_GITHUB_TOKEN` and `EVIDENCE_ALERT_EMAIL` on the worker.
+3. Create the GitHub token and set `EVIDENCE_GITHUB_TOKEN` on the worker (alerts use `SECURITY_ALERT_EMAIL` unless `EVIDENCE_ALERT_EMAIL` is set).
 4. Deploy web and worker from the same commit, with `.release-commit` written first.
 5. Trigger a run (`POST /api/admin/evidence/runs` as a super_user) and check: 18 receipts, every one with a `release.commit`; `GET /api/admin/evidence/chain` shows both integrity checks passing and a timestamp token; `/api/evidence/heartbeat` reports `stale: false`.
 6. Link the expected demo-phase failures to their POA&M items (`POST /api/admin/evidence/gaps`).

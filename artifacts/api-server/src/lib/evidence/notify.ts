@@ -2,11 +2,13 @@ import { sql, type SQL } from "drizzle-orm";
 import { db } from "../db-client.js";
 import { getEmailSender } from "../email/sender.js";
 import { escapeHtml } from "../email/templates.js";
+import { securityAlertRecipients, withDeadline } from "../monitoring/alert-email.js";
 import type { CheckResult } from "./receipts.js";
 import type { RunEntry } from "./runner.js";
 
 /**
- * Emails the owner (EVIDENCE_ALERT_EMAIL) when a run changes something that
+ * Emails the owner (EVIDENCE_ALERT_EMAIL, else the security monitor's
+ * SECURITY_ALERT_EMAIL, comma-separated) when a run changes something that
  * needs attention. One email per run at most, and only on a change, so a
  * failure that stays failing does not repeat daily:
  *
@@ -173,12 +175,22 @@ export async function notifyRun(runId: string, entries: RunEntry[]): Promise<Cla
   const lines = [...pending, ...alertLines(runId, classified)];
   if (lines.length === 0) return classified;
   if (lines.length > pending.length) await writePending(lines);
-  const to = process.env.EVIDENCE_ALERT_EMAIL;
-  if (!to) {
-    console.warn(`[evidence] ${lines.length} alert line(s) pending; EVIDENCE_ALERT_EMAIL is not set`);
+  const recipients = evidenceAlertRecipients();
+  if (recipients.length === 0) {
+    console.warn(`[evidence] ${lines.length} alert line(s) pending; no EVIDENCE_ALERT_EMAIL or SECURITY_ALERT_EMAIL`);
     return classified;
   }
-  await getEmailSender().send({ to, ...renderAlertEmail(lines) });
+  const email = renderAlertEmail(lines);
+  for (const to of recipients) {
+    await withDeadline(getEmailSender().send({ to, ...email }), 30_000, "evidence alert email");
+  }
   await writePending([]);
   return classified;
+}
+
+/** EVIDENCE_ALERT_EMAIL when set, else the security monitor's recipients. */
+export function evidenceAlertRecipients(env: NodeJS.ProcessEnv = process.env): string[] {
+  return env.EVIDENCE_ALERT_EMAIL
+    ? securityAlertRecipients({ SECURITY_ALERT_EMAIL: env.EVIDENCE_ALERT_EMAIL })
+    : securityAlertRecipients(env);
 }
