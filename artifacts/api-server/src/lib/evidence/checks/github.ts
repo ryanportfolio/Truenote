@@ -338,22 +338,45 @@ export function evaluateSecurityWorkflow(
 }
 
 /**
- * The newest run that reached a verdict. A run still in progress has none
- * yet, and a run the workflow's concurrency group cancelled was superseded by
- * a newer one on the same ref; neither says whether the workflow passes.
+ * The newest run that reached a verdict, from runs listed newest first. A run
+ * still in progress has none yet. A cancelled run is skipped only when a newer
+ * run exists (the workflow's concurrency group cancels the older run when a
+ * newer one starts); the newest run, if cancelled, is the verdict and fails.
+ * Returns undefined when every listed run was skipped, so the caller can
+ * read further back.
  */
-export function pickDecisiveRun(runs: Array<Record<string, unknown>>): Record<string, unknown> | null {
-  return runs.find((run) => run.status === "completed" && run.conclusion !== "cancelled") ?? null;
+export function pickDecisiveRun(
+  runs: Array<Record<string, unknown>>,
+  newerRunExists = false
+): Record<string, unknown> | undefined {
+  return runs.find((run, index) => {
+    if (run.status !== "completed") return false;
+    if (run.conclusion !== "cancelled") return true;
+    return !(newerRunExists || index > 0);
+  });
 }
 
+const RUN_PAGE_SIZE = 20;
+const RUN_MAX_PAGES = 5;
+
 async function latestRun(client: GithubClient, branch: string, event: string): Promise<WorkflowRunSummary | null> {
-  const body = requireOk(
-    await client.get(
-      `/repos/{repo}/actions/workflows/security.yml/runs?branch=${encodeURIComponent(branch)}&event=${event}&per_page=20`
-    ),
-    `GET security.yml runs (${event})`
-  );
-  const run = pickDecisiveRun((body.workflow_runs as Array<Record<string, unknown>> | undefined) ?? []);
+  let run: Record<string, unknown> | undefined;
+  let seen = 0;
+  for (let page = 1; page <= RUN_MAX_PAGES && !run; page += 1) {
+    const body = requireOk(
+      await client.get(
+        `/repos/{repo}/actions/workflows/security.yml/runs?branch=${encodeURIComponent(branch)}&event=${event}&per_page=${RUN_PAGE_SIZE}&page=${page}`
+      ),
+      `GET security.yml runs (${event})`
+    );
+    const runs = (body.workflow_runs as Array<Record<string, unknown>> | undefined) ?? [];
+    run = pickDecisiveRun(runs, seen > 0);
+    seen += runs.length;
+    if (runs.length < RUN_PAGE_SIZE) break;
+    if (!run && page === RUN_MAX_PAGES) {
+      throw new Error(`no completed ${event} run among the latest ${seen}; collection incomplete`);
+    }
+  }
   if (!run) return null;
   return {
     id: Number(run.id),
