@@ -217,12 +217,90 @@ CREATE UNIQUE INDEX eval_runs_program_baseline_uidx ON eval_runs (program_id)
   WHERE is_baseline = true;
 ```
 
+## Sign-in tables (0015-0017)
+
+Lockout columns, SSO identity bindings and emergency-login second factors, from `lib/db/sql/0015_login_lockout.sql`, `0016_user_identities.sql` and `0017_break_glass_mfa.sql` (apply order and release steps: `deployment.md`, "SSO and emergency sign-in release (2026-10-10)"). `sessions.auth_method` (`'local'` or `'oidc'`, CHECK `sessions_auth_method_check`) and `sessions.auth_time` came earlier, from the P0/P1 DDL in the baseline.
+
+```sql
+-- 0015. Consecutive failed local sign-in attempts since the last success or
+-- lock; reset to 0 when the account locks. locked_until is NULL for an
+-- account that was never locked.
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS failed_login_count integer NOT NULL DEFAULT 0
+    CONSTRAINT users_failed_login_count_check CHECK (failed_login_count >= 0);
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS locked_until timestamp with time zone;
+
+-- 0016. One row ties a user to an IdP account (token iss + sub).
+CREATE TABLE user_identities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  issuer text NOT NULL,
+  subject text NOT NULL,
+  tenant_id text,          -- Entra `tid`, kept for investigation only
+  object_id text,          -- Entra `oid`, kept for investigation only
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_login_at timestamptz,
+  CONSTRAINT user_identities_issuer_subject_key UNIQUE (issuer, subject),
+  CONSTRAINT user_identities_user_issuer_key UNIQUE (user_id, issuer)
+);
+
+-- 0017. Passkeys, recovery codes and pending WebAuthn challenges.
+CREATE TABLE user_passkeys (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  credential_id text NOT NULL,           -- base64url credential ID
+  public_key bytea NOT NULL,             -- COSE public key
+  sign_count bigint NOT NULL DEFAULT 0,  -- CHECK (sign_count >= 0)
+  transports text[],
+  name text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_used_at timestamptz,
+  CONSTRAINT user_passkeys_credential_id_key UNIQUE (credential_id)
+);
+CREATE INDEX user_passkeys_user_id_idx ON user_passkeys (user_id);
+
+CREATE TABLE user_recovery_codes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code_hash text NOT NULL,               -- SHA-256 hex of the normalized code
+  created_at timestamptz NOT NULL DEFAULT now(),
+  used_at timestamptz,                   -- NULL = unused
+  CONSTRAINT user_recovery_codes_code_hash_key UNIQUE (code_hash)
+);
+CREATE INDEX user_recovery_codes_user_id_idx ON user_recovery_codes (user_id);
+
+CREATE TABLE mfa_challenges (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  purpose text NOT NULL,                 -- CHECK purpose IN ('login', 'register')
+  challenge text NOT NULL,
+  token_hash text,                       -- login rows: SHA-256 of the MFA cookie token
+  expires_at timestamptz NOT NULL,       -- 5 minutes after creation
+  consumed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT mfa_challenges_token_hash_key UNIQUE (token_hash)
+);
+CREATE INDEX mfa_challenges_user_id_idx ON mfa_challenges (user_id);
+CREATE INDEX mfa_challenges_expires_at_idx ON mfa_challenges (expires_at);
+```
+
+Who reads and writes them (all under `artifacts/api-server/src/`):
+
+- `users.failed_login_count`, `users.locked_until`: `lib/auth/lockout.ts`. A failure is one `UPDATE ... RETURNING` that either adds 1 or, on reaching `LOGIN_LOCKOUT_THRESHOLD`, resets the count to 0 and sets `locked_until`; it skips accounts whose lock is still in force. A success clears both. `routes/auth.ts` (`POST /login`) and `routes/mfa.ts` read `locked_until` and refuse a locked account before checking the credential. Before issuing a session, the password-only `POST /login` and `completeMfaLogin` read `locked_until` and `is_active` again with the hash under the `users` row lock (`lockUserAccount` in `lib/auth/mfa.ts`), refuse with the same 401 if the account locked or was deactivated meanwhile, and clear the count in the transaction that inserts the session, so a lock committed after the first check is never cleared by that attempt. Demo accounts are never counted or locked.
+- `user_identities`: `lib/auth/identities.ts`, called from the OIDC callback in `routes/oidc.ts`. The first SSO login of an active user matches the account by email and inserts the row and its `auth.oidc.identity_linked` security event in one transaction (`ON CONFLICT DO NOTHING`; either unique key already held → refused). Later logins find the user by `(issuer, subject)` only, ignore the token's email, and update `last_login_at`.
+- `user_passkeys`: `lib/auth/mfa.ts` lists a user's passkeys after a correct password at `POST /api/auth/login`; any passkey starts the second step. `routes/mfa.ts` inserts and deletes rows (a signed-in `super_user`, own account, current password required) and updates `sign_count` and `last_used_at` after each verified assertion. That update runs in the sign-in transaction under a row lock (`SELECT ... FOR UPDATE`): if the row is gone (removed meanwhile) or the new counter is not above the stored one (unless both are 0), the sign-in is refused and `sign_count` never goes down.
+- `user_recovery_codes`: `lib/auth/recovery-codes.ts`. Generating a set deletes the user's old rows and inserts 10 new hashes in one transaction; the plaintext is returned once. Using a code sets `used_at` in the same transaction that consumes the login challenge and inserts the session, so a code is spent only if the challenge is.
+- `mfa_challenges`: `lib/auth/mfa.ts`. A `login` row is created after the password verifies and found by `token_hash` from the httpOnly `truenote_mfa` cookie (path `/api/auth/mfa`); a `register` row (no `token_hash`) belongs to a super user adding a passkey. Both are consumed once with `UPDATE ... SET consumed_at = now() WHERE consumed_at IS NULL AND expires_at > now()`. Every transaction that writes `users.password_hash` (change-password and reset-password in `routes/auth.ts`, the admin reset in `routes/admin/users.ts`) also deletes the user's unconsumed rows through `invalidateMfaChallenges`, so a challenge started under the old password cannot complete. The sign-in side takes the same `users` row lock: `POST /api/auth/login` inserts the `login` row (or, without a passkey, the session) only after locking the user and rechecking that `password_hash` still equals the hash it verified, and `completeMfaLogin` locks the user (refusing a locked or inactive account), consumes the row, applies the factor, inserts the session and clears the lockout count in one transaction, setting the cookie after commit. Nothing else deletes rows; consumed ones stay until the user is deleted.
+
+Only `users.failed_login_count`, `users.locked_until`, `sessions.auth_method` and `sessions.auth_time` are bound in `lib/db/src/schema.ts`. The four new tables are not; the code above queries them with raw SQL. Every new table cascades on user delete, and 0016 and 0017 grant `truenote_app` SELECT, INSERT, UPDATE, DELETE.
+
 ## Invariants
 
 - **`chunks.program_id` is denormalized** from `document_versions → documents → programs`. This is intentional. Retrieval queries filter on it directly to avoid joining at query time.
 - **A document has many versions.** Re-uploading does NOT update the existing row. It creates a `submitted` version. Senior-manager and super-user uploads activate after ingestion controls pass; other uploads require authorized review. Activation retires the predecessor.
 - **Search requires three controls.** Retrieval and KB reads require `is_active=true`, `lifecycle_state='active'`, and classification at or below the server-resolved user's `max_classification`. Inactive/retired versions stay for audit and citation receipts; revoked/rejected versions cannot be served through history.
-- **P0/P1 controlled-ingestion columns live in reviewed raw DDL.** `docs/security/p0-p1-security-controls.sql` adds `content_sources`, document/version lifecycle, classification, provenance, scan evidence, approval/revocation/retention, user clearance, session auth evidence, distributed rate limits, and hash-chained `security_events`. This DDL (with `append_security_event` and its constraints) is present on Railway through the 2026-10-07 copy of the Replit database. The copy lacked the file's append-only guard and its document-version and content-source audit triggers; `lib/db/sql/0008` and `0009` installed them on 2026-10-09 (0008 also blocks TRUNCATE). The application connects as `truenote_app`, which can read `security_events` and write it only through `append_security_event` (`0007`, `deployment.md` "Database roles"). Full production verification of the remaining controls is still pending (`docs/security/README.md`). The columns are not bound in `lib/db/src/schema.ts`, and routes intentionally use parameterized raw SQL for them. Do not add them to `schema.ts` as a side task.
+- **P0/P1 controlled-ingestion columns live in reviewed raw DDL.** `docs/security/p0-p1-security-controls.sql` adds `content_sources`, document/version lifecycle, classification, provenance, scan evidence, approval/revocation/retention, user clearance, session auth evidence, distributed rate limits, and hash-chained `security_events`. This DDL (with `append_security_event` and its constraints) is present on Railway through the 2026-10-07 copy of the Replit database. The copy lacked the file's append-only guard and its document-version and content-source audit triggers; `lib/db/sql/0008` and `0009` installed them on 2026-10-09 (0008 also blocks TRUNCATE). The application connects as `truenote_app`, which can read `security_events` and write it only through `append_security_event` (`0007`, `deployment.md` "Database roles"). Full production verification of the remaining controls is still pending (`docs/security/README.md`). The columns are not bound in `lib/db/src/schema.ts`, and routes intentionally use parameterized raw SQL for them; the exception is the session auth evidence: `sessions.auth_method` and `sessions.auth_time` are bound in `schema.ts` (see "Sign-in tables (0015-0017)"). Do not add the others to `schema.ts` as a side task.
 - **Monitoring state lives in two small raw-SQL tables.** `lib/db/sql/0011_monitoring_state.sql` adds `service_heartbeats` (the worker's row, rewritten every 30 seconds and read by `GET /health/ready`) and `security_monitor_state` (one row: the last `security_events.sequence` the worker's security monitor printed and checked). Neither is bound in `schema.ts`. The monitor relies on events committing in `sequence` order, which `append_security_event`'s transaction-scoped advisory lock guarantees; keep that lock if the function changes. Design: `docs/security/monitoring.md`.
 - **The SIEM delivery outbox is retired (owner decision, 2026-10-10).** `docs/security/p1-siem-delivery-outbox.sql` (removed; in git history) designed a trigger-fed `siem_delivery_outbox` with lease-fenced delivery to a signed webhook. Railway only ever had its table, with 0 rows and no functions or trigger, inherited from Replit. The worker's security monitor replaced it (bullet above). `lib/db/sql/0013_drop_siem_delivery_outbox.sql` drops the table and any outbox functions or trigger; it refuses to run if the table holds rows. Until 0013 is applied, the empty table stays on Railway and its `ON DELETE RESTRICT` foreign key is the only one pointing at `security_events`.
 - **`embedding VECTOR(1536)` is locked to `text-embedding-3-small`.** Changing embedding model = re-ingest everything.
@@ -234,7 +312,7 @@ CREATE UNIQUE INDEX eval_runs_program_baseline_uidx ON eval_runs (program_id)
 - **`error_log` stores redacted operator diagnostics, not raw secrets.** Provider/API/worker failures retain exact status, code, request id, message, stack, provider response, and structured context after recursive credential redaction. Writes are best-effort so a missing table or database outage never replaces the original failure; the super-user `/admin/errors` API is the only read surface.
 - **`eval_runs` is the durable job + report boundary.** At most one queued/running row exists per program; the shared pg-boss worker consumes evaluation jobs sequentially. The row is also the queue outbox: its UUID is a time-windowed pg-boss singleton key and queued rows are reconciled after insert/send crashes. `configuration` privately retains the immutable question snapshot and current lease token (both stripped from list responses), while the public configuration records effective model/retrieval settings; every worker write is lease-fenced. `report` freezes per-question results. Only completed rows may be baselines; cancellation fences work by moving an active row to `failed` with an explicit cancellation reason.
 - **`users.email` is normalized to lowercase at the application layer**, stored as plain `TEXT`. Every write and lookup calls `.toLowerCase()` before touching the DB. The original Phase 2A design used `citext` for case-insensitive comparison, but the `citext` extension isn't available in all managed Postgres environments (the earlier host's deploy-time migration ran only a DDL diff, never `CREATE EXTENSION`, so `citext` broke production). The app-layer normalization preserves the case-insensitive contract without the extension dependency. **Detection rule:** any new code path that writes or compares `users.email` MUST lowercase first — otherwise duplicate accounts can be created (`Alice@foo.com` vs `alice@foo.com`) and logins will silently mismatch.
-- **Bulk CSV user import creates CSR accounts only.** Emails are normalized and deduplicated, existing accounts are skipped without mutation, and the effective program is enforced server-side. Each new user is stored with a separately salted hash of an *unguessable random throwaway* password (never revealed to anyone) and `must_reset_password=true`, then emailed a one-time invite link (a `password_reset_tokens` row with the 7-day `INVITE_TOKEN_DURATION_MS` lifetime) to set their own password via the existing `/reset-password` page. No plaintext password is returned to the admin. The bulk route refuses up-front (creating nothing) if delivery is unconfigured in production (`APP_BASE_URL` unset, or `RESEND_API_KEY`/`RESEND_FROM_EMAIL` unset), so it never mints accounts no one can reach. Single-user create + admin password-reset still return a one-time temp password in-response (shown once in the admin UI) — only bulk uses the invite-email path.
+- **Bulk CSV user import creates CSR accounts only.** Emails are normalized and deduplicated, existing accounts are skipped without mutation, and the effective program is enforced server-side. Each new user is stored with a separately salted hash of an *unguessable random throwaway* password (never revealed to anyone) and `must_reset_password=true`, then emailed a one-time invite link (a `password_reset_tokens` row with the 7-day `INVITE_TOKEN_DURATION_MS` lifetime) to set their own password via the existing `/reset-password` page. No plaintext password is returned to the admin. The bulk route refuses up-front (creating nothing) if delivery is unconfigured in production (`APP_BASE_URL` unset, or `RESEND_API_KEY`/`RESEND_FROM_EMAIL` unset), so it never mints accounts no one can reach. Single-user create + admin password-reset still return a one-time temp password in-response (shown once in the admin UI) — only bulk uses the invite-email path. Exception under SSO (2026-10-10): when `LOCAL_LOGIN_MODE` does not allow local login for the new account's role (`invitationKindFor` returns `"sso"`), bulk import mints no `password_reset_tokens` row and single create returns no temp password; both store an unusable random hash and email a link to `/login` that says to use "Continue with company SSO". The first SSO sign-in binds the account in `user_identities`. The admin password reset refuses such an account (409), and forgot-password mints no token for it.
 - **`app_settings` never authorizes arbitrary model ids or providers.** The model-routing API accepts only ids from the server-owned allowlist; the JSONB row stores an ordered list of approved preset ids (the fallback chain, `{"order":[...]}`), not an executable request body. Retired ids map to their replacement route, unknown or removed ids are dropped, and missing approved routes are appended on read, so the resolved chain is always a permutation of the ZDR allowlist. The legacy single-id shape (`{"selectedId":"..."}`) is still read-compatible. Missing table/row/invalid value falls back to the default order (Nemotron 3 Super primary).
 
 ## Schema change protocol

@@ -4,6 +4,9 @@ import { and, eq, gt, lt } from "drizzle-orm";
 import { db } from "../db-client.js";
 import { sessions, users } from "@workspace/db/schema";
 import type { UserRole } from "@workspace/db/schema";
+import { getOidcConfig } from "./oidc.js";
+import { isLocalLoginAllowed } from "./local-login-policy.js";
+import { isIdleLimited, isPastIdleWindow } from "./session-policy.js";
 
 /**
  * Cookie name used both server-side (read on every request) and surfaced
@@ -20,12 +23,21 @@ export const SESSION_COOKIE_NAME = "kbase_session";
  */
 export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function setSessionCookie(res: Response, token: string): void {
+/**
+ * `maxAgeMs` lets a caller whose session ends sooner than
+ * SESSION_DURATION_MS (an SSO session, capped by SSO_SESSION_MAX_HOURS)
+ * keep the cookie lifetime equal to the row's expires_at.
+ */
+export function setSessionCookie(
+  res: Response,
+  token: string,
+  options: { maxAgeMs?: number } = {}
+): void {
   res.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: SESSION_DURATION_MS,
+    maxAge: options.maxAgeMs ?? SESSION_DURATION_MS,
     path: "/"
   });
 }
@@ -61,37 +73,77 @@ export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+/** `db`, or a transaction from `db.transaction`. */
+export type SessionWriter = Pick<typeof db, "insert">;
+
+/** Fields a replacement session copies from the session it replaces. */
+export interface SessionCarryOver {
+  authMethod: "local" | "oidc";
+  authTime: Date;
+  expiresAt: Date;
+}
+
 /**
  * Create a new session row for the given user and return the plaintext
  * token. The caller is responsible for setting this as the session cookie
  * value. We never log or persist the plaintext token.
+ *
+ * Pass a transaction as `executor` to insert the row inside it; set the
+ * cookie only after that transaction commits.
+ *
+ * `carryOver` copies auth_method, auth_time and expires_at from a session
+ * being replaced (POST /api/auth/change-password), so the replacement keeps
+ * the original sign-in's method and limits. Without it the row is a local
+ * session that expires SESSION_DURATION_MS from now.
  */
-export async function createSession(userId: string): Promise<{
+export async function createSession(
+  userId: string,
+  executor: SessionWriter = db,
+  carryOver?: SessionCarryOver
+): Promise<{
   token: string;
   expiresAt: Date;
 }> {
   const token = generateToken();
   const tokenHash = hashToken(token);
+  if (carryOver) {
+    const { authMethod, authTime, expiresAt } = carryOver;
+    await executor
+      .insert(sessions)
+      .values({ userId, tokenHash, expiresAt, authMethod, authTime });
+    return { token, expiresAt };
+  }
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
-  await db.insert(sessions).values({ userId, tokenHash, expiresAt });
+  await executor.insert(sessions).values({ userId, tokenHash, expiresAt });
   return { token, expiresAt };
 }
 
 /**
  * Look up a session by its cookie token. Returns the joined user payload
  * suitable for attaching to req.user, or null if the token is missing,
- * expired, or points at an inactive user.
+ * expired, points at an inactive user, or is a local (password) session
+ * whose user the current LOCAL_LOGIN_MODE no longer allows.
  *
  * Expiry is filtered in SQL (not just in app code) so the index on
  * sessions(expires_at) actually helps, and expired rows don't waste
  * round-trip bandwidth on every authenticated request.
  *
- * Side effect: bumps last_used_at when a valid session is touched. This is
- * a single UPDATE per authenticated request — cheap at call-center traffic
- * levels and useful for "stale session" cleanup queries later.
+ * Idle limit: an oidc session, or a local session while LOCAL_LOGIN_MODE
+ * is not `enabled`, whose last_used_at is older than SESSION_IDLE_MINUTES
+ * is deleted (best effort) and refused, and `options.onIdleExpiry` is
+ * called with the session's auth method.
+ *
+ * Side effect: bumps last_used_at when a valid session is touched, unless
+ * `options.background` is true (requests sent with
+ * `X-Truenote-Background: 1`), so background polling never keeps an idle
+ * session alive. This is a single UPDATE per authenticated request.
  */
 export async function findSessionByToken(
-  token: string | undefined
+  token: string | undefined,
+  options: {
+    background?: boolean;
+    onIdleExpiry?: (authMethod: "local" | "oidc") => void;
+  } = {}
 ): Promise<SessionUser | null> {
   if (!token) return null;
   const tokenHash = hashToken(token);
@@ -104,7 +156,9 @@ export async function findSessionByToken(
       programId: users.programId,
       name: users.name,
       isActive: users.isActive,
-      mustResetPassword: users.mustResetPassword
+      mustResetPassword: users.mustResetPassword,
+      authMethod: sessions.authMethod,
+      lastUsedAt: sessions.lastUsedAt
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
@@ -116,6 +170,40 @@ export async function findSessionByToken(
   const row = rows[0];
   if (!row) return null;
   if (!row.isActive) return null;
+  const localLoginMode = getOidcConfig().localLoginMode;
+  // A password session lives only as long as LOCAL_LOGIN_MODE would still
+  // let this user log in locally, so switching to break_glass or disabled
+  // ends existing password sessions at once. OIDC sessions are not
+  // governed by the local mode.
+  if (
+    row.authMethod !== "oidc" &&
+    !isLocalLoginAllowed(localLoginMode, row.role)
+  ) {
+    return null;
+  }
+
+  if (
+    isIdleLimited(row.authMethod, localLoginMode) &&
+    isPastIdleWindow(row.lastUsedAt)
+  ) {
+    // Idle session: remove the row so the token cannot come back if the
+    // idle setting is raised later. The refusal does not depend on the
+    // delete landing.
+    try {
+      await db.delete(sessions).where(eq(sessions.id, row.sessionId));
+    } catch (err: unknown) {
+      console.warn(
+        "[auth] idle session delete failed:",
+        err instanceof Error ? err.message : err
+      );
+    }
+    options.onIdleExpiry?.(row.authMethod);
+    return null;
+  }
+
+  if (options.background === true) {
+    return toSessionUser(row);
+  }
 
   // Best-effort last-used-at touch. Failure must not break the request
   // (the session is still valid even if the touch doesn't land), but log
@@ -132,6 +220,17 @@ export async function findSessionByToken(
       );
     });
 
+  return toSessionUser(row);
+}
+
+function toSessionUser(row: {
+  userId: string;
+  email: string;
+  role: UserRole;
+  programId: string | null;
+  name: string;
+  mustResetPassword: boolean;
+}): SessionUser {
   return {
     id: row.userId,
     email: row.email,
