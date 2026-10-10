@@ -6,6 +6,7 @@ import { sessions, users } from "@workspace/db/schema";
 import type { UserRole } from "@workspace/db/schema";
 import { getOidcConfig } from "./oidc.js";
 import { isLocalLoginAllowed } from "./local-login-policy.js";
+import { isIdleLimited, isPastIdleWindow } from "./session-policy.js";
 
 /**
  * Cookie name used both server-side (read on every request) and surfaced
@@ -22,12 +23,21 @@ export const SESSION_COOKIE_NAME = "kbase_session";
  */
 export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function setSessionCookie(res: Response, token: string): void {
+/**
+ * `maxAgeMs` lets a caller whose session ends sooner than
+ * SESSION_DURATION_MS (an SSO session, capped by SSO_SESSION_MAX_HOURS)
+ * keep the cookie lifetime equal to the row's expires_at.
+ */
+export function setSessionCookie(
+  res: Response,
+  token: string,
+  options: { maxAgeMs?: number } = {}
+): void {
   res.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: SESSION_DURATION_MS,
+    maxAge: options.maxAgeMs ?? SESSION_DURATION_MS,
     path: "/"
   });
 }
@@ -89,12 +99,18 @@ export async function createSession(userId: string): Promise<{
  * sessions(expires_at) actually helps, and expired rows don't waste
  * round-trip bandwidth on every authenticated request.
  *
- * Side effect: bumps last_used_at when a valid session is touched. This is
- * a single UPDATE per authenticated request — cheap at call-center traffic
- * levels and useful for "stale session" cleanup queries later.
+ * Idle limit: an oidc session, or a local session while LOCAL_LOGIN_MODE
+ * is not `enabled`, whose last_used_at is older than SESSION_IDLE_MINUTES
+ * is deleted (best effort) and refused.
+ *
+ * Side effect: bumps last_used_at when a valid session is touched, unless
+ * `options.background` is true (requests sent with
+ * `X-Truenote-Background: 1`), so background polling never keeps an idle
+ * session alive. This is a single UPDATE per authenticated request.
  */
 export async function findSessionByToken(
-  token: string | undefined
+  token: string | undefined,
+  options: { background?: boolean } = {}
 ): Promise<SessionUser | null> {
   if (!token) return null;
   const tokenHash = hashToken(token);
@@ -108,7 +124,8 @@ export async function findSessionByToken(
       name: users.name,
       isActive: users.isActive,
       mustResetPassword: users.mustResetPassword,
-      authMethod: sessions.authMethod
+      authMethod: sessions.authMethod,
+      lastUsedAt: sessions.lastUsedAt
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
@@ -120,15 +137,38 @@ export async function findSessionByToken(
   const row = rows[0];
   if (!row) return null;
   if (!row.isActive) return null;
+  const localLoginMode = getOidcConfig().localLoginMode;
   // A password session lives only as long as LOCAL_LOGIN_MODE would still
   // let this user log in locally, so switching to break_glass or disabled
   // ends existing password sessions at once. OIDC sessions are not
   // governed by the local mode.
   if (
     row.authMethod !== "oidc" &&
-    !isLocalLoginAllowed(getOidcConfig().localLoginMode, row.role)
+    !isLocalLoginAllowed(localLoginMode, row.role)
   ) {
     return null;
+  }
+
+  if (
+    isIdleLimited(row.authMethod, localLoginMode) &&
+    isPastIdleWindow(row.lastUsedAt)
+  ) {
+    // Idle session: remove the row so the token cannot come back if the
+    // idle setting is raised later. The refusal does not depend on the
+    // delete landing.
+    try {
+      await db.delete(sessions).where(eq(sessions.id, row.sessionId));
+    } catch (err: unknown) {
+      console.warn(
+        "[auth] idle session delete failed:",
+        err instanceof Error ? err.message : err
+      );
+    }
+    return null;
+  }
+
+  if (options.background === true) {
+    return toSessionUser(row);
   }
 
   // Best-effort last-used-at touch. Failure must not break the request
@@ -146,6 +186,17 @@ export async function findSessionByToken(
       );
     });
 
+  return toSessionUser(row);
+}
+
+function toSessionUser(row: {
+  userId: string;
+  email: string;
+  role: UserRole;
+  programId: string | null;
+  name: string;
+  mustResetPassword: boolean;
+}): SessionUser {
   return {
     id: row.userId,
     email: row.email,

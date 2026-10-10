@@ -16,7 +16,8 @@ vi.mock("../../db-client.js", () => ({
         })
       };
     },
-    update: () => ({ set: () => ({ where: () => Promise.resolve(undefined) }) })
+    update: () => ({ set: () => ({ where: () => Promise.resolve(undefined) }) }),
+    delete: () => ({ where: () => Promise.resolve(undefined) })
   }
 }));
 
@@ -37,7 +38,8 @@ function sessionRow(role: string, authMethod: "local" | "oidc") {
     name: "Person",
     isActive: true,
     mustResetPassword: false,
-    authMethod
+    authMethod,
+    lastUsedAt: new Date()
   };
 }
 

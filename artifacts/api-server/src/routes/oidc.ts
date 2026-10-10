@@ -25,6 +25,7 @@ import {
   setSessionCookie
 } from "../lib/auth/sessions.js";
 import { clientIpFrom } from "../lib/auth/rate-limit.js";
+import { getSsoSessionMaxHours } from "../lib/auth/session-policy.js";
 import {
   recordSecurityEvent,
   recordSecurityEventBestEffort
@@ -192,9 +193,14 @@ oidcRouter.get("/callback", async (req, res) => {
 
     const created = await createSession(user.id);
     sessionToken = created.token;
+    // An SSO session ends SSO_SESSION_MAX_HOURS after sign-in, whatever
+    // the activity; the cookie lifetime below matches it.
+    const maxHours = getSsoSessionMaxHours();
     await db.execute(sql`
       UPDATE sessions
-      SET auth_method = 'oidc', auth_time = now()
+      SET auth_method = 'oidc',
+          auth_time = now(),
+          expires_at = now() + make_interval(hours => ${maxHours}::int)
       WHERE token_hash = ${hashToken(created.token)}
     `);
     await db
@@ -214,7 +220,7 @@ oidcRouter.get("/callback", async (req, res) => {
       sourceIp,
       details: { issuer, authMethod: "oidc" }
     });
-    setSessionCookie(res, created.token);
+    setSessionCookie(res, created.token, { maxAgeMs: maxHours * 60 * 60 * 1000 });
     res.redirect(302, state.returnTo);
   } catch (error) {
     if (sessionToken) await deleteSessionByToken(sessionToken).catch(() => undefined);
