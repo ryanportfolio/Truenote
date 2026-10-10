@@ -4,6 +4,7 @@ import { hasAtLeastRole } from "@/types/api";
 import type { CurrentUser, UserRole } from "@/types/api";
 import { ProgramSelector } from "./ProgramSelector";
 import { BrandMark } from "@/components/BrandMark";
+import { ThemePicker } from "@/components/ThemePicker";
 
 interface TopBarProps {
   user: CurrentUser;
@@ -69,6 +70,7 @@ export function TopBar({
           <span className="hidden rounded-full bg-muted px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground md:inline-flex">
             {ROLE_LABEL[user.role]}
           </span>
+          <ThemePicker />
           <button
             type="button"
             onClick={handleLogout}

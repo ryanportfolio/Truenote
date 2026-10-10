@@ -10,6 +10,7 @@
    * Values + contrast math live in DESIGN.md. Re-run the math before
    * softening any value; do not eyeball. */
   :root {
+    color-scheme: light;
     --background: 92.43% 0.0109 95.2; /* #E8E6DE warm cream — byte-identical to Cohere's canvas */
     /* Body ink. 13.05:1 on --background, 16.02:1 on --card (AAA with margin). */
     --foreground: 24.31% 0.0076 95.4; /* #21201C warm near-black — never #000 */
@@ -60,35 +61,83 @@
     --archive-ink: 29% 0.11 260;
   }
 
-  /* Dark mode ships as sensible inversion; product currently surfaces light only.
-   * Mechanical OKLCH conversion of the previous HSL values — no design pass. */
-  .dark {
-    --background: 21.2% 0.0092 255.6;
-    --foreground: 92.15% 0.0096 93.6;
-    --card: 24.26% 0.0105 260.7;
-    --card-foreground: 92.15% 0.0096 93.6;
-    --popover: 24.26% 0.0105 260.7;
-    --popover-foreground: 92.15% 0.0096 93.6;
-    --primary: 71.47% 0.1512 254.8;
-    --primary-foreground: 23.48% 0.0895 258.6;
-    --secondary: 29.52% 0.0107 254;
-    --secondary-foreground: 92.15% 0.0096 93.6;
-    --muted: 29.52% 0.0107 254;
-    --muted-foreground: 72.69% 0.0114 100.9;
-    --accent: 81.68% 0.0953 250.4;
-    --accent-foreground: 23.48% 0.0895 258.6;
-    --destructive: 39.58% 0.1331 25.7;
-    --destructive-foreground: 92.15% 0.0096 93.6;
-    --warning: 77.04% 0.1646 70.7;
-    --warning-foreground: 28.01% 0.0563 94.1;
-    --success: 54.67% 0.054 167.1; /* #517B6A Cohere dark accent */
-    --success-foreground: 21.2% 0.0092 255.6;
-    --highlight-yellow: 72% 0.1 85;
-    --highlight-green: 68% 0.065 165;
-    --highlight-blue: 70% 0.08 255;
-    --border: 31.56% 0.0121 258.4;
-    --input: 31.56% 0.0121 258.4;
-    --ring: 71.47% 0.1512 254.8;
+  /* Dark and warm themes (src/lib/theme.ts sets data-theme on <html>;
+   * light keeps :root). Contrast for every pair is computed in DESIGN.md
+   * §Themes; re-run it before changing a value.
+   *
+   * Dark: blue-black surfaces with the brand hue baked in, cream ink, and
+   * the brand blue lifted so it reads on dark (light-mode lightness would
+   * fall to ~2:1). */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --background: 20.5% 0.0125 262; /* #14171D */
+    --foreground: 93.2% 0.0115 92; /* #EBE8E0 cream ink, 14.67:1 on bg */
+    --card: 24% 0.0135 262; /* #1C1F26 */
+    --card-foreground: 93.2% 0.0115 92;
+    --popover: 24% 0.0135 262;
+    --popover-foreground: 93.2% 0.0115 92;
+    --primary: 77% 0.115 256; /* #83B7FD, 8.64:1 on bg, 7.94:1 on card */
+    --primary-foreground: 20.5% 0.06 262;
+    --secondary: 22.4% 0.013 262; /* chrome layer */
+    --secondary-foreground: 93.2% 0.0115 92;
+    --muted: 28.5% 0.014 262;
+    --muted-foreground: 75.5% 0.014 95; /* 8.2:1 on bg */
+    --accent: 68% 0.15 257;
+    --accent-foreground: 18% 0.04 262;
+    --destructive: 81% 0.1 24; /* 7.18:1 on its 10% tint over card */
+    --destructive-foreground: 20.5% 0.04 25;
+    --warning: 80% 0.14 75;
+    --warning-foreground: 24% 0.05 75;
+    --success: 77% 0.085 165; /* 8.24:1 on card */
+    --success-foreground: 20.5% 0.03 165;
+    --highlight-yellow: 50% 0.095 85;
+    --highlight-green: 48% 0.07 165;
+    --highlight-blue: 48% 0.09 255;
+    --border: 33.5% 0.015 262;
+    --input: 33.5% 0.015 262;
+    --ring: 77% 0.115 256;
+    --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.35);
+    --shadow-panel: 0 8px 24px oklch(0% 0 0 / 0.45), 0 1px 2px oklch(0% 0 0 / 0.3);
+    --archive-coral: 70% 0.13 43;
+    --archive-green: 66% 0.07 176;
+    --archive-ink: 14% 0.03 262;
+  }
+
+  /* Warm: amber paper and brown ink with the blue taken out, for evening
+   * reading. Brand blue becomes a burnt sienna; nothing on the page emits
+   * a saturated blue. */
+  :root[data-theme="warm"] {
+    --background: 88.5% 0.068 92; /* #E9D8A6 */
+    --foreground: 25% 0.035 62; /* #301F12, 11.41:1 on bg */
+    --card: 93% 0.052 94; /* #F3E8C1 */
+    --card-foreground: 25% 0.035 62;
+    --popover: 93% 0.052 94;
+    --popover-foreground: 25% 0.035 62;
+    --primary: 39% 0.1 48; /* #6E3108, 7.08:1 on bg, 8.14:1 on card */
+    --primary-foreground: 95% 0.04 94;
+    --secondary: 91% 0.06 93;
+    --secondary-foreground: 25% 0.035 62;
+    --muted: 86% 0.07 90;
+    --muted-foreground: 42.5% 0.05 66; /* 5.94:1 on bg */
+    --accent: 49% 0.13 50;
+    --accent-foreground: 96% 0.035 94;
+    --destructive: 38.5% 0.135 25; /* 7.18:1 on its 10% tint over card */
+    --destructive-foreground: 95% 0.04 94;
+    --warning: 75% 0.15 70;
+    --warning-foreground: 27% 0.05 70;
+    --success: 40% 0.07 135; /* olive, 7.32:1 on card */
+    --success-foreground: 95% 0.04 94;
+    --highlight-yellow: 80% 0.13 78;
+    --highlight-green: 76% 0.085 140;
+    --highlight-blue: 77% 0.055 235;
+    --border: 80% 0.07 88;
+    --input: 80% 0.07 88;
+    --ring: 39% 0.1 48;
+    --shadow-card: 0 1px 2px oklch(25% 0.035 62 / 0.08);
+    --shadow-panel: 0 8px 24px oklch(25% 0.035 62 / 0.12), 0 1px 2px oklch(25% 0.035 62 / 0.08);
+    --archive-coral: 62% 0.15 45;
+    --archive-green: 58% 0.08 130;
+    --archive-ink: 28% 0.05 55;
   }
 }
 
@@ -177,13 +226,23 @@
 
   /* Native <select> quiet restyle: drop the OS chevron for a consistent
    * muted one. Chevron stroke is --muted-foreground's hex (#5C5A50) baked
-   * into the data URI — CSS url() can't read custom properties; revisit if
-   * dark mode ever ships a toggle. Call sites keep their own border/bg/size. */
+   * into the data URI — CSS url() can't read custom properties, so each
+   * theme below repeats it in its own color. Call sites keep their own
+   * border/bg/size. */
   .select-quiet {
     @apply cursor-pointer appearance-none bg-no-repeat pr-8;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235C5A50' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-position: right 0.5rem center;
     background-size: 1rem 1rem;
+  }
+
+  /* Same chevron in each theme's --muted-foreground. */
+  :root[data-theme="dark"] .select-quiet {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23B2B0A6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
+
+  :root[data-theme="warm"] .select-quiet {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23614930' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   }
 
   /* Loading placeholder bar: muted fill with a slow breathing pulse
@@ -298,6 +357,53 @@
            hover:bg-muted hover:text-foreground
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background
            disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Theme switch (components/ThemePicker.tsx): a chrome-layer pill whose
+   * checked option sits on the card surface, like a pressed key. */
+  .theme-picker {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 0.125rem;
+    border: 1px solid oklch(var(--border));
+    border-radius: 999px;
+    background: oklch(var(--secondary));
+    padding: 0.125rem;
+  }
+
+  .theme-picker-option {
+    display: inline-grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    border-radius: 999px;
+    color: oklch(var(--muted-foreground));
+    cursor: pointer;
+    transition: color 100ms ease-out, background-color 100ms ease-out;
+  }
+
+  .theme-picker-option:hover {
+    color: oklch(var(--foreground));
+  }
+
+  .theme-picker-option[aria-checked="true"] {
+    background: oklch(var(--card));
+    color: oklch(var(--foreground));
+    box-shadow: inset 0 0 0 1px oklch(var(--border)), var(--shadow-card);
+  }
+
+  .theme-picker-option:focus-visible {
+    outline: 2px solid oklch(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* On the auth pages the switch sits in the panel's top-right corner;
+   * it comes last in the DOM, so Tab still reaches the form first. */
+  .auth-theme {
+    position: absolute;
+    top: 1.25rem;
+    right: 1.25rem;
+    z-index: 2;
   }
 }
 
@@ -1482,6 +1588,26 @@
     overflow: hidden;
     background: oklch(92.5% 0.022 78);
     isolation: isolate;
+  }
+
+  /* The hero is one cream photograph, so the themes tint it instead of
+   * swapping assets: dark dims it toward the page, warm turns it fully
+   * sepia so the cobalt core becomes bronze and no saturated blue remains. Planes are copies of the same image and take the
+   * same filter, so the bands stay registered. */
+  :root[data-theme="dark"] .archive-visual {
+    background: oklch(var(--background));
+  }
+
+  :root[data-theme="dark"] :is(.archive-image, .archive-layer-image) {
+    filter: brightness(0.6) contrast(1.06) saturate(0.92);
+  }
+
+  :root[data-theme="warm"] .archive-visual {
+    background: oklch(var(--background));
+  }
+
+  :root[data-theme="warm"] :is(.archive-image, .archive-layer-image) {
+    filter: sepia(1) saturate(1.1);
   }
 
   .archive-image,

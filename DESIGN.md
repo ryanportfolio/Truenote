@@ -31,7 +31,7 @@ The visual reference is docs.cohere.com's light theme (extracted from its deploy
 
 Three-surface depth model: **cream canvas → `--secondary` chrome (TopBar/Sidebar) → `--card` content**. Cards separate with hairline + `shadow-card`; heavy shadows are reserved for `--shadow-panel` surfaces that actually float.
 
-Light mode is the ship target. `.dark` ships as a mechanical inversion (converted from the old HSL values) so consumers don't break; no dark toggle is surfaced.
+The table above is the light theme, the default. Dark and warm themes redefine the same tokens (§Themes); components never branch on the theme.
 
 ## Typography
 
@@ -238,9 +238,27 @@ Authenticated task surfaces remain calm. Depth concentrates around the answer, r
 
 Components consume `oklch(var(--token) / <alpha-value>)` via `tailwind.config.ts`. Variable names are stable; only values change. Adding a token is a deliberate conversation (`--success` was added by the design pass, C5). `shadow-card` / `shadow-panel` are the only shadow utilities — `shadow-sm`/`shadow-2xl` are drift.
 
-## Dark mode
+## Themes
 
-Mechanical inversion of the pre-pass HSL values, converted to OKLCH. No toggle. Before shipping it for real: re-run all contrast math, keep near-black (not `#000`) surfaces with the brand-blue hue baked in, cream (not `#fff`) foreground.
+Three themes, no "system" option: **Light** (default, the token table above), **Dark**, and **Warm** (amber paper and brown ink with the blue taken out, for evening reading). The switch (`components/ThemePicker.tsx`) is a three-option radio group in the TopBar next to Sign out and in the login panel's top-right corner. The choice is stored per browser (`localStorage["truenote.theme"]`, absent for Light) and applied by an inline script in `index.html` before the stylesheet, so a reload never flashes Light; `src/lib/theme.ts` sets `data-theme` on `<html>` (plus the `dark` class for Tailwind's `dark:` variant) and updates `theme-color`. Tokens live in `index.css` under `:root[data-theme="dark"]` and `:root[data-theme="warm"]`.
+
+| Token | Dark | Warm |
+|---|---|---|
+| `--background` | `20.5% 0.0125 262` `#14171D` | `88.5% 0.068 92` `#E9D8A6` |
+| `--foreground` | `93.2% 0.0115 92` `#EBE8E0` | `25% 0.035 62` `#2E1E0F` |
+| `--card` | `24% 0.0135 262` `#1C1F26` | `93% 0.052 94` `#F3E8C1` |
+| `--secondary` (chrome) | `22.4% 0.013 262` | `91% 0.06 93` |
+| `--muted` | `28.5% 0.014 262` | `86% 0.07 90` |
+| `--muted-foreground` | `75.5% 0.014 95` `#B2B0A6` | `42.5% 0.05 66` `#614930` |
+| `--primary` | `77% 0.115 256` `#83B7FD` | `39% 0.1 48` `#6E3108` (burnt sienna) |
+| `--accent` | `68% 0.15 257` | `49% 0.13 50` |
+| `--destructive` | `81% 0.1 24` | `38.5% 0.135 25` |
+| `--success` | `77% 0.085 165` | `40% 0.07 135` (olive) |
+| `--border` / `--input` | `33.5% 0.015 262` | `80% 0.07 88` |
+
+Contrast, computed (sRGB, WCAG 2.1), Dark / Warm: foreground on background 14.67 / 11.41, on card 13.48 / 13.13; muted-foreground on background 8.20 / 5.94; primary on background 8.64 / 7.08, on card 7.94 / 8.14; primary-foreground on primary 8.68 / 8.65; destructive on its 10% tint over card 7.18 / 7.18; success on card 8.24 / 7.32; foreground on a highlight at 55% over card ≥ 8.04 / 9.89. The login checks rerun these in the browser for every theme (`T2`).
+
+Theme-specific pieces outside the tokens: `.select-quiet`'s chevron repeats each theme's `--muted-foreground` hex; BrandField's shader takes a palette per theme as uniforms; the login hero photograph is tinted with a CSS filter (Dark `brightness(0.6) contrast(1.06) saturate(0.92)`, Warm `sepia(1) saturate(1.1)`, which turns the cobalt core bronze). The favicon and the static `/about/` and `/security/` pages stay light.
 
 ## What makes Truenote feel like Truenote
 
@@ -263,4 +281,4 @@ Pure-CSS breakpoints, no JS breakpoint state:
 ## Follow-ups
 
 - ~~Drag-and-drop upload zone~~ shipped (pass 3): the upload card is the drop target — drag-over = `border-primary/40 bg-primary/5`, client-side type/size validation through the quiet-alert recipe, dropped file handed to the native input via `DataTransfer`.
-- **Dark mode**: still a mechanical inversion; `.select-quiet`'s chevron hex, the favicon, AND BrandField's shader ink constants are light-mode-tuned — revisit all three if a toggle ships.
+- **Themes**: the static `/about/` and `/security/` pages and the favicon are light-only; theme them if those pages start sharing the app stylesheet.

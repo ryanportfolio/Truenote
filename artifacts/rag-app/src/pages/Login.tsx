@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { BrandField } from "@/components/BrandField";
 import { DemoPortal } from "@/components/DemoPortal";
 import { LoginMfaStep } from "@/components/security/LoginMfaStep";
+import { ThemePicker } from "@/components/ThemePicker";
 import { fetchConfig, login } from "@/lib/api";
 import { defaultLandingPath } from "@/lib/landing";
 import { cn } from "@/lib/utils";
@@ -344,9 +345,8 @@ export function LoginPage({
             </div>
           </form>
           )}
-
-
         </div>
+        <ThemePicker className="auth-theme" />
       </section>
 
       <section className="archive-visual" aria-hidden="true">
