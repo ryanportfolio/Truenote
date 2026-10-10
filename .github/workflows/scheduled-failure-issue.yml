@@ -27,7 +27,8 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           title="Scheduled run failed: ${WORKFLOW_NAME}"
-          number=$(gh issue list --state open --limit 100 --json number,title \
+          # Search by title on the server, then keep only an exact match.
+          number=$(gh issue list --state open --search "\"${title}\" in:title" --limit 100 --json number,title \
             | jq -r --arg title "$title" 'map(select(.title == $title)) | .[0].number // empty')
           body="Scheduled run ${RUN_URL} failed on $(date -u +%F). Read the failed jobs, fix the cause or record the finding, then close this issue."
           if [ -n "$number" ]; then
