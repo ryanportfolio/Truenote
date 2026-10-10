@@ -337,14 +337,23 @@ export function evaluateSecurityWorkflow(
   };
 }
 
+/**
+ * The newest run that reached a verdict. A run still in progress has none
+ * yet, and a run the workflow's concurrency group cancelled was superseded by
+ * a newer one on the same ref; neither says whether the workflow passes.
+ */
+export function pickDecisiveRun(runs: Array<Record<string, unknown>>): Record<string, unknown> | null {
+  return runs.find((run) => run.status === "completed" && run.conclusion !== "cancelled") ?? null;
+}
+
 async function latestRun(client: GithubClient, branch: string, event: string): Promise<WorkflowRunSummary | null> {
   const body = requireOk(
     await client.get(
-      `/repos/{repo}/actions/workflows/security.yml/runs?branch=${encodeURIComponent(branch)}&event=${event}&per_page=1`
+      `/repos/{repo}/actions/workflows/security.yml/runs?branch=${encodeURIComponent(branch)}&event=${event}&per_page=20`
     ),
     `GET security.yml runs (${event})`
   );
-  const run = (body.workflow_runs as Array<Record<string, unknown>> | undefined)?.[0];
+  const run = pickDecisiveRun((body.workflow_runs as Array<Record<string, unknown>> | undefined) ?? []);
   if (!run) return null;
   return {
     id: Number(run.id),
