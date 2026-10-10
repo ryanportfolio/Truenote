@@ -119,7 +119,6 @@ function listDeployments(service) {
 }
 
 async function deploy(service, sourceDir, deployMessage) {
-  const startedAt = Date.now();
   const up = railway(
     ["up", "--detach", "-p", PROJECT, "-e", ENVIRONMENT, "-s", service, "-m", deployMessage],
     { cwd: sourceDir, stdio: ["ignore", "inherit", "inherit"] }
@@ -127,7 +126,8 @@ async function deploy(service, sourceDir, deployMessage) {
   if (up.status !== 0) return { id: "", status: "UPLOAD_FAILED", imageDigest: "" };
 
   // Found by its exact message, which carries the commit, CI run and this
-  // invocation's nonce, and by a creation time after this upload started.
+  // invocation's nonce. No time filter: Railway's clock and this machine's
+  // can disagree, and the nonce already makes the message unique.
   const deadline = Date.now() + DEPLOY_TIMEOUT_MS;
   let found = null;
   let lastError = null;
@@ -141,9 +141,7 @@ async function deploy(service, sourceDir, deployMessage) {
     }
     const current = found
       ? deployments.find((d) => d.id === found.id)
-      : deployments.find(
-          (d) => d.meta?.cliMessage === deployMessage && Date.parse(d.createdAt) >= startedAt - 60_000
-        );
+      : deployments.find((d) => d.meta?.cliMessage === deployMessage);
     if (!current) continue;
     found = current;
     console.log(`${service}: ${found.id} ${found.status}`);
@@ -206,8 +204,13 @@ async function main() {
     const removed = run("git", ["worktree", "remove", "--force", sourceDir]);
     if (removed.status !== 0) console.error(`remove the temporary checkout by hand: ${sourceDir}`);
   };
+  // A per-invocation nonce keeps the message unique, so a concurrent run of
+  // the same commit cannot be mistaken for this one. The register keeps the
+  // full message, so a row without a deployment id can still be matched to
+  // its Railway deployment later.
+  const deployMessage = `${sha.slice(0, 12)} ci ${ci.id} run ${randomBytes(4).toString("hex")}: ${args.message}`;
   const row = (service, result) =>
-    [new Date().toISOString(), sha, ci.id, service, result.id, result.status, result.imageDigest, args.message];
+    [new Date().toISOString(), sha, ci.id, service, result.id, result.status, result.imageDigest, deployMessage];
 
   // Ctrl+C or a stopped job: record the service in progress as INTERRUPTED
   // (its upload may already be live) and remove the checkout before exiting.
@@ -225,9 +228,6 @@ async function main() {
     if (git(["-C", sourceDir, "rev-parse", "HEAD"]) !== sha) {
       throw new Refusal("temporary checkout is not at the release commit");
     }
-    // A per-invocation nonce keeps the message unique, so a concurrent run of
-    // the same commit cannot be mistaken for this one.
-    const deployMessage = `${sha.slice(0, 12)} ci ${ci.id} run ${randomBytes(4).toString("hex")}: ${args.message}`;
     for (const service of args.services) {
       pending = service;
       const result = await deploy(service, sourceDir, deployMessage);
