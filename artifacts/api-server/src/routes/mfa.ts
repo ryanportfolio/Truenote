@@ -28,7 +28,7 @@ import {
   isCounterAccepted,
   listPasskeys,
   lockPasskeySignCount,
-  lockUserRow,
+  lockUserAccount,
   MFA_COOKIE_NAME,
   MfaAccountRefused,
   MfaChallengeGone,
@@ -79,6 +79,8 @@ const EXPIRED = {
   error: "Your sign-in expired. Enter your email and password again.",
   code: "mfa_expired"
 } as const;
+/** The management routes' answer to a locked account (status 429). */
+const LOCKED = { error: "Too many failed attempts. Try again later." } as const;
 
 const AssertionBody = z.object({
   id: z.string().min(1).max(1024),
@@ -382,7 +384,7 @@ async function requireCurrentPassword(req: Request, res: Response): Promise<MfaU
     return null;
   }
   if (isAccountLocked(user)) {
-    res.status(429).json({ error: "Too many failed attempts. Try again later." });
+    res.status(429).json(LOCKED);
     return null;
   }
   if (!(await verifyPassword(parsed.data.password, user.passwordHash))) {
@@ -395,18 +397,36 @@ async function requireCurrentPassword(req: Request, res: Response): Promise<MfaU
 
 const UNAUTHORIZED = { error: "Unauthorized" } as const;
 
+/** Why lockVerifiedAccount refused: "stale" answers 401, "locked" 429. */
+type AccountRefusal = "stale" | "locked";
+
 /**
  * First statement of every MFA management transaction: lock the user's row
- * (lockUserRow) and check that its password hash still equals the one
- * requireCurrentPassword verified. A password write (change, reset, admin
- * reset) updates the same row and revokes the sessions in its transaction,
- * so it either committed first and this returns false (the caller writes
- * nothing and answers 401), or it waits until the caller's transaction
- * ends. The user row is locked before any passkey or recovery-code row, the
- * same order completeMfaLogin uses.
+ * (lockUserAccount) and recheck, under that lock, what requireCurrentPassword
+ * checked without it. Returns "stale" when the row is gone, the account is
+ * inactive, or its password hash no longer equals the one
+ * requireCurrentPassword verified; "locked" when the account is locked now
+ * (isAccountLocked, so demo accounts stay exempt); null when the change may
+ * proceed. On a refusal the caller writes nothing and answers with
+ * sendAccountRefusal.
+ *
+ * A password write (change, reset, admin reset) and a failure that reaches
+ * the lockout threshold (recordAuthFailure) update the same row, so each
+ * either committed first and is seen here, or waits until the caller's
+ * transaction ends. The user row is locked before any passkey or
+ * recovery-code row, the same order completeMfaLogin uses.
  */
-async function lockVerifiedPassword(user: MfaUser, executor: SqlExecutor): Promise<boolean> {
-  return (await lockUserRow(user.id, executor)) === user.passwordHash;
+async function lockVerifiedAccount(user: MfaUser, executor: SqlExecutor): Promise<AccountRefusal | null> {
+  const current = await lockUserAccount(user.id, executor);
+  if (!current || !current.isActive || current.passwordHash !== user.passwordHash) return "stale";
+  if (isAccountLocked({ email: user.email, lockedUntil: current.lockedUntil })) return "locked";
+  return null;
+}
+
+/** The same answers requireCurrentPassword gives: 429 locked, 401 otherwise. */
+function sendAccountRefusal(res: Response, refusal: AccountRefusal): void {
+  if (refusal === "locked") res.status(429).json(LOCKED);
+  else res.status(401).json(UNAUTHORIZED);
 }
 
 function auditChange(req: Request, user: MfaUser, action: string, resourceType: string, resourceId: string | null, details: Record<string, unknown> = {}): void {
@@ -520,10 +540,11 @@ mfaRouter.post("/passkeys", requireAuth, mfaManageLimit, requireSuperUser, requi
 
     const name = parsed.data.name || "Passkey";
     const saved = credential;
-    const passkeyId = await db.transaction(async (tx) => {
+    const outcome = await db.transaction(async (tx) => {
       const executor = tx as unknown as SqlExecutor;
-      if (!(await lockVerifiedPassword(user, executor))) return "stale" as const;
-      if (!(await consumeChallenge(challenge.id, executor))) return null;
+      const refusal = await lockVerifiedAccount(user, executor);
+      if (refusal) return { refusal, passkeyId: null };
+      if (!(await consumeChallenge(challenge.id, executor))) return { refusal: null, passkeyId: null };
       const result = await executor.execute(sql`
         INSERT INTO user_passkeys (user_id, credential_id, public_key, sign_count, transports, name)
         VALUES (
@@ -538,12 +559,13 @@ mfaRouter.post("/passkeys", requireAuth, mfaManageLimit, requireSuperUser, requi
         RETURNING id::text AS id
       `);
       const row = result.rows[0] as { id?: string } | undefined;
-      return row?.id ?? null;
+      return { refusal: null, passkeyId: row?.id ?? null };
     });
-    if (passkeyId === "stale") {
-      res.status(401).json(UNAUTHORIZED);
+    if (outcome.refusal) {
+      sendAccountRefusal(res, outcome.refusal);
       return;
     }
+    const passkeyId = outcome.passkeyId;
     if (!passkeyId) {
       res.status(409).json({ error: "This passkey is already registered, or the request expired." });
       return;
@@ -568,12 +590,14 @@ mfaRouter.delete("/passkeys/:id", requireAuth, mfaManageLimit, requireSuperUser,
     // In break_glass mode the emergency account cannot sign in without a
     // passkey, so its last one stays until another is added. The check and
     // the delete run in one transaction that locks the user's row and
-    // rechecks the password (lockVerifiedPassword), then locks every passkey
-    // row of the user (FOR UPDATE): a concurrent delete waits, then sees the
-    // row this one removed as gone, so two deletes cannot remove the last two.
+    // rechecks the password and lock state (lockVerifiedAccount), then locks
+    // every passkey row of the user (FOR UPDATE): a concurrent delete waits,
+    // then sees the row this one removed as gone, so two deletes cannot
+    // remove the last two.
     const outcome = await db.transaction(async (tx) => {
       const executor = tx as unknown as SqlExecutor;
-      if (!(await lockVerifiedPassword(user, executor))) return "stale" as const;
+      const refusal = await lockVerifiedAccount(user, executor);
+      if (refusal) return refusal;
       const locked = await executor.execute(sql`
         SELECT id::text AS id FROM user_passkeys
         WHERE user_id = ${user.id}::uuid
@@ -588,8 +612,8 @@ mfaRouter.delete("/passkeys/:id", requireAuth, mfaManageLimit, requireSuperUser,
       `);
       return result.rows.length > 0 ? ("deleted" as const) : ("missing" as const);
     });
-    if (outcome === "stale") {
-      res.status(401).json(UNAUTHORIZED);
+    if (outcome === "stale" || outcome === "locked") {
+      sendAccountRefusal(res, outcome);
       return;
     }
     if (outcome === "missing") {
@@ -613,11 +637,12 @@ mfaRouter.post("/recovery-codes", requireAuth, mfaManageLimit, requireSuperUser,
     if (!user) return;
     // The replacement and its audit event commit together: if the event
     // cannot be appended, the old codes stay and the request fails. A
-    // password write committed since the check leaves the old codes and
-    // returns none (lockVerifiedPassword).
-    const codes = await db.transaction(async (tx) => {
+    // password write, deactivation or lockout committed since the check
+    // leaves the old codes and returns none (lockVerifiedAccount).
+    const outcome = await db.transaction(async (tx) => {
       const executor = tx as unknown as SqlExecutor;
-      if (!(await lockVerifiedPassword(user, executor))) return null;
+      const refusal = await lockVerifiedAccount(user, executor);
+      if (refusal) return { refusal, codes: null };
       const replaced = await replaceRecoveryCodes(user.id, executor);
       await appendSecurityEvent(
         {
@@ -632,13 +657,13 @@ mfaRouter.post("/recovery-codes", requireAuth, mfaManageLimit, requireSuperUser,
         },
         executor
       );
-      return replaced;
+      return { refusal: null, codes: replaced };
     });
-    if (!codes) {
-      res.status(401).json(UNAUTHORIZED);
+    if (outcome.refusal) {
+      sendAccountRefusal(res, outcome.refusal);
       return;
     }
-    res.json({ codes });
+    res.json({ codes: outcome.codes });
   } catch (err) {
     next(err);
   }

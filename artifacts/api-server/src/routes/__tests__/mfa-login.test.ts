@@ -1332,6 +1332,101 @@ describe("MFA management rechecks the password under the user row lock", () => {
   });
 });
 
+// Finding: the management transactions rechecked only the password hash
+// under the user row lock, so a request that passed requireCurrentPassword
+// while the account was unlocked still added or removed a passkey, or
+// replaced the recovery codes, after a concurrent failure locked it.
+describe("MFA management rechecks lockout under the user row lock", () => {
+  const USER_LOCK = "SELECT password_hash, is_active, locked_until FROM users WHERE id = $1::uuid FOR UPDATE";
+  const LOCKED_UNTIL = new Date(Date.now() + 30 * 60_000);
+  const registration = {
+    id: "bmV3LWNyZWRlbnRpYWw",
+    rawId: "bmV3LWNyZWRlbnRpYWw",
+    type: "public-key",
+    response: { clientDataJSON: "e30", attestationObject: "o2NmbXRkbm9uZQ", transports: ["internal"] },
+    clientExtensionResults: {}
+  };
+  const ROUTES = ["POST /passkeys", "DELETE /passkeys/:id", "POST /recovery-codes"] as const;
+  type Route = (typeof ROUTES)[number];
+  const SUCCESS: Record<Route, number> = {
+    "POST /passkeys": 201,
+    "DELETE /passkeys/:id": 204,
+    "POST /recovery-codes": 200
+  };
+
+  // Set up the state the route changes (a register challenge, an enrolled
+  // passkey, or an existing set of codes) and return the request to send.
+  async function prepare(route: Route): Promise<() => Promise<Reply>> {
+    vi.stubEnv("LOCAL_LOGIN_MODE", "enabled");
+    if (route === "POST /passkeys") {
+      expect((await call("POST", "/api/auth/mfa/passkeys/options", { password: PASSWORD }, asSuper())).status).toBe(200);
+      fake.verifyRegistration.mockResolvedValueOnce({
+        verified: true,
+        registrationInfo: { credential: { id: registration.id, publicKey: new Uint8Array([4, 5, 6]), counter: 0 } }
+      });
+      return () => call("POST", "/api/auth/mfa/passkeys", { password: PASSWORD, response: registration }, asSuper());
+    }
+    if (route === "DELETE /passkeys/:id") {
+      enrollPasskey();
+      const id = fake.tables.passkeys[0]!.id;
+      return () => call("DELETE", `/api/auth/mfa/passkeys/${id}`, { password: PASSWORD }, asSuper());
+    }
+    expect((await call("POST", "/api/auth/mfa/recovery-codes", { password: PASSWORD }, asSuper())).status).toBe(200);
+    return () => call("POST", "/api/auth/mfa/recovery-codes", { password: PASSWORD }, asSuper());
+  }
+
+  // Send the request with `change` committed after requireCurrentPassword's
+  // unlocked check and before the management transaction takes the row
+  // lock; expect the answer and no passkey, challenge or code write.
+  async function expectRefusedUnderLock(route: Route, change: () => void, status: number, body: unknown) {
+    const send = await prepare(route);
+    const before = cloneTables(fake.tables);
+    fake.audit.mockClear();
+    fake.recordAuthFailure.mockClear();
+    fake.auditInTx = [];
+    fake.txLog = [];
+    fake.beforeNextTransaction = change;
+    const reply = await send();
+    expect(reply.status).toBe(status);
+    expect(reply.body).toEqual(body);
+    expect(fake.verifyPassword).toHaveBeenLastCalledWith(PASSWORD, "stored-password-hash");
+    expect(fake.txLog.map((e) => e.op)).toEqual([USER_LOCK]);
+    expect(fake.tables).toEqual(before);
+    expect(fake.recordAuthFailure).not.toHaveBeenCalled();
+    expect(fake.audit).not.toHaveBeenCalled();
+    expect(fake.auditInTx).toEqual([]);
+  }
+
+  it.each(ROUTES)("%s answers 429 and writes nothing when the account locked after the password check", async (route) => {
+    await expectRefusedUnderLock(
+      route,
+      () => {
+        fake.user.failedLoginCount = 0;
+        fake.user.lockedUntil = LOCKED_UNTIL;
+      },
+      429,
+      { error: "Too many failed attempts. Try again later." }
+    );
+    expect(fake.user.lockedUntil).toBe(LOCKED_UNTIL);
+  });
+
+  it.each(ROUTES)("%s answers 401 and writes nothing when the account was deactivated after the password check", async (route) => {
+    await expectRefusedUnderLock(route, () => { fake.user.isActive = false; }, 401, { error: "Unauthorized" });
+  });
+
+  it.each(ROUTES)("%s still succeeds for a demo account with locked_until set", async (route) => {
+    vi.stubEnv("DEMO_LOGIN_ACCOUNTS", JSON.stringify([
+      { label: "Demo", email: SUPER.email, password: "synthetic-demo-password", role: "manager" }
+    ]));
+    fake.user.lockedUntil = LOCKED_UNTIL;
+    const send = await prepare(route);
+    const before = cloneTables(fake.tables);
+    const reply = await send();
+    expect(reply.status).toBe(SUCCESS[route]);
+    expect(fake.tables).not.toEqual(before);
+  });
+});
+
 // Findings: a passkey removed after its assertion was checked could still
 // finish the login, and two concurrent assertions could lower the stored
 // counter. The passkey row is reread under lock inside the completion
