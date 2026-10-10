@@ -1,8 +1,19 @@
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
+import multer from "multer";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../lib/db-client.js";
-import { appendSecurityEvent } from "../../lib/security/audit.js";
+import {
+  AttestationInputError,
+  MAX_ATTESTATION_FILE_BYTES,
+  MAX_ATTESTATION_FILES,
+  MAX_STATEMENT_LENGTH,
+  checkAttestationFiles,
+  readAttachment,
+  recordAttestation
+} from "../../lib/evidence/attestations.js";
+import { CHECK_RUNNERS } from "../../lib/evidence/runner.js";
+import { appendSecurityEvent, recordSecurityEvent } from "../../lib/security/audit.js";
 import { evidenceReadLimit, evidenceWriteLimit } from "../../lib/security/route-rate-limit.js";
 import {
   ASSESSMENT_STATEMENT,
@@ -12,6 +23,7 @@ import {
 } from "../../lib/evidence/catalog.js";
 import nist from "../../lib/evidence/nist-800-53r5-moderate.json" with { type: "json" };
 import { enqueueEvidenceRun } from "../../lib/evidence/queue.js";
+import { catalogCheckMatch, summaryCounts } from "../../lib/evidence/summary.js";
 import {
   authedUser,
   blockDemoWrites,
@@ -22,8 +34,9 @@ import {
 
 /**
  * Evidence harness API for the gated compliance pages (super_user only).
- * Contract: docs/security/evidence-api.md. Receipts are read-only here; the
- * only writes are known-gap links (annotation, audited) and manual runs.
+ * Contract: docs/security/evidence-api.md. Receipts are read-only here,
+ * except attestation uploads, which append one receipt each; the other
+ * writes are known-gap links (annotation, audited) and manual runs.
  */
 export const evidenceRouter = Router();
 
@@ -79,10 +92,19 @@ const RECEIPT_COLUMNS = sql`
   controls, objectives, payload, payload_sha256, previous_hash, receipt_hash
 `;
 
+/**
+ * A receipt counts for a catalog check only under that check's catalog kind,
+ * so a receipt naming a catalog check id under another kind is ignored.
+ * Receipts whose check id is not in the catalog (retired checks) are kept as
+ * they are and attributed to no catalog check.
+ */
+const ATTRIBUTABLE = sql`(${catalogCheckMatch(EVIDENCE_CHECKS)} OR check_id NOT IN ${EVIDENCE_CHECKS.map((check) => check.id)})`;
+
 async function latestPerCheck(): Promise<ReceiptRow[]> {
   const result = await db.execute(sql`
     SELECT DISTINCT ON (check_id) ${RECEIPT_COLUMNS}
     FROM evidence_receipts
+    WHERE ${ATTRIBUTABLE}
     ORDER BY check_id, sequence DESC
   `);
   return result.rows as unknown as ReceiptRow[];
@@ -212,7 +234,7 @@ evidenceRouter.get("/failures", evidenceReadLimit, async (_req, res, next) => {
       `),
       db.execute(sql`
         SELECT check_id, max(sequence) AS last_pass
-        FROM evidence_receipts WHERE result = 'pass' GROUP BY check_id
+        FROM evidence_receipts WHERE result = 'pass' AND ${ATTRIBUTABLE} GROUP BY check_id
       `)
     ]);
     const today = new Date().toISOString().slice(0, 10);
@@ -260,7 +282,7 @@ evidenceRouter.get("/chain", evidenceReadLimit, async (_req, res, next) => {
     const integrity = await db.execute(sql`
       SELECT DISTINCT ON (check_id) ${RECEIPT_COLUMNS}
       FROM evidence_receipts
-      WHERE check_kind = 'integrity'
+      WHERE ${catalogCheckMatch(EVIDENCE_CHECKS.filter((check) => check.kind === "integrity"))}
       ORDER BY check_id, sequence DESC
     `);
     const row = head.rows[0] as Record<string, unknown>;
@@ -274,6 +296,35 @@ evidenceRouter.get("/chain", evidenceReadLimit, async (_req, res, next) => {
         "receipt_hash = sha256(previous_hash || '|' || id || '|' || recorded_at_text || '|' || sha256(payload)); previous_hash '' for the first receipt",
       integrity: (integrity.rows as unknown as ReceiptRow[]).map(receiptDetail)
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Monthly summaries (summary.ts), newest first; counts total the checks by latest result.
+evidenceRouter.get("/summaries", evidenceReadLimit, async (_req, res, next) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT id::text, sequence, recorded_at_text, receipt_hash, payload
+      FROM evidence_receipts
+      WHERE ${catalogCheckMatch(EVIDENCE_CHECKS.filter((check) => check.kind === "summary"))}
+      ORDER BY sequence DESC
+    `);
+    const summaries = (
+      result.rows as Array<{ id: string; sequence: string | number; recorded_at_text: string; receipt_hash: string; payload: string }>
+    ).map((row) => {
+      const payload = JSON.parse(row.payload) as { inputs?: { month?: unknown }; outputs?: { chainHead?: unknown } };
+      return {
+        id: row.id,
+        sequence: Number(row.sequence),
+        recordedAt: row.recorded_at_text,
+        month: typeof payload.inputs?.month === "string" ? payload.inputs.month : null,
+        receiptHash: row.receipt_hash,
+        chainHead: payload.outputs?.chainHead ?? null,
+        counts: summaryCounts(payload.outputs)
+      };
+    });
+    res.json({ statement: ASSESSMENT_STATEMENT, summaries });
   } catch (error) {
     next(error);
   }
@@ -390,14 +441,18 @@ evidenceRouter.post("/gaps/:id/retire", evidenceWriteLimit, async (req, res, nex
   }
 });
 
+// Attestation checks have no runner; a run of one would only record an error receipt.
 const RunBody = z.object({
-  checkIds: z.array(z.string().refine((id) => getCheck(id) !== undefined, "Unknown check")).max(50).optional()
+  checkIds: z
+    .array(z.string().refine((id) => getCheck(id) !== undefined && CHECK_RUNNERS[id] !== undefined, "Unknown automated check"))
+    .max(50)
+    .optional()
 });
 
 evidenceRouter.post("/runs", evidenceWriteLimit, async (req, res, next) => {
   const parsed = RunBody.safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ error: "checkIds must be known check ids" });
+    res.status(400).json({ error: "checkIds must be known automated check ids" });
     return;
   }
   try {
@@ -412,6 +467,149 @@ evidenceRouter.post("/runs", evidenceWriteLimit, async (req, res, next) => {
       details: { checkIds: parsed.data.checkIds ?? "all", queued: jobId !== null }
     });
     res.status(202).json({ queued: jobId !== null, jobId });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ---------------------------------------------------------------- attestations
+
+/**
+ * Attestation files are parsed into memory: at most 10 files of 20 MiB in the
+ * field `files`, one short text field `statement`. fieldArrayIndexLimit 0
+ * refuses names like `statement[4294967294]` (GHSA-535w-7cp7-47q4).
+ */
+const attestationUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_ATTESTATION_FILE_BYTES,
+    files: MAX_ATTESTATION_FILES,
+    fields: 5,
+    fieldSize: 16 * 1024,
+    fieldNameSize: 100,
+    parts: MAX_ATTESTATION_FILES + 5,
+    fieldArrayIndexLimit: 0
+  }
+}).array("files", MAX_ATTESTATION_FILES);
+
+/** Multer and malformed-body errors become 413 or 400, never 500. */
+function parseAttestationUpload(req: Request, res: Response, next: NextFunction): void {
+  attestationUpload(req, res, (error: unknown) => {
+    if (!error) {
+      next();
+      return;
+    }
+    if (error instanceof multer.MulterError) {
+      const tooLarge = error.code === "LIMIT_FILE_SIZE";
+      const tooMany = error.code === "LIMIT_FILE_COUNT" || (error.code === "LIMIT_UNEXPECTED_FILE" && error.field === "files");
+      res.status(tooLarge || tooMany ? 413 : 400).json({
+        error: tooLarge
+          ? "Files are limited to 20 MiB each."
+          : tooMany
+            ? `Attach at most ${MAX_ATTESTATION_FILES} files.`
+            : `Upload refused: ${error.message}`
+      });
+      return;
+    }
+    res.status(400).json({ error: "Send multipart/form-data with the field files and the field statement." });
+  });
+}
+
+const AttestationStatement = z.string().trim().min(1).max(MAX_STATEMENT_LENGTH);
+
+evidenceRouter.post(
+  "/attestations/:checkId",
+  evidenceWriteLimit,
+  (req, res, next) => {
+    const check = getCheck(req.params.checkId ?? "");
+    if (!check) {
+      res.status(404).json({ error: "Unknown check" });
+      return;
+    }
+    if (check.kind !== "attestation") {
+      res.status(400).json({ error: "This check is automated; only attestation checks accept uploads" });
+      return;
+    }
+    next();
+  },
+  parseAttestationUpload,
+  async (req, res, next) => {
+    const startedAt = new Date();
+    const check = getCheck(req.params.checkId ?? "")!;
+    const statement = AttestationStatement.safeParse(req.body?.statement);
+    if (!statement.success) {
+      res.status(400).json({ error: `Add a statement of what the files show (1 to ${MAX_STATEMENT_LENGTH} characters).` });
+      return;
+    }
+    let files;
+    try {
+      files = checkAttestationFiles(Array.isArray(req.files) ? req.files : []);
+    } catch (error) {
+      if (error instanceof AttestationInputError) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
+      next(error);
+      return;
+    }
+    try {
+      const user = authedUser(req);
+      const recorded = await recordAttestation({
+        check,
+        files,
+        statement: statement.data,
+        user,
+        startedAt
+      });
+      res.status(201).json({
+        receipt: {
+          id: recorded.receipt.id,
+          sequence: recorded.receipt.sequence,
+          recordedAt: recorded.receipt.recordedAt,
+          receiptHash: recorded.receipt.receiptHash
+        },
+        attachments: recorded.attachments
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+evidenceRouter.get("/receipts/:id/attachments/:index", evidenceReadLimit, async (req, res, next) => {
+  if (!z.string().uuid().safeParse(req.params.id).success) {
+    res.status(400).json({ error: "Invalid receipt id" });
+    return;
+  }
+  const index = /^\d{1,4}$/.test(req.params.index ?? "") ? Number(req.params.index) : -1;
+  try {
+    const read = await readAttachment(req.params.id ?? "", index);
+    if (read.status === "not-found") {
+      res.status(404).json({ error: "No such receipt attachment" });
+      return;
+    }
+    if (read.status !== "ok") {
+      await recordSecurityEvent({
+        action: "evidence.attestation.attachment_check",
+        outcome: "failure",
+        actor: authedUser(req),
+        resourceType: "evidence_receipt",
+        resourceId: req.params.id,
+        details: { index, key: read.key, reason: read.status, expectedSha256: read.expected, actualSha256: read.actual }
+      }).catch(() => undefined); // appendSecurityEvent already logged and alerted
+      res.status(409).json({
+        error:
+          read.status === "missing"
+            ? "The stored file is missing; it no longer matches the receipt."
+            : "The stored file does not match the sha256 in the receipt; it is not served."
+      });
+      return;
+    }
+    res.setHeader("Content-Type", read.contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="${read.fileName}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).end(read.data);
   } catch (error) {
     next(error);
   }

@@ -412,6 +412,133 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
       "`openssl ts -verify`.",
     limits:
       "Proves the chain head existed by the token's time. Only the hash leaves the system."
+  },
+  // Attestations: proof the owner supplies through POST /api/admin/evidence/attestations/:checkId.
+  // They have no runner; the daily run only reminds the owner when one is due (attestations.ts).
+  {
+    id: "attestation.operator-mfa",
+    kind: "attestation",
+    title: "Operator accounts require multi-factor authentication",
+    controls: ["IA-2(1)"],
+    objectives: ["IA-02(01)"],
+    cadence: "quarterly",
+    cadenceStatus: "proposed",
+    passCondition:
+      "The owner uploads screenshots or exported reports of the sign-in security settings of every account " +
+      "that can change the deployed system or its data (hosting, source control and CI, the identity provider " +
+      "tenant, DNS, and the mailbox that receives security alerts), each showing multi-factor authentication " +
+      "enabled or required for the operator's account, with the date visible, and a statement naming the " +
+      "accounts covered. A pass is the owner's own statement with those files; the receipt records the " +
+      "sha256 of each file.",
+    limits:
+      "Self-attested by the owner; the harness does not read the files' content. A screenshot shows a setting " +
+      "at one moment, not that it stayed on between attestations, and covers only the accounts it shows."
+  },
+  {
+    id: "attestation.workstation-patch-malware",
+    kind: "attestation",
+    title: "Operator workstation is patched and anti-malware is current",
+    controls: ["SI-2", "SI-3"],
+    objectives: ["SI-02c.", "SI-03b.", "SI-03c.01"],
+    cadence: "monthly",
+    cadenceStatus: "proposed",
+    passCondition:
+      "For each workstation used to administer the system, the owner uploads its operating system update " +
+      "status (no pending security update, date of the last install) and its anti-malware status (real-time " +
+      "protection on, signature version and date, date and result of the last scan), with the date visible, " +
+      "and a statement naming the workstations. A pass is the owner's own statement with those files; the " +
+      "receipt records the sha256 of each file.",
+    limits:
+      "Self-attested by the owner; the harness does not read the files' content. Shows the state on the day " +
+      "of the capture only, and only for the workstations the statement names."
+  },
+  {
+    id: "attestation.access-review",
+    kind: "attestation",
+    title: "Accounts and privileges are reviewed",
+    controls: ["AC-2", "AC-6(7)"],
+    objectives: ["AC-02j.", "AC-06(07)(a)", "AC-06(07)(b)"],
+    cadence: "quarterly",
+    cadenceStatus: "proposed",
+    passCondition:
+      "The owner uploads the review record: the list of Truenote user accounts with their roles and programs, " +
+      "and the operator accounts on the hosting, source control and identity provider platforms, as reviewed, " +
+      "with each account marked kept, changed or removed, and a statement giving the review date and the " +
+      "changes made. A pass is the owner's own statement with those files; the receipt records the sha256 of " +
+      "each file.",
+    limits:
+      "Self-attested by the owner; the harness does not read the files' content or compare the list with the " +
+      "database. Proves that a review was recorded, not that every account was assessed correctly."
+  },
+  {
+    id: "attestation.policy-review",
+    kind: "attestation",
+    title: "Security policies and plans are reviewed",
+    controls: ["PL-1", "PL-2", "IR-1", "CP-2"],
+    objectives: ["PL-01c.01[01]", "PL-01c.02[01]", "PL-02c.", "IR-01c.02[01]", "CP-02d."],
+    cadence: "annual",
+    cadenceStatus: "proposed",
+    passCondition:
+      "The owner uploads the review record of the security policy set, the system security plan, the incident " +
+      "response plan and the contingency plan: for each document, the version reviewed, the review date, the " +
+      "reviewer and whether it changed, and a statement naming each document and the outcome. A pass is the " +
+      "owner's own statement with those files; the receipt records the sha256 of each file.",
+    limits:
+      "Self-attested by the owner; the harness does not read the files' content. Proves that a review was " +
+      "recorded, not its quality, and covers only the documents the statement names."
+  },
+  // The operator check has no runner: the owner runs scripts/src/evidence-operator.ts as the
+  // migration role, and only that role can append a receipt of kind operator (0020_operator_receipts.sql).
+  {
+    id: "operator.monthly-verification",
+    kind: "operator",
+    title: "Owner-run check of the database controls and the append-only triggers",
+    controls: ["AU-9", "CM-6", "CA-7"],
+    objectives: ["AU-09a.", "CM-06b.", "CA-07d."],
+    cadence: "monthly",
+    cadenceStatus: "proposed",
+    passCondition:
+      "Connected as a superuser or a member of the owner of evidence_receipts, the script runs " +
+      "docs/compliance/pci/production-control-verification.sql with truenote.evidence_runtime_role set to the " +
+      "runtime role (truenote_app unless overridden), and every control row it returns (at least one) has passed " +
+      "true. Then, in one transaction that always ends in ROLLBACK, an UPDATE and a DELETE aimed at the newest row " +
+      "and a TRUNCATE, each in its own savepoint, run on evidence_receipts and on security_events, and all six " +
+      "statements are refused. A statement counts as refused only when it fails with the append-only trigger's " +
+      "error: SQLSTATE P0001 and a message ending in \"is append-only\"; any other error is recorded with its " +
+      "SQLSTATE and message as not refused. On an empty table the UPDATE and DELETE have no row to aim at and " +
+      "count as not refused; a lock or statement timeout stops the run without a receipt. After the rollback, the " +
+      "rows that existed before the tests must be unchanged (their count and the newest row's hash), else the run " +
+      "stops without a receipt. The failed controls, the sha256 of each object definition the verifier returns, " +
+      "each test's statement and error, the session user and both chain heads are recorded.",
+    limits:
+      "Self-assessment: the owner runs it against the system the owner operates, so independent assessment " +
+      "(CA-2(1)) is not met. A refusal shows the triggers were in place during the run, not between runs. The " +
+      "owner, as a superuser, could disable the triggers and rewrite the evidence chain; the monthly export to the " +
+      "private evidence repository, the timestamped chain head and the summary forwarded to the customer's " +
+      "reviewer are the anchors outside the database that would show such a rewrite."
+  },
+  // The monthly summary has no runner: the first daily run of each month builds it (summary.ts).
+  {
+    id: "summary.monthly",
+    kind: "summary",
+    title: "Monthly continuous monitoring summary is recorded and sent to the owner",
+    controls: ["CA-7"],
+    objectives: ["CA-07e.", "CA-07g.[01]"],
+    cadence: "monthly",
+    cadenceStatus: "proposed",
+    passCondition:
+      "In the first daily run of each UTC month, one summary receipt for the previous calendar month exists: " +
+      "for every other catalog check, its pass, fail and error counts over the month and its latest result; " +
+      "for every control, its checks counted by latest result; the checks whose latest result is fail or " +
+      "error; the active known-gap links; the attestation checks with their latest pass and whether they " +
+      "were due at the month's end; and the chain head (sequence, receipt_hash) the summary receipt is " +
+      "appended after. The summary is emailed once to EVIDENCE_ALERT_EMAIL (else SECURITY_ALERT_EMAIL); an " +
+      "email that fails is sent by a later run.",
+    limits:
+      "Counts what the harness recorded; it does not rerun any check. The receipt records that a summary was " +
+      "built, not that the email reached anyone or was forwarded; the chain head is anchored outside the " +
+      "owner's control only when the customer's reviewer keeps the forwarded copy. Self-assessment, like " +
+      "every receipt."
   }
 ];
 

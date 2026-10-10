@@ -1,8 +1,10 @@
 import { withPgAdvisoryLock } from "../db-client.js";
 import { ensureQueue, getBoss } from "../jobs/boss.js";
 import { recordAppError } from "../observability/error-log.js";
+import { remindDueAttestations } from "./attestations.js";
 import { notifyRun } from "./notify.js";
 import { runEvidenceChecks } from "./runner.js";
+import { ensureMonthlySummaries, productionSummaryDeps } from "./summary.js";
 
 /**
  * Daily evidence run on pg-boss. The queue is created by
@@ -23,9 +25,11 @@ export const EVIDENCE_RUN_CRON = "23 5 * * *";
  * 3 integrity) at 90 s = 1,620 s, plus 5 synthetic checks at 380 s
  * (SYNTHETIC_HTTP_WORST_CASE_MS 320 s + 60 s; synthetic.login-windows reads
  * only the database but gets the synthetic limit) = 1,900 s. Total 3,520 s,
- * about 59 minutes, before receipt writes and the alert email. 90 minutes
- * leaves about 31 minutes for those. Recount when a check is added or a
- * time limit changes.
+ * about 59 minutes, before receipt writes, the alert email, the attestation
+ * reminder email and the monthly summary (a few queries, one receipt and one
+ * email at 30 s per recipient; attestation and summary checks have no runner
+ * and add no check time). 90 minutes leaves about 31 minutes for those.
+ * Recount when a check is added or a time limit changes.
  *
  * pg-boss stores these options when the queue is created; a change here
  * reaches production only through pgboss:install, which also updates the
@@ -62,6 +66,43 @@ async function executeEvidenceRun(payload: EvidenceRunPayload): Promise<void> {
       // Receipts are already recorded; a failed email must not retry the run.
       console.warn("[evidence] notification failed:", error instanceof Error ? error.message : error);
       void recordAppError({ severity: "warning", source: "evidence", operation: "evidence-notify", error, context: { runId } });
+    }
+    try {
+      const reminded = await remindDueAttestations();
+      if (reminded > 0) console.log(`[evidence] run ${runId}: ${reminded} attestation reminder(s) queued`);
+    } catch (error) {
+      // Reminders are not part of the run's evidence; a failure must not retry the run.
+      console.warn("[evidence] attestation reminders failed:", error instanceof Error ? error.message : error);
+      void recordAppError({
+        severity: "warning",
+        source: "evidence",
+        operation: "evidence-attestation-reminders",
+        error,
+        context: { runId }
+      });
+    }
+    try {
+      // The first run of each UTC month appends the previous month's summary
+      // (and any missed months); every run sends the last three months'
+      // summaries to recipients that have not received them (summary.ts).
+      const summaries = await ensureMonthlySummaries(new Date(), productionSummaryDeps());
+      for (const summary of summaries) {
+        if (!summary.created && summary.sentTo.length === 0 && summary.pending.length === 0) continue;
+        console.log(
+          `[evidence] run ${runId}: summary ${summary.month} ${summary.created ? "recorded" : "exists"}, ` +
+            `sent to ${summary.sentTo.length}, ${summary.pending.length} recipient(s) pending`
+        );
+      }
+    } catch (error) {
+      // The summary is not part of this run's checks; a failure must not retry the run.
+      console.warn("[evidence] monthly summary failed:", error instanceof Error ? error.message : error);
+      void recordAppError({
+        severity: "warning",
+        source: "evidence",
+        operation: "evidence-monthly-summary",
+        error,
+        context: { runId }
+      });
     }
   });
   if (!ran) console.warn("[evidence] another evidence run holds the lock; skipped");

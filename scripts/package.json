@@ -14,6 +14,7 @@
     "evidence:nist-ids": "tsx src/evidence-nist-ids.ts",
     "evidence:outside": "tsx src/evidence-outside.ts",
     "evidence:synthetic-provision": "tsx src/evidence-synthetic-provision.ts",
+    "evidence:operator": "tsx src/evidence-operator.ts",
     "verify:pci-evidence": "tsx src/verify-pci-evidence.ts",
     "verify:change-record": "tsx src/verify-pr-change-record.ts",
     "verify:pci-scope-decision": "tsx src/verify-pci-scope-decision.ts",

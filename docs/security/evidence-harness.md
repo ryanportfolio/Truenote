@@ -17,10 +17,10 @@ Plan approved by the owner on 2026-10-10. The API contract for the gated complia
    receipt_hash = sha256(previous_hash | id | recorded_at_text | sha256(payload))
    ```
 
-   The application role can read receipts and call the append function; it cannot insert, update or delete rows. Triggers refuse UPDATE, DELETE and TRUNCATE for every role, the owner included.
+   The application role can read receipts and call the append function; it cannot insert, update or delete rows. Triggers refuse UPDATE, DELETE and TRUNCATE for every role, the owner included. The admin views and the monthly summary count a receipt for a catalog check only when its kind equals that check's catalog kind, so a receipt that names a check id under another kind is not evidence for that check.
 5. Every day the harness re-verifies the evidence chain and the `security_events` chain, then sends the chain head hash (and only the hash) to a public RFC 3161 time-stamping authority. The token is accepted only after its CMS signature, message digest, nonce and timeStamping key usage verify and its signer chains to a pinned root (`checks/tsa-trust.ts`: FreeTSA Root CA, DigiCert Trusted Root G4); then it goes into a receipt. Anyone can later check with `openssl ts -verify` that the chain existed at that time, which narrows how far back an owner with database access could rewrite history to about a day.
 6. When a run changes something that needs attention, the owner gets one email: a new failure, a known-gap link that expired, or a check that could not run twice in a row. A failure that stays failing does not repeat daily. An alert that could not be sent (mail outage, no recipient configured) stays pending in `app_settings` and is resent with every run until delivery succeeds.
-7. A public endpoint, `/api/evidence/heartbeat`, returns only the time of the last receipt. The `Evidence harness watch` GitHub Action reads it daily from outside Railway and fails, which emails the owner, when receipts are more than 26 hours old. The same Action repeats the passive public checks from GitHub's network.
+7. A public endpoint, `/api/evidence/heartbeat`, returns only the time of the last receipt from a worker run, scheduled or started by hand (a receipt with a run id). Attestation uploads, monthly summaries and operator receipts carry no run id and do not count, so they cannot make a stopped worker look fresh. The `Evidence harness watch` GitHub Action reads it daily from outside Railway and fails, which emails the owner, when that receipt is more than 26 hours old. The same Action repeats the passive public checks from GitHub's network.
 
 ## Check types
 
@@ -31,11 +31,11 @@ Plan approved by the owner on 2026-10-10. The API contract for the gated complia
 | Database posture | worker, daily | Catalog queries and rolled-back refusal probes as `truenote_app` | 1 |
 | Integrity | worker, daily | Chain recomputation and RFC 3161 timestamp | 1 |
 | Production behavior | worker, daily | Two synthetic CSR accounts and the published demo account over HTTPS, and the audit log | 2 |
-| Operator check | owner, monthly | Owner-run script over `railway ssh` as the migration role | 3 |
+| Operator check | owner, monthly | Owner-run script through the SSH tunnel to `pgvector` as the migration role | 3 |
 | Attestations | owner, on reminder | Uploaded proof (screenshots, reports) | 3 |
-| Monthly summary | worker, monthly | Receipts of the month and the chain head | 3 |
+| Monthly summary | worker, first run of each month | Receipts of the month and the chain head | 3 |
 
-The catalog lists the checks built so far: 18 from phase 1 and 5 from phase 2. Phase 3 adds its own.
+The catalog lists 29 checks: 18 from phase 1, 5 from phase 2 and 6 from phase 3 (four attestations, the operator check and the monthly summary). The worker runs the 23 automated ones; the phase 3 checks have no runner.
 
 ### Why the worker and not GitHub Actions
 
@@ -88,11 +88,51 @@ A super_user's all-program views leave synthetic programs out: the query log wit
 
 ### Operator check and export (phase 3)
 
-Once a month the owner runs one script over `railway ssh` as the migration role. It runs the read-only PCI catalog verifier (`docs/compliance/pci/production-control-verification.sql`) and rollback-only negative tests showing that the append-only triggers refuse even the owner, and appends an `operator` receipt. The same step exports the month's receipts, the attachment list and the chain head to the private repository `ryanportfolio/truenote-evidence`, whose ruleset blocks force-push and deletion.
+Catalog entry `operator.monthly-verification`. The application role cannot show that the append-only triggers also refuse the owner, so once a month the owner runs `scripts/src/evidence-operator.ts` (`corepack pnpm --filter @workspace/scripts run evidence:operator`) on their own machine. It connects through the SSH tunnel to `pgvector` (`docs/security/backup-restore-runbook.md`, section 4.4, step 5) as the migration role, with `DATABASE_URL` set to `postgresql://postgres@127.0.0.1:5434/railway` ("Turning on phase 3", step 5, has the PowerShell commands), and does everything over that one connection:
+
+1. Role check. It stops unless the session user is a superuser or a member of the owner of `evidence_receipts`.
+2. Verifier. It sets `truenote.evidence_runtime_role` to the runtime role (`truenote_app`; `--runtime-role <role>` overrides it) and runs `docs/compliance/pci/production-control-verification.sql` as a whole; the file opens and commits its own READ ONLY transaction. The receipt records the controls that failed and the sha256 of each object definition the verifier returns, not the definitions, plus the sha256 of the verifier file (line ends as Git stores them) and the commit the script ran from (`+dirty` when its files have local changes).
+3. Negative tests. In one transaction that always ends in ROLLBACK (lock timeout 5 s, statement timeout 30 s), an UPDATE and a DELETE aimed at the newest row and a TRUNCATE run on `evidence_receipts` and on `security_events`, each in its own savepoint: six statements. A statement counts as refused only when it fails with SQLSTATE P0001 and a message ending in "is append-only", the error the triggers of `0008` and `0012` raise. Any other error is recorded with its SQLSTATE and message as not refused. On an empty table the UPDATE and DELETE have no row to aim at and count as not refused. A lock or statement timeout stops the run without a receipt. After the rollback, the rows that existed before the tests must be unchanged (their count and the newest row's hash), else the run stops without a receipt; rows the application appended meanwhile are allowed and reported.
+4. Receipt. The result is `pass` only when the verifier returned at least one control, every control passed, and all six statements were refused. Without `--apply` the script prints the payload and appends nothing. With `--apply` it appends the receipt through `append_evidence_receipt` and prints its id, sequence and hash. `lib/db/sql/0020_operator_receipts.sql` makes that function treat a payload whose kind is `operator` or whose check id starts with `operator.` (both compared case-insensitively) as an operator claim, and refuse it unless the session user is a member of the function's owner, the migration role, and the kind is exactly `operator` and the check id starts with `operator.` in lower case. So `truenote_app` cannot append an operator receipt, nor a receipt of another kind under `operator.monthly-verification`; every other payload is stored as before.
+5. Export, with `--export-dir <path>`, with or without `--apply`. It only reads the database. The month is `--month YYYY-MM` or, by default, the previous UTC month (`--month` and `--push` need `--export-dir`). The month is a contiguous sequence range: from the first receipt recorded at or after the month's UTC start to the first recorded at or after the next month's start, exclusive (the head plus one when there is none). `append_evidence_receipt` reads the clock before it takes the chain lock, so recorded times near a month boundary can run against sequence order; the range still puts every receipt in exactly one month. In one REPEATABLE READ snapshot the script reads the range, the receipt before it and every later receipt, and before writing anything it recomputes the chain from the receipt before the range through the chain head (each `payload_sha256`, `receipt_hash` and `previous_hash` link), an empty month included. A mismatch writes nothing and names the first bad sequence. Then `<path>/<YYYY-MM>/` gets three files:
+   - `receipts.jsonl`: one line per receipt of the month with its sequence, id, `recorded_at_text`, check id, kind, result, the exact payload text, `payload_sha256`, `previous_hash` and `receipt_hash`, so anyone can recompute the hashes.
+   - `attachments.json`: key, sha256, size and content type of every attachment those receipts name. The files stay in the bucket.
+   - `chain-head.json`: the month, the sequence range, the number of receipts exported, and the chain head at export time (sequence, `receipt_hash`, recorded time).
+
+   No file holds the export time, so the same chain state gives the same bytes and an unchanged re-export makes no commit.
+
+The export target is checked before the database is touched. A directory outside every Git work tree gets the files and no commit, and `--push` is refused there. The only Git target allowed is the top level of a repository whose `origin` URL ends in `truenote-evidence` (or `truenote-evidence.git`) and which is not the Truenote code repository the script runs from or one of its worktrees. There the script stages and commits only the three files it writes, named by explicit paths ("Evidence export for <month>", with the range and chain head in the body), and with `--push` runs `git push origin HEAD`. Other files in the month folder and anything the owner already staged elsewhere stay out of the commit and keep their state. Any other target is refused and nothing is written. If the month folder already holds an entry whose name differs from one of the three file names only in case (`Receipts.jsonl`, for example), the script refuses, names that entry and writes nothing, because a case-insensitive file system would overwrite it. A failed commit unstages those three files only and leaves them in the working tree. The script does not check the repository's ruleset; the owner sets it up once ("Turning on phase 3").
+
+The operator receipt appended by an `--apply` run belongs to the current month, so the export of the previous month does not contain it; the next month's export does. The script exits non-zero on any error and never prints `DATABASE_URL`, its password, or credentials embedded in a URL (`https://user:token@host/...`), also when it shows git's error output.
 
 ### Attestations and monthly summary (phase 3)
 
-The harness emails a reminder when an attestation is due: operator MFA screenshots (quarterly), workstation patch and anti-malware status (monthly), access review (quarterly), policy review (annual). The owner uploads the proof through a super_user API endpoint; the file goes to the `truenote-storage` bucket under `evidence/`, and its sha256 goes into a receipt. On the first of each month the worker builds a summary (result per control, failures, known gaps, chain head hash), stores it as a receipt and emails it to the owner, who forwards it to the customer's security reviewer. The reviewer's copy anchors the chain head outside the owner's control.
+Attestations are proof the owner supplies; the harness never runs them (`artifacts/api-server/src/lib/evidence/attestations.ts`). The catalog holds four, with proposed cadences:
+
+| Check | Cadence | What the owner uploads |
+|---|---|---|
+| `attestation.operator-mfa` | quarterly | Screenshots or reports of the MFA settings of every operator account (hosting, source control and CI, identity provider, DNS, the alert mailbox) |
+| `attestation.workstation-patch-malware` | monthly | OS update status and anti-malware status of each admin workstation |
+| `attestation.access-review` | quarterly | The account and privilege review record, each account marked kept, changed or removed |
+| `attestation.policy-review` | annual | The review record of the security policies, the system security plan, the incident response plan and the contingency plan |
+
+A check is due when it was never attested or its latest `pass` receipt is at least 31 (monthly), 92 (quarterly) or 366 (annual) days old. After its alert email, every evidence run (daily or manual, `POST /api/admin/evidence/runs`) adds one "Attestation due" line per due check whose current due period was not reminded yet (remembered in `app_settings`, key `evidence_attestation_reminders`) to the pending evidence alert lines and sends them to the alert recipients. A failed send leaves the lines pending for the next run. A check attested since drops out and is reminded again when its next period starts.
+
+Upload: `POST /api/admin/evidence/attestations/:checkId` as a super_user, multipart, with up to 10 files of at most 20 MiB each in the field `files` and a `statement` of 1 to 2,000 characters saying what the files show ([evidence-api.md](evidence-api.md) has the status codes). Accepted: `.png` sent as `image/png`, `.jpg` or `.jpeg` as `image/jpeg`, `.pdf` as `application/pdf`, `.txt` as `text/plain` and `.csv` as `text/csv`. The declared type must match the extension, an empty file is refused, and a PNG, JPEG or PDF must start with that format's magic bytes; text files get no content check. Every file is checked before anything is stored. Each file then goes to the bucket under `evidence/attestations/<checkId>/<uuid>/<i>-<sha16><ext>` (one uuid per upload, `i` the file's position, `sha16` the first 16 hex digits of its sha256). One transaction appends a receipt of kind `attestation` with result `pass` (the statement, the uploader's id and email, the cleaned file names, and per file its key, sha256, size and type) and the security event `evidence.attestation.recorded`. If a step after the first stored file fails, the stored objects are deleted, best effort.
+
+Download: `GET /api/admin/evidence/receipts/:id/attachments/:index` reads the file, recomputes its sha256 and serves it only when it matches the receipt. A file that is missing or does not match answers 409, nothing is served, and the security event `evidence.attestation.attachment_check` records outcome `failure` with the expected and actual sha256.
+
+Monthly summary (`artifacts/api-server/src/lib/evidence/summary.ts`, catalog entry `summary.monthly`). There is no monthly queue: every evidence run, daily or manual, ends by calling `ensureMonthlySummaries`, so the first run of a UTC month appends one receipt of kind `summary` for the previous calendar month. It records, for every other catalog check, its pass, fail and error counts over the month and its latest result in the month; for every control, its checks counted by latest result; the checks whose latest result is `fail` or `error`; the known-gap links active on the day it is built; each attestation check's latest pass and whether it was due at the month's end; and the chain head the summary is appended after (sequence, `receipt_hash`, recorded time). The summary is built under the chain lock, so that head is the summary's `previous_hash`. `GET /api/admin/evidence/summaries` lists the summaries.
+
+Months without a summary after the newest one, up to the previous month, are appended oldest first, at most the three most recent of them, so a month in which no daily run happened still gets its summary; with no summary yet, only the previous month is appended. A month never gets a second summary receipt. Every run then emails the summaries of the previous month and the two before it to each configured recipient (`EVIDENCE_ALERT_EMAIL`, else `SECURITY_ALERT_EMAIL`, compared trimmed and lowercased) that has no send record for that month, one recipient at a time, each send within 30 s. Send records are per recipient, in `app_settings` under `evidence_summary_email_<YYYY-MM>` (`{ "receiptId": ..., "sentTo": { "<address>": "<time>" } }`). A failed send, or a sent email whose record could not be written, goes to the error log and stays pending, so the next run sends it to that recipient again. With no recipient configured, the emails stay pending and the error log gets one entry per run while a summary is pending. The owner forwards the email to the customer's security reviewer; the reviewer's copy anchors the chain head outside the owner's control.
+
+Known limits:
+
+- Upload files are held in memory while the request is parsed: up to 10 files of 20 MiB each per request.
+- If storing or appending fails and the cleanup delete then fails too, the objects stay in the bucket without a receipt, and nothing reports it.
+- A `.csv` file must be declared `text/csv`; a client that labels it with another type gets 400.
+- A summary send that completes after its 30 s deadline counts as failed and is sent again, so that recipient can get two copies.
+- The summary has no guard of its own against two concurrent calls. Its only caller runs under the daily run's try-lock (`truenote.evidence.run`). Two concurrent calls would still append one receipt per month, because the check for an existing summary runs under the chain lock, but could send the same email twice.
 
 ## Cadence
 
@@ -103,7 +143,7 @@ All cadences are proposals until the owner approves the organization-defined par
 | Variable | Service | Purpose |
 |---|---|---|
 | `EVIDENCE_GITHUB_TOKEN` | worker | Fine-grained token, Truenote repository only, read-only: Administration, Actions, Code scanning alerts, Dependabot alerts, Secret scanning alerts, Metadata. Maximum one-year expiry; the `github.credential-expiry` check fails 30 days before. |
-| `EVIDENCE_ALERT_EMAIL` | worker | Optional, comma-separated. Where evidence alerts go; defaults to the security monitor's `SECURITY_ALERT_EMAIL` (`docs/security/monitoring.md`). With neither set, alerts stay pending. |
+| `EVIDENCE_ALERT_EMAIL` | worker | Optional, comma-separated. Where evidence alerts, attestation reminders and monthly summaries go; defaults to the security monitor's `SECURITY_ALERT_EMAIL` (`docs/security/monitoring.md`). With neither set, alerts stay pending. |
 | `EVIDENCE_GITHUB_REPO` | worker | Optional; defaults to `ryanportfolio/Truenote`. |
 | `EVIDENCE_SYNTHETIC_ACCOUNTS` | worker | JSON written by the provisioning script: `{"csrA":{"email","password"},"csrB":{"email","password"},"canaries":{"a":{"documentId","token"},"b":{...},"aConfidential":{...}}}`. Both emails must end in `.invalid` and differ, so the harness can never log in as a real person; the three canaries need distinct UUID document ids and distinct tokens. Holds passwords: set it from the file over stdin, never on a command line. Missing or invalid, the four account checks record `error` ("Not configured"), and the error never quotes the value. |
 | `EVIDENCE_SYNTHETIC_BASE_URL` | worker | Optional; defaults to `https://truenote.org`. Where the synthetic checks send their requests; http or https. |
@@ -116,7 +156,12 @@ The deployed commit comes from `.release-commit`, written before `railway up` (`
 Each step changes production and waits for the owner's go.
 
 1. Apply the schema: `node scripts/railway-apply-sql.mjs lib/db/sql/0012_evidence_receipts.sql` (dry run), then with `--apply`.
-2. Create the queue as the migration role: `pnpm --filter @workspace/scripts run pgboss:install` through the SSH tunnel (`docs/security/backup-restore-runbook.md`, section 4.4, step 5). Without it the worker logs `[evidence] worker not started` and keeps ingesting.
+2. Create the queue as the migration role through the SSH tunnel (`docs/security/backup-restore-runbook.md`, section 4.4, step 5), in Windows PowerShell. Without it the worker logs `[evidence] worker not started` and keeps ingesting.
+
+   ```powershell
+   $env:DATABASE_URL = 'postgresql://postgres@127.0.0.1:5434/railway'
+   corepack pnpm --filter @workspace/scripts run pgboss:install
+   ```
 3. Create the GitHub token and set `EVIDENCE_GITHUB_TOKEN` on the worker (alerts use `SECURITY_ALERT_EMAIL` unless `EVIDENCE_ALERT_EMAIL` is set).
 4. Deploy web and worker from the same commit, with `.release-commit` written first.
 5. Trigger a run (`POST /api/admin/evidence/runs` as a super_user) and check: 18 receipts, every one with a `release.commit`; `GET /api/admin/evidence/chain` shows both integrity checks passing and a timestamp token; `/api/evidence/heartbeat` reports `stale: false`.
@@ -134,16 +179,24 @@ Each step changes production and waits for the owner's go, in this order. Run th
    ```
 
    The SQL is quoted twice because `railway ssh` hands the words to a remote shell (`.claude/reference/pitfalls.md`). Then `node scripts/railway-apply-sql.mjs lib/db/sql/0019_synthetic_fence.sql` (dry run), and with `--apply`.
-2. Rerun `pnpm --filter @workspace/scripts run pgboss:install` as the migration role through the SSH tunnel (`.claude/reference/deployment.md`, "Database roles"). It writes the evidence queue's new expiry over the stored one and prints `evidence-run: retryLimit 1, retryDelay 600, expireInSeconds 5400`. Until then a run longer than 30 minutes is marked failed and retried.
-3. Deploy web and worker from the same commit through the "Deploy production" workflow: `gh workflow run deploy-production.yml --repo ryanportfolio/Truenote --ref main -f message="<what ships>" -f service=both`, then approve the job. A daily run between this deploy and step 5 records `error` ("Not configured") for the four account checks; a second one in a row emails the owner.
-4. Provision the accounts and canaries through the SSH tunnel, first as a dry run, then with `--apply`:
+2. Rerun `pgboss:install` as the migration role through the SSH tunnel (`.claude/reference/deployment.md`, "Database roles"), in Windows PowerShell:
 
-   ```text
-   DATABASE_URL=postgresql://postgres@127.0.0.1:5434/railway pnpm --filter @workspace/scripts run evidence:synthetic-provision
-   DATABASE_URL=postgresql://postgres@127.0.0.1:5434/railway pnpm --filter @workspace/scripts run evidence:synthetic-provision -- --apply
+   ```powershell
+   $env:DATABASE_URL = 'postgresql://postgres@127.0.0.1:5434/railway'
+   corepack pnpm --filter @workspace/scripts run pgboss:install
    ```
 
-   It needs the agent's credentials in `~/.claude/secrets/truenote-agent.json` and writes `~/.claude/secrets/truenote-synthetic-accounts.json`.
+   It writes the evidence queue's new expiry over the stored one and prints `evidence-run: retryLimit 1, retryDelay 600, expireInSeconds 5400`. Until then a run longer than 30 minutes is marked failed and retried.
+3. Deploy web and worker from the same commit through the "Deploy production" workflow: `gh workflow run deploy-production.yml --repo ryanportfolio/Truenote --ref main -f message="<what ships>" -f service=both`, then approve the job. A daily run between this deploy and step 5 records `error` ("Not configured") for the four account checks; a second one in a row emails the owner.
+4. Provision the accounts and canaries through the SSH tunnel, in Windows PowerShell, first as a dry run, then with `--apply`:
+
+   ```powershell
+   $env:DATABASE_URL = 'postgresql://postgres@127.0.0.1:5434/railway'
+   corepack pnpm --filter @workspace/scripts run evidence:synthetic-provision
+   corepack pnpm --filter @workspace/scripts run evidence:synthetic-provision -- --apply
+   ```
+
+   It needs the agent's credentials in `~/.claude/secrets/truenote-agent.json` and writes `~/.claude/secrets/truenote-synthetic-accounts.json`. Run `Remove-Item Env:DATABASE_URL` afterwards, so later commands in that window do not reach the database.
 5. Set `EVIDENCE_SYNTHETIC_ACCOUNTS` on the worker from that file over stdin, so the value never appears on a command line or in the terminal. Without `--skip-deploys` this redeploys the worker, which then reads the value.
 
    ```text
@@ -167,11 +220,38 @@ A valid value in `LOCAL_LOGIN_MODE` always applies. Unset, empty or whitespace o
 
 So turning on SSO, fully or partly, without setting `LOCAL_LOGIN_MODE=enabled` stops the synthetic CSR logins: `POST /api/auth/login` answers 401 for csr-a, csr-b and the demo manager, whatever the password. The isolation, classification and demo-write-block checks then record `error`, and so does the bad-password check, whose positive control (csr-a's login with the right password) fails first. The owner must decide on an exemption for the synthetic accounts, or another way for the checks to sign in, before enabling SSO.
 
+## Turning on phase 3
+
+Each step changes production or the owner's accounts and waits for the owner's go, in this order. Run the local steps from a checkout of the `main` commit being deployed.
+
+1. Apply the operator rule: `node scripts/railway-apply-sql.mjs lib/db/sql/0020_operator_receipts.sql` (dry run), then with `--apply`. Afterwards check the definition in the database: `pg_get_functiondef('public.append_evidence_receipt(text)'::regprocedure)` must contain the `operator` rule, and the function must still be owned by the migration role and executable by `truenote_app`.
+2. Deploy web and worker from the same commit through the "Deploy production" workflow (`gh workflow run deploy-production.yml --repo ryanportfolio/Truenote --ref main -f message="<what ships>" -f service=both`, then approve the job). If phase 2's deploy (step 3 there) has not run yet, this one deploy ships both.
+3. Confirm that `EVIDENCE_ALERT_EMAIL`, or else `SECURITY_ALERT_EMAIL`, is set on `worker`. The attestation reminders and the monthly summary go there; with neither set they stay pending.
+4. Create the private repository `ryanportfolio/truenote-evidence` with a ruleset on its default branch that blocks force-push and deletion, and clone it to the owner's machine, outside the Truenote checkout.
+5. Each month: open the SSH tunnel to `pgvector` on port 5434 (`docs/security/backup-restore-runbook.md`, section 4.4, step 5) and run the operator script as `postgres` in Windows PowerShell, from the Truenote checkout. Set the connection once for the session:
+
+   ```powershell
+   $env:DATABASE_URL = 'postgresql://postgres@127.0.0.1:5434/railway'
+   ```
+
+   Then run it first as a dry run, then with `--apply`, then the export with `--push` (the month defaults to the previous UTC month):
+
+   ```powershell
+   corepack pnpm --filter @workspace/scripts run evidence:operator
+   corepack pnpm --filter @workspace/scripts run evidence:operator -- --apply
+   corepack pnpm --filter @workspace/scripts run evidence:operator -- --export-dir <clone> --push
+   ```
+
+   The export run repeats the verifier and the negative tests as a dry run and appends no second receipt. It commits only the three files it writes in the clone. Close the PowerShell window afterwards, or run `Remove-Item Env:DATABASE_URL`, so later commands in that window do not reach the database.
+6. Upload the first attestations, one request per check: `POST /api/admin/evidence/attestations/:checkId` as a super_user, with the files and the statement ("Attestations and monthly summary (phase 3)").
+
 ## Status
 
 Phase 1 runs in production since 2026-10-10: `0012_evidence_receipts.sql` applied at 05:07 UTC, `evidence-run` queue created, web and worker deployed from `0e2035df`. The first run (05:11 UTC) wrote 18 receipts, each naming that commit: 12 pass, the CAA check fails (linked to its POA&M item until the record is added after the domain transfer), and the five GitHub checks record `error` until `EVIDENCE_GITHUB_TOKEN` is set. Both chains verified (801 security events) and FreeTSA's token verified to its pinned root. The watch Action is on (`EVIDENCE_WATCH_ENABLED=true`) and its first run passed.
 
-Phase 2 is built and not yet on: `0019_synthetic_fence.sql` is not applied, the stored `evidence-run` expiry is still 30 minutes, no synthetic account or canary exists, `EVIDENCE_SYNTHETIC_ACCOUNTS` is not set, and the deployed code has none of the five synthetic checks. "Turning on phase 2" lists the steps.
+Phase 2 is built and partly on. Steps 1 and 2 of "Turning on phase 2" are done: `0019_synthetic_fence.sql` was applied on 2026-10-10 at 17:53 UTC (`schema_migrations` sha256 `d456fab7b42fa96e56ca98c690292d3253b4840c9f7e5f20fe0a6f7cc7bdb216`), and `pgboss:install` ran again the same day and raised the stored `evidence-run` expiry to 5400 s. Still pending: the deploy (the deployed code has none of the five synthetic checks), the synthetic accounts and canaries, and `EVIDENCE_SYNTHETIC_ACCOUNTS`.
+
+Phase 3 is built and not yet on: `0020_operator_receipts.sql` is not applied, the deployed code has no attestation routes, reminders or monthly summary, the repository `ryanportfolio/truenote-evidence` does not exist, and no operator run, attestation or summary has been recorded. "Turning on phase 3" lists the steps.
 
 ## Limits
 
