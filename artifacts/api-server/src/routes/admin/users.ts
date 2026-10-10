@@ -171,10 +171,27 @@ function ssoSignInUrl(baseUrl: string): string {
 }
 
 /**
+ * How long single create waits for the SSO invitation send. The account
+ * already exists by then, and the email provider has no deadline of its
+ * own, so a stalled send would otherwise hold the create request open
+ * until the client gives up and a retry gets 409.
+ */
+const SSO_INVITE_SEND_TIMEOUT_MS = 10_000;
+
+function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
+  });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
+
+/**
  * Email one SSO invitation from the single-create path and report whether
- * it went out. The account works without it (the user can open the sign-in
- * page and use SSO), so every failure is logged and returned as false
- * instead of failing the request.
+ * it was confirmed sent. The account works without it (the user can open
+ * the sign-in page and use SSO), so every failure, including a send still
+ * running at the deadline, is logged and returned as false instead of
+ * failing the request.
  */
 async function sendSsoInvitation(
   invite: { userId: string; email: string; name: string },
@@ -197,7 +214,10 @@ async function sendSsoInvitation(
       name: invite.name,
       signInUrl: ssoSignInUrl(baseUrl)
     });
-    await getEmailSender().send({ to: invite.email, subject, html, text });
+    await withDeadline(
+      getEmailSender().send({ to: invite.email, subject, html, text }),
+      SSO_INVITE_SEND_TIMEOUT_MS
+    );
     return true;
   } catch (err) {
     console.warn(

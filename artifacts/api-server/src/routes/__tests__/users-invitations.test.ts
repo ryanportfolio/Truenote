@@ -187,6 +187,21 @@ describe("POST /api/admin/users invitation by login mode", () => {
     expect(fake.send).not.toHaveBeenCalled();
   });
 
+  it("answers within the send deadline when the email provider stalls", async () => {
+    vi.stubEnv("LOCAL_LOGIN_MODE", "break_glass");
+    fake.send.mockReturnValueOnce(new Promise(() => undefined));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const pending = call("/", actor("manager"), csrBody);
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await pending;
+      expect(result.status).toBe(201);
+      expect(result.body.invitation).toEqual({ kind: "sso", emailSent: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("creates the SSO account and reports an unsent email when the send fails", async () => {
     vi.stubEnv("LOCAL_LOGIN_MODE", "disabled");
     fake.send.mockRejectedValueOnce(new Error("provider down"));
