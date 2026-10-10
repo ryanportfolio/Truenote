@@ -24,6 +24,7 @@ import { parseUserCsv, parseUserXlsx, type ParsedUserCsv } from "@/lib/userCsv";
 import type {
   BulkCreateUsersResponse,
   CreateUserRequest,
+  CreateUserResponse,
   CurrentUser,
   Program,
   UpdateUserRequest,
@@ -89,6 +90,12 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
     email: string;
     password: string;
   } | null>(null);
+  // Set when a created account signs in with company SSO: it has no
+  // password to reveal, only an invitation email that did or didn't send.
+  const [ssoNotice, setSsoNotice] = useState<{
+    email: string;
+    emailSent: boolean;
+  } | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     setError(null);
@@ -144,11 +151,16 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
     };
   }, [refresh, refreshPrograms]);
 
-  function handleCreated(item: UserListItem, tempPassword?: string): void {
+  function handleCreated(item: UserListItem, response: CreateUserResponse): void {
     setItems((prev) => [item, ...prev]);
-    if (tempPassword !== undefined) {
-      setCredentialBanner({ email: item.email, password: tempPassword });
+    if (response.tempPassword !== undefined) {
+      setCredentialBanner({ email: item.email, password: response.tempPassword });
     }
+    setSsoNotice(
+      response.invitation
+        ? { email: item.email, emailSent: response.invitation.emailSent }
+        : null
+    );
   }
 
   function handleUpdated(item: UserListItem): void {
@@ -169,6 +181,7 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
     // Drop a stale credential banner if it belonged to the deleted user —
     // a temp password for an account that no longer exists is noise.
     setCredentialBanner((prev) => (prev?.email === item.email ? null : prev));
+    setSsoNotice((prev) => (prev?.email === item.email ? null : prev));
   }
 
   function handleBulkImported(): void {
@@ -191,6 +204,14 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
           email={credentialBanner.email}
           password={credentialBanner.password}
           onDismiss={() => setCredentialBanner(null)}
+        />
+      ) : null}
+
+      {ssoNotice ? (
+        <SsoInvitationNotice
+          email={ssoNotice.email}
+          emailSent={ssoNotice.emailSent}
+          onDismiss={() => setSsoNotice(null)}
         />
       ) : null}
 
@@ -340,8 +361,9 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
         <h2 className="text-sm font-semibold">Import CSR emails</h2>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
           Upload one email per row, or a CSV or Excel (.xlsx) file with an email
-          column. Each user joins the current program and is emailed a private
-          link to set their own password.
+          column. Each user joins the current program and is emailed an
+          invitation: a private link to set their own password or, when CSRs
+          sign in with company SSO, a link to the sign-in page.
         </p>
       </div>
 
@@ -385,11 +407,21 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
             .
           </p>
           {result.invitedCount > 0 ? (
-            <p className="mt-1">
-              Sent {result.invitedCount} invitation
-              {result.invitedCount === 1 ? "" : "s"} to set a password. Each new
-              user gets an email with a private link — no password to share.
-            </p>
+            result.invitationKind === "sso" ? (
+              <p className="mt-1">
+                Sent {result.invitedCount} invitation
+                {result.invitedCount === 1 ? "" : "s"} to sign in with company
+                SSO. Each new user gets an email with a link to the sign-in
+                page; there is no password to share.
+              </p>
+            ) : (
+              <p className="mt-1">
+                Sent {result.invitedCount} invitation
+                {result.invitedCount === 1 ? "" : "s"} to set a password. Each
+                new user gets an email with a private link; there is no password
+                to share.
+              </p>
+            )
           ) : null}
         </div>
       ) : null}
@@ -410,6 +442,61 @@ function BulkUserImport({ onImported }: BulkUserImportProps): JSX.Element {
         </button>
       </div>
     </form>
+  );
+}
+
+interface SsoInvitationNoticeProps {
+  email: string;
+  emailSent: boolean;
+  onDismiss: () => void;
+}
+
+/**
+ * Shown after creating an account that signs in with company SSO. There is
+ * no password to share; the server either emailed a link to the sign-in
+ * page or could not, in which case the admin tells the user directly. The
+ * quoted button label matches the Login page.
+ */
+function SsoInvitationNotice({
+  email,
+  emailSent,
+  onDismiss
+}: SsoInvitationNoticeProps): JSX.Element {
+  const signInUrl = `${window.location.origin}/login`;
+  return (
+    <div
+      role="status"
+      className={
+        emailSent
+          ? "flex items-start justify-between gap-3 rounded-lg border border-success/30 bg-success/10 p-4 text-sm"
+          : "flex items-start justify-between gap-3 rounded-lg border border-warning/50 bg-warning/10 p-4 text-sm"
+      }
+    >
+      <div className="flex-1 space-y-1">
+        <p className="font-medium">
+          <span className="font-mono">{email}</span> signs in with company SSO
+        </p>
+        {emailSent ? (
+          <p className="text-xs text-muted-foreground">
+            We emailed them a link to the sign-in page. They choose "Continue
+            with company SSO"; there is no password to share.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            The invitation email could not be sent. Ask them to open{" "}
+            <span className="break-all font-mono">{signInUrl}</span> and choose
+            "Continue with company SSO".
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="rounded-full px-3 py-1 text-xs text-muted-foreground transition-colors duration-100 ease-out hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      >
+        Dismiss
+      </button>
+    </div>
   );
 }
 
@@ -483,7 +570,7 @@ function CredentialBanner({
 interface CreateUserFormProps {
   actor: CurrentUser;
   programs: Program[];
-  onCreated: (item: UserListItem, tempPassword?: string) => void;
+  onCreated: (item: UserListItem, response: CreateUserResponse) => void;
 }
 
 /**
@@ -589,7 +676,7 @@ function CreateUserForm({
         programId: resolved
       };
       const response = await createUser(payload);
-      onCreated(response.item, response.tempPassword);
+      onCreated(response.item, response);
       setEmail("");
       setName("");
       setRole(defaultRole);
@@ -696,7 +783,8 @@ function CreateUserForm({
         ) : null}
       </div>
       <p className="text-xs text-muted-foreground">
-        They will set a new password at first sign-in.
+        They set a new password at first sign-in. If their role signs in with
+        company SSO, they get an email with a link to the sign-in page instead.
       </p>
       {error ? (
         <p
