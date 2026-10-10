@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { renderSsoInviteEmail, renderSsoResetNoticeEmail, SSO_SIGN_IN_LABEL } from "../templates.js";
+import {
+  renderSignInUnavailableNoticeEmail,
+  renderSsoInviteEmail,
+  renderSsoResetNoticeEmail,
+  SSO_SIGN_IN_LABEL
+} from "../templates.js";
 
 describe("renderSsoInviteEmail", () => {
   it("links to the sign-in page and names the SSO button", () => {
@@ -37,6 +42,19 @@ describe("renderSsoResetNoticeEmail", () => {
       expect(body).toContain("https://app.example.com/login");
       expect(body).toContain(SSO_SIGN_IN_LABEL);
       expect(body).not.toContain("reset-password");
+    }
+    expect(email.html).not.toContain("<b>Eve</b>");
+  });
+});
+
+describe("renderSignInUnavailableNoticeEmail", () => {
+  it("points at an administrator, with no reset or sign-in link", () => {
+    const email = renderSignInUnavailableNoticeEmail({ name: "<b>Eve</b>" });
+    for (const body of [email.html, email.text]) {
+      expect(body).toContain("Contact a Truenote administrator");
+      expect(body).not.toContain(SSO_SIGN_IN_LABEL);
+      expect(body).not.toContain("reset-password");
+      expect(body).not.toContain("/login");
     }
     expect(email.html).not.toContain("<b>Eve</b>");
   });

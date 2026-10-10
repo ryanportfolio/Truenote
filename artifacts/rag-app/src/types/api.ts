@@ -863,12 +863,15 @@ export interface UserListItem {
   lastLoginAt: string | null;
   createdAt: string;
   /**
-   * False when the server's LOCAL_LOGIN_MODE does not allow this user a
-   * password sign-in (company SSO only); the server refuses a password
-   * reset for them with 409.
+   * How this user can sign in right now: "password"; "sso" (company SSO
+   * works for their program); or "none" (password sign-in is off and SSO
+   * is not set up for them). The server refuses a password reset (409)
+   * for anything but "password".
    */
-  localLoginAllowed: boolean;
+  signInMethod: SignInMethod;
 }
+
+export type SignInMethod = "password" | "sso" | "none";
 
 export interface UserListResponse {
   items: UserListItem[];
@@ -903,19 +906,22 @@ export interface CreateUserResponse {
    */
   tempPassword?: string;
   /**
-   * Present only for an account that signs in with company SSO (the
-   * server's LOCAL_LOGIN_MODE does not allow local login for its role).
-   * Such an account has no usable password and no tempPassword; the user
-   * was emailed a link to the sign-in page when `emailSent` is true.
+   * Present only for an account the server's LOCAL_LOGIN_MODE does not
+   * allow local login. Such an account has no usable password and no
+   * tempPassword. "sso": the user was emailed a link to the sign-in page
+   * when `emailSent` is true. "none": SSO is not set up for them either,
+   * so no email was sent and they cannot sign in yet.
    */
-  invitation?: { kind: "sso"; emailSent: boolean };
+  invitation?: { kind: "sso" | "none"; emailSent: boolean };
 }
 
 /**
  * "password_setup": each email carries a one-time link to set a password.
  * "sso": each email links to the sign-in page and says to use company SSO.
+ * "none": no email; these users cannot sign in until SSO is set up for
+ * the program or password sign-in is turned back on.
  */
-export type InvitationKind = "password_setup" | "sso";
+export type InvitationKind = "password_setup" | "sso" | "none";
 
 export interface BulkCreateUsersResponse {
   created: UserListItem[];

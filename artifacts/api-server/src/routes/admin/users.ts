@@ -47,7 +47,9 @@ import { getOidcConfig } from "../../lib/auth/oidc.js";
 import {
   invitationKindFor,
   isLocalLoginAllowed,
-  type InvitationKind
+  signInMethodFor,
+  type InvitationKind,
+  type SignInMethod
 } from "../../lib/auth/local-login-policy.js";
 import { recordAppError } from "../../lib/observability/error-log.js";
 import { adminReadLimit, userAdminWriteLimit } from "../../lib/security/route-rate-limit.js";
@@ -116,12 +118,13 @@ export interface UserListItem {
   mustResetPassword: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  isSynthetic: boolean;
   /**
-   * Whether LOCAL_LOGIN_MODE lets this user sign in with a password right
-   * now (isLocalLoginAllowed). False means company SSO only: no password
-   * reset applies, so the admin page hides that action.
+   * How this user can sign in right now (signInMethodFor): "password",
+   * "sso", or "none" when neither works. Anything but "password" has no
+   * password reset, so the admin page hides that action.
    */
-  localLoginAllowed: boolean;
+  signInMethod: SignInMethod;
 }
 
 function toListItem(row: {
@@ -134,6 +137,7 @@ function toListItem(row: {
   mustResetPassword: boolean;
   lastLoginAt: Date | null;
   createdAt: Date;
+  isSynthetic: boolean;
 }): UserListItem {
   return {
     id: row.id,
@@ -145,8 +149,22 @@ function toListItem(row: {
     mustResetPassword: row.mustResetPassword,
     lastLoginAt: row.lastLoginAt ? row.lastLoginAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
-    localLoginAllowed: isLocalLoginAllowed(getOidcConfig().localLoginMode, row.role)
+    isSynthetic: row.isSynthetic,
+    signInMethod: signInMethodFor(getOidcConfig(), row.role, row.programId)
   };
+}
+
+/**
+ * Emails ending in .invalid belong to synthetic test accounts, which only
+ * the migration role creates (lib/db/sql/0019_synthetic_fence.sql). The
+ * database refuses a real user with one (users_synthetic_email_check,
+ * 23514); checking here returns a clear 400 before any database work.
+ */
+const SYNTHETIC_EMAIL_MESSAGE =
+  "Emails ending in .invalid are reserved for synthetic test accounts";
+
+function isSyntheticEmail(email: string): boolean {
+  return email.trim().toLowerCase().endsWith(".invalid");
 }
 
 /**
@@ -297,7 +315,8 @@ usersRouter.get("/", adminReadLimit, async (req, res, next) => {
         isActive: users.isActive,
         mustResetPassword: users.mustResetPassword,
         lastLoginAt: users.lastLoginAt,
-        createdAt: users.createdAt
+        createdAt: users.createdAt,
+        isSynthetic: users.isSynthetic
       })
       .from(users)
       .where(
@@ -370,18 +389,19 @@ export const CreateBody = z.object({
  * DB touch. A 23505 unique-violation on the email maps to 409.
  *
  * Response shape:
- *   { item: UserListItem, tempPassword?: string, invitation?: { kind: "sso", emailSent: boolean } }
+ *   { item: UserListItem, tempPassword?: string, invitation?: { kind: "sso" | "none", emailSent: boolean } }
  *
  * `tempPassword` is present ONLY when the server generated it (i.e. the
  * client did not supply `password`). This is the single response surface
  * that exposes a plaintext password — admins are expected to communicate
  * it out-of-band to the new user.
  *
- * SSO accounts (invitationKindFor gives "sso": LOCAL_LOGIN_MODE is
- * break_glass or disabled and the role may not use local login) get no
- * usable password. A caller-supplied password is refused with 400, no
- * tempPassword is returned, and the user is emailed a link to the sign-in
- * page instead; `invitation.emailSent` says whether that email went out.
+ * Accounts LOCAL_LOGIN_MODE does not allow local login get no usable
+ * password: a caller-supplied password is refused with 400 and no
+ * tempPassword is returned. invitationKindFor then decides the email.
+ * "sso" (OIDC usable and the program allowed for SSO): a link to the
+ * sign-in page; `invitation.emailSent` says whether it went out. "none":
+ * no sign-in works yet, so no email; `invitation.kind` tells the admin.
  */
 usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), userAdminWriteLimit, requireManagerOrAbove, async (req, res, next) => {
   try {
@@ -394,6 +414,10 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
     }
     const { role: targetRole } = parsed.data;
     const email = parsed.data.email.toLowerCase();
+    if (isSyntheticEmail(email)) {
+      res.status(400).json({ error: SYNTHETIC_EMAIL_MESSAGE });
+      return;
+    }
 
     // Resolve programId defaults so callers don't have to think about it:
     //   - explicit value (including null): honored as-is
@@ -416,13 +440,10 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
 
     // reset-password and local login refuse a user the mode does not allow,
     // so a temp password or setup link for one would be unusable.
-    const invitationKind = invitationKindFor(
-      getOidcConfig().localLoginMode,
-      targetRole
-    );
-    if (invitationKind === "sso" && parsed.data.password !== undefined) {
+    const invitationKind = invitationKindFor(getOidcConfig(), targetRole, programId);
+    if (invitationKind !== "password_setup" && parsed.data.password !== undefined) {
       res.status(400).json({
-        error: "This user signs in with company SSO, so the account can't have a password"
+        error: "Password sign-in is turned off for this role, so the account can't have a password"
       });
       return;
     }
@@ -430,7 +451,7 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
     const baseUrl = invitationKind === "sso" ? resolveAppBaseUrl(req) : null;
 
     const generatedPassword =
-      invitationKind === "sso"
+      invitationKind !== "password_setup"
         ? generateUnusablePassword()
         : parsed.data.password ?? generateTempPassword();
     const passwordHash = await hashPassword(generatedPassword);
@@ -464,7 +485,8 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
           isActive: users.isActive,
           mustResetPassword: users.mustResetPassword,
           lastLoginAt: users.lastLoginAt,
-          createdAt: users.createdAt
+          createdAt: users.createdAt,
+          isSynthetic: users.isSynthetic
         });
       const row = inserted[0];
       if (!row) {
@@ -477,7 +499,7 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
       const body: {
         item: UserListItem;
         tempPassword?: string;
-        invitation?: { kind: "sso"; emailSent: boolean };
+        invitation?: { kind: "sso" | "none"; emailSent: boolean };
       } = {
         item: toListItem(row)
       };
@@ -489,6 +511,10 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
             baseUrl
           )
         };
+      } else if (invitationKind === "none") {
+        // No sign-in works for this account yet, so an email would only
+        // send the user to a page that refuses them.
+        body.invitation = { kind: "none", emailSent: false };
       } else if (parsed.data.password === undefined) {
         body.tempPassword = generatedPassword;
       }
@@ -554,10 +580,12 @@ usersRouter.post("/", workloadRateLimitMiddleware("credential_administration"), 
  * production — otherwise we'd mint accounts no one can ever log into.
  *
  * Under SSO (invitationKindFor gives "sso" for CSRs: LOCAL_LOGIN_MODE is
- * break_glass or disabled) no setup token is minted. The email links to
- * the sign-in page and tells the user to sign in with company SSO; the
- * first SSO sign-in binds their identity. `invitationKind` in the response
- * says which email went out.
+ * break_glass or disabled, OIDC is usable and the program is allowed for
+ * SSO) no setup token is minted. The email links to the sign-in page and
+ * tells the user to sign in with company SSO; the first SSO sign-in binds
+ * their identity. "none" (local login refused and SSO unusable for the
+ * program) mints no token and sends nothing, so invitedCount is 0.
+ * `invitationKind` in the response says which applied.
  */
 usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userAdminWriteLimit, requireManagerOrAbove, async (req, res, next) => {
   try {
@@ -566,6 +594,13 @@ usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userA
     if (!parsed.success) {
       const message = parsed.error.issues[0]?.message ?? "Invalid CSV emails";
       res.status(400).json({ error: message });
+      return;
+    }
+    // Refuse the whole import, like any other invalid address, before
+    // resolving scope or hashing: one .invalid row would otherwise fail
+    // the insert transaction with a database error.
+    if (parsed.data.emails.some(isSyntheticEmail)) {
+      res.status(400).json({ error: SYNTHETIC_EMAIL_MESSAGE });
       return;
     }
 
@@ -609,8 +644,9 @@ usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userA
 
     // Bulk import creates CSRs only, so one invitation kind covers the batch.
     const invitationKind: InvitationKind = invitationKindFor(
-      getOidcConfig().localLoginMode,
-      "csr"
+      getOidcConfig(),
+      "csr",
+      programId
     );
 
     const emails = normalizeBulkEmails(parsed.data.emails);
@@ -658,7 +694,8 @@ usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userA
             isActive: users.isActive,
             mustResetPassword: users.mustResetPassword,
             lastLoginAt: users.lastLoginAt,
-            createdAt: users.createdAt
+            createdAt: users.createdAt,
+            isSynthetic: users.isSynthetic
           });
         const row = inserted[0];
         if (row) created.push(toListItem(row));
@@ -680,6 +717,8 @@ usersRouter.post("/bulk", workloadRateLimitMiddleware("bulk_user_import"), userA
       )
     > = [];
     for (const row of created) {
+      // No sign-in works for these accounts yet: no token, no email.
+      if (invitationKind === "none") continue;
       if (invitationKind === "sso") {
         invites.push({
           kind: "sso",
@@ -850,6 +889,7 @@ usersRouter.patch("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req
       mustResetPassword: boolean;
       lastLoginAt: Date | null;
       createdAt: Date;
+      isSynthetic: boolean;
     }
     type TxResult =
       | { kind: "ok"; row: SafeUserRow }
@@ -873,7 +913,8 @@ usersRouter.patch("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req
             isActive: users.isActive,
             mustResetPassword: users.mustResetPassword,
             lastLoginAt: users.lastLoginAt,
-            createdAt: users.createdAt
+            createdAt: users.createdAt,
+            isSynthetic: users.isSynthetic
           })
           .from(users)
           .where(eq(users.id, id))
@@ -936,7 +977,8 @@ usersRouter.patch("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req
             isActive: users.isActive,
             mustResetPassword: users.mustResetPassword,
             lastLoginAt: users.lastLoginAt,
-            createdAt: users.createdAt
+            createdAt: users.createdAt,
+            isSynthetic: users.isSynthetic
           });
         const row = updated[0];
         // The SELECT FOR UPDATE above already proved the row exists
@@ -1007,8 +1049,8 @@ usersRouter.patch("/:id", userAdminWriteLimit, requireManagerOrAbove, async (req
  * Sets must_reset_password=true unconditionally so the user is bounced
  * to the change-password page on first login with the temp credential.
  *
- * A target LOCAL_LOGIN_MODE does not allow local login (company SSO only)
- * gets 409 and nothing changes: local login would refuse the temp password,
+ * A target LOCAL_LOGIN_MODE does not allow local login (SSO, or no sign-in
+ * at all until the setup changes) gets 409 and nothing changes: local login would refuse the temp password,
  * so issuing one would only revoke their sessions for nothing. The check
  * runs after the scope check, so an out-of-scope id still reads as 404.
  *
@@ -1120,7 +1162,7 @@ usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_
     }
     if (txResult.kind === "sso") {
       res.status(409).json({
-        error: "This user signs in with company SSO and has no password to reset"
+        error: "Password sign-in is turned off for this user, so there is no password to reset"
       });
       return;
     }

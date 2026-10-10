@@ -11,12 +11,25 @@ COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm -r run check \
  && pnpm --filter @workspace/rag-app run build
+# Reinstall without dev dependencies once the SPA is built, so build and test
+# tooling (vite, vitest, esbuild 0.21, postcss) stays out of the runtime image.
+# `pnpm install --prod` over a full install only unlinks dev packages and
+# leaves their files in node_modules/.pnpm, so every node_modules goes first.
+# tsx is a production dependency of api-server and scripts: the runtime runs
+# TypeScript through it.
+RUN find . -name node_modules -type d -prune -exec rm -rf {} + \
+ && pnpm install --frozen-lockfile --prod --offline
 
 FROM node:22-bookworm-slim
 WORKDIR /app
-# The runtime runs TypeScript through tsx, a dev dependency: never prune dev dependencies.
 ENV NODE_ENV=production \
     API_PORT=8080
+# Debian security updates newer than the base tag, and no npm: nothing runs it
+# at runtime, and its bundled packages are a separate source of findings.
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/* \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 # Root keeps ownership of /app, so the node user can read and run the code
 # but cannot change it. Nothing writes under /app at runtime: uploads go to
 # object storage and tsx caches in /tmp.
