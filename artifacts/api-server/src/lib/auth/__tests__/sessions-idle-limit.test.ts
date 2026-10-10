@@ -80,6 +80,9 @@ function advance(ms: number) {
   vi.setSystemTime(new Date(Date.now() + ms));
 }
 
+/** Response of the last `request()`: the cookies it set and its locals. */
+let lastResponse: { cookie: ReturnType<typeof vi.fn>; locals: Record<string, unknown> };
+
 /** Run attachCurrentUser for one request and return the resolved user. */
 async function request(headers: Record<string, string> = {}) {
   const lower = Object.fromEntries(
@@ -90,13 +93,36 @@ async function request(headers: Record<string, string> = {}) {
     get: (name: string) => lower[name.toLowerCase()],
     user: undefined
   } as unknown as Request;
+  lastResponse = { cookie: vi.fn(), locals: {} };
   const next = vi.fn() as unknown as NextFunction;
-  await attachCurrentUser(req, {} as Response, next);
+  await attachCurrentUser(req, lastResponse as unknown as Response, next);
   expect(next).toHaveBeenCalledTimes(1);
   // Let the fire-and-forget last_used_at touch settle.
   await Promise.resolve();
   await Promise.resolve();
   return req.user;
+}
+
+function expectReauthMarker(set: boolean) {
+  const markerCalls = lastResponse.cookie.mock.calls.filter(
+    ([name]) => name === "truenote_oidc_reauth"
+  );
+  if (!set) {
+    expect(markerCalls).toEqual([]);
+    expect(lastResponse.locals.oidcReauthRequired).toBeUndefined();
+    return;
+  }
+  expect(markerCalls).toEqual([[
+    "truenote_oidc_reauth",
+    "1",
+    expect.objectContaining({
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/api/auth/oidc",
+      maxAge: 10 * 60 * MINUTE
+    })
+  ]]);
+  expect(lastResponse.locals.oidcReauthRequired).toBe(true);
 }
 
 const background = { "X-Truenote-Background": "1" };
@@ -106,7 +132,8 @@ beforeEach(() => {
   vi.setSystemTime(start);
   [
     "OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REDIRECT_URI",
-    "OIDC_STATE_SECRET", "LOCAL_LOGIN_MODE", "SESSION_IDLE_MINUTES"
+    "OIDC_STATE_SECRET", "LOCAL_LOGIN_MODE", "SESSION_IDLE_MINUTES",
+    "SSO_SESSION_MAX_HOURS"
   ].forEach((name) => vi.stubEnv(name, undefined));
   vi.stubEnv("LOCAL_LOGIN_MODE", "enabled");
   fake.row = null;
@@ -156,6 +183,7 @@ describe("idle limit on oidc sessions", () => {
     advance(6 * MINUTE);
     expect(await request(background)).toBeNull();
     expect(fake.deletes).toBe(1);
+    expectReauthMarker(true);
   });
 
   it("treats only the exact header value 1 as background", async () => {
@@ -172,6 +200,48 @@ describe("idle limit on oidc sessions", () => {
     expect(await request()).not.toBeNull();
     advance(31 * MINUTE);
     expect(await request()).toBeNull();
+  });
+});
+
+describe("re-authentication marker after an idle expiry", () => {
+  it("is set when the idle limit ends an oidc session", async () => {
+    seed("oidc");
+    advance(16 * MINUTE);
+    expect(await request()).toBeNull();
+    expectReauthMarker(true);
+  });
+
+  it("lasts SSO_SESSION_MAX_HOURS", async () => {
+    vi.stubEnv("SSO_SESSION_MAX_HOURS", "4");
+    seed("oidc");
+    advance(16 * MINUTE);
+    await request();
+    expect(lastResponse.cookie).toHaveBeenCalledWith(
+      "truenote_oidc_reauth",
+      "1",
+      expect.objectContaining({ maxAge: 4 * 60 * MINUTE })
+    );
+  });
+
+  it("is not set for an oidc session inside the idle window", async () => {
+    seed("oidc");
+    advance(14 * MINUTE);
+    expect(await request()).not.toBeNull();
+    expectReauthMarker(false);
+  });
+
+  it("is not set when there is no session row", async () => {
+    expect(await request()).toBeNull();
+    expectReauthMarker(false);
+  });
+
+  it("is not set when the idle limit ends a local session", async () => {
+    vi.stubEnv("LOCAL_LOGIN_MODE", "break_glass");
+    seed("local", "super_user");
+    advance(16 * MINUTE);
+    expect(await request()).toBeNull();
+    expect(fake.deletes).toBe(1);
+    expectReauthMarker(false);
   });
 });
 
