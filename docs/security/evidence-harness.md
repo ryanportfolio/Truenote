@@ -84,6 +84,10 @@ Each step changes production and waits for the owner's go.
 6. Link the expected demo-phase failures to their POA&M items (`POST /api/admin/evidence/gaps`).
 7. Set the repository variable `EVIDENCE_WATCH_ENABLED=true` and run the watch Action once by hand.
 
+## Status
+
+Phase 1 runs in production since 2026-10-10: `0012_evidence_receipts.sql` applied at 05:07 UTC, `evidence-run` queue created, web and worker deployed from `0e2035df`. The first run (05:11 UTC) wrote 18 receipts, each naming that commit: 12 pass, the CAA check fails (linked to its POA&M item until the record is added after the domain transfer), and the five GitHub checks record `error` until `EVIDENCE_GITHUB_TOKEN` is set. Both chains verified (801 security events) and FreeTSA's token verified to its pinned root. The watch Action is on (`EVIDENCE_WATCH_ENABLED=true`) and its first run passed.
+
 ## Limits
 
 - Self-assessment; see the statement at the top.
