@@ -827,12 +827,20 @@ authRouter.post("/reset-password", async (req, res, next) => {
         throw new ResetPasswordRejectedError(400, "This reset link is invalid or has expired");
       }
 
-      const localLoginMode = getOidcConfig().localLoginMode;
-      if (!isLocalLoginAllowed(localLoginMode, user.role)) {
+      const oidcConfig = getOidcConfig();
+      const localLoginMode = oidcConfig.localLoginMode;
+      const signInMethod = signInMethodFor(oidcConfig, user.role, user.programId);
+      if (signInMethod !== "password") {
         // Reset and invite completion can issue a local session, so the same
         // policy as /login applies. Throw to roll back token consumption;
         // returning a denial here would commit it and burn the reset link.
-        throw new ResetPasswordRejectedError(403, "Use company SSO to sign in.");
+        // Point at SSO only when SSO can serve this account.
+        throw new ResetPasswordRejectedError(
+          403,
+          signInMethod === "sso"
+            ? "Use company SSO to sign in."
+            : "Password sign-in is turned off for your account. Contact a Truenote administrator."
+        );
       }
 
       await tx
