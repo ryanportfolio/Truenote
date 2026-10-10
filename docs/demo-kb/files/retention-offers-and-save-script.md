@@ -1,6 +1,6 @@
 # Retention Offers and the Save-the-Sale Script
 
-Larkspur Cloud Customer Support · Script CS-SCR-006 · Version 3 · Effective September 1, 2026 · Owner: Support Operations
+Cloudshelf Customer Support · Script CS-SCR-006 · Version 3 · Effective September 1, 2026 · Owner: Support Operations
 
 ## When to use this
 
@@ -11,7 +11,7 @@ Use this script when a customer calls to cancel and has not yet confirmed the ca
 - Make one offer, the one that fits the customer's reason. Do not run through the whole list.
 - Never refuse, delay or make cancelling harder. If the customer says "just cancel it", go straight to the cancellation steps in the Cancellation Policy.
 - Agents may not create or promise discounts. None of the offers below is a discount.
-- Customers in California and New York, and legacy customers who signed up before January 1, 2022, pay no cancellation fee. Never use the fee as pressure.
+- Legacy customers who signed up before January 1, 2022, and customers who cancel within 14 days of a price-increase notice pay no cancellation fee. Never use the fee as pressure.
 - A customer whose account is in an active chargeback cannot cancel until Billing Operations closes the chargeback. Escalate those calls to Billing Operations instead of making an offer.
 
 ## Steps
@@ -50,4 +50,4 @@ Do not repeat the offer, ask "are you sure?" more than once, or transfer the cus
 
 Add an account note within 5 minutes: reason given, offer made with its code, and the outcome (accepted, declined, cancelled).
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.

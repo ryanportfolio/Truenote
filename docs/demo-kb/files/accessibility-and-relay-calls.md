@@ -1,6 +1,6 @@
 # Accessibility and Relay Calls
 
-Larkspur Cloud Customer Support · Guide CS-GDE-028 · Version 2 · Effective September 1, 2026 · Owner: Support Operations
+Cloudshelf Customer Support · Guide CS-GDE-028 · Version 2 · Effective September 1, 2026 · Owner: Support Operations
 
 ## When to use this
 
@@ -50,4 +50,4 @@ Say "deaf" or "hard of hearing", "disabled" or "person with a disability", and "
 
 If a customer says the app or a support channel is not accessible to them, open a ticket for Support Operations with the details, in addition to helping with the original request. Complaints about discrimination go to a Tier 2 supervisor within 15 minutes.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.

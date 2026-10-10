@@ -1,6 +1,6 @@
 # Password Reset and Account Unlock
 
-Larkspur Cloud Customer Support · Procedure CS-PRO-021 · Version 5 · Effective September 1, 2026 · Owner: Security Response
+Cloudshelf Customer Support · Procedure CS-PRO-021 · Version 5 · Effective September 1, 2026 · Owner: Security Response
 
 ## When to use this
 
@@ -55,4 +55,4 @@ When the caller fails verification twice, read this line from the Call Scripts w
 
 Repeated lockouts from different locations, a caller asking for the password to be read to them, or a caller who wants a reset link sent to a new address are warning signs. Do not send links to new addresses. If you suspect an account takeover, lock the account and escalate to Security Response within 1 hour.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.

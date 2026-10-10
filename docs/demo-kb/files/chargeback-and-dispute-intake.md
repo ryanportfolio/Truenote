@@ -1,10 +1,10 @@
 # Chargeback and Dispute Intake
 
-Larkspur Cloud Customer Support · Procedure CS-PRO-024 · Version 3 · Effective September 1, 2026 · Owner: Billing Operations
+Cloudshelf Customer Support · Procedure CS-PRO-024 · Version 3 · Effective September 1, 2026 · Owner: Billing Operations
 
 ## When to use this
 
-Use this procedure when a customer says they disputed a Larkspur Cloud charge with their bank, a bank or card network sends a chargeback notice, or a customer wants to dispute a charge and has not yet called their bank.
+Use this procedure when a customer says they disputed a Cloudshelf charge with their bank, a bank or card network sends a chargeback notice, or a customer wants to dispute a charge and has not yet called their bank.
 
 Billing Operations owns every chargeback. A Tier 1 agent takes the details, opens the ticket and sets expectations. Agents do not decide chargebacks.
 
@@ -45,9 +45,9 @@ Billing Operations owns every chargeback. A Tier 1 agent takes the details, open
 
 ## Never do this
 
-- Never promise that Larkspur will accept or drop a chargeback.
+- Never promise that Cloudshelf will accept or drop a chargeback.
 - Never ask the customer to withdraw a chargeback in exchange for a refund or credit.
 - Never take card details to "check" the disputed charge.
 - Never open a second ticket for the same chargeback; add notes to the existing one.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.

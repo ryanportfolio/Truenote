@@ -108,9 +108,11 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
     cadence: "daily",
     cadenceStatus: "proposed",
     passCondition:
-      "The latest scheduled run of .github/workflows/security.yml on the default branch concluded " +
-      "success and started within the last 8 days, and the latest push run on the default branch " +
-      "concluded success."
+      "The latest completed scheduled run of .github/workflows/security.yml on the default branch " +
+      "concluded success and started within the last 8 days, and the latest completed push run on " +
+      "the default branch concluded success. Runs still in progress, and cancelled runs that a newer " +
+      "run on the same branch superseded, are skipped; a cancelled newest run fails. If no completed " +
+      "run is found in the latest 100, the check records error."
   },
   {
     id: "github.credential-expiry",

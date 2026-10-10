@@ -1,6 +1,6 @@
 # Fraud Team Handoff
 
-Larkspur Cloud Customer Support · Procedure CS-PRO-030 · Version 3 · Effective October 1, 2026 · Owner: Security Response · Classification: Confidential
+Cloudshelf Customer Support · Procedure CS-PRO-030 · Version 3 · Effective October 1, 2026 · Owner: Security Response · Classification: Confidential
 
 ## When to use this
 
@@ -13,7 +13,7 @@ Use this procedure when you suspect fraud on a call or an account: an account ta
 | Takeover attempt | Caller cannot verify but wants the account email changed or two-factor authentication turned off | P1 |
 | Stolen card | Payment returns decline code D41 | P2 |
 | Card testing | Three or more cards added and declined on one account in 24 hours | P1 |
-| Social engineering | Caller claims to be from Larkspur, a bank or the police and asks for account details | P1 |
+| Social engineering | Caller claims to be from Cloudshelf, a bank or the police and asks for account details | P1 |
 | Linked accounts | Several new accounts share one card or one billing ZIP and phone number | P2 |
 | Repeated failures | Verification failed twice on two different calls in one day | P2 |
 
@@ -46,10 +46,10 @@ Never retry a card that returned D41. Never tell the customer the card was repor
 
 ## Law enforcement and legal requests
 
-Calls from police, courts or lawyers go to Legal and Privacy, not Security Response. Do not confirm the account exists; give legal@larkspur.example.
+Calls from police, courts or lawyers go to Legal and Privacy, not Security Response. Do not confirm the account exists; open a ticket for Legal and Privacy, queue LP-PRIV.
 
 ## After a handoff
 
 Security Response contacts the account holder at the email on file. If that customer calls back, do not unlock the account yourself; warm transfer to the Security Response queue. Unlocking is done only by Security Response.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.
