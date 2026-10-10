@@ -130,10 +130,12 @@ function EvaluationCenter(): JSX.Element {
     setLoading(false);
   }, [applyRuns]);
 
+  // Only the run-progress timer calls this, so it is a background request
+  // that does not count as session activity.
   const refreshRunProgress = useCallback(async (): Promise<void> => {
     const generation = ++requestGenerationRef.current;
     try {
-      const next = await listEvalRuns();
+      const next = await listEvalRuns({ background: true });
       if (generation === requestGenerationRef.current) applyRuns(next);
     } catch (reason) {
       if (generation === requestGenerationRef.current) {

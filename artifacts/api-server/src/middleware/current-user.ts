@@ -9,6 +9,7 @@ import {
   type UserRole
 } from "../lib/auth/current-user.js";
 import { isLimitedDemo } from "../lib/auth/demo-limits.js";
+import { BACKGROUND_REQUEST_HEADER } from "../lib/auth/session-policy.js";
 
 /**
  * App-level middleware. Resolves `req.user` from the session cookie if one
@@ -27,7 +28,11 @@ export async function attachCurrentUser(
       typeof req.cookies?.[SESSION_COOKIE_NAME] === "string"
         ? req.cookies[SESSION_COOKIE_NAME]
         : undefined;
-    const session = await findSessionByToken(token);
+    // Background requests (polling) authenticate but do not count as
+    // activity, so they never keep an idle session alive.
+    const session = await findSessionByToken(token, {
+      background: req.get(BACKGROUND_REQUEST_HEADER) === "1"
+    });
     req.user = session
       ? {
           id: session.id,

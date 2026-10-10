@@ -2,10 +2,35 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { BrandField } from "@/components/BrandField";
 import { consumeResetToken, fetchConfig } from "@/lib/api";
-import type { CurrentUser } from "@/types/api";
+import type { CurrentUser, ResetPasswordResult } from "@/types/api";
 
 interface ResetPasswordPageProps {
   onAuthenticated: (user: CurrentUser) => void;
+}
+
+/** Login page with the "Password changed" notice (LoginPage reads `reset`). */
+export const RESET_SIGN_IN_PATH = "/login?reset=done";
+
+/**
+ * Route after a successful reset. An account with a passkey (or the
+ * break_glass emergency account) gets no session from the reset link,
+ * so it goes to the login page to sign in with the new password and its
+ * second factor. Everyone else is signed in and lands on `/`.
+ */
+export function finishReset(
+  result: ResetPasswordResult,
+  onAuthenticated: (user: CurrentUser) => void,
+  navigate: (path: string) => void
+): void {
+  if (result.status === "sign_in_required") {
+    navigate(RESET_SIGN_IN_PATH);
+    return;
+  }
+  onAuthenticated(result.user);
+  // The server already cleared must_reset_password, so route
+  // straight to the landing page. handleAuthenticated will pick
+  // the must-reset branch defensively if anything went sideways.
+  navigate("/");
 }
 
 /**
@@ -14,7 +39,8 @@ interface ResetPasswordPageProps {
  * sessions + issues a fresh session, all atomically, then returns the
  * authenticated user. We forward that to the App state machine
  * (same hook the LoginPage uses) so the user lands on /chat without
- * a manual re-login.
+ * a manual re-login. Accounts that need a second factor get no session
+ * and go to /login instead (finishReset).
  *
  * If the token is missing from the URL we render a sorry-state instead
  * of the form — there's nothing to submit. A token that's present but
@@ -68,12 +94,8 @@ export function ResetPasswordPage({
     }
     setSubmitting(true);
     try {
-      const user = await consumeResetToken(token, newPassword);
-      onAuthenticated(user);
-      // The server already cleared must_reset_password, so route
-      // straight to the landing page. handleAuthenticated will pick
-      // the must-reset branch defensively if anything went sideways.
-      setLocation("/");
+      const result = await consumeResetToken(token, newPassword);
+      finishReset(result, onAuthenticated, setLocation);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not reset password"
@@ -120,8 +142,7 @@ export function ResetPasswordPage({
             Set a new password
           </h1>
           <p className="text-sm text-muted-foreground">
-            Choose a password with at least {minLength} characters. We will sign you in when you are
-            done.
+            Choose a password with at least {minLength} characters.
           </p>
         </header>
 

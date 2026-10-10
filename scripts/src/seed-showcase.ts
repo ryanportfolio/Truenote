@@ -59,6 +59,13 @@
  *     ids of everything the seed created; `backdate` cannot run without it.
  * The public demo account passwords come from GET /api/config (published).
  * No password, cookie or token is ever printed.
+ *
+ * Password sign-in only. Every account the script uses, the agent account
+ * included, must have no passkey: an account with one gets a second-factor
+ * challenge instead of a session, and `Api.login` stops with an error naming
+ * it. The script does not work while LOCAL_LOGIN_MODE is `break_glass`: the
+ * agent account is a super_user, which needs a passkey there, and the other
+ * roles cannot sign in locally at all.
  */
 
 import { spawnSync } from "node:child_process";
@@ -737,6 +744,15 @@ class Api {
 
   async login(email: string, password: string): Promise<{ id: string; role: string; mustResetPassword: boolean }> {
     const r = await this.call("POST", "/api/auth/login", { body: { email, password }, program: false });
+    if (r.json?.mfaRequired === true) {
+      // An account with a passkey gets a second-factor challenge instead of
+      // a session. This script signs in with passwords only.
+      throw new Error(
+        `${this.label}: ${email} has a passkey, so the server asks for a second factor. ` +
+          "This script signs in with a password only: use an account without a passkey. " +
+          "It also cannot sign in a super_user while LOCAL_LOGIN_MODE is break_glass."
+      );
+    }
     return r.json.user;
   }
 

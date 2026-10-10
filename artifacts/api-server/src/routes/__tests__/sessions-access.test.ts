@@ -41,6 +41,7 @@ vi.mock("../../lib/db-client.js", () => ({ db: {
 vi.mock("../../lib/auth/effective-program.js", () => ({ resolveEffectiveProgramId: async () => PROGRAM }));
 vi.mock("../../lib/observability/error-log.js", () => ({ recordAppError: vi.fn() }));
 import { sessionsRouter } from "../sessions.js";
+import { PURGED_CITATION_SNAPSHOTS } from "../../lib/citations.js";
 
 const PROGRAM = "00000000-0000-4000-8000-000000000001";
 const USER = "00000000-0000-4000-8000-000000000002";
@@ -134,6 +135,19 @@ describe("history current authorization", () => {
   it("rejects legacy superseded chunks without a durable receipt", async () => {
     state.snapshots = []; Object.assign(state.versions[0], { is_active: false, lifecycle_state: "retired" });
     expectHidden(await request("/:id"));
+  });
+  it.each([
+    ["revoked", () => Object.assign(state.versions[0], { lifecycle_state: "revoked", is_active: false, revoked_at: "2026-01-01" })],
+    ["deleted", () => { state.versions = []; state.chunks = []; }]
+  ])("refuses a purged receipt of a %s document through the legacy path", async (_name, change) => {
+    state.snapshots[0].citation_snapshots = JSON.parse(PURGED_CITATION_SNAPSHOTS);
+    change();
+    expectHidden(await request("/:id")); expectHidden(await request("/"));
+  });
+  it("never serves a purged receipt as durable evidence", async () => {
+    state.snapshots[0].citation_snapshots = JSON.parse(PURGED_CITATION_SNAPSHOTS);
+    const result = await request("/:id");
+    expect(result.body.exchanges[0].sources[0].document_version_id).toBeNull();
   });
   it("rejects a receipt whose document does not match its version", async () => {
     state.snapshots[0].citation_snapshots[0].doc_id = OTHER;

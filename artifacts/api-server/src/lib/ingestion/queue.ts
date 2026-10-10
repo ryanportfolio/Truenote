@@ -1,4 +1,5 @@
 import { runIngestion } from "./run.js";
+import { runMalwareRescan } from "./malware-rescan.js";
 import {
   ensureQueue,
   getBoss,
@@ -10,6 +11,11 @@ export const INGEST_DOCUMENT_VERSION_QUEUE = "ingest-document-version";
 
 export interface IngestDocumentVersionPayload {
   documentVersionId: string;
+  /**
+   * "scan_only": external malware scan of an already parsed version that
+   * skipped it (lib/ingestion/malware-rescan.ts). Absent: full ingestion.
+   */
+  mode?: "scan_only";
 }
 
 export const INGEST_QUEUE_POLICY = {
@@ -27,6 +33,17 @@ export async function enqueueIngestion(documentVersionId: string): Promise<strin
   const boss = await getBoss();
   await ensureQueue(boss, INGEST_DOCUMENT_VERSION_QUEUE, INGEST_QUEUE_POLICY);
   return boss.send(INGEST_DOCUMENT_VERSION_QUEUE, { documentVersionId });
+}
+
+/**
+ * Enqueue a scan-only malware pass for a version that skipped the external
+ * scan. Same queue as ingestion, so no new pg-boss queue has to be installed.
+ */
+export async function enqueueMalwareRescan(documentVersionId: string): Promise<string | null> {
+  const boss = await getBoss();
+  await ensureQueue(boss, INGEST_DOCUMENT_VERSION_QUEUE, INGEST_QUEUE_POLICY);
+  const payload: IngestDocumentVersionPayload = { documentVersionId, mode: "scan_only" };
+  return boss.send(INGEST_DOCUMENT_VERSION_QUEUE, payload);
 }
 
 /**
@@ -52,7 +69,11 @@ export async function startIngestionWorker(): Promise<void> {
       const list = Array.isArray(jobs) ? jobs : [jobs];
       for (const job of list) {
         try {
-          await runIngestion({ documentVersionId: job.data.documentVersionId });
+          if (job.data.mode === "scan_only") {
+            await runMalwareRescan({ documentVersionId: job.data.documentVersionId });
+          } else {
+            await runIngestion({ documentVersionId: job.data.documentVersionId });
+          }
         } catch (error) {
           console.error(
             `[ingestion-worker] version ${job.data.documentVersionId} failed:`,
@@ -64,6 +85,7 @@ export async function startIngestionWorker(): Promise<void> {
             error,
             context: {
               documentVersionId: job.data.documentVersionId,
+              mode: job.data.mode ?? "ingest",
               jobId: "id" in job ? job.id : null
             }
           });

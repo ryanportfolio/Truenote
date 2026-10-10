@@ -16,6 +16,19 @@ import {
   SESSION_DURATION_MS
 } from "../lib/auth/sessions.js";
 import { getOidcConfig } from "../lib/auth/oidc.js";
+import { isLocalLoginAllowed } from "../lib/auth/local-login-policy.js";
+import {
+  invalidateMfaChallenges,
+  listPasskeys,
+  lockUserAccount,
+  startLoginChallenge,
+  type SqlExecutor
+} from "../lib/auth/mfa.js";
+import {
+  isAccountLocked,
+  recordAuthFailure,
+  recordAuthSuccess
+} from "../lib/auth/lockout.js";
 import {
   createResetToken,
   hashResetToken,
@@ -40,6 +53,7 @@ import { resolveAppBaseUrl } from "../lib/email/links.js";
 import { recordAppError } from "../lib/observability/error-log.js";
 import { renderResetEmail } from "../lib/email/templates.js";
 import { recordSecurityEventBestEffort } from "../lib/security/audit.js";
+import { loginPasswordIpLimit } from "../lib/security/route-rate-limit.js";
 
 export const authRouter = Router();
 
@@ -113,10 +127,11 @@ function getDummyHash(): Promise<string> {
  * Email+password login. Returns the user payload AND sets a session
  * cookie. On any failure path the response is a generic 401 with the same
  * body so we don't leak which of (email-not-found, wrong-password,
- * user-deactivated) tripped the rejection — a hostile script can't
+ * user-deactivated, refused by LOCAL_LOGIN_MODE, locked out) tripped the
+ * rejection; a hostile script can't
  * enumerate accounts from the response shape.
  */
-authRouter.post("/login", async (req, res, next) => {
+authRouter.post("/login", loginPasswordIpLimit, async (req, res, next) => {
   try {
     // Per-IP throttle BEFORE any Argon2 work, so a flood can't force
     // unbounded verifications from one source. Very generous (see
@@ -148,42 +163,183 @@ authRouter.post("/login", async (req, res, next) => {
         programId: users.programId,
         name: users.name,
         isActive: users.isActive,
-        mustResetPassword: users.mustResetPassword
+        mustResetPassword: users.mustResetPassword,
+        lockedUntil: users.lockedUntil
       })
       .from(users)
       .where(eq(users.email, email))
       .limit(1);
 
     const row = rows[0];
-    if (!row || !row.isActive) {
-      // Dummy verify against a cached random-password hash so the timing
-      // of "email not found / user deactivated" matches the "wrong
-      // password" branch. See getDummyHash() for rationale.
+    const oidc = getOidcConfig();
+
+    // Every refusal below runs a dummy verify against a cached
+    // random-password hash and returns the same 401, so neither timing nor
+    // response shape tells a missing, deactivated, policy-refused or
+    // locked account apart from a wrong password. The stored hash is
+    // verified only for an account allowed to log in right now, so a
+    // refused or locked account never confirms a correct password.
+    const refuse = async () => {
       await verifyPassword(password, await getDummyHash());
       res.status(401).json({ error: "Invalid credentials" });
+    };
+
+    if (!row || !row.isActive) {
+      await refuse();
+      return;
+    }
+
+    const actor = { id: row.id, email: row.email, role: row.role };
+    if (!isLocalLoginAllowed(oidc.localLoginMode, row.role)) {
+      recordSecurityEventBestEffort({
+        action: "auth.local.login",
+        outcome: "denied",
+        actor,
+        programId: row.programId,
+        resourceType: "session",
+        sourceIp: ip,
+        details: {
+          authMethod: "local",
+          reason: "local_login_mode",
+          localLoginMode: oidc.localLoginMode
+        }
+      });
+      await refuse();
+      return;
+    }
+
+    if (isAccountLocked(row)) {
+      recordSecurityEventBestEffort({
+        action: "auth.local.login",
+        outcome: "denied",
+        actor,
+        programId: row.programId,
+        resourceType: "session",
+        sourceIp: ip,
+        details: { authMethod: "local", reason: "account_locked" }
+      });
+      await refuse();
       return;
     }
 
     const ok = await verifyPassword(password, row.passwordHash);
     if (!ok) {
+      // Not awaited: an extra DB round trip only on this branch would let
+      // a stopwatch tell an existing account from a missing one. A failed
+      // write is logged; the attempt is still refused.
+      void recordAuthFailure(
+        { id: row.id, email: row.email, role: row.role, programId: row.programId },
+        { factor: "password", sourceIp: ip }
+      ).catch((err: unknown) => {
+        console.warn(
+          "[auth] failed-login count update failed:",
+          err instanceof Error ? err.message : err
+        );
+        void recordAppError({
+          severity: "warning",
+          source: "auth",
+          operation: "login-failure-count",
+          error: err,
+          userId: row.id
+        });
+      });
       res.status(401).json({ error: "Invalid credentials" });
       return;
     }
 
-    const oidc = getOidcConfig();
-    if (oidc.localLoginMode === "disabled") {
-      res.status(403).json({ error: "Use company SSO to sign in." });
+    // Second factor (lib/auth/mfa.ts). A user with a passkey gets no
+    // session here: the response starts the MFA step, and routes/mfa.ts
+    // resets the lockout count and issues the session once a passkey or
+    // recovery code verifies.
+    //
+    // Both the challenge insert and the session insert below run in a
+    // transaction that locks the user's row and rechecks the password hash
+    // just verified: a password write that committed after the check makes
+    // this attempt fail with the generic 401 and write nothing.
+    const passkeys = await listPasskeys(row.id);
+    if (passkeys.length > 0) {
+      const challenge = await startLoginChallenge(res, row.id, passkeys, row.passwordHash);
+      if (!challenge) {
+        res.status(401).json({ error: "Invalid credentials" });
+        return;
+      }
+      if (!challenge.methods.includes("passkey")) {
+        // WebAuthn is not usably configured (lib/auth/webauthn-config.ts).
+        // The second factor still applies: the challenge offers recovery
+        // codes only, so the emergency account is not locked out by a
+        // configuration mistake. Record it so the mistake gets fixed.
+        console.warn("[auth] WebAuthn is not configured; login MFA offers recovery codes only");
+        recordSecurityEventBestEffort({
+          action: "auth.mfa.webauthn_unconfigured",
+          outcome: "failure",
+          actor,
+          programId: row.programId,
+          resourceType: "session",
+          sourceIp: ip,
+          details: { authMethod: "local", reason: "webauthn_unconfigured", methods: challenge.methods }
+        });
+      }
+      res.json(challenge);
       return;
     }
-    if (
-      oidc.localLoginMode === "break_glass" &&
-      row.role !== "super_user"
-    ) {
-      res.status(403).json({ error: "Use company SSO to sign in." });
+    if (oidc.localLoginMode === "break_glass" && row.role === "super_user") {
+      // The emergency account must hold a passkey before it can sign in.
+      recordSecurityEventBestEffort({
+        action: "auth.break_glass.mfa_missing",
+        outcome: "denied",
+        actor,
+        programId: row.programId,
+        resourceType: "session",
+        sourceIp: ip,
+        details: { authMethod: "local", reason: "no_passkey" }
+      });
+      res.status(401).json({ error: "Invalid credentials" });
       return;
     }
 
-    const { token } = await createSession(row.id);
+    // The lock state and the passkey list above were read before any lock.
+    // Under the user's row lock, read them again:
+    //   - a lock committed since the isAccountLocked check (a concurrent
+    //     failure reached the threshold), or a deactivation, refuses this
+    //     attempt as a locked attempt is refused, and the lock stays;
+    //   - a first passkey enrolled since then means this attempt needs the
+    //     second factor, so it gets no session and the generic 401 (the
+    //     next attempt starts the MFA step). Passkey writes in
+    //     routes/mfa.ts take the same row lock first.
+    // The lockout reset runs in the same transaction, so it commits only
+    // together with the session.
+    const outcome = await db.transaction(async (tx) => {
+      const executor = tx as unknown as SqlExecutor;
+      const current = await lockUserAccount(row.id, executor);
+      if (!current || current.passwordHash !== row.passwordHash || !current.isActive) {
+        return { refused: "changed" as const };
+      }
+      if (isAccountLocked({ email: row.email, lockedUntil: current.lockedUntil })) {
+        return { refused: "account_locked" as const };
+      }
+      if ((await listPasskeys(row.id, executor)).length > 0) {
+        return { refused: "changed" as const };
+      }
+      const { token: sessionToken } = await createSession(row.id, tx);
+      await recordAuthSuccess(row.id, tx);
+      return { token: sessionToken };
+    });
+    if (outcome.refused) {
+      if (outcome.refused === "account_locked") {
+        recordSecurityEventBestEffort({
+          action: "auth.local.login",
+          outcome: "denied",
+          actor,
+          programId: row.programId,
+          resourceType: "session",
+          sourceIp: ip,
+          details: { authMethod: "local", reason: "account_locked" }
+        });
+      }
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
+    const token = outcome.token;
     setSessionCookie(res, token);
     recordSecurityEventBestEffort({
       action: row.role === "super_user" && oidc.localLoginMode === "break_glass"
@@ -256,6 +412,9 @@ authRouter.post("/logout", async (req, res, next) => {
   }
 });
 
+/** change-password found the request's session gone or expired under lock. */
+class CurrentSessionGone extends Error {}
+
 /**
  * Change own password. Required for first-login users (`must_reset_password
  * = true`) — but ALSO callable by any authenticated user to rotate their
@@ -264,7 +423,8 @@ authRouter.post("/logout", async (req, res, next) => {
  * Side effect: every existing session for this user is deleted, including
  * the one they're using right now. We immediately issue a fresh session so
  * the actor doesn't get logged out by their own password change. Stolen
- * cookies on the old password are dead instantly.
+ * cookies on the old password are dead instantly. The fresh session of an
+ * oidc sign-in keeps the original auth_method, auth_time and expires_at.
  */
 authRouter.post("/change-password", requireAuth, workloadRateLimitMiddleware("password_change"), async (req, res, next) => {
   try {
@@ -309,32 +469,76 @@ authRouter.post("/change-password", requireAuth, workloadRateLimitMiddleware("pa
     }
 
     const passwordHash = await hashPassword(newPassword);
+    const sessionToken =
+      typeof req.cookies?.[SESSION_COOKIE_NAME] === "string"
+        ? (req.cookies[SESSION_COOKIE_NAME] as string)
+        : undefined;
 
     // Password change is one ATOMIC transaction:
     //   (1) update the password hash + clear must_reset_password
-    //   (2) delete every existing session (including this one)
-    //   (3) insert the replacement session
+    //   (2) read and lock the session this request runs on
+    //   (3) delete every existing session (including this one)
+    //   (4) insert the replacement session
     //
-    // Without the transaction, a transient DB failure between (1) and (2)
+    // Without the transaction, a transient DB failure between (1) and (3)
     // would leave the password new but the OLD sessions — including any
     // stolen cookies — still valid. The whole point of revoke-then-reissue
     // is the security contract "stolen cookies on the old password are
     // dead instantly"; that contract requires all-or-nothing.
-    const newToken = await db.transaction(async (tx) => {
+    //
+    // The replacement of an oidc session keeps its auth_method, auth_time
+    // and expires_at, so the SSO idle and absolute limits still apply and
+    // LOCAL_LOGIN_MODE does not end it as a password session. A local
+    // session is replaced by a new 7-day local session. The users row is
+    // locked by (1) before the session row, the order the password resets
+    // use. When the current session is gone or expired by (2) (logout,
+    // revoke), the change rolls back and the request gets 401.
+    const replaced = await db.transaction(async (tx) => {
       await tx
         .update(users)
         .set({ passwordHash, mustResetPassword: false })
         .where(eq(users.id, user.id));
+      const current = sessionToken
+        ? (
+            await tx
+              .select({
+                authMethod: sessions.authMethod,
+                authTime: sessions.authTime,
+                expiresAt: sessions.expiresAt
+              })
+              .from(sessions)
+              .where(
+                and(
+                  eq(sessions.tokenHash, hashToken(sessionToken)),
+                  eq(sessions.userId, user.id),
+                  gt(sessions.expiresAt, new Date())
+                )
+              )
+              .for("update")
+              .limit(1)
+          )[0]
+        : undefined;
+      if (!current) throw new CurrentSessionGone();
+      await invalidateMfaChallenges(user.id, tx as unknown as SqlExecutor);
       await tx.delete(sessions).where(eq(sessions.userId, user.id));
-      const token = generateToken();
-      const tokenHash = hashToken(token);
-      const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
-      await tx
-        .insert(sessions)
-        .values({ userId: user.id, tokenHash, expiresAt });
-      return token;
+      const carryOver = current.authMethod === "oidc" ? current : undefined;
+      const created = await createSession(user.id, tx, carryOver);
+      return { ...created, carriedOver: carryOver !== undefined };
+    }).catch((err: unknown) => {
+      if (err instanceof CurrentSessionGone) return null;
+      throw err;
     });
-    setSessionCookie(res, newToken);
+    if (!replaced) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    setSessionCookie(
+      res,
+      replaced.token,
+      replaced.carriedOver
+        ? { maxAgeMs: Math.max(0, replaced.expiresAt.getTime() - Date.now()) }
+        : {}
+    );
 
     res.json({
       user: {
@@ -493,7 +697,7 @@ class ResetPasswordRejectedError extends Error {
 
 /**
  * POST /api/auth/reset-password — consume a reset link, set new
- * password, log the user in.
+ * password, and sign the user in unless a second factor is required.
  *
  * Atomic transaction:
  *   (1) re-verify the token is unused + unexpired (under the row
@@ -501,7 +705,10 @@ class ResetPasswordRejectedError extends Error {
  *   (2) mark token used
  *   (3) update password_hash + clear must_reset_password
  *   (4) delete every session for this user
- *   (5) issue a fresh session
+ *   (5) issue a fresh session, only when /login would issue one from the
+ *       password alone. A user with a passkey, or the break_glass
+ *       super_user, gets `{ passwordReset: true, signInRequired: true }`
+ *       and no cookie, and signs in through /login and its second factor.
  *
  * Same all-or-nothing rationale as change-password: if we updated the
  * password but failed to revoke sessions, stolen cookies on the old
@@ -585,12 +792,9 @@ authRouter.post("/reset-password", async (req, res, next) => {
         throw new ResetPasswordRejectedError(400, "This reset link is invalid or has expired");
       }
 
-      const { localLoginMode } = getOidcConfig();
-      if (
-        localLoginMode === "disabled" ||
-        (localLoginMode === "break_glass" && user.role !== "super_user")
-      ) {
-        // Reset and invite completion issue a local session, so the same
+      const localLoginMode = getOidcConfig().localLoginMode;
+      if (!isLocalLoginAllowed(localLoginMode, user.role)) {
+        // Reset and invite completion can issue a local session, so the same
         // policy as /login applies. Throw to roll back token consumption;
         // returning a denial here would commit it and burn the reset link.
         throw new ResetPasswordRejectedError(403, "Use company SSO to sign in.");
@@ -600,7 +804,25 @@ authRouter.post("/reset-password", async (req, res, next) => {
         .update(users)
         .set({ passwordHash, mustResetPassword: false })
         .where(eq(users.id, userId));
+      // A pending MFA login started with the old password dies with it.
+      await invalidateMfaChallenges(userId, tx as unknown as SqlExecutor);
       await tx.delete(sessions).where(eq(sessions.userId, userId));
+
+      // The reset link proves only email access. Issue a session only where
+      // /login would issue one from the password alone: no enrolled passkey,
+      // and not the break_glass emergency account (which must hold one).
+      // Otherwise the new password and the consumed link still commit, and
+      // the user signs in through /login and its second factor.
+      const passkeys = await listPasskeys(userId, tx as unknown as SqlExecutor);
+      const signInReason = passkeys.length > 0
+        ? "second_factor_required"
+        : localLoginMode === "break_glass" && user.role === "super_user"
+          ? "break_glass_mfa_missing"
+          : null;
+      if (signInReason) {
+        return { signInRequired: true as const, reason: signInReason, user };
+      }
+
       const newToken = generateToken();
       const newTokenHash = hashToken(newToken);
       const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
@@ -608,6 +830,7 @@ authRouter.post("/reset-password", async (req, res, next) => {
         .insert(sessions)
         .values({ userId, tokenHash: newTokenHash, expiresAt });
       return {
+        signInRequired: false as const,
         sessionToken: newToken,
         user: {
           id: user.id,
@@ -619,6 +842,22 @@ authRouter.post("/reset-password", async (req, res, next) => {
         }
       };
     });
+
+    if (result.signInRequired) {
+      const { user } = result;
+      recordSecurityEventBestEffort({
+        action: "auth.password_reset.sign_in_required",
+        outcome: "success",
+        actor: { id: user.id, email: user.email, role: user.role },
+        programId: user.programId,
+        resourceType: "user",
+        resourceId: user.id,
+        sourceIp: clientIpFrom(req),
+        details: { authMethod: "local", reason: result.reason }
+      });
+      res.json({ passwordReset: true, signInRequired: true });
+      return;
+    }
 
     setSessionCookie(res, result.sessionToken);
     res.json({ user: result.user });

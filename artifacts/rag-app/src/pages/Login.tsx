@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { BrandField } from "@/components/BrandField";
+import { LoginMfaStep } from "@/components/security/LoginMfaStep";
 import { fetchConfig, login } from "@/lib/api";
 import { defaultLandingPath } from "@/lib/landing";
 import { cn } from "@/lib/utils";
-import type { CurrentUser, DemoAccount } from "@/types/api";
+import type { CurrentUser, DemoAccount, MfaRequiredResponse } from "@/types/api";
 
 interface LoginPageProps {
   onAuthenticated: (user: CurrentUser) => void;
@@ -86,6 +87,15 @@ export function LoginPage({
   // opening the deployment can try every feature immediately.
   const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>([]);
   const [selectedDemo, setSelectedDemo] = useState<string | null>(null);
+  // Set after the password step when the account has a passkey.
+  const [mfaChallenge, setMfaChallenge] = useState<MfaRequiredResponse | null>(null);
+  // ResetPassword sends here (`?reset=done`) when the reset issued no
+  // session because the account signs in with a second factor.
+  const [passwordChanged] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("reset") === "done"
+  );
   const touchedRef = useRef(false);
 
   useEffect(() => {
@@ -126,21 +136,38 @@ export function LoginPage({
 
   const demoLayout = demoPortalLayout(demoAccounts.length);
 
+  function finishLogin(user: CurrentUser): void {
+    onAuthenticated(user);
+    // mustResetPassword always wins: even a captured redirectTo
+    // can't bypass the forced-reset gate. Otherwise honor the deep
+    // link if one was captured by App.tsx, else use the role landing.
+    if (user.mustResetPassword) {
+      setLocation("/change-password");
+    } else {
+      setLocation(redirectTo ?? defaultLandingPath(user));
+    }
+  }
+
+  // Leaving the second step (expired, or "Start over") returns to an empty
+  // password field; the password is not kept for a later retry.
+  const leaveMfa = useCallback((message: string | null) => {
+    setMfaChallenge(null);
+    setPassword("");
+    setError(message);
+  }, []);
+  const expireMfa = useCallback((message: string) => leaveMfa(message), [leaveMfa]);
+
   async function handleSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
-      const user = await login(email.trim(), password);
-      onAuthenticated(user);
-      // mustResetPassword always wins — even a captured redirectTo
-      // can't bypass the forced-reset gate. Otherwise honor the deep
-      // link if one was captured by App.tsx, else use the role landing.
-      if (user.mustResetPassword) {
-        setLocation("/change-password");
-      } else {
-        setLocation(redirectTo ?? defaultLandingPath(user));
+      const result = await login(email.trim(), password);
+      if (result.status === "mfa_required") {
+        setMfaChallenge(result.challenge);
+        return;
       }
+      finishLogin(result.user);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -170,7 +197,25 @@ export function LoginPage({
             </h1>
           </div>
 
+          {mfaChallenge ? (
+            <LoginMfaStep
+              challenge={mfaChallenge}
+              email={email.trim()}
+              onAuthenticated={finishLogin}
+              onExpired={expireMfa}
+              onCancel={() => leaveMfa(null)}
+            />
+          ) : (
           <form onSubmit={handleSubmit} className="auth-form">
+            {passwordChanged ? (
+              <p
+                role="status"
+                className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-success"
+              >
+                Password changed. Sign in with your new password.
+              </p>
+            ) : null}
+
             {oidcEnabled ? (
               <div className="flex flex-col gap-3">
                 <a
@@ -310,6 +355,7 @@ export function LoginPage({
               </div>
             </div>
           </form>
+          )}
 
 
         </div>

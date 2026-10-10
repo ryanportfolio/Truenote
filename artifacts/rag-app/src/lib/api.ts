@@ -38,7 +38,11 @@ import type {
   KbHighlightColor,
   KbHighlightListResponse,
   LoginResponse,
+  LoginResult,
+  MfaRequiredResponse,
+  MfaStatusResponse,
   ModelRoutingConfig,
+  PasskeySummary,
   ObservabilityResponse,
   PreviewResponse,
   Program,
@@ -46,6 +50,7 @@ import type {
   QueryLogFilter,
   QueryLogListResponse,
   ResetPasswordResponse,
+  ResetPasswordResult,
   SecurityDashboardResponse,
   SessionDetailResponse,
   SessionListResponse,
@@ -57,6 +62,8 @@ import type {
   UserListItem,
   UserListResponse
 } from "@/types/api";
+// Loaded on first use so the WebAuthn helper stays out of the main bundle.
+import type { PublicKeyCredentialCreationOptionsJSON } from "@simplewebauthn/browser";
 import { getSelectedProgramIdRaw } from "@/lib/selectedProgram";
 
 /**
@@ -71,6 +78,19 @@ import { getSelectedProgramIdRaw } from "@/lib/selectedProgram";
  */
 
 /**
+ * Marks a request the user did not start, such as a dashboard's timer
+ * refresh. The api-server does not count it as session activity, so an
+ * open page that polls cannot keep an idle session alive. Must match
+ * BACKGROUND_REQUEST_HEADER in api-server/src/lib/auth/session-policy.ts.
+ */
+export const BACKGROUND_REQUEST_HEADER = "X-Truenote-Background";
+
+export interface RequestOptions {
+  /** Timer-driven refresh: send BACKGROUND_REQUEST_HEADER. */
+  background?: boolean;
+}
+
+/**
  * Build a RequestInit with cookies + the X-Program-Id header (when a
  * super_user has selected a program). Non-super_user roles also get
  * the header sent if something happens to write to the storage slot;
@@ -80,12 +100,16 @@ import { getSelectedProgramIdRaw } from "@/lib/selectedProgram";
  * win so a Content-Type override (e.g. multipart for upload) keeps
  * the right Content-Type the browser builds for FormData.
  */
-function withDefaults(init: RequestInit = {}): RequestInit {
+function withDefaults(
+  init: RequestInit = {},
+  options: RequestOptions = {}
+): RequestInit {
   const headers = new Headers(init.headers);
   const programId = getSelectedProgramIdRaw();
   if (programId !== null && !headers.has("X-Program-Id")) {
     headers.set("X-Program-Id", programId);
   }
+  if (options.background) headers.set(BACKGROUND_REQUEST_HEADER, "1");
   return {
     ...init,
     credentials: "include",
@@ -181,10 +205,14 @@ export async function fetchMe(): Promise<CurrentUser | null> {
   return json.user;
 }
 
+/**
+ * Password step. An account with a passkey gets `mfa_required` instead of
+ * a session; finish it with verifyPasskeyLogin or verifyRecoveryCode.
+ */
 export async function login(
   email: string,
   password: string
-): Promise<CurrentUser> {
+): Promise<LoginResult> {
   const response = await fetch(
     "/api/auth/login",
     withDefaults({
@@ -199,8 +227,142 @@ export async function login(
     };
     throw new Error(body.error ?? "Invalid credentials");
   }
-  const json = await asJson<LoginResponse>(response);
-  return json.user;
+  const json = await asJson<LoginResponse | MfaRequiredResponse>(response);
+  if ("mfaRequired" in json && json.mfaRequired) {
+    return { status: "mfa_required", challenge: json };
+  }
+  return { status: "authenticated", user: (json as LoginResponse).user };
+}
+
+/** The pending MFA challenge expired or was used; start again from the password. */
+export class MfaExpiredError extends Error {
+  constructor(message = "Your sign-in expired. Enter your email and password again.") {
+    super(message);
+    this.name = "MfaExpiredError";
+  }
+}
+
+/**
+ * Error handling for the MFA endpoints. A 401 there usually means a wrong
+ * factor or password, not a lost session, so only the bare "Unauthorized"
+ * of requireAuth fires the session-expired event.
+ */
+async function mfaFailure(response: Response): Promise<never> {
+  const body = (await response.json().catch(() => ({}))) as {
+    error?: string;
+    code?: string;
+  };
+  if (body.code === "mfa_expired") throw new MfaExpiredError(body.error);
+  if (response.status === 401 && body.error === "Unauthorized") {
+    notifySessionExpired();
+    throw new UnauthorizedError();
+  }
+  throw new Error(body.error ?? `HTTP ${response.status}`);
+}
+
+/** WebAuthn errors from the browser, in words a person can act on. */
+function webAuthnMessage(err: unknown, action: "sign in" | "add"): string {
+  const name = err instanceof Error ? err.name : "";
+  if (name === "NotAllowedError" || name === "AbortError") {
+    return action === "sign in"
+      ? "The passkey prompt was closed or timed out. Try again."
+      : "The passkey prompt was closed or timed out. The passkey was not added.";
+  }
+  if (name === "InvalidStateError") {
+    return "This passkey is already registered to your account.";
+  }
+  return err instanceof Error && err.message
+    ? err.message
+    : "This browser could not use a passkey.";
+}
+
+async function postMfa(path: string, body: unknown, method = "POST"): Promise<Response> {
+  return fetch(
+    path,
+    withDefaults({
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    })
+  );
+}
+
+/** Second step with a passkey: run the browser prompt, then verify it. */
+export async function verifyPasskeyLogin(
+  challenge: MfaRequiredResponse
+): Promise<CurrentUser> {
+  // LoginMfaStep never offers a passkey without options; refuse just in case.
+  const optionsJSON = challenge.passkeyOptions;
+  if (!optionsJSON) throw new Error("Passkey sign-in is unavailable. Use a recovery code.");
+  let assertion: unknown;
+  try {
+    const { startAuthentication } = await import("@simplewebauthn/browser");
+    assertion = await startAuthentication({ optionsJSON });
+  } catch (err) {
+    throw new Error(webAuthnMessage(err, "sign in"));
+  }
+  const response = await postMfa("/api/auth/mfa/passkey", assertion);
+  if (!response.ok) return mfaFailure(response);
+  return ((await response.json()) as LoginResponse).user;
+}
+
+/** Second step with a single-use recovery code. */
+export async function verifyRecoveryCode(code: string): Promise<CurrentUser> {
+  const response = await postMfa("/api/auth/mfa/recovery-code", { code });
+  if (!response.ok) return mfaFailure(response);
+  return ((await response.json()) as LoginResponse).user;
+}
+
+export async function getMfaStatus(): Promise<MfaStatusResponse> {
+  const response = await fetch("/api/auth/mfa/status", withDefaults());
+  if (!response.ok) return mfaFailure(response);
+  return (await response.json()) as MfaStatusResponse;
+}
+
+/**
+ * Register a passkey for the signed-in super_user: ask the server for
+ * options (password checked), run the browser prompt, then store it
+ * (password checked again).
+ */
+export async function addPasskey(
+  password: string,
+  name: string
+): Promise<PasskeySummary> {
+  const optionsResponse = await postMfa("/api/auth/mfa/passkeys/options", { password });
+  if (!optionsResponse.ok) return mfaFailure(optionsResponse);
+  const { options } = (await optionsResponse.json()) as {
+    options: PublicKeyCredentialCreationOptionsJSON;
+  };
+  let registration: unknown;
+  try {
+    const { startRegistration } = await import("@simplewebauthn/browser");
+    registration = await startRegistration({ optionsJSON: options });
+  } catch (err) {
+    throw new Error(webAuthnMessage(err, "add"));
+  }
+  const response = await postMfa("/api/auth/mfa/passkeys", {
+    password,
+    name: name.trim() || undefined,
+    response: registration
+  });
+  if (!response.ok) return mfaFailure(response);
+  return ((await response.json()) as { passkey: PasskeySummary }).passkey;
+}
+
+export async function removePasskey(id: string, password: string): Promise<void> {
+  const response = await postMfa(
+    `/api/auth/mfa/passkeys/${encodeURIComponent(id)}`,
+    { password },
+    "DELETE"
+  );
+  if (!response.ok) return mfaFailure(response);
+}
+
+/** Replace every recovery code; the plaintext codes come back only here. */
+export async function generateRecoveryCodes(password: string): Promise<string[]> {
+  const response = await postMfa("/api/auth/mfa/recovery-codes", { password });
+  if (!response.ok) return mfaFailure(response);
+  return ((await response.json()) as { codes: string[] }).codes;
 }
 
 export async function logout(): Promise<void> {
@@ -237,14 +399,16 @@ export async function requestPasswordReset(email: string): Promise<void> {
 }
 
 /**
- * Consume a reset link and set a new password. On success the server
- * sets the session cookie and returns the user payload — the SPA can
- * route straight into the app without a follow-up login.
+ * Consume a reset link and set a new password. Usually the server sets
+ * the session cookie and returns the user, so the SPA routes straight
+ * into the app. For an account with a passkey (or the break_glass
+ * emergency account) it sets no session; the user signs in again
+ * through /login and its second factor.
  */
 export async function consumeResetToken(
   token: string,
   newPassword: string
-): Promise<CurrentUser> {
+): Promise<ResetPasswordResult> {
   const response = await fetch(
     "/api/auth/reset-password",
     withDefaults({
@@ -260,7 +424,10 @@ export async function consumeResetToken(
     throw new Error(body.error ?? `HTTP ${response.status}`);
   }
   const json = (await response.json()) as ResetPasswordResponse;
-  return json.user;
+  if ("signInRequired" in json && json.signInRequired) {
+    return { status: "sign_in_required" };
+  }
+  return { status: "authenticated", user: (json as { user: CurrentUser }).user };
 }
 
 export async function changePassword(
@@ -391,8 +558,10 @@ export async function submitFeedback(queryLogId: string, feedback: -1 | 0 | 1): 
   await asJson<{ ok: boolean }>(response);
 }
 
-export async function listDocuments(): Promise<DocumentListResponse> {
-  const response = await fetch("/api/documents", withDefaults());
+export async function listDocuments(
+  options: RequestOptions = {}
+): Promise<DocumentListResponse> {
+  const response = await fetch("/api/documents", withDefaults({}, options));
   return asJson<DocumentListResponse>(response);
 }
 
@@ -907,7 +1076,7 @@ export async function updateModelRouting(
 
 export async function getObservability(
   hours: number,
-  limit = 100
+  { limit = 100, ...options }: RequestOptions & { limit?: number } = {}
 ): Promise<ObservabilityResponse> {
   const params = new URLSearchParams({
     hours: String(hours),
@@ -915,7 +1084,7 @@ export async function getObservability(
   });
   const response = await fetch(
     `/api/admin/observability?${params.toString()}`,
-    withDefaults()
+    withDefaults({}, options)
   );
   return asJson<ObservabilityResponse>(response);
 }
@@ -926,7 +1095,7 @@ export async function listErrors(input: {
   offset?: number;
   severity?: ErrorLogSeverity | "all";
   source?: string;
-}): Promise<ErrorLogResponse> {
+}, options: RequestOptions = {}): Promise<ErrorLogResponse> {
   const params = new URLSearchParams({
     hours: String(input.hours),
     limit: String(input.limit ?? 100),
@@ -936,7 +1105,7 @@ export async function listErrors(input: {
   if (input.source) params.set("source", input.source);
   const response = await fetch(
     `/api/admin/errors?${params.toString()}`,
-    withDefaults()
+    withDefaults({}, options)
   );
   return asJson<ErrorLogResponse>(response);
 }
@@ -978,6 +1147,17 @@ export async function updateMalwareScanning(
     })
   );
   return asJson<SecurityDashboardResponse>(response);
+}
+
+/** Queues a scan-only malware pass for every version that skipped the external scan. */
+export async function rescanUnscannedDocuments(): Promise<
+  SecurityDashboardResponse & { queued: number }
+> {
+  const response = await fetch(
+    "/api/admin/security/malware-rescan",
+    withDefaults({ method: "POST" })
+  );
+  return asJson<SecurityDashboardResponse & { queued: number }>(response);
 }
 
 /**
@@ -1148,10 +1328,12 @@ export async function deleteEvalQuestion(id: string): Promise<void> {
   if (!response.ok) await asJson<never>(response);
 }
 
-export async function listEvalRuns(limit = 20): Promise<EvalRunListResponse> {
+export async function listEvalRuns(
+  { limit = 20, ...options }: RequestOptions & { limit?: number } = {}
+): Promise<EvalRunListResponse> {
   const response = await fetch(
     `/api/admin/evaluations/runs?limit=${encodeURIComponent(limit)}`,
-    withDefaults()
+    withDefaults({}, options)
   );
   return asJson<EvalRunListResponse>(response);
 }

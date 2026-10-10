@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "../../lib/db-client.js";
 import { sessions, users, type UserRole } from "@workspace/db/schema";
 import { hashPassword } from "../../lib/auth/passwords.js";
+import { invalidateMfaChallenges, type SqlExecutor } from "../../lib/auth/mfa.js";
 import {
   authedUser,
   blockDemoWrites,
@@ -959,6 +960,8 @@ usersRouter.post("/:id/reset-password", workloadRateLimitMiddleware("credential_
         .update(users)
         .set({ passwordHash, mustResetPassword: true })
         .where(eq(users.id, id));
+      // Same for a pending MFA login started with the old password.
+      await invalidateMfaChallenges(id, tx as unknown as SqlExecutor);
       await tx.delete(sessions).where(eq(sessions.userId, id));
       return { kind: "ok" };
     });

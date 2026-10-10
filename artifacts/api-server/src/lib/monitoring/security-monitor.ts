@@ -1,9 +1,10 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db, withPgAdvisoryLock } from "../db-client.js";
-import { safeErrorMessage } from "../observability/error-log.js";
+import { isMissingSecuritySchema } from "../security/errors.js";
 import {
   deliverSecurityAlerts,
   logJsonLine,
+  rootErrorMessage,
   withDeadline,
   type SecurityAlert
 } from "./alert-email.js";
@@ -66,9 +67,25 @@ export interface MonitoredEvent {
 // route ids are compared case-insensitively here and in windowCounts.
 const ACCOUNT_ROUTE = /^(POST|PUT|PATCH|DELETE) \/api\/admin\/users(\/|$)/i;
 
+/**
+ * Accounts whose ordinary super user logins do not alert
+ * (SECURITY_ALERT_QUIET_LOGINS, comma-separated emails): the agent account
+ * logs in many times a day. Their break-glass logins and every other rule
+ * still alert, and their events are still printed.
+ */
+export function quietLoginEmails(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  return new Set(
+    (env.SECURITY_ALERT_QUIET_LOGINS ?? "")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => value.includes("@"))
+  );
+}
+
 /** The single-event rules. Returns null when the event raises no alert. */
 export function eventAlertRule(
-  event: MonitoredEvent
+  event: MonitoredEvent,
+  quietLogins: ReadonlySet<string> = new Set()
 ): { rule: string; summary: string } | null {
   if (event.action === "auth.break_glass.login") {
     return { rule: "break_glass_login", summary: "Break-glass login" };
@@ -78,6 +95,7 @@ export function eventAlertRule(
     event.outcome === "success" &&
     event.actorRole === "super_user"
   ) {
+    if (quietLogins.has((event.actorEmail ?? "").toLowerCase())) return null;
     return { rule: "super_user_login", summary: "Super user login" };
   }
   if (
@@ -144,12 +162,13 @@ function toEvent(row: Record<string, unknown>): MonitoredEvent {
  */
 export function eventAlerts(
   events: MonitoredEvent[],
-  alertSinceMs: number
+  alertSinceMs: number,
+  quietLogins: ReadonlySet<string> = new Set()
 ): SecurityAlert[] {
   const byRule = new Map<string, { summary: string; events: MonitoredEvent[] }>();
   for (const event of events) {
     if (new Date(event.occurredAt).getTime() < alertSinceMs) continue;
-    const match = eventAlertRule(event);
+    const match = eventAlertRule(event, quietLogins);
     if (!match) continue;
     const entry = byRule.get(match.rule) ?? { summary: match.summary, events: [] };
     entry.events.push(event);
@@ -275,7 +294,10 @@ async function runPass(
   const nowMs = now();
   const windows = windowAlerts(await windowCounts(executor), cooldowns, nowMs);
   const alertSinceMs = Math.min(nowMs, advancedAtMs) - ALERT_FRESHNESS_MS;
-  const alerts = [...eventAlerts(events, alertSinceMs), ...windows.alerts];
+  const alerts = [
+    ...eventAlerts(events, alertSinceMs, quietLoginEmails()),
+    ...windows.alerts
+  ];
   if (!(await deliverSecurityAlerts(alerts))) {
     throw new Error("alert email failed; the batch will be retried");
   }
@@ -327,7 +349,7 @@ export function startSecurityMonitor(
       lastError = "";
     } catch (error) {
       failedPasses += 1;
-      const message = safeErrorMessage(error);
+      const message = rootErrorMessage(error);
       if (message !== lastError) {
         console.error("[security-monitor] pass failed:", message);
         lastError = message;
@@ -356,4 +378,69 @@ export function startSecurityMonitor(
     stopped = true;
     clearInterval(timer);
   };
+}
+
+export interface SecurityMonitorStatus {
+  storageReady: boolean;
+  lastSequence: number | null;
+  latestSequence: number | null;
+  pendingEvents: number | null;
+  advancedAt: string | null;
+  workerBeatAt: string | null;
+}
+
+function isoOrNull(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const ms = new Date(value as string | Date).getTime();
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+function numberOrNull(value: unknown): number | null {
+  return value === null || value === undefined ? null : Number(value);
+}
+
+/**
+ * Super-user view of the monitor (GET /api/admin/observability/security-audit):
+ * how far the cursor is behind the newest security event, when it last
+ * advanced, and the worker's last heartbeat. storageReady is false until
+ * lib/db/sql/0011 is applied.
+ */
+export async function getSecurityMonitorStatus(
+  executor: SqlExecutor = db as unknown as SqlExecutor
+): Promise<SecurityMonitorStatus> {
+  try {
+    const result = await executor.execute(sql`
+      SELECT
+        (SELECT last_sequence FROM security_monitor_state WHERE id) AS last_sequence,
+        (SELECT updated_at FROM security_monitor_state WHERE id) AS advanced_at,
+        (SELECT max(sequence) FROM security_events) AS latest_sequence,
+        -- Counted, not subtracted: a rolled-back insert leaves a gap in the
+        -- sequence.
+        (SELECT count(*)
+           FROM security_events
+          WHERE sequence > COALESCE(
+            (SELECT last_sequence FROM security_monitor_state WHERE id), 0
+          )) AS pending_events,
+        (SELECT beat_at FROM service_heartbeats WHERE service = 'worker') AS worker_beat_at
+    `);
+    const row = (result.rows[0] ?? {}) as Record<string, unknown>;
+    return {
+      storageReady: true,
+      lastSequence: numberOrNull(row["last_sequence"]),
+      latestSequence: numberOrNull(row["latest_sequence"]),
+      pendingEvents: Number(row["pending_events"] ?? 0),
+      advancedAt: isoOrNull(row["advanced_at"]),
+      workerBeatAt: isoOrNull(row["worker_beat_at"])
+    };
+  } catch (error) {
+    if (!isMissingSecuritySchema(error)) throw error;
+    return {
+      storageReady: false,
+      lastSequence: null,
+      latestSequence: null,
+      pendingEvents: null,
+      advancedAt: null,
+      workerBeatAt: null
+    };
+  }
 }

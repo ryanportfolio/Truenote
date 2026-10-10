@@ -85,9 +85,9 @@ content in the repository copy.
 | Multi-replica counter consistency | | `pass` / `fail` / `not run` | |
 | Counter-window expiry and cleanup | | `pass` / `fail` / `not run` | |
 | Denial audit receipt | | `pass` / `fail` / `not run` | |
-| SIEM delivery and alert | | `pass` / `fail` / `not run` | |
-| SIEM retry/recovery | | `pass` / `fail` / `not run` | |
-| SIEM dead-letter response | | `pass` / `fail` / `not run` | |
+| Security alert delivery | | `pass` / `fail` / `not run` | |
+| Security monitor retry and recovery | | `pass` / `fail` / `not run` | |
+| Audit write failure alert | | `pass` / `fail` / `not run` | |
 | Local firewall OpenAI embedding redaction | | `pass` / `fail` / `not run` | |
 | Local firewall Cohere query/document redaction | | `pass` / `fail` / `not run` | |
 | Local firewall OpenRouter generation/utility redaction | | `pass` / `fail` / `not run` | |

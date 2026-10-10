@@ -16,9 +16,9 @@ export const REQUIRED_PRODUCTION_EXERCISES = [
   ["throttle_window_reset", "4", "TN-WORK-13"],
   ["throttle_stale_counter_cleanup", "4", "TN-WORK-13"],
   ["throttle_denial_audit_receipt", "4", "TN-WORK-13"],
-  ["siem_delivery_alert", "5", "TN-WORK-13"],
-  ["siem_retry_recovery", "5", "TN-WORK-13"],
-  ["siem_dead_letter_response", "5", "TN-WORK-13"],
+  ["security_alert_delivery", "5", "TN-WORK-13"],
+  ["security_monitor_recovery", "5", "TN-WORK-13"],
+  ["audit_write_failure_alert", "5", "TN-WORK-13"],
   ["firewall_openai_embedding_redaction", "6", "TN-WORK-02"],
   ["firewall_cohere_query_document_redaction", "6", "TN-WORK-02"],
   ["firewall_openrouter_generation_redaction", "6", "TN-WORK-02"],
@@ -237,8 +237,8 @@ export function verifyProductionControlEvidence(
     }
   };
   requireWithParent("catalog_definition_ddl_match", "catalog_binary_checks");
-  requireWithParent("siem_retry_recovery", "siem_delivery_alert");
-  requireWithParent("siem_dead_letter_response", "siem_delivery_alert");
+  requireWithParent("security_monitor_recovery", "security_alert_delivery");
+  requireWithParent("audit_write_failure_alert", "security_alert_delivery");
   requireWithParent("ai_report_data_minimization", "ai_deployed_eight_case_regression");
   const throttleRoutes = [
     "throttle_document_upload", "throttle_document_rescan", "throttle_evaluation_run",
