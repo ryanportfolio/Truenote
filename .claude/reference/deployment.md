@@ -65,13 +65,25 @@ node scripts/railway-deploy.mjs                                  # dry run: prin
 node scripts/railway-deploy.mjs --apply -m "<what ships>"        # after the owner's go
 ```
 
-The script refuses unless the checkout has no tracked or untracked changes, `HEAD` equals `origin/main` after a fresh fetch, and the latest "Security and quality" push run on `main` for that commit concluded `success`. It never uploads the working tree: it checks the same commit out with LF line endings into a temporary worktree (no ignored files such as `.env` or `*.tsbuildinfo`), runs `railway up --detach` from there for `web`, waits for `SUCCESS`, then does the same for `worker` (`--service web|worker` for one only). The deployment message starts with the short commit and CI run id (`<sha12> ci <run id>: <what ships>`), and the script finds each deployment by that exact message. It appends one row per service to `docs/release-register.csv`: time, full commit, CI run id, service, Railway deployment id, final status, image digest and message, failed attempts included. The register row leaves the checkout dirty, so the next deploy is refused until the row is merged through a pull request. Raw `railway up` from a local folder is no longer the deploy path: it cannot show that the running code matches reviewed `main`.
+The script refuses unless the checkout has no tracked or untracked changes, `HEAD` equals `origin/main` after a fresh fetch, and the latest "Security and quality" push run on `main` for that commit concluded `success`. It never uploads the working tree: it checks the same commit out with LF line endings into a temporary worktree (no ignored files such as `.env` or `*.tsbuildinfo`), runs `railway up --detach` from there for `web`, waits for `SUCCESS`, then does the same for `worker` (`--service web|worker` for one only). The deployment message starts with the short commit, the CI run id and a random per-run nonce (`<sha12> ci <run id> run <nonce>: <what ships>`), and the script finds each deployment by that exact message. It appends one row per service to `docs/release-register.csv`: time, full commit, CI run id, service, Railway deployment id, final status, image digest and message, failed attempts included. The register row leaves the checkout dirty, so the next deploy is refused until the row is merged through a pull request. Raw `railway up` from a local folder is no longer the deploy path: it cannot show that the running code matches reviewed `main`.
 
 Deploy both services from the same commit; they share code. The script stops on the first service that does not reach `SUCCESS` (status `FAILED`, `CRASHED`, `UPLOAD_FAILED`, `NOT_FOUND` or `TIMEOUT_*` after 25 minutes). After `SUCCESS`, check: `/health` returns `{"ok":true}`, `/` and the changed pages return 200, `railway logs -p <project> -e <env> -s web` shows `[api-server] listening on http://0.0.0.0:8080`, and `railway logs -p <project> -e <env> -s worker` shows `[worker] ready`. For retrieval or answer changes, run one cited question (`.tmp`-style script: demo CSR login, `POST /api/ask`, expect `refused=false` with at least one source).
 
 The image runs TypeScript through `tsx`: `scripts/railway-start.sh` execs `artifacts/api-server/src/index.ts` or `scripts/src/worker.ts`. The build runs `pnpm install --frozen-lockfile`, the typecheck of every workspace (`pnpm -r run check`) and the rag-app build; a type error fails the image. `tsx` is a dev dependency, so the image keeps dev dependencies.
 
 Rollback: Railway keeps earlier deployments. `railway redeploy` only redeploys the latest one; to go back, use the dashboard (Deployments, Redeploy on the good one) or the GraphQL mutation `deploymentRedeploy(id)`. Add a `docs/release-register.csv` row by hand for the redeploy: the new deployment id, the commit of the deployment it copies, status `ROLLBACK`.
+
+Recovery redeploy of a known commit. When no earlier deployment can be redeployed (for example after `railway down` in the backup restore runbook, section 4.4, step 6) and the commit to restart is not `origin/main`, the script refuses by design. Then, with the owner's go, upload that exact commit by hand from a temporary LF checkout, never from a working folder:
+
+```text
+git fetch origin
+git -c core.autocrlf=false -c core.eol=lf worktree add --detach <temp dir> <commit>
+cd <temp dir>
+railway up --detach -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4deb-9434-e9b63a309bd9 -s web -m "<sha12> recovery: <reason>"
+railway up --detach -p 2aa5cb01-5438-4fbd-aade-626d4e252977 -e b35c4090-cbcd-4deb-9434-e9b63a309bd9 -s worker -m "<sha12> recovery: <reason>"
+```
+
+`<commit>` must be one that ran in production before (a `docs/release-register.csv` row, or the `cliMessage` of an earlier deployment). Poll `railway deployment list -p <project> -e <env> -s <service> --json` until `SUCCESS`, remove the temporary worktree, and add one register row per service with status `RECOVERY`.
 
 ### Deploy path options (owner decision pending)
 
