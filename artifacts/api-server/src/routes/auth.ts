@@ -643,19 +643,6 @@ authRouter.post("/forgot-password", async (req, res, next) => {
     const baseUrl = resolveAppBaseUrl(req);
     void (async () => {
       try {
-        if (baseUrl === null) {
-          console.warn(
-            "[auth] forgot-password: APP_BASE_URL not set in production; " +
-              "refusing to send a reset email with a header-derived URL"
-          );
-          void recordAppError({
-            severity: "error",
-            source: "configuration",
-            operation: "forgot-password-base-url",
-            error: new Error("APP_BASE_URL is not set in production")
-          });
-          return;
-        }
         const rows = await db
           .select({
             id: users.id,
@@ -672,7 +659,27 @@ authRouter.post("/forgot-password", async (req, res, next) => {
 
         // An SSO-only account has no password to reset, and reset-password
         // would refuse the link, so mint no token and point it at SSO.
-        if (!isLocalLoginAllowed(getOidcConfig().localLoginMode, row.role)) {
+        // Decided before the base-URL check: in development baseUrl can
+        // come from request headers, and it must only shape the link,
+        // never sit in front of the login policy (CodeQL
+        // js/user-controlled-bypass).
+        const ssoOnly = !isLocalLoginAllowed(getOidcConfig().localLoginMode, row.role);
+
+        if (baseUrl === null) {
+          console.warn(
+            "[auth] forgot-password: APP_BASE_URL not set in production; " +
+              "refusing to send a reset email with a header-derived URL"
+          );
+          void recordAppError({
+            severity: "error",
+            source: "configuration",
+            operation: "forgot-password-base-url",
+            error: new Error("APP_BASE_URL is not set in production")
+          });
+          return;
+        }
+
+        if (ssoOnly) {
           const notice = renderSsoResetNoticeEmail({
             name: row.name,
             signInUrl: `${baseUrl}/login`
