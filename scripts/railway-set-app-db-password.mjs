@@ -2,7 +2,7 @@
 // Set or rotate the password of a login role without printing it anywhere:
 // truenote_app, the application's role (lib/db/sql/0007_app_runtime_role.sql),
 // or with --role backup, truenote_backup, the backup job's read-only role
-// (lib/db/sql/0011_backup_role.sql).
+// (lib/db/sql/0014_backup_role.sql).
 //
 //   node scripts/railway-set-app-db-password.mjs [--role backup]          # status only
 //   node scripts/railway-set-app-db-password.mjs [--role backup] --apply  # new password (owner's go first)
@@ -29,7 +29,7 @@ const ENVIRONMENT = "b35c4090-cbcd-4deb-9434-e9b63a309bd9";
 const SERVICE = "pgvector";
 const ROLES = {
   app: { role: "truenote_app", variable: "TRUENOTE_APP_DB_PASSWORD", sql: "0007_app_runtime_role.sql" },
-  backup: { role: "truenote_backup", variable: "TRUENOTE_BACKUP_DB_PASSWORD", sql: "0011_backup_role.sql" }
+  backup: { role: "truenote_backup", variable: "TRUENOTE_BACKUP_DB_PASSWORD", sql: "0014_backup_role.sql" }
 };
 
 const args = process.argv.slice(2);

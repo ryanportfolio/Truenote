@@ -20,7 +20,7 @@
 # and are removed on exit.
 #
 # Variables (Railway service variables on `backup`):
-#   BACKUP_DATABASE_URL       truenote_backup connection string (0011_backup_role.sql)
+#   BACKUP_DATABASE_URL       truenote_backup connection string (0014_backup_role.sql)
 #   BACKUP_AGE_RECIPIENT      age public key (age1...)
 #   OFFSITE_S3_ENDPOINT, OFFSITE_S3_REGION, OFFSITE_S3_BUCKET,
 #   OFFSITE_S3_ACCESS_KEY_ID, OFFSITE_S3_SECRET_ACCESS_KEY   off-site store, write-only key
