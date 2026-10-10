@@ -29,3 +29,19 @@ export function isLocalLoginAllowed(
       return false;
   }
 }
+
+/**
+ * Which invitation an admin-created account gets, decided by the same rule
+ * as isLocalLoginAllowed. "password_setup": a one-time /reset-password link
+ * to choose a password. "sso": a link to the sign-in page and no password
+ * token, because reset-password refuses a user the mode does not allow
+ * ("Use company SSO to sign in."). The first SSO sign-in binds the identity.
+ */
+export type InvitationKind = "password_setup" | "sso";
+
+export function invitationKindFor(
+  mode: LocalLoginMode,
+  role: UserRole
+): InvitationKind {
+  return isLocalLoginAllowed(mode, role) ? "password_setup" : "sso";
+}

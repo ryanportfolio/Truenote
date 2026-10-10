@@ -4,7 +4,8 @@ import {
   getOidcConfig,
   openOidcState,
   safeReturnTo,
-  sealOidcState
+  sealOidcState,
+  type OidcState
 } from "../oidc.js";
 
 describe("OIDC config: tenant and program gates", () => {
@@ -142,6 +143,25 @@ describe("OIDC state", () => {
     const sealed = sealOidcState(state, testSigningKey);
     expect(openOidcState(sealed, testSigningKey)).toEqual(state);
     expect(openOidcState(`${sealed}x`, testSigningKey)).toBeNull();
+  });
+
+  it("records authenticatedAfter only for a re-authentication", () => {
+    const before = Math.floor(Date.now() / 1000);
+    const plain = createOidcState("/chat");
+    expect(plain).not.toHaveProperty("authenticatedAfter");
+    expect(openOidcState(sealOidcState(plain, testSigningKey), testSigningKey))
+      .not.toHaveProperty("authenticatedAfter");
+
+    const reauth = createOidcState("/chat", { reauthenticate: true });
+    expect(reauth.authenticatedAfter).toBeGreaterThanOrEqual(before);
+    expect(reauth.authenticatedAfter).toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
+    expect(openOidcState(sealOidcState(reauth, testSigningKey), testSigningKey)).toEqual(reauth);
+  });
+
+  it("rejects a signed state whose authenticatedAfter is not a number", () => {
+    const state = { ...createOidcState("/chat"), authenticatedAfter: "0" };
+    const sealed = sealOidcState(state as unknown as OidcState, testSigningKey);
+    expect(openOidcState(sealed, testSigningKey)).toBeNull();
   });
 
   it("blocks absolute, protocol-relative, API, and backslash redirects", () => {

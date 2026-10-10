@@ -862,6 +862,12 @@ export interface UserListItem {
   mustResetPassword: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  /**
+   * False when the server's LOCAL_LOGIN_MODE does not allow this user a
+   * password sign-in (company SSO only); the server refuses a password
+   * reset for them with 409.
+   */
+  localLoginAllowed: boolean;
 }
 
 export interface UserListResponse {
@@ -896,17 +902,30 @@ export interface CreateUserResponse {
    * admin once; treat as sensitive and communicate out-of-band.
    */
   tempPassword?: string;
+  /**
+   * Present only for an account that signs in with company SSO (the
+   * server's LOCAL_LOGIN_MODE does not allow local login for its role).
+   * Such an account has no usable password and no tempPassword; the user
+   * was emailed a link to the sign-in page when `emailSent` is true.
+   */
+  invitation?: { kind: "sso"; emailSent: boolean };
 }
+
+/**
+ * "password_setup": each email carries a one-time link to set a password.
+ * "sso": each email links to the sign-in page and says to use company SSO.
+ */
+export type InvitationKind = "password_setup" | "sso";
 
 export interface BulkCreateUsersResponse {
   created: UserListItem[];
   skippedEmails: string[];
   /**
-   * How many created users were emailed a one-time "set your password"
-   * invite link. No plaintext password is ever returned — each user sets
-   * their own via the emailed link, so the admin distributes nothing.
+   * How many created users were emailed an invitation. No plaintext
+   * password is ever returned, so the admin distributes nothing.
    */
   invitedCount: number;
+  invitationKind: InvitationKind;
   forcedPasswordReset: true;
 }
 

@@ -27,6 +27,8 @@ const DEFAULT_ASK_EXAMPLES = [
 
 let state = buildSeed();
 let delayMs = Number(process.env.MOCK_DELAY_MS) || 0;
+/** LOCAL_LOGIN_MODE stand-in: /api/config and the invitation kind read it; /__mock/login-mode sets it. */
+let localLoginMode = "enabled";
 /** Upper bound for the delay control, so a typo cannot stall the fixture. */
 const MAX_DELAY_MS = 10000;
 const failPaths = new Set();
@@ -1466,7 +1468,8 @@ function userList(user, req) {
       isActive: u.isActive,
       mustResetPassword: u.mustResetPassword,
       lastLoginAt: u.lastLoginAt,
-      createdAt: u.createdAt
+      createdAt: u.createdAt,
+      localLoginAllowed: invitationKindFor(u.role) === "password_setup"
     }));
   return { items };
 }
@@ -1506,8 +1509,100 @@ function resetUserPassword(user, id) {
   if (!allowed) throw notFound();
   // routes/admin/users.ts demoTargetLocked: only a super user resets a demo account.
   if (target.isDemo && user.role !== "super_user") throw new HttpError(403, DEMO_MESSAGE);
+  if (invitationKindFor(target.role) === "sso") {
+    throw new HttpError(409, "This user signs in with company SSO and has no password to reset");
+  }
   target.mustResetPassword = true;
   return { tempPassword: randomBytes(12).toString("base64url") };
+}
+
+/** lib/auth/local-login-policy.ts invitationKindFor. */
+function invitationKindFor(role) {
+  if (localLoginMode === "enabled") return "password_setup";
+  if (localLoginMode === "break_glass" && role === "super_user") return "password_setup";
+  return "sso";
+}
+
+function addUser(actor, { email, name, role, programId }) {
+  const created = {
+    id: nextId(),
+    name,
+    email,
+    role,
+    programId,
+    clearance: "internal",
+    isActive: true,
+    mustResetPassword: true,
+    lastLoginAt: null,
+    createdAt: new Date().toISOString(),
+    createdBy: actor.id
+  };
+  state.users.push(created);
+  return {
+    id: created.id,
+    email: created.email,
+    name: created.name,
+    role: created.role,
+    programId: created.programId,
+    isActive: created.isActive,
+    mustResetPassword: created.mustResetPassword,
+    lastLoginAt: created.lastLoginAt,
+    createdAt: created.createdAt,
+    localLoginAllowed: invitationKindFor(created.role) === "password_setup"
+  };
+}
+
+/**
+ * POST /api/admin/users: manager and above. An SSO account (invitationKindFor
+ * "sso") gets no temp password; the server emails a sign-in link instead.
+ * `__mock_email_fail` in the name simulates a failed send.
+ */
+function createUserFixture(user, body, res) {
+  requireRole(user, "manager");
+  if (limitedDemo(user)) throw new HttpError(403, DEMO_MESSAGE);
+  const email = String(body?.email ?? "").trim().toLowerCase();
+  const name = String(body?.name ?? "").trim();
+  const role = body?.role;
+  if (!email.includes("@") || !name || !(role in ROLE_RANK)) throw badRequest("Invalid request");
+  if (state.users.some((u) => u.email === email)) throw new HttpError(409, "A user with that email already exists");
+  const programId = role === "super_user" ? null : body?.programId ?? user.programId;
+  const kind = invitationKindFor(role);
+  if (kind === "sso" && body?.password !== undefined) {
+    throw badRequest("This user signs in with company SSO, so the account can't have a password");
+  }
+  const item = addUser(user, { email, name, role, programId });
+  res.statusCode = 201;
+  if (kind === "sso") return { item, invitation: { kind: "sso", emailSent: !name.includes("__mock_email_fail") } };
+  return body?.password === undefined ? { item, tempPassword: randomBytes(12).toString("base64url") } : { item };
+}
+
+/** POST /api/admin/users/bulk: CSRs in the actor's program, existing emails skipped. */
+function bulkCreateUsersFixture(user, req, body, res) {
+  requireRole(user, "manager");
+  if (limitedDemo(user)) throw new HttpError(403, DEMO_MESSAGE);
+  const programId = effectiveProgramId(user, req);
+  if (!programId) throw badRequest("Select a program before importing users");
+  const emails = [...new Set((body?.emails ?? []).map((e) => String(e).trim().toLowerCase()))];
+  if (emails.length === 0) throw badRequest("CSV must contain at least one email");
+  const created = [];
+  const skippedEmails = [];
+  for (const email of emails) {
+    if (state.users.some((u) => u.email === email)) {
+      skippedEmails.push(email);
+      continue;
+    }
+    const local = email.split("@")[0] ?? "User";
+    const name = local.replace(/[._+-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    created.push(addUser(user, { email, name, role: "csr", programId }));
+  }
+  res.statusCode = created.length > 0 ? 201 : 200;
+  return {
+    created,
+    skippedEmails,
+    invitedCount: created.length,
+    invitationKind: invitationKindFor("csr"),
+    forcedPasswordReset: true
+  };
 }
 
 function adminDocuments(user, req) {
@@ -1729,8 +1824,8 @@ const route = (method, pattern, handler) => routes.push({ method, pattern, handl
 route("GET", /^\/api\/config$/, () => ({
   minPasswordLength: 12,
   emailResetAvailable: false,
-  oidcEnabled: false,
-  localLoginMode: "enabled",
+  oidcEnabled: localLoginMode !== "enabled",
+  localLoginMode,
   demoAccounts: [
     { label: "CSR (Jordan Reyes)", email: ROLE_ALIASES.csr, password: "mock-password", role: "csr" },
     {
@@ -2246,6 +2341,10 @@ route("GET", /^\/api\/admin\/insights\/source-usage\/questions$/, ({ user, req, 
 );
 route("GET", /^\/api\/admin\/queries$/, ({ user, req, url }) => queryLogList(user, req, url));
 route("GET", /^\/api\/admin\/users$/, ({ user, req }) => userList(user, req));
+route("POST", /^\/api\/admin\/users$/, ({ user, body, res }) => createUserFixture(user, body, res));
+route("POST", /^\/api\/admin\/users\/bulk$/, ({ user, req, body, res }) =>
+  bulkCreateUsersFixture(user, req, body, res)
+);
 route("POST", /^\/api\/admin\/users\/([^/]+)\/reset-password$/, ({ user, params }) =>
   resetUserPassword(user, params[0])
 );
@@ -2298,6 +2397,7 @@ function mockControl(req, res, url, path) {
   }
   if (sub === "/reset") {
     state = buildSeed();
+    localLoginMode = "enabled";
     pendingMfa.clear();
     failPaths.clear();
     audit.length = 0;
@@ -2316,6 +2416,14 @@ function mockControl(req, res, url, path) {
     return send(res, 200, { delayMs });
   }
   if (sub === "/audit") return send(res, 200, { items: audit });
+  if (sub === "/login-mode") {
+    const mode = url.searchParams.get("mode");
+    if (!["enabled", "break_glass", "disabled"].includes(mode)) {
+      return send(res, 400, { error: "mode must be enabled, break_glass or disabled." });
+    }
+    localLoginMode = mode;
+    return send(res, 200, { localLoginMode });
+  }
   if (sub === "" || sub === "/") {
     return send(res, 200, {
       roles: Object.keys(ROLE_ALIASES),

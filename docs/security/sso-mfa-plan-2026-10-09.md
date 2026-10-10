@@ -1,6 +1,6 @@
 # SSO with MFA for customer users: options and plan
 
-Status: proposal for the owner's decision, October 9, 2026. No production setting, Railway variable or provider account was touched. The WorkOS API key was not used. Update, October 10: the code parts of steps 1, 2, 3a, 4, 5 and 6 merged in ryanportfolio/Truenote#226 (direct Entra, no WorkOS, passkey plus recovery codes for the emergency login); nothing is configured or deployed yet. The idle re-authentication choice under "Sessions" and the step 2 SSO invitation email are not built. The "What the existing code does" section describes `main` before that build.
+Status: proposal for the owner's decision, October 9, 2026. No production setting, Railway variable or provider account was touched. The WorkOS API key was not used. Update, October 10: the code parts of steps 1, 2, 3a, 4, 5 and 6 merged in ryanportfolio/Truenote#226 (direct Entra, no WorkOS, passkey plus recovery codes for the emergency login); nothing is configured or deployed yet. Later on October 10 the owner chose `prompt=login` for idle re-authentication (decision 3), and its code is built (see "Sessions"); it is not deployed. The step 2 SSO invitation email is built in ryanportfolio/Truenote#239, and forgot-password and the admin password reset refuse SSO-only accounts in ryanportfolio/Truenote#240 (neither deployed). The "What the existing code does" section describes `main` before that build.
 
 Scope: how call-center CSRs, supervisors and managers sign in to Truenote through their company's identity provider with MFA, how the single emergency super_user signs in, and what has to be true before the first real customer data enters production (go-live, no date set).
 
@@ -74,7 +74,7 @@ A new `user_identities` table: `(issuer, subject)` unique, plus `tenant_id`, `ob
 
 ### Provisioning, roles and programs
 
-- **Now: invitation first.** A Truenote admin creates the account with role and program, as today. Role and program always come from Truenote's database, never from the token. SSO-only accounts get no usable password, and the password reset and invitation flows refuse them. The invitation itself changes too: today single and bulk invitations send a `/reset-password` link and ask the user to choose a password, which an SSO-only account cannot use. SSO accounts get an invitation email that links to the sign-in page and says to use "Sign in with SSO".
+- **Now: invitation first.** A Truenote admin creates the account with role and program, as today. Role and program always come from Truenote's database, never from the token. SSO-only accounts get no usable password, and the password reset and invitation flows refuse them. The invitation itself changes too: today single and bulk invitations send a `/reset-password` link and ask the user to choose a password, which an SSO-only account cannot use. SSO accounts get an invitation email that links to the sign-in page and says to use the SSO button ("Continue with company SSO" on the sign-in page). Built in #239. Before it, single create returned a temporary password instead of sending a link; for an SSO account it now returns none and sends the sign-in email.
 - **Optional just-in-time creation, per connection, off by default.** When on, a first-time user from that tenant gets an account in the connection's single default program with the `csr` role, or a role mapped from an Entra app role in the `roles` claim. JIT never creates `super_user`, `senior_manager` or `manager`.
 - **SCIM later, with a trigger.** Build a SCIM 2.0 endpoint (or adopt WorkOS Directory Sync) before the second customer, or sooner if a customer has high staff turnover. Until then, offboarding relies on short sessions plus the customer removing the user in Entra, and a Truenote admin deactivating the account.
 
@@ -87,7 +87,7 @@ If WorkOS is added later, its customers cannot be checked by layer 2. Before tha
 
 ### Sessions
 
-- SSO sessions: idle timeout (default 15 minutes, configurable; PCI DSS 8.2.8 asks for 15 when in scope) and an absolute limit of 10 hours, about one call-center shift. When the idle timeout fires, the user goes back through Entra. A user disabled in Entra is stopped there, but Entra usually signs everyone else in again silently, so the person at an unattended, unlocked browser gets back in without proving who they are. That is not re-authentication in the sense of PCI DSS 8.2.8 ([PCI SSC FAQ 1147](https://www.pcisecuritystandards.org/faqs/1147/)). Two ways to close it, for the owner to choose: the sign-in after an idle expiry sends `prompt=login` (or `max_age`) to Entra and Truenote checks `auth_time` in the returned token; or the customer enforces a workstation screen lock of 15 minutes or less, and that is recorded as the control. Measure how often CSRs hit this between calls before fixing the defaults.
+- SSO sessions: idle timeout (default 15 minutes, configurable; PCI DSS 8.2.8 asks for 15 when in scope) and an absolute limit of 10 hours, about one call-center shift. When the idle timeout fires, the user goes back through Entra. A user disabled in Entra is stopped there, but Entra usually signs everyone else in again silently, so the person at an unattended, unlocked browser gets back in without proving who they are. That is not re-authentication in the sense of PCI DSS 8.2.8 ([PCI SSC FAQ 1147](https://www.pcisecuritystandards.org/faqs/1147/)). Two ways to close it were offered: the sign-in after an idle expiry sends `prompt=login` (or `max_age`) to Entra and Truenote checks `auth_time` in the returned token; or the customer enforces a workstation screen lock of 15 minutes or less, and that is recorded as the control. The owner chose `prompt=login` on October 10. As built: when the idle limit ends an SSO session, the response sets a `truenote_oidc_reauth` cookie (path `/api/auth/oidc`, lifetime `SSO_SESSION_MAX_HOURS`); the next `GET /api/auth/oidc/start` sends `prompt=login` (as it does when the browser still holds a session cookie that no longer resolves to a session, which covers a lost or concurrent idle response), and the callback refuses the sign-in unless the ID token's `auth_time` is no earlier than that start, less 60 seconds of clock allowance. `max_age` is not sent: Microsoft's OIDC reference documents `prompt=login` and not `max_age` (checked October 10). `auth_time` is an Entra optional claim, so the app registration must add it (request list item 2); without it every sign-in after an idle expiry is refused. A flow started before the session idled out is restarted at the callback with `prompt=login`. Limit: both signals live in the browser, so someone who deletes the marker and the session cookie before signing in gets a silent sign-in. Sign-ins that do not follow an idle expiry (the first of the day, after logout, after the 10-hour limit) stay silent when Entra allows it. Measure how often CSRs hit this between calls before fixing the defaults.
 - Session lookup refuses a `local` session for any user whom the current `LOCAL_LOGIN_MODE` would not allow to log in locally. A mode switch takes effect on the next request.
 - Local sessions get the same idle limit whenever `LOCAL_LOGIN_MODE` is not `enabled`, which covers the emergency super_user in `break_glass`. Its absolute limit stays the local seven days unless the owner sets a shorter one; record that as an accepted exception under AC-12.
 - Logout stays local by default. Optional: send the user on to Entra's `end_session_endpoint` for shared workstations.
@@ -113,7 +113,7 @@ The repository has no NIST 800-53 control mapping and no POA&M file on `main`. T
 | IA-4 | Accounts bound to immutable `tid` plus `oid` | |
 | IA-5, IA-5(1) | Passwords limited to one account; existing 15-character minimum stays | Break-glass credential handling procedure |
 | IA-8 | If customer users are treated as non-organizational users, the same controls apply | Classification decision |
-| IA-11 | Idle timeout sends users back through the IdP | A silent IdP sign-in is not re-authentication: needs `prompt=login` or `max_age` after idle expiry, or a recorded screen-lock control |
+| IA-11 | Idle timeout sends users back through the IdP; the sign-in after an idle expiry sends `prompt=login` and requires a fresh `auth_time` | The signals that trigger it are browser cookies (the marker and the stale session cookie); deleting both before sign-in skips the prompt |
 | AC-2, AC-2(2), AC-2(3), AC-2(4), AC-2(13) | Invitation records, emergency account defined and kept inactive or MFA-protected, short sessions after Entra disable, security events for account changes | AC-2(1) automated account management needs SCIM; AC-2(3) inactive-account disabling needs a scheduled job |
 | AC-7 | IdP lockout for SSO users; new lockout for local accounts | |
 | AC-2(5), AC-12, SC-23 | Idle and absolute session limits; idle limit on local sessions outside `enabled`; session invalidation on mode change | Emergency local session keeps the seven-day absolute limit unless shortened (recorded exception) |
@@ -162,7 +162,7 @@ For this customer the app registration lives in the employer's tenant (single te
 Send this list to the employer's IT team:
 
 1. **App registration.** Create one in your tenant named "Truenote". Supported account types: "Accounts in this organizational directory only". Platform: Web. Redirect URIs: `https://truenote.org/api/auth/oidc/callback`, and for pre-go-live testing only `https://web-production-62818.up.railway.app/api/auth/oidc/callback` (remove it after go-live). Leave the implicit grant "ID tokens" and "Access tokens" boxes unticked.
-2. **Token configuration.** Add optional claims to the ID token: `amr`, `email`, `preferred_username`, `xms_edov`. Accept the prompt to add the Microsoft Graph `email` permission.
+2. **Token configuration.** Add optional claims to the ID token: `amr`, `auth_time`, `email`, `preferred_username`, `xms_edov`. Accept the prompt to add the Microsoft Graph `email` permission.
 3. **API permissions.** Microsoft Graph delegated `openid`, `profile`, `email` only, with admin consent granted. No other permissions.
 4. **Credential.** Create a client secret with a 12-month expiry. Send the secret to the Truenote owner through a channel your security team approves (not plain email), and tell us the expiry date and who renews it.
 5. **Identifiers.** Send the Directory (tenant) ID, the Application (client) ID, and the email domains your users sign in with.
@@ -197,7 +197,8 @@ Real Entra tests for go-live use the employer's tenant with the test accounts fr
 | Tenant B user whose email matches a Truenote account in program A (step 3b) | Refused; no identity bound |
 | Tenant B user whose email matches a pending invitation for tenant A in a program both connections serve (step 3b) | Refused; no identity bound |
 | SSO user invited by single or bulk invitation | Email links to the sign-in page, not `/reset-password`; first "Sign in with SSO" binds the identity |
-| SSO user returns after the idle limit | With `prompt=login` chosen: Entra asks for credentials again; otherwise the recorded screen-lock control applies |
+| SSO user returns after the idle limit | Entra asks for credentials again (`prompt=login`); the new session is created only when the token's `auth_time` is fresh |
+| Sign-in after an idle expiry whose token has an old or missing `auth_time` | Refused; security event `auth.oidc.login` denied with reason `reauth_auth_time_stale` or `reauth_auth_time_missing` |
 | Tenant A user whose program is not on the connection's allow-list | Refused |
 | User's email changed in Entra after first login | Same Truenote account |
 | User disabled in Entra, then idle | Session ends at the idle limit; the next sign-in through Entra is refused |
@@ -216,7 +217,7 @@ The eval harness is not affected; no retrieval or generation code changes.
 
 1. Approve direct Entra now with WorkOS deferred, or choose WorkOS now.
 2. Passkey or TOTP for the break-glass account.
-3. Idle re-authentication for SSO users: `prompt=login` (or `max_age`) after an idle expiry, or a customer screen-lock control recorded instead.
+3. Idle re-authentication for SSO users: `prompt=login` (or `max_age`) after an idle expiry, or a customer screen-lock control recorded instead. Decided October 10: `prompt=login`, built as described under "Sessions".
 4. Whether to add a Railway staging environment, or test on production before go-live with test accounts only.
 5. When to send the request list to the employer's IT team.
 6. Go-ahead for steps 1 to 6.
