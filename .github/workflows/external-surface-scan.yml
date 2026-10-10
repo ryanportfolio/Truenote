@@ -1,0 +1,58 @@
+name: External surface scan
+
+# Weekly OWASP ZAP baseline scan of production. Baseline mode spiders the site
+# for about a minute and runs passive rules only: no attack payloads, no login,
+# no form submission. Reports are kept as artifacts; ZAP findings do not fail
+# the job. The job runs only when the repository variable ZAP_BASELINE_ENABLED
+# is "true", which the owner sets after Railway acknowledges scanning of
+# truenote.org. A failed scheduled run opens an issue.
+on:
+  schedule:
+    - cron: "41 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: external-surface-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zap-baseline:
+    name: ZAP baseline (passive) on truenote.org
+    if: vars.ZAP_BASELINE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ZAP_IMAGE: ghcr.io/zaproxy/zaproxy:stable
+    steps:
+      # The scan runs the digest recorded here, so the summary names the
+      # exact scanner image even if the stable tag moves mid-run.
+      - name: Pull and record the ZAP image digest
+        id: zap-image
+        run: |
+          docker pull "$ZAP_IMAGE"
+          digest_ref=$(docker image inspect --format '{{index .RepoDigests 0}}' "$ZAP_IMAGE")
+          echo "ref=${digest_ref}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Scanner image"
+            echo "- \`${digest_ref}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: ZAP baseline scan
+        uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
+        with:
+          target: https://truenote.org
+          docker_name: ${{ steps.zap-image.outputs.ref }}
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap-baseline-truenote-org
+
+  notify-failure:
+    name: Report a failed scheduled run
+    needs: [zap-baseline]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/scheduled-failure-issue.yml

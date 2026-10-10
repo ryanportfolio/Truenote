@@ -19,7 +19,10 @@ import { evaluationsRouter } from "./admin/evaluations.js";
 import { observabilityRouter } from "./admin/observability.js";
 import { errorsRouter } from "./admin/errors.js";
 import { securityRouter } from "./admin/security.js";
+import { evidenceRouter } from "./admin/evidence.js";
+import { evidenceHeartbeatRouter } from "./evidence-heartbeat.js";
 import { oidcRouter } from "./oidc.js";
+import { complianceRouter } from "./compliance.js";
 
 export function registerRoutes(app: Express): void {
   app.use("/health", healthRouter);
@@ -43,6 +46,10 @@ export function registerRoutes(app: Express): void {
   app.use("/api/admin/observability", observabilityRouter);
   app.use("/api/admin/errors", errorsRouter);
   app.use("/api/admin/security", securityRouter);
+  app.use("/api/admin/evidence", evidenceRouter);
+  // Public: last-receipt time only, for the outside-vantage watcher.
+  app.use("/api/evidence/heartbeat", evidenceHeartbeatRouter);
+  app.use("/api/compliance", complianceRouter);
   app.use("/api/documents", documentsRouter);
   // Mounted before /api/kb so the manager-only organize routes are matched
   // by their own guarded router rather than passing through kbRouter first.

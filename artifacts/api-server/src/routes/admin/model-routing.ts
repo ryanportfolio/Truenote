@@ -7,6 +7,7 @@ import {
   requireFreshPassword,
   requireSuperUser
 } from "../../middleware/current-user.js";
+import { adminConfigWriteLimit } from "../../lib/security/route-rate-limit.js";
 import {
   ApprovedModelRouteIdSchema,
   getModelRoutingState,
@@ -44,7 +45,7 @@ modelRoutingRouter.get("/", async (_req, res, next) => {
   }
 });
 
-modelRoutingRouter.put("/", async (req, res, next) => {
+modelRoutingRouter.put("/", adminConfigWriteLimit, async (req, res, next) => {
   const parsed = UpdateBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Provide an ordered list of approved model routes" });

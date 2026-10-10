@@ -5,6 +5,7 @@ import {
   chatSessions,
   queryLog
 } from "@workspace/db/schema";
+import { sessionHistoryReadLimit } from "../lib/security/route-rate-limit.js";
 import {
   authedUser,
   requireAuth,
@@ -75,7 +76,7 @@ export interface SessionDetail {
   exchanges: SessionExchange[];
 }
 
-sessionsRouter.get("/", async (req, res, next) => {
+sessionsRouter.get("/", sessionHistoryReadLimit, async (req, res, next) => {
   try {
     const user = authedUser(req);
     const programId = await resolveEffectiveProgramId(user, req);
@@ -133,11 +134,11 @@ sessionsRouter.get("/", async (req, res, next) => {
   }
 });
 
-sessionsRouter.get("/:id", async (req, res, next) => {
+sessionsRouter.get("/:id", sessionHistoryReadLimit, async (req, res, next) => {
   try {
     const user = authedUser(req);
     const id = req.params.id;
-    if (!UUID_RE.test(id)) {
+    if (typeof id !== "string" || !UUID_RE.test(id)) {
       res.status(404).json({ error: "Not found" });
       return;
     }

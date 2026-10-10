@@ -13,18 +13,18 @@ function evidence() {
   return {
     schemaVersion: 2,
     recordId: "TN-BRANCH-2026-001",
-    repository: "ryanportfolio/kbase",
+    repository: "ryanportfolio/Truenote",
     defaultBranch: "main",
     capturedAt: "2026-07-16T18:00:00.000Z",
     capturedBy: "Platform Evidence Operator",
     captureMethod: "github_api",
     apiEndpoints: [
-      "/repos/ryanportfolio/kbase/rulesets",
-      "/repos/ryanportfolio/kbase/branches/main/protection"
+      "/repos/ryanportfolio/Truenote/rulesets",
+      "/repos/ryanportfolio/Truenote/branches/main/protection"
     ],
     apiResponses: [
       {
-        endpoint: "/repos/ryanportfolio/kbase/rulesets",
+        endpoint: "/repos/ryanportfolio/Truenote/rulesets",
         method: "GET",
         httpStatus: 200,
         capturedAt: "2026-07-16T18:00:01.000Z",
@@ -34,7 +34,7 @@ function evidence() {
         bodySha256: createHash("sha256").update("synthetic ruleset response").digest("hex")
       },
       {
-        endpoint: "/repos/ryanportfolio/kbase/branches/main/protection",
+        endpoint: "/repos/ryanportfolio/Truenote/branches/main/protection",
         method: "GET",
         httpStatus: 200,
         capturedAt: "2026-07-16T18:00:02.000Z",
@@ -136,7 +136,7 @@ describe("branch enforcement evidence", () => {
     stale.capturedBy = "Security Reviewer Team";
     stale.evidence.artifactSha256 = "0".repeat(64);
     stale.evidence.safeReference = "TBD";
-    stale.apiEndpoints[0] = "https://attacker.example/repos/ryanportfolio/kbase/rulesets";
+    stale.apiEndpoints[0] = "https://attacker.example/repos/ryanportfolio/Truenote/rulesets";
     stale.apiResponses[0]!.httpStatus = 403;
     stale.apiResponses[0]!.paginationComplete = false;
     stale.apiResponses[0]!.bodySha256 = "0".repeat(64);
