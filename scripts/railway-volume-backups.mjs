@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Show, turn on, or turn off Railway volume backups on pgvector-volume, the
-// production database volume (docs/security/backup-restore-runbook.md, path A).
+// Show, turn on, or turn off Railway volume backups on the volume mounted on
+// pgvector, the production database (docs/security/backup-restore-runbook.md, path A).
 // Railway CLI 5.26 has no backup commands, so this calls Railway's public API
 // with the token the CLI stores after `railway login`.
 //
@@ -22,7 +22,7 @@ import { join } from "node:path";
 
 const PROJECT = "2aa5cb01-5438-4fbd-aade-626d4e252977";
 const ENVIRONMENT = "b35c4090-cbcd-4deb-9434-e9b63a309bd9";
-const VOLUME = "pgvector-volume";
+const PGVECTOR_SERVICE = "0d1e7840-7d5e-4a20-a97e-d04f06a88649";
 const SCHEDULES = ["DAILY", "WEEKLY", "MONTHLY"];
 
 const flag = process.argv[2];
@@ -56,15 +56,22 @@ async function gql(query, variables = {}) {
   return body.data;
 }
 
+// The volume mounted on pgvector now. After a path A restore that is a new
+// volume named for the backup's date stamp, not pgvector-volume, so select by
+// service, not by name.
 async function volumeInstanceId() {
   const data = await gql(
-    `query($id: String!) { project(id: $id) { volumes { edges { node { name volumeInstances { edges { node { id environmentId } } } } } } } }`,
+    `query($id: String!) { project(id: $id) { volumes { edges { node { name volumeInstances { edges { node { id environmentId serviceId } } } } } } } }`,
     { id: PROJECT }
   );
-  const volume = data.project.volumes.edges.map((e) => e.node).find((v) => v.name === VOLUME);
-  const instance = volume?.volumeInstances.edges.map((e) => e.node).find((i) => i.environmentId === ENVIRONMENT);
-  if (!instance) throw new Error(`volume ${VOLUME} not found in the production environment`);
-  return instance.id;
+  const mounted = data.project.volumes.edges.flatMap((e) =>
+    e.node.volumeInstances.edges
+      .map((i) => ({ name: e.node.name, ...i.node }))
+      .filter((i) => i.environmentId === ENVIRONMENT && i.serviceId === PGVECTOR_SERVICE)
+  );
+  if (mounted.length !== 1) throw new Error(`expected one volume mounted on pgvector, found ${mounted.length}`);
+  console.log(`volume mounted on pgvector: ${mounted[0].name}`);
+  return mounted[0].id;
 }
 
 async function status(id) {
@@ -76,7 +83,7 @@ async function status(id) {
     { v: id }
   );
   const kinds = data.volumeInstanceBackupScheduleList.map((s) => s.kind).sort();
-  console.log(`${VOLUME} backup schedules: ${kinds.length ? kinds.join(", ") : "none (backups off)"}`);
+  console.log(`backup schedules: ${kinds.length ? kinds.join(", ") : "none (backups off)"}`);
   const backups = [...data.volumeInstanceBackupList].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   console.log(`backups: ${backups.length}`);
   for (const b of backups) {
