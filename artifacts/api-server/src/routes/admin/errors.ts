@@ -3,7 +3,8 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../lib/db-client.js";
 import { isMissingErrorLogTable } from "../../lib/observability/error-log.js";
-import { appendSecurityEvent } from "../../lib/security/audit.js";
+import { clientIpFrom } from "../../lib/auth/rate-limit.js";
+import { appendSecurityEvent, requestIdOf } from "../../lib/security/audit.js";
 import {
   authedUser,
   blockDemoWrites,
@@ -184,6 +185,8 @@ errorsRouter.delete("/", adminConfigWriteLimit, async (req, res, next) => {
           outcome: "success",
           actor: user,
           resourceType: "error_log",
+          requestId: requestIdOf(res),
+          sourceIp: clientIpFrom(req),
           details: { deletedCount: count }
         },
         tx as unknown as Parameters<typeof appendSecurityEvent>[1]

@@ -37,8 +37,10 @@ import {
   isMissingSecuritySchema,
   SecurityControlsNotReadyError
 } from "../lib/security/errors.js";
+import { clientIpFrom } from "../lib/auth/rate-limit.js";
 import {
-  appendSecurityEvent
+  appendSecurityEvent,
+  requestIdOf
 } from "../lib/security/audit.js";
 import {
   actionableDocumentFindings,
@@ -1174,6 +1176,8 @@ documentsRouter.post(
             programId,
             resourceType: "document",
             resourceId: id,
+            requestId: requestIdOf(res),
+            sourceIp: clientIpFrom(req),
             details: {
               reason: parsed.data.reason,
               retentionOverride: overrideEnabled

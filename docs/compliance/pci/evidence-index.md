@@ -59,7 +59,7 @@ public repository:
 | Provider DPAs, retention/ZDR, subprocessor, and PCI/CDE suitability evidence | Vendor-risk | Missing |
 | IdP/MFA and break-glass evidence | IAM | Missing |
 | Security alert exercise, one test per rule (`docs/security/monitoring.md`, "Alert test record") | SecOps | Partial: 10 of 11 rules tested in production on 2026-10-10; break-glass waits for SSO |
-| Backup/restore test with RTO/RPO result | Platform/database | Missing |
+| Backup/restore test with RTO/RPO result | Platform/database | Partial: first off-site restore test on 2026-10-10, RTO 7 min 12 s, RPO about 3 h 20 min ([receipt](../../security/evidence/restore-test-2026-10-10.json)); browser check, super-user login, cross-program refusal and the full contingency test not yet run |
 | Incident-response tabletop | Security/operations | Missing |
 | Independent app/API penetration, AI red team, segmentation test, and retest | PCI/Security | Missing |
 | Deployed synthetic AI regression report | Product Security/Engineering | Harness tests passed; authorized released-environment execution and retained report missing |
