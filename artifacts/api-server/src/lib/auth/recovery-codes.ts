@@ -62,7 +62,9 @@ export function hashRecoveryCode(normalized: string): string {
  * The user's row is locked first (SELECT ... FOR UPDATE), so two overlapping
  * generations run one after the other: without it both could delete before
  * either inserts, leaving 20 valid codes. The lock lasts until the caller's
- * transaction ends; on a bare `db` executor it would end at once.
+ * transaction ends; on a bare `db` executor it would end at once. The route
+ * already holds this row lock (lockUserRow, to recheck the password), and
+ * a transaction never waits on a row lock it holds.
  */
 export async function replaceRecoveryCodes(
   userId: string,

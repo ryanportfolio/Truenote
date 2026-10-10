@@ -28,6 +28,7 @@ import {
   isCounterAccepted,
   listPasskeys,
   lockPasskeySignCount,
+  lockUserRow,
   MFA_COOKIE_NAME,
   MfaChallengeGone,
   transportsCsv,
@@ -383,6 +384,22 @@ async function requireCurrentPassword(req: Request, res: Response): Promise<MfaU
   return user;
 }
 
+const UNAUTHORIZED = { error: "Unauthorized" } as const;
+
+/**
+ * First statement of every MFA management transaction: lock the user's row
+ * (lockUserRow) and check that its password hash still equals the one
+ * requireCurrentPassword verified. A password write (change, reset, admin
+ * reset) updates the same row and revokes the sessions in its transaction,
+ * so it either committed first and this returns false (the caller writes
+ * nothing and answers 401), or it waits until the caller's transaction
+ * ends. The user row is locked before any passkey or recovery-code row, the
+ * same order completeMfaLogin uses.
+ */
+async function lockVerifiedPassword(user: MfaUser, executor: SqlExecutor): Promise<boolean> {
+  return (await lockUserRow(user.id, executor)) === user.passwordHash;
+}
+
 function auditChange(req: Request, user: MfaUser, action: string, resourceType: string, resourceId: string | null, details: Record<string, unknown> = {}): void {
   recordSecurityEventBestEffort({
     action,
@@ -496,6 +513,7 @@ mfaRouter.post("/passkeys", requireAuth, mfaManageLimit, requireSuperUser, requi
     const saved = credential;
     const passkeyId = await db.transaction(async (tx) => {
       const executor = tx as unknown as SqlExecutor;
+      if (!(await lockVerifiedPassword(user, executor))) return "stale" as const;
       if (!(await consumeChallenge(challenge.id, executor))) return null;
       const result = await executor.execute(sql`
         INSERT INTO user_passkeys (user_id, credential_id, public_key, sign_count, transports, name)
@@ -513,6 +531,10 @@ mfaRouter.post("/passkeys", requireAuth, mfaManageLimit, requireSuperUser, requi
       const row = result.rows[0] as { id?: string } | undefined;
       return row?.id ?? null;
     });
+    if (passkeyId === "stale") {
+      res.status(401).json(UNAUTHORIZED);
+      return;
+    }
     if (!passkeyId) {
       res.status(409).json({ error: "This passkey is already registered, or the request expired." });
       return;
@@ -536,11 +558,13 @@ mfaRouter.delete("/passkeys/:id", requireAuth, mfaManageLimit, requireSuperUser,
     const keepLast = getOidcConfig().localLoginMode === "break_glass";
     // In break_glass mode the emergency account cannot sign in without a
     // passkey, so its last one stays until another is added. The check and
-    // the delete run in one transaction that first locks every passkey row
-    // of the user (FOR UPDATE): a concurrent delete waits, then sees the row
-    // this one removed as gone, so two deletes cannot remove the last two.
+    // the delete run in one transaction that locks the user's row and
+    // rechecks the password (lockVerifiedPassword), then locks every passkey
+    // row of the user (FOR UPDATE): a concurrent delete waits, then sees the
+    // row this one removed as gone, so two deletes cannot remove the last two.
     const outcome = await db.transaction(async (tx) => {
       const executor = tx as unknown as SqlExecutor;
+      if (!(await lockVerifiedPassword(user, executor))) return "stale" as const;
       const locked = await executor.execute(sql`
         SELECT id::text AS id FROM user_passkeys
         WHERE user_id = ${user.id}::uuid
@@ -555,6 +579,10 @@ mfaRouter.delete("/passkeys/:id", requireAuth, mfaManageLimit, requireSuperUser,
       `);
       return result.rows.length > 0 ? ("deleted" as const) : ("missing" as const);
     });
+    if (outcome === "stale") {
+      res.status(401).json(UNAUTHORIZED);
+      return;
+    }
     if (outcome === "missing") {
       res.status(404).json({ error: "Passkey not found" });
       return;
@@ -575,9 +603,12 @@ mfaRouter.post("/recovery-codes", requireAuth, mfaManageLimit, requireSuperUser,
     const user = await requireCurrentPassword(req, res);
     if (!user) return;
     // The replacement and its audit event commit together: if the event
-    // cannot be appended, the old codes stay and the request fails.
+    // cannot be appended, the old codes stay and the request fails. A
+    // password write committed since the check leaves the old codes and
+    // returns none (lockVerifiedPassword).
     const codes = await db.transaction(async (tx) => {
       const executor = tx as unknown as SqlExecutor;
+      if (!(await lockVerifiedPassword(user, executor))) return null;
       const replaced = await replaceRecoveryCodes(user.id, executor);
       await appendSecurityEvent(
         {
@@ -594,6 +625,10 @@ mfaRouter.post("/recovery-codes", requireAuth, mfaManageLimit, requireSuperUser,
       );
       return replaced;
     });
+    if (!codes) {
+      res.status(401).json(UNAUTHORIZED);
+      return;
+    }
     res.json({ codes });
   } catch (err) {
     next(err);

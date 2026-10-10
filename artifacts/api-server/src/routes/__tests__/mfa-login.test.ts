@@ -208,16 +208,21 @@ vi.mock("../../lib/db-client.js", () => {
       update: () => ({ set: () => ({ where: () => Promise.resolve(undefined) }) }),
       // Snapshot and restore, so a rolled-back transaction leaves no writes.
       // SELECT ... FOR UPDATE waits for and then holds a per-user lock until
-      // the transaction ends, as Postgres row locks do.
+      // the transaction ends, as Postgres row locks do. A transaction that
+      // already holds the key does not wait on itself, as Postgres does not
+      // for a row lock it holds (the MFA management routes lock the user row
+      // and then the passkey or user row again under the same key).
       transaction: async <T>(work: (tx: { execute: typeof execute; isTx: true }) => Promise<T>): Promise<T> => {
         const snapshot = cloneTables(fake.tables);
         const releases: Array<() => void> = [];
+        const held = new Set<string>();
         const txId = ++fake.txCounter;
         const txExecute = async (query: SQL) => {
           const { sql: raw, params } = dialect.sqlToQuery(query);
           fake.txLog.push({ tx: txId, op: raw.replace(/\s+/g, " ").trim() });
-          if (/\bFOR UPDATE\b/.test(raw)) {
+          if (/\bFOR UPDATE\b/.test(raw) && !held.has(String(params[0]))) {
             const key = String(params[0]);
+            held.add(key);
             while (fake.rowLocks.has(key)) await fake.rowLocks.get(key);
             let release!: () => void;
             fake.rowLocks.set(key, new Promise<void>((resolve) => { release = resolve; }));
@@ -316,6 +321,9 @@ const MANAGER: CurrentUser = { ...SUPER, id: "00000000-0000-4000-8000-0000000000
 const STALE: CurrentUser = { ...SUPER, id: "00000000-0000-4000-8000-0000000000a3", mustResetPassword: true };
 const PASSWORD = "correct-password";
 const CREDENTIAL_ID = "c3ludGhldGljLWNyZWRlbnRpYWw";
+// listPasskeys (lib/auth/mfa.ts) as the fake records it.
+const PASSKEY_LIST = "SELECT id::text AS id, user_id::text AS user_id, credential_id, public_key, sign_count, " +
+  "transports, name, created_at, last_used_at FROM user_passkeys WHERE user_id = $1::uuid ORDER BY created_at";
 
 let server: Server;
 let base = "";
@@ -1184,8 +1192,130 @@ describe("login rechecks the password hash under the user row lock", () => {
     expect(reply.status).toBe(200);
     expect(fake.txLog.map((e) => e.op)).toEqual([
       "SELECT password_hash FROM users WHERE id = $1::uuid FOR UPDATE",
+      PASSKEY_LIST,
       "insert-session"
     ]);
+  });
+
+  // Finding: the passkey list was read only before the lock, so a first
+  // passkey committed after that read still let the password-only path
+  // issue a session. The list is reread under the user row lock.
+  it("issues no session on the password-only path when a passkey was enrolled after the first read", async () => {
+    vi.stubEnv("LOCAL_LOGIN_MODE", "enabled");
+    // recordAuthSuccess runs after the unlocked passkey read and before the
+    // locking transaction: the enrollment commits in that window.
+    fake.recordAuthSuccess.mockImplementationOnce(async () => { enrollPasskey(); });
+    const { reply } = await passwordStep();
+    expect(reply.status).toBe(401);
+    expect(reply.body).toEqual({ error: "Invalid credentials" });
+    expect(reply.cookies).toEqual([]);
+    expect(fake.sessionInsert).not.toHaveBeenCalled();
+    expect(fake.tables.challenges).toHaveLength(0);
+    expect(fake.audit).not.toHaveBeenCalledWith(expect.objectContaining({ outcome: "success" }));
+    expect(fake.txLog.map((e) => e.op)).toEqual([
+      "SELECT password_hash FROM users WHERE id = $1::uuid FOR UPDATE",
+      PASSKEY_LIST
+    ]);
+
+    // The next attempt takes the MFA path.
+    const next = await passwordStep();
+    expect(next.reply.status).toBe(200);
+    expect(next.reply.body).toMatchObject({ mfaRequired: true });
+    expect(cookieValue(next.reply.cookies, SESSION_COOKIE_NAME)).toBeUndefined();
+    expect(fake.sessionInsert).not.toHaveBeenCalled();
+  });
+});
+
+// Finding: MFA management verified the current password, then ran its
+// write in a later transaction, so a password write committing in between
+// (which revokes the session) did not stop it. Each write now locks the
+// user row first and rechecks the hash the password was verified against.
+describe("MFA management rechecks the password under the user row lock", () => {
+  const USER_LOCK = "SELECT password_hash FROM users WHERE id = $1::uuid FOR UPDATE";
+  const registration = {
+    id: "bmV3LWNyZWRlbnRpYWw",
+    rawId: "bmV3LWNyZWRlbnRpYWw",
+    type: "public-key",
+    response: { clientDataJSON: "e30", attestationObject: "o2NmbXRkbm9uZQ", transports: ["internal"] },
+    clientExtensionResults: {}
+  };
+
+  // A password write commits right after requireCurrentPassword's check.
+  function rotateDuringVerify() {
+    fake.verifyPassword.mockImplementationOnce(async (password: string, hash: string) => {
+      const ok = hash === "stored-password-hash" && password === PASSWORD;
+      fake.user.passwordHash = "rotated-password-hash";
+      return ok;
+    });
+  }
+
+  function expectRefused(reply: Reply) {
+    expect(reply.status).toBe(401);
+    expect(reply.body).toEqual({ error: "Unauthorized" });
+    expect(fake.recordAuthFailure).not.toHaveBeenCalled();
+  }
+
+  it("POST /passkeys adds no passkey when the hash changed after the check", async () => {
+    expect((await call("POST", "/api/auth/mfa/passkeys/options", { password: PASSWORD }, asSuper())).status).toBe(200);
+    fake.verifyRegistration.mockResolvedValueOnce({
+      verified: true,
+      registrationInfo: { credential: { id: registration.id, publicKey: new Uint8Array([4, 5, 6]), counter: 0 } }
+    });
+    rotateDuringVerify();
+    fake.txLog = [];
+    const reply = await call("POST", "/api/auth/mfa/passkeys", { password: PASSWORD, response: registration }, asSuper());
+    expectRefused(reply);
+    expect(fake.tables.passkeys).toHaveLength(0);
+    expect(fake.tables.challenges[0]!.consumed_at).toBeNull();
+    expect(fake.audit).not.toHaveBeenCalledWith(expect.objectContaining({ action: "auth.mfa.passkey.added" }));
+    expect(fake.txLog.map((e) => e.op)).toEqual([USER_LOCK]);
+  });
+
+  it("DELETE /passkeys/:id removes nothing when the hash changed after the check", async () => {
+    vi.stubEnv("LOCAL_LOGIN_MODE", "enabled");
+    enrollPasskey();
+    const id = fake.tables.passkeys[0]!.id;
+    rotateDuringVerify();
+    const reply = await call("DELETE", `/api/auth/mfa/passkeys/${id}`, { password: PASSWORD }, asSuper());
+    expectRefused(reply);
+    expect(fake.tables.passkeys.map((p) => p.id)).toEqual([id]);
+    expect(fake.sql.some((s) => s.startsWith("DELETE FROM user_passkeys"))).toBe(false);
+    expect(fake.audit).not.toHaveBeenCalledWith(expect.objectContaining({ action: "auth.mfa.passkey.removed" }));
+  });
+
+  it("POST /recovery-codes keeps the old codes and returns none when the hash changed after the check", async () => {
+    const first = await call("POST", "/api/auth/mfa/recovery-codes", { password: PASSWORD }, asSuper());
+    expect(first.status).toBe(200);
+    const before = fake.tables.codes.map((r) => ({ ...r }));
+    expect(before).toHaveLength(10);
+    vi.clearAllMocks();
+    fake.auditInTx = [];
+    rotateDuringVerify();
+    const reply = await call("POST", "/api/auth/mfa/recovery-codes", { password: PASSWORD }, asSuper());
+    expectRefused(reply);
+    expect(reply.body).not.toHaveProperty("codes");
+    expect(fake.tables.codes).toEqual(before);
+    expect(fake.audit).not.toHaveBeenCalledWith(expect.objectContaining({ action: "auth.mfa.recovery_codes.generated" }));
+    expect(fake.auditInTx).toEqual([]);
+  });
+
+  it("takes the user row lock before the passkey or recovery-code locks", async () => {
+    vi.stubEnv("LOCAL_LOGIN_MODE", "enabled");
+    enrollPasskey();
+    fake.txLog = [];
+    const removed = await call("DELETE", `/api/auth/mfa/passkeys/${fake.tables.passkeys[0]!.id}`, { password: PASSWORD }, asSuper());
+    expect(removed.status).toBe(204);
+    let ops = fake.txLog.map((e) => e.op);
+    expect(ops[0]).toBe(USER_LOCK);
+    expect(ops[1]).toBe("SELECT id::text AS id FROM user_passkeys WHERE user_id = $1::uuid FOR UPDATE");
+
+    fake.txLog = [];
+    const generated = await call("POST", "/api/auth/mfa/recovery-codes", { password: PASSWORD }, asSuper());
+    expect(generated.status).toBe(200);
+    ops = fake.txLog.map((e) => e.op);
+    expect(ops[0]).toBe(USER_LOCK);
+    expect(ops[1]).toBe("SELECT 1 FROM users WHERE id = $1::uuid FOR UPDATE");
+    expect(new Set(fake.txLog.map((e) => e.tx)).size).toBe(1);
   });
 });
 

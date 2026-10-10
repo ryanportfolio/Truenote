@@ -298,9 +298,16 @@ authRouter.post("/login", async (req, res, next) => {
 
     await recordAuthSuccess(row.id);
 
+    // The passkey list above was read before any lock. Under the user's
+    // row lock, read it again: a first passkey enrolled since then means
+    // this attempt needs the second factor, so it gets no session and the
+    // generic 401 (the next attempt starts the MFA step). Passkey writes
+    // in routes/mfa.ts take the same row lock first.
     const token = await db.transaction(async (tx) => {
-      const current = await lockUserRow(row.id, tx as unknown as SqlExecutor);
+      const executor = tx as unknown as SqlExecutor;
+      const current = await lockUserRow(row.id, executor);
       if (current !== row.passwordHash) return null;
+      if ((await listPasskeys(row.id, executor)).length > 0) return null;
       return (await createSession(row.id, tx)).token;
     });
     if (!token) {

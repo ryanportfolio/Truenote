@@ -152,7 +152,9 @@ export function isCounterAccepted(newCounter: number, storedCounter: number): bo
  * current password hash, or null when the row is gone. Every password write
  * (change-password, reset-password, the admin reset) updates this row in
  * its own transaction, so a sign-in step holding the lock and a password
- * write run one after the other.
+ * write run one after the other. POST /api/auth/login (password-only
+ * session), completeMfaLogin, startLoginChallenge and the MFA management
+ * writes in routes/mfa.ts take it as their first lock.
  */
 export async function lockUserRow(
   userId: string,
