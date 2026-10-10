@@ -2,7 +2,7 @@
 
 Truenote's log review, alerting and availability monitoring. It addresses NIST SP 800-53 Rev. 5 Moderate AU-5, AU-6, AU-6(1), AU-6(3) and SI-4, and the readiness part of CA-7 (POA&M items POAM-2026-012 and POAM-2026-013).
 
-Status, 2026-10-10: deployed. `0011` was applied at 05:01 UTC, `SECURITY_ALERT_EMAIL` was set on `web` and `worker`, and both were deployed from `ed228fca` (#216). By 05:06 UTC the monitor had printed all 743 existing events, raising no alerts for history, and `/health/ready` returned 200 on both hosts. The off-Railway log copy and the uptime check live in the private repository `ryanportfolio/truenote-ops` (created 2026-10-10). Its uptime check runs against `/health` until `/health/ready` is deployed; its log export waits for the `RAILWAY_TOKEN` secret.
+Status, 2026-10-10: deployed. `0011` was applied at 05:01 UTC, `SECURITY_ALERT_EMAIL` was set on `web` and `worker`, and both were deployed from `ed228fca` (#216). By 05:06 UTC the monitor had printed all 743 existing events, raising no alerts for history, and `/health/ready` returned 200 on both hosts. The off-Railway log copy and the uptime check live in the private repository `ryanportfolio/truenote-ops` (created 2026-10-10). Its uptime check watches `/health/ready` on both hosts. Its log export ran first on 2026-10-10 at 15:18 UTC and committed 2026-10-07 to 2026-10-09 (commit `7187cbd`); later days follow at 02:23 UTC daily.
 
 ## Design decisions
 

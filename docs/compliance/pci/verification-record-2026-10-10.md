@@ -7,7 +7,7 @@
 | Check | Result |
 |---|---|
 | Production verifier source identity | `production-control-verification.sql` SHA-256 `A6ECF082FD5F358A17F2A9CCCCD81495C28600A8699AABDFC2560732A9C77EC9`; source only, not an execution receipt |
-| Threat-model source identity | `threat-model.md` SHA-256 `FA37352BD99B3A2EE7B3FE5DB9510967DABE399762B2C2403E7EF0719D3D9E7E`; engineering source only, not a signed review or risk acceptance |
+| Threat-model source identity | `threat-model.md` SHA-256 `88F89D51D5AF064C4AFE371475AD34715ADDBE94A75E21A5F5BF779AAF5AD423`; engineering source only, not a signed review or risk acceptance |
 
 This record supersedes
 [`verification-record-2026-10-07.md`](./verification-record-2026-10-07.md) as the
@@ -56,8 +56,8 @@ open, except SIEM delivery, which is replaced by:
 
 - six of eleven alert rules not yet tested in production
   (`docs/security/monitoring.md`, "Alert test record");
-- the daily log export to `ryanportfolio/truenote-ops`, which waits for its
-  Railway token;
+- a review of the daily log export to `ryanportfolio/truenote-ops`, which first
+  ran on 2026-10-10 and committed 2026-10-07 to 2026-10-09;
 - the audit retention period (AU-11), open until the employer names its
   assessment framework;
 - `lib/db/sql/0013_drop_siem_delivery_outbox.sql`, not yet applied in production.
