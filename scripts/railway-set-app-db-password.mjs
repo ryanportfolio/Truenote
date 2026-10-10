@@ -18,7 +18,8 @@
 // Running services keep their open connections; new connections use the new
 // password only after web and worker are redeployed, so redeploy both right
 // after a rotation (.claude/reference/deployment.md, "Database roles"). The
-// backup service starts fresh on each scheduled run and needs no redeploy.
+// backup service resolves BACKUP_DATABASE_URL when it deploys, so redeploy it
+// after rotating truenote_backup.
 //
 // Run from the repo root on a machine with the Railway CLI logged in.
 import { createHash, createHmac, pbkdf2Sync, randomBytes } from "node:crypto";
@@ -134,4 +135,8 @@ if (alter.status !== 0 || alter.out !== "verifier stored") {
   process.exit(alter.status || 1);
 }
 console.log(`role ${ROLE}: verifier stored`);
-if (which === "app") console.log("Redeploy web and worker if their DATABASE_URL uses this role.");
+console.log(
+  which === "app"
+    ? "Redeploy web and worker if their DATABASE_URL uses this role."
+    : "Redeploy the backup service (railway redeploy -s backup -y) so its next run uses the new password."
+);

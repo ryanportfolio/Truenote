@@ -26,12 +26,12 @@
 #   OFFSITE_S3_ACCESS_KEY_ID, OFFSITE_S3_SECRET_ACCESS_KEY   off-site store, write-only key
 #   S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY
 #                             the Railway bucket truenote-storage (read)
-#   BACKUP_GIT_URL            optional; repository to bundle (public HTTPS URL)
+#   BACKUP_GIT_URL            repository to bundle (public HTTPS URL)
 #   BACKUP_PREFIX             optional; default weekly
 set -eu
 umask 077
 
-for name in BACKUP_DATABASE_URL BACKUP_AGE_RECIPIENT \
+for name in BACKUP_DATABASE_URL BACKUP_AGE_RECIPIENT BACKUP_GIT_URL \
   OFFSITE_S3_ENDPOINT OFFSITE_S3_REGION OFFSITE_S3_BUCKET OFFSITE_S3_ACCESS_KEY_ID OFFSITE_S3_SECRET_ACCESS_KEY \
   S3_ENDPOINT S3_REGION S3_BUCKET S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY; do
   eval "value=\${$name:-}"
@@ -130,12 +130,10 @@ done < "$work/referenced.txt"
 rm -f "$work/document_versions.sql" "$work/referenced.txt"
 
 # 4. Code repository bundle. `git bundle verify` needs a repository.
-if [ -n "${BACKUP_GIT_URL:-}" ]; then
-  git clone --quiet --mirror "$BACKUP_GIT_URL" "$work/repo.git"
-  git -C "$work/repo.git" bundle create "$work/parts/code.bundle" --all 2>/dev/null
-  git -C "$work/repo.git" bundle verify --quiet "$work/parts/code.bundle"
-  rm -rf "$work/repo.git"
-fi
+git clone --quiet --mirror "$BACKUP_GIT_URL" "$work/repo.git"
+git -C "$work/repo.git" bundle create "$work/parts/code.bundle" --all 2>/dev/null
+git -C "$work/repo.git" bundle verify --quiet "$work/parts/code.bundle"
+rm -rf "$work/repo.git"
 
 # 5. Inner manifest: SHA-256 of every part.
 find . -type f ! -name parts.sha256 -exec sha256sum {} + > "$work/parts.sha256"
@@ -169,7 +167,7 @@ for key in $keys; do
 done
 printf '{"run_id":"%s","started_at":"%s","finished_at":"%s","objects":[%s],"size":%s,"sha256":"%s","dump_bytes":%s,"bucket_files":%s,"referenced_files":%s,"referenced_files_missing":%s,"code_bundle":%s,"age_recipient":"%s"}\n' \
   "$run_id" "$started_at" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$objects" "$size" "$sha" "$dump_size" "$file_count" \
-  "$referenced" "$missing" "$([ -n "${BACKUP_GIT_URL:-}" ] && echo true || echo false)" "$BACKUP_AGE_RECIPIENT" > manifest.json
+  "$referenced" "$missing" true "$BACKUP_AGE_RECIPIENT" > manifest.json
 rclone copyto manifest.json "offsite:$OFFSITE_S3_BUCKET/manifests/$run_id.json" --no-check-dest --retries 3 --quiet
 
 echo "[backup] run $run_id ok: $keys, $size bytes, sha256 $sha, $file_count bucket files, $missing of $referenced referenced files missing"

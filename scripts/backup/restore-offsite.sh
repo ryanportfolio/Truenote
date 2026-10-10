@@ -3,7 +3,12 @@
 # Runs inside the database service of a restore-test project built from
 # Dockerfile.backup (runbook section 4.7), never inside production.
 #
-#   sh /opt/truenote-backup/restore-offsite.sh <run id>
+#   sh /opt/truenote-backup/restore-offsite.sh <run id> [<as of, UTC, e.g. 2026-10-18T07:00:00Z>]
+#
+# With an "as of" time, every off-site read uses the object versions that were
+# current at that time (rclone --s3-version-at). Use it when check-offsite.mjs
+# reports an overwritten key: Object Lock keeps the original version, but a
+# newer one uploaded under the same name is what a plain read returns.
 #
 # Reads manifests/<run id>.json and the object it names from the off-site
 # store with a read-only key, checks size and SHA-256 against the manifest,
@@ -24,6 +29,14 @@ set -eu
 umask 077
 
 run_id="${1:-}"
+as_of="${2:-}"
+version_flag=""
+if [ -n "$as_of" ]; then
+  case "$as_of" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) version_flag="--s3-version-at=$as_of" ;;
+    *) echo "[restore] as-of time must look like 2026-10-18T07:00:00Z" >&2; exit 64 ;;
+  esac
+fi
 case "$run_id" in
   [0-9]*T[0-9]*Z) ;;
   *) echo "usage: restore-offsite.sh <run id, e.g. 20261018T061700Z>" >&2; exit 64 ;;
@@ -54,7 +67,7 @@ export RCLONE_CONFIG_OFFSITE_TYPE=s3 RCLONE_CONFIG_OFFSITE_PROVIDER=Other \
 echo "[restore] start $(date -u +%Y-%m-%dT%H:%M:%SZ), run $run_id"
 
 # 1. Manifest and object.
-rclone copyto "offsite:$OFFSITE_S3_BUCKET/manifests/$run_id.json" "$work/manifest.json" --quiet
+rclone copyto "offsite:$OFFSITE_S3_BUCKET/manifests/$run_id.json" "$work/manifest.json" --quiet $version_flag
 want_sha=$(sed -n 's/.*"sha256":"\([0-9a-f]\{64\}\)".*/\1/p' "$work/manifest.json")
 want_size=$(sed -n 's/.*"size":\([0-9]*\).*/\1/p' "$work/manifest.json")
 keys=$(sed -n 's/.*"objects":\[\([^]]*\)\].*/\1/p' "$work/manifest.json" | tr -d '"' | tr ',' ' ')
@@ -66,7 +79,7 @@ fi
 # first, so take the first listed copy that still exists.
 key=""
 for candidate in $keys; do
-  if rclone copyto "offsite:$OFFSITE_S3_BUCKET/$candidate" "$work/backup.tar.age" --quiet 2>/dev/null; then
+  if rclone copyto "offsite:$OFFSITE_S3_BUCKET/$candidate" "$work/backup.tar.age" --quiet $version_flag 2>/dev/null; then
     key="$candidate"
     break
   fi
@@ -93,19 +106,29 @@ cd "$work/parts"
 sha256sum --quiet -c parts.sha256
 echo "[restore] decrypted; all parts match the inner manifest"
 
-# 3. Restore the database. Roles belong to the server, so truenote_app is
-#    created without a login before the restore; the dump's grants need it.
+# 3. Restore the database. Roles belong to the server, not the dump, while the
+#    restored schema_migrations already records 0007 and 0014, so neither file
+#    can be applied again. Recreate both login roles with the attributes those
+#    files give them (lib/db/sql/0007_app_runtime_role.sql and
+#    0014_backup_role.sql); their table grants come from the dump. Neither gets
+#    a password here: set one before use (runbook section 4.7, step 6).
 psql -U postgres -d "$db" -X -v ON_ERROR_STOP=1 -q -c "
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 DO \$\$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'truenote_app') THEN CREATE ROLE truenote_app NOLOGIN; END IF;
-END \$\$;"
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'truenote_app') THEN CREATE ROLE truenote_app; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'truenote_backup') THEN CREATE ROLE truenote_backup; END IF;
+END \$\$;
+ALTER ROLE truenote_app WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 90;
+ALTER ROLE truenote_backup WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 3;
+ALTER ROLE truenote_backup SET default_transaction_read_only = on;
+GRANT pg_read_all_data TO truenote_backup WITH INHERIT TRUE, SET FALSE;"
 pg_restore -U postgres -d "$db" --no-owner --single-transaction --exit-on-error db.dump
 psql -U postgres -d postgres -X -v ON_ERROR_STOP=1 -q \
   -c "REVOKE TEMPORARY ON DATABASE \"$db\" FROM PUBLIC" \
-  -c "GRANT CONNECT ON DATABASE \"$db\" TO truenote_app"
+  -c "GRANT CONNECT ON DATABASE \"$db\" TO truenote_app" \
+  -c "GRANT CONNECT ON DATABASE \"$db\" TO truenote_backup"
 echo "[restore] database restored $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # 4. Files.
