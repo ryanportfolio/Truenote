@@ -4,7 +4,7 @@ import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { oidcRouter } from "../oidc.js";
-import { createOidcState, sealOidcState } from "../../lib/auth/oidc.js";
+import { createOidcState, openOidcState, sealOidcState } from "../../lib/auth/oidc.js";
 
 // Exercises the real /callback handler, OIDC verification and identities.ts
 // SQL against an in-memory fake of the users and user_identities tables.
@@ -209,19 +209,28 @@ const fetchFake = vi.fn(async (input: unknown) => {
 });
 
 type Handler = (req: Request, res: Response) => Promise<void>;
-function callbackHandler(): Handler {
+function routeHandler(path: "/start" | "/callback"): Handler {
   const stack = (oidcRouter as unknown as {
     stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: Handler }> } }>;
   }).stack;
-  const handler = stack.find((layer) => layer.route?.path === "/callback" && layer.route.methods.get)
+  const handler = stack.find((layer) => layer.route?.path === path && layer.route.methods.get)
     ?.route?.stack.at(-1)?.handle;
   expect(handler).toBeDefined();
   return handler!;
 }
+function callbackHandler(): Handler {
+  return routeHandler("/callback");
+}
 
-/** Run one SSO callback whose ID token carries `claims` over the defaults. */
-async function callback(claims: Record<string, unknown>) {
-  const state = createOidcState("/chat");
+/**
+ * Run one SSO callback whose ID token carries `claims` over the defaults.
+ * `reauthenticate` mints the state the way /start does after an idle expiry.
+ */
+async function callback(
+  claims: Record<string, unknown>,
+  options: { reauthenticate?: boolean; cookies?: Record<string, string> } = {}
+) {
+  const state = createOidcState("/chat", { reauthenticate: options.reauthenticate });
   idTokenClaims = {
     iss: issuer,
     aud: clientId,
@@ -240,11 +249,39 @@ async function callback(claims: Record<string, unknown>) {
     redirect(status: number, url: string) { expect(status).toBe(302); location = url; }
   };
   await callbackHandler()({
-    cookies: { truenote_oidc_state: sealOidcState(state, stateSecret) },
+    cookies: { ...options.cookies, truenote_oidc_state: sealOidcState(state, stateSecret) },
     query: { state: state.state, code: "synthetic-auth-code" },
     headers: {}
   } as unknown as Request, res as unknown as Response);
-  return { location };
+  return { location, clearCookie: res.clearCookie, startedAt: state.authenticatedAfter };
+}
+
+/**
+ * Run GET /start with the given cookies and response locals. `user` stands
+ * in for what attachCurrentUser resolved from the session cookie.
+ */
+async function start(
+  cookies: Record<string, string> = {},
+  locals: Record<string, unknown> = {},
+  user: { id: string } | null = null
+) {
+  let location = "";
+  const res = {
+    cookie: vi.fn(),
+    locals,
+    redirect(status: number, url: string) { expect(status).toBe(302); location = url; }
+  };
+  await routeHandler("/start")({
+    cookies,
+    user,
+    query: { returnTo: "/chat" },
+    headers: {}
+  } as unknown as Request, res as unknown as Response);
+  const sealed = res.cookie.mock.calls.find(([name]) => name === "truenote_oidc_state")?.[1];
+  return {
+    authorization: new URL(location),
+    state: openOidcState(String(sealed), stateSecret)
+  };
 }
 
 function bind(user: FakeUser, subject: string) {
@@ -488,5 +525,123 @@ describe("OIDC token checks for binding", () => {
     expectCallbackError("audit unavailable");
     expect(fake.deleteSessionByToken).toHaveBeenCalledWith("session-token-1");
     expect(fake.setSessionCookie).not.toHaveBeenCalled();
+  });
+});
+
+describe("OIDC re-authentication after an idle expiry", () => {
+  const MARKER = "truenote_oidc_reauth";
+
+  it("does not force a login without the idle marker", async () => {
+    const { authorization, state } = await start();
+    expect(authorization.searchParams.has("prompt")).toBe(false);
+    expect(state).not.toBeNull();
+    expect(state).not.toHaveProperty("authenticatedAfter");
+  });
+
+  it("sends prompt=login and records the start time when the marker cookie is present", async () => {
+    const before = Math.floor(Date.now() / 1000);
+    const { authorization, state } = await start({ [MARKER]: "1" });
+    expect(authorization.searchParams.get("prompt")).toBe("login");
+    expect(state?.authenticatedAfter).toBeGreaterThanOrEqual(before);
+  });
+
+  it("forces a login when the idle expiry is detected on the /start request itself", async () => {
+    const { authorization, state } = await start({}, { oidcReauthRequired: true });
+    expect(authorization.searchParams.get("prompt")).toBe("login");
+    expect(typeof state?.authenticatedAfter).toBe("number");
+  });
+
+  it("signs in when auth_time is after the start and clears the marker", async () => {
+    bind(person, "subject-person");
+    const { location, clearCookie } = await callback(
+      { sub: "subject-person", email: person.email, auth_time: Math.floor(Date.now() / 1000) },
+      { reauthenticate: true }
+    );
+    expectSignedIn(person, location);
+    expect(clearCookie).toHaveBeenCalledWith(MARKER, { path: "/api/auth/oidc" });
+  });
+
+  it("accepts auth_time up to 60 seconds before the start (clock skew)", async () => {
+    bind(person, "subject-person");
+    const { location } = await callback(
+      { sub: "subject-person", email: person.email, auth_time: Math.floor(Date.now() / 1000) - 60 },
+      { reauthenticate: true }
+    );
+    expectSignedIn(person, location);
+  });
+
+  it("refuses a silent sign-in whose auth_time predates the start", async () => {
+    bind(person, "subject-person");
+    const { location, clearCookie } = await callback(
+      { sub: "subject-person", email: person.email, auth_time: Math.floor(Date.now() / 1000) - 3600 },
+      { reauthenticate: true }
+    );
+    expectRefused(location, "reauth_auth_time_stale");
+    expectCallbackError("OIDC sign-in after an idle expiry did not re-authenticate");
+    expect(clearCookie).not.toHaveBeenCalledWith(MARKER, expect.anything());
+  });
+
+  it.each([undefined, "1760000000"])("refuses when auth_time is %j", async (authTime) => {
+    bind(person, "subject-person");
+    const { location } = await callback(
+      { sub: "subject-person", email: person.email, auth_time: authTime },
+      { reauthenticate: true }
+    );
+    expectRefused(location, "reauth_auth_time_missing");
+    expectCallbackError(
+      "OIDC id_token has no auth_time; add the auth_time optional claim to the ID token"
+    );
+  });
+
+  it("refuses a stale first login before binding the identity", async () => {
+    const { location } = await callback(
+      { sub: "subject-person", email: person.email, auth_time: 0 },
+      { reauthenticate: true }
+    );
+    expectRefused(location, "reauth_auth_time_stale");
+    expect(fake.identities).toEqual([]);
+  });
+
+  it("forces a login when a session cookie no longer resolves to a session", async () => {
+    // The idle response carrying the marker was lost, or a concurrent
+    // request had already deleted the row.
+    const { authorization, state } = await start({ kbase_session: "dangling-token" });
+    expect(authorization.searchParams.get("prompt")).toBe("login");
+    expect(typeof state?.authenticatedAfter).toBe("number");
+  });
+
+  it("does not force a login while the session cookie is still valid", async () => {
+    const { authorization } = await start({ kbase_session: "live-token" }, {}, { id: person.id });
+    expect(authorization.searchParams.has("prompt")).toBe(false);
+  });
+
+  it.each([
+    ["the marker cookie", { [MARKER]: "1" }],
+    ["a dangling session cookie", { kbase_session: "dangling-token" }]
+  ])("restarts an unforced flow when %s appears before the callback", async (_label, cookies) => {
+    bind(person, "subject-person");
+    const { location, clearCookie } = await callback(
+      { sub: "subject-person", email: person.email, auth_time: 0 },
+      { cookies }
+    );
+    expect(location).toBe("/api/auth/oidc/start?returnTo=%2Fchat");
+    expect(fetchFake).not.toHaveBeenCalledWith(discovery.token_endpoint, expect.anything());
+    expect(fake.createSession).not.toHaveBeenCalled();
+    expect(clearCookie).not.toHaveBeenCalledWith(MARKER, expect.anything());
+  });
+
+  it("accepts a forced flow that arrives with the marker still set", async () => {
+    bind(person, "subject-person");
+    const { location } = await callback(
+      { sub: "subject-person", email: person.email, auth_time: Math.floor(Date.now() / 1000) },
+      { reauthenticate: true, cookies: { [MARKER]: "1", kbase_session: "dangling-token" } }
+    );
+    expectSignedIn(person, location);
+  });
+
+  it("ignores auth_time when no re-authentication was asked for", async () => {
+    bind(person, "subject-person");
+    const { location } = await callback({ sub: "subject-person", email: person.email, auth_time: 0 });
+    expectSignedIn(person, location);
   });
 });

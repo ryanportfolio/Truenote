@@ -13,6 +13,7 @@ import {
   createOidcState,
   getOidcConfig,
   loadOidcDiscovery,
+  OidcReauthError,
   openOidcState,
   safeReturnTo,
   sealOidcState,
@@ -26,6 +27,7 @@ import {
 } from "../lib/auth/sessions.js";
 import { clientIpFrom } from "../lib/auth/rate-limit.js";
 import { getSsoSessionMaxHours } from "../lib/auth/session-policy.js";
+import { clearIdleReauth, isIdleReauthRequired } from "../lib/auth/idle-reauth.js";
 import {
   recordSecurityEvent,
   recordSecurityEventBestEffort
@@ -88,7 +90,10 @@ oidcRouter.get("/start", oidcIpLimit, async (req, res) => {
       return;
     }
     const discovery = await loadOidcDiscovery(config);
-    const state = createOidcState(safeReturnTo(req.query.returnTo));
+    // After an idle expiry Entra must ask for credentials again; a silent
+    // SSO sign-in is not re-authentication (PCI DSS 8.2.8).
+    const reauthenticate = isIdleReauthRequired(req, res);
+    const state = createOidcState(safeReturnTo(req.query.returnTo), { reauthenticate });
     res.cookie(STATE_COOKIE, sealOidcState(state, config.stateSecret), {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -105,6 +110,7 @@ oidcRouter.get("/start", oidcIpLimit, async (req, res) => {
     authorization.searchParams.set("nonce", state.nonce);
     authorization.searchParams.set("code_challenge", codeChallenge(state.codeVerifier));
     authorization.searchParams.set("code_challenge_method", "S256");
+    if (reauthenticate) authorization.searchParams.set("prompt", "login");
     res.redirect(302, authorization.toString());
   } catch (error) {
     console.warn("[oidc] start failed:", error instanceof Error ? error.message : error);
@@ -124,6 +130,13 @@ oidcRouter.get("/callback", oidcIpLimit, async (req, res) => {
     const state = openOidcState(sealed, config.stateSecret);
     if (!state || req.query.state !== state.state || typeof req.query.code !== "string") {
       throw new Error("OIDC callback state is invalid or expired");
+    }
+    if (state.authenticatedAfter === undefined && isIdleReauthRequired(req, res)) {
+      // The session ended after an unforced /start (for example it idled
+      // out while the user was at Entra). Restart so Entra is sent
+      // prompt=login; /start now sees the requirement, so this cannot loop.
+      res.redirect(302, `/api/auth/oidc/start?returnTo=${encodeURIComponent(state.returnTo)}`);
+      return;
     }
     const discovery = await loadOidcDiscovery(config);
     const tokenResponse = await fetch(discovery.token_endpoint, {
@@ -148,7 +161,8 @@ oidcRouter.get("/callback", oidcIpLimit, async (req, res) => {
       idToken: tokens.id_token,
       nonce: state.nonce,
       config,
-      discovery
+      discovery,
+      authenticatedAfter: state.authenticatedAfter
     });
     const issuer = discovery.issuer;
     const sourceIp = clientIpFrom(req);
@@ -222,6 +236,7 @@ oidcRouter.get("/callback", oidcIpLimit, async (req, res) => {
       details: { issuer, authMethod: "oidc" }
     });
     setSessionCookie(res, created.token, { maxAgeMs: maxHours * 60 * 60 * 1000 });
+    clearIdleReauth(res);
     res.redirect(302, state.returnTo);
   } catch (error) {
     if (sessionToken) await deleteSessionByToken(sessionToken).catch(() => undefined);
@@ -236,6 +251,17 @@ oidcRouter.get("/callback", oidcIpLimit, async (req, res) => {
         resourceType: "session",
         sourceIp: clientIpFrom(req),
         details: { reason: error.reason, authMethod: "oidc" }
+      });
+    } else if (error instanceof OidcReauthError) {
+      // The token was valid but not fresh; no account is resolved yet.
+      recordSecurityEventBestEffort({
+        action: "auth.oidc.login",
+        outcome: "denied",
+        actor: null,
+        programId: null,
+        resourceType: "session",
+        sourceIp: clientIpFrom(req),
+        details: { reason: `reauth_${error.reason}`, authMethod: "oidc" }
       });
     }
     console.warn("[oidc] callback failed:", error instanceof Error ? error.message : error);

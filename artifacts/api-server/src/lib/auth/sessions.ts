@@ -130,7 +130,8 @@ export async function createSession(
  *
  * Idle limit: an oidc session, or a local session while LOCAL_LOGIN_MODE
  * is not `enabled`, whose last_used_at is older than SESSION_IDLE_MINUTES
- * is deleted (best effort) and refused.
+ * is deleted (best effort) and refused, and `options.onIdleExpiry` is
+ * called with the session's auth method.
  *
  * Side effect: bumps last_used_at when a valid session is touched, unless
  * `options.background` is true (requests sent with
@@ -139,7 +140,10 @@ export async function createSession(
  */
 export async function findSessionByToken(
   token: string | undefined,
-  options: { background?: boolean } = {}
+  options: {
+    background?: boolean;
+    onIdleExpiry?: (authMethod: "local" | "oidc") => void;
+  } = {}
 ): Promise<SessionUser | null> {
   if (!token) return null;
   const tokenHash = hashToken(token);
@@ -193,6 +197,7 @@ export async function findSessionByToken(
         err instanceof Error ? err.message : err
       );
     }
+    options.onIdleExpiry?.(row.authMethod);
     return null;
   }
 
