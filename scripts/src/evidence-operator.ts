@@ -25,25 +25,45 @@
  *    definitions themselves.
  * 3. Negative tests: in one transaction that always ends in ROLLBACK, an
  *    UPDATE and a DELETE aimed at the newest row and a TRUNCATE, each in its
- *    own savepoint, on evidence_receipts and on security_events. Each must
- *    raise an error. A lock or statement timeout is not a refusal and stops
+ *    own savepoint, on evidence_receipts and on security_events. A test
+ *    counts as refused only when the statement fails with SQLSTATE P0001 and
+ *    a message ending in "is append-only", the error the triggers of 0008 and
+ *    0012 raise; any other error is recorded, with its SQLSTATE and message,
+ *    as not refused. A lock or statement timeout is not a refusal and stops
  *    the run. After the rollback, the rows that existed before the tests must
  *    be unchanged (their count and the newest one's hash); rows appended by
  *    the application in the meantime are allowed and reported.
  * 4. Receipt: result pass only when every verifier control passed and all six
  *    tests were refused. Appended with append_evidence_receipt only under
  *    --apply; a dry run prints the payload and appends nothing.
- * 5. Export (--export-dir, with or without --apply; reads the database only):
- *    the receipts recorded in the UTC month (--month YYYY-MM, default the
- *    previous month), the attachments they name and the chain head, written
- *    to <dir>/<YYYY-MM>/ after the chain from the month's first receipt to
- *    the head recomputes. A mismatch writes nothing. When <dir> is the top
- *    level of a Git repository, the month folder is committed; --push pushes.
+ * 5. Export (--export-dir, with or without --apply; reads the database only).
+ *    The target is checked before the database is touched:
+ *    - a directory outside every Git work tree gets the files and no commit;
+ *      --push is refused;
+ *    - the top level of a Git repository whose origin URL ends in
+ *      truenote-evidence (or truenote-evidence.git), and which is not the
+ *      repository this script runs from or a worktree of it, gets the files
+ *      and a commit of the month folder; --push runs `git push origin HEAD`;
+ *    - anything else is refused.
+ *    The month (--month YYYY-MM, default the previous UTC month) is a
+ *    contiguous sequence range: from the first sequence recorded at or after
+ *    the month's UTC start to the first recorded at or after the next month's
+ *    start (exclusive; the head plus one if none). append_evidence_receipt
+ *    reads the clock before it takes the chain lock, so recorded times near a
+ *    month boundary can run against sequence order; the range still puts
+ *    every receipt in exactly one month. Before anything is written, the
+ *    chain from the receipt before the range through the chain head
+ *    recomputes (payload_sha256, receipt_hash, previous_hash links), an empty
+ *    month included; a mismatch writes nothing and names the first bad
+ *    sequence. <dir>/<YYYY-MM>/ then gets receipts.jsonl, attachments.json and
+ *    chain-head.json, with no export time in them, so the same chain state
+ *    gives the same bytes and an unchanged re-export makes no commit. A failed
+ *    commit unstages the month folder.
  *
  * Exits non-zero on any error. Never prints DATABASE_URL or its password.
  */
 import { execFile } from "node:child_process";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -64,6 +84,11 @@ const TABLES = [
 ] as const;
 // 55P03 lock_not_available, 57014 query_canceled: the statement never reached the trigger.
 const TIMEOUT_CODES = new Set(["55P03", "57014"]);
+// block_security_event_mutation (0008) and block_evidence_receipt_mutation (0012)
+// RAISE EXCEPTION '<table> is append-only', which carries SQLSTATE P0001 (raise_exception).
+const APPEND_ONLY_SQLSTATE = "P0001";
+const APPEND_ONLY_MESSAGE = /is append-only$/;
+const EVIDENCE_REPO_NAME = "truenote-evidence";
 const run = promisify(execFile);
 
 // ------------------------------------------------------------- redaction
@@ -281,7 +306,18 @@ async function runNegativeTests(
           if (err.code && TIMEOUT_CODES.has(err.code)) {
             throw new Error(`${statement} timed out (${err.code}) before reaching the trigger; nothing was tested, rerun later`);
           }
-          tests.push({ table: t.table, statement, refused: true, error: err.message ?? String(error), sqlstate: err.code });
+          const message = err.message ?? String(error);
+          const refused = err.code === APPEND_ONLY_SQLSTATE && APPEND_ONLY_MESSAGE.test(message);
+          tests.push({
+            table: t.table,
+            statement,
+            refused,
+            error: message,
+            sqlstate: err.code,
+            ...(refused
+              ? {}
+              : { reason: `the error is not the append-only trigger's (SQLSTATE ${APPEND_ONLY_SQLSTATE}, "... is append-only")` })
+          });
         }
         // Undo the statement whether or not it ran, and release its locks.
         await client.query("ROLLBACK TO SAVEPOINT negative_test");
@@ -402,42 +438,125 @@ async function git(dir: string, args: string[]): Promise<{ ok: boolean; stdout: 
   }
 }
 
-async function exportMonth(client: Client, opts: Options & { exportDir: string }): Promise<void> {
-  const info = await stat(opts.exportDir).catch(() => null);
-  if (!info?.isDirectory()) throw new Error(`--export-dir ${opts.exportDir} is not an existing directory`);
+type ExportTarget = { dir: string; repository: boolean };
 
+/** The last path segment of a remote URL (split on "/", "\" and ":"), without a trailing ".git". */
+function remoteRepositoryName(url: string): string {
+  const segments = url.trim().split(/[/\\:]/).filter((s) => s !== "");
+  const last = segments[segments.length - 1] ?? "";
+  return last.endsWith(".git") ? last.slice(0, -".git".length) : last;
+}
+
+async function gitCommonDir(dir: string): Promise<string | null> {
+  const res = await git(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (!res.ok || !res.stdout.trim()) return null;
+  const resolved = await realpath(path.resolve(dir, res.stdout.trim())).catch(() => null);
+  if (!resolved) return null;
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+/**
+ * Decide where the export may go before anything is read or written (see the
+ * header, step 5). Throws with the reason on a refused target.
+ */
+async function resolveExportTarget(dir: string, push: boolean): Promise<ExportTarget> {
+  const info = await stat(dir).catch(() => null);
+  if (!info?.isDirectory()) throw new Error(`--export-dir ${dir} is not an existing directory`);
+  const refuse = (why: string) =>
+    new Error(
+      `refusing to export to ${dir}: ${why}. Use a directory outside any Git work tree, or the top level of a ` +
+        `clone of the ${EVIDENCE_REPO_NAME} repository; nothing was written`
+    );
+
+  const inside = await git(dir, ["rev-parse", "--is-inside-work-tree"]);
+  if (!inside.ok) {
+    if (!/not a git repository/i.test(inside.stderr)) {
+      throw refuse(`Git could not tell whether it is in a repository (${inside.stderr.trim() || `exit ${inside.code}`})`);
+    }
+    if (push) throw refuse("--push needs a Git repository and this directory is not in one");
+    return { dir, repository: false };
+  }
+  if (inside.stdout.trim() !== "true") throw refuse("it is inside a Git directory, not a work tree");
+
+  const targetCommon = await gitCommonDir(dir);
+  if (!targetCommon) throw refuse("Git did not report the repository's common directory");
+  const codeCommon = await gitCommonDir(REPO_ROOT);
+  if (codeCommon !== null && codeCommon === targetCommon) {
+    throw refuse("it belongs to the Truenote code repository this script runs from (or a worktree of it)");
+  }
+
+  const prefix = await git(dir, ["rev-parse", "--show-prefix"]);
+  if (!prefix.ok || prefix.stdout.trim() !== "") {
+    const top = await git(dir, ["rev-parse", "--show-toplevel"]);
+    const where = top.ok && top.stdout.trim() ? ` ${top.stdout.trim()}` : "";
+    throw refuse(`it is inside the Git work tree${where} but not its top level`);
+  }
+
+  const origin = await git(dir, ["remote", "get-url", "origin"]);
+  if (!origin.ok || !origin.stdout.trim()) throw refuse("the repository has no origin remote");
+  const name = remoteRepositoryName(origin.stdout);
+  if (name !== EVIDENCE_REPO_NAME) {
+    throw refuse(`the repository's origin is ${name || "unnamed"}, not ${EVIDENCE_REPO_NAME}`);
+  }
+  return { dir, repository: true };
+}
+
+/** Undo `git add` of the month folder after a failed commit. */
+async function unstage(dir: string, month: string): Promise<boolean> {
+  const reset = await git(dir, ["reset", "-q", "--", month]);
+  if (reset.ok) return true;
+  // An unborn branch has no HEAD to reset to on older Git versions.
+  const rm = await git(dir, ["rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", month]);
+  return rm.ok;
+}
+
+async function exportMonth(client: Client, opts: Options, target: ExportTarget): Promise<void> {
   const { start, end } = monthBounds(opts.month);
-  const monthRows = (
-    await client.query<ReceiptRow>(
-      `SELECT ${RECEIPT_COLUMNS} FROM evidence_receipts
-       WHERE recorded_at >= $1::timestamptz AND recorded_at < $2::timestamptz ORDER BY sequence`,
-      [start, end]
-    )
-  ).rows;
-  const headRow = (await client.query<ReceiptRow>(`SELECT ${RECEIPT_COLUMNS} FROM evidence_receipts ORDER BY sequence DESC LIMIT 1`)).rows[0];
 
-  // Verify from the month's first receipt to the chain head, linked to the receipt before the month.
-  if (monthRows.length > 0) {
-    const first = monthRows[0]!;
-    const last = monthRows[monthRows.length - 1]!;
-    const prior = (
-      await client.query<{ receipt_hash: string }>(
-        "SELECT receipt_hash FROM evidence_receipts WHERE sequence < $1::bigint ORDER BY sequence DESC LIMIT 1",
-        [first.sequence]
+  // One snapshot for the range, the receipt before it and the rest of the chain.
+  let fromSequence: number;
+  let toSequence: number;
+  let prior: ReceiptRow | undefined;
+  let rest: ReceiptRow[];
+  await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+  try {
+    const bounds = (
+      await client.query<{ from_seq: string | null; to_seq: string | null; head_seq: string | null }>(
+        `SELECT (SELECT min(sequence) FROM evidence_receipts WHERE recorded_at >= $1::timestamptz)::text AS from_seq,
+                (SELECT min(sequence) FROM evidence_receipts WHERE recorded_at >= $2::timestamptz)::text AS to_seq,
+                (SELECT max(sequence) FROM evidence_receipts)::text AS head_seq`,
+        [start, end]
+      )
+    ).rows[0]!;
+    const afterHead = (bounds.head_seq === null ? 0 : Number(bounds.head_seq)) + 1;
+    fromSequence = bounds.from_seq === null ? afterHead : Number(bounds.from_seq);
+    toSequence = bounds.to_seq === null ? afterHead : Number(bounds.to_seq);
+    prior = (
+      await client.query<ReceiptRow>(
+        `SELECT ${RECEIPT_COLUMNS} FROM evidence_receipts WHERE sequence < $1::bigint ORDER BY sequence DESC LIMIT 1`,
+        [fromSequence]
       )
     ).rows[0];
-    const later = (
-      await client.query<ReceiptRow>(
-        `SELECT ${RECEIPT_COLUMNS} FROM evidence_receipts WHERE sequence > $1::bigint ORDER BY sequence`,
-        [last.sequence]
-      )
+    rest = (
+      await client.query<ReceiptRow>(`SELECT ${RECEIPT_COLUMNS} FROM evidence_receipts WHERE sequence >= $1::bigint ORDER BY sequence`, [
+        fromSequence
+      ])
     ).rows;
-    const bad = verifyChain([...monthRows, ...later], prior?.receipt_hash ?? null);
-    if (bad) throw new Error(`the evidence chain does not verify at ${bad}; nothing was exported`);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
   }
-  const attachments = monthRows.flatMap(attachmentsOf);
 
-  const monthDir = path.join(opts.exportDir, opts.month);
+  // From the receipt before the range through the chain head, empty months included.
+  const chain = prior ? [prior, ...rest] : rest;
+  const bad = verifyChain(chain, prior ? (prior.previous_hash ?? null) : null);
+  if (bad) throw new Error(`the evidence chain does not verify at ${bad}; nothing was exported`);
+
+  const monthRows = rest.filter((r) => Number(r.sequence) < toSequence);
+  const attachments = monthRows.flatMap(attachmentsOf);
+  const headRow = chain[chain.length - 1];
+
   const lines = monthRows.map((r) =>
     JSON.stringify({
       sequence: Number(r.sequence),
@@ -452,53 +571,70 @@ async function exportMonth(client: Client, opts: Options & { exportDir: string }
       receipt_hash: r.receipt_hash
     })
   );
+  // No export time: the same chain state gives the same bytes.
   const head = {
     month: opts.month,
+    fromSequence,
+    toSequence,
+    toSequenceExclusive: true,
     sequence: headRow ? Number(headRow.sequence) : null,
     receiptHash: headRow?.receipt_hash ?? null,
     recordedAt: headRow?.recorded_at_text ?? null,
     exported: monthRows.length
   };
+  const monthDir = path.join(target.dir, opts.month);
   await mkdir(monthDir, { recursive: true });
   await writeFile(path.join(monthDir, "receipts.jsonl"), lines.length ? `${lines.join("\n")}\n` : "", "utf8");
   await writeFile(path.join(monthDir, "attachments.json"), `${JSON.stringify(attachments, null, 2)}\n`, "utf8");
   await writeFile(path.join(monthDir, "chain-head.json"), `${JSON.stringify(head, null, 2)}\n`, "utf8");
-  say(`export: ${monthRows.length} receipts and ${attachments.length} attachments of ${opts.month} written to ${monthDir}`);
+  say(
+    `export: ${monthRows.length} receipts (sequences ${fromSequence} to ${toSequence - 1}) and ` +
+      `${attachments.length} attachments of ${opts.month} written to ${monthDir}`
+  );
   say(`export: chain head sequence ${head.sequence ?? "none"}, receipt_hash ${head.receiptHash ?? "none"}`);
 
-  const inside = await git(opts.exportDir, ["rev-parse", "--is-inside-work-tree"]);
-  if (!inside.ok || inside.stdout.trim() !== "true") {
-    if (opts.push) throw new Error(`--push given but ${opts.exportDir} is not a Git repository`);
-    say("export: the directory is not a Git repository; nothing committed");
+  if (!target.repository) {
+    say("export: the directory is not in a Git repository; nothing committed");
     return;
   }
-  const prefix = await git(opts.exportDir, ["rev-parse", "--show-prefix"]);
-  if (!prefix.ok || prefix.stdout.trim() !== "") {
-    throw new Error(`${opts.exportDir} is inside a Git repository but not its top level; files written, nothing committed`);
+  const add = await git(target.dir, ["add", "--", opts.month]);
+  if (!add.ok) {
+    await unstage(target.dir, opts.month);
+    throw new Error(`git add failed: ${add.stderr.trim()}`);
   }
-  const add = await git(opts.exportDir, ["add", "--", opts.month]);
-  if (!add.ok) throw new Error(`git add failed: ${add.stderr.trim()}`);
-  const staged = await git(opts.exportDir, ["diff", "--cached", "--quiet", "--", opts.month]);
+  const staged = await git(target.dir, ["diff", "--cached", "--quiet", "--", opts.month]);
   if (staged.ok) {
     say(`export: ${opts.month} is already committed with this content; no new commit`);
-  } else {
-    const commit = await git(opts.exportDir, [
+  } else if (staged.code === 1) {
+    const commit = await git(target.dir, [
       "commit",
+      "-q",
       "-m",
       `Evidence export for ${opts.month}`,
       "-m",
-      `${monthRows.length} receipts recorded in ${opts.month} (UTC). Chain head at export: sequence ` +
-        `${head.sequence ?? "none"}, receipt_hash ${head.receiptHash ?? "none"}.`,
+      `${monthRows.length} receipts of ${opts.month} (UTC), sequences ${fromSequence} to ${toSequence - 1}. ` +
+        `Chain head at export: sequence ${head.sequence ?? "none"}, receipt_hash ${head.receiptHash ?? "none"}.`,
       "--",
       opts.month
     ]);
-    if (!commit.ok) throw new Error(`git commit failed: ${(commit.stderr || commit.stdout).trim()}`);
+    if (!commit.ok) {
+      const unstaged = await unstage(target.dir, opts.month);
+      throw new Error(
+        `git commit failed: ${(commit.stderr || commit.stdout).trim()}; ` +
+          (unstaged
+            ? `${opts.month} was unstaged and its files stay in the working tree`
+            : `unstaging ${opts.month} also failed; run git reset -- ${opts.month} in ${target.dir}`)
+      );
+    }
     say(`export: committed ${opts.month}`);
+  } else {
+    await unstage(target.dir, opts.month);
+    throw new Error(`git diff --cached failed: ${staged.stderr.trim()}`);
   }
   if (opts.push) {
-    const push = await git(opts.exportDir, ["push"]);
-    if (!push.ok) throw new Error(`git push failed: ${push.stderr.trim()}`);
-    say("export: push to the remote finished");
+    const push = await git(target.dir, ["push", "origin", "HEAD"]);
+    if (!push.ok) throw new Error(`git push origin HEAD failed: ${push.stderr.trim()}`);
+    say("export: pushed HEAD to origin");
   } else {
     say("export: no --push, the commit stays local");
   }
@@ -515,6 +651,8 @@ async function scriptCommit(): Promise<string | null> {
 
 async function main(): Promise<void> {
   const opts = readOptions(process.argv.slice(2));
+  // Refuse a bad export target before the database is touched or anything is written.
+  const exportTarget = opts.exportDir ? await resolveExportTarget(opts.exportDir, opts.push) : null;
   const check = getCheck(CHECK_ID);
   if (!check || check.kind !== "operator") throw new Error(`${CHECK_ID} of kind operator is missing from the catalog`);
 
@@ -598,7 +736,7 @@ async function main(): Promise<void> {
       say("dry run: no receipt appended; rerun with --apply to append it");
     }
 
-    if (opts.exportDir) await exportMonth(client, { ...opts, exportDir: opts.exportDir });
+    if (exportTarget) await exportMonth(client, opts, exportTarget);
   } finally {
     await client.end().catch(() => undefined);
   }

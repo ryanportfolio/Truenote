@@ -4,7 +4,7 @@ import { recordAppError } from "../observability/error-log.js";
 import { remindDueAttestations } from "./attestations.js";
 import { notifyRun } from "./notify.js";
 import { runEvidenceChecks } from "./runner.js";
-import { ensureMonthlySummary, productionSummaryDeps } from "./summary.js";
+import { ensureMonthlySummaries, productionSummaryDeps } from "./summary.js";
 
 /**
  * Daily evidence run on pg-boss. The queue is created by
@@ -82,13 +82,15 @@ async function executeEvidenceRun(payload: EvidenceRunPayload): Promise<void> {
       });
     }
     try {
-      // The first run of each UTC month appends the previous month's summary;
-      // every run retries its email until one is sent (summary.ts).
-      const summary = await ensureMonthlySummary(new Date(), productionSummaryDeps());
-      if (summary.created || summary.emailed) {
+      // The first run of each UTC month appends the previous month's summary
+      // (and any missed months); every run sends the last three months'
+      // summaries to recipients that have not received them (summary.ts).
+      const summaries = await ensureMonthlySummaries(new Date(), productionSummaryDeps());
+      for (const summary of summaries) {
+        if (!summary.created && summary.sentTo.length === 0 && summary.pending.length === 0) continue;
         console.log(
-          `[evidence] run ${runId}: summary ${summary.month} ${summary.created ? "recorded" : "exists"}` +
-            `${summary.emailed ? ", emailed" : ""}`
+          `[evidence] run ${runId}: summary ${summary.month} ${summary.created ? "recorded" : "exists"}, ` +
+            `sent to ${summary.sentTo.length}, ${summary.pending.length} recipient(s) pending`
         );
       }
     } catch (error) {

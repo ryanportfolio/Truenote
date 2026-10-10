@@ -11,15 +11,23 @@ import { appendReceipt, buildReceiptPayload, type CheckResult } from "./receipts
 
 /**
  * Monthly summary (docs/security/evidence-harness.md, phase 3). The daily run
- * calls ensureMonthlySummary at its end; the first call in a UTC month appends
- * one receipt of kind summary for the previous calendar month and emails it to
- * the owner, who forwards it to the customer's security reviewer. The
- * reviewer's copy holds the chain head outside the owner's control.
+ * calls ensureMonthlySummaries at its end. The first call in a UTC month
+ * appends one receipt of kind summary for the previous calendar month and
+ * emails it to each owner address, who forwards it to the customer's security
+ * reviewer. The reviewer's copy holds the chain head outside the owner's
+ * control.
+ *
+ * Catch-up: months without a summary after the newest one, up to the previous
+ * month, are appended oldest first (at most the three most recent of them),
+ * so a month in which no daily run happened still gets its summary. Emails:
+ * the summaries of the previous month and the two before it go to every
+ * configured recipient without a send record for that month, one recipient
+ * at a time, so a failing recipient is retried alone and an email still
+ * pending when the month rolls over still goes out.
  *
  * pg-boss 10 allows one schedule per queue, and a new queue needs
  * pgboss:install, so the summary rides on the existing daily run instead of a
- * monthly queue. Every later call in the month finds the receipt and only
- * retries an email that has not gone out.
+ * monthly queue.
  */
 
 type Executor = { execute(query: SQL): Promise<{ rows: unknown[] }> };
@@ -31,17 +39,31 @@ export interface SummaryEmail {
 }
 
 export interface SummaryDeps {
-  sendEmail: (email: SummaryEmail) => Promise<void>;
-  /** Called after a failed send; the receipt stays and a later call retries. */
-  reportEmailError?: (error: unknown, context: { month: string; receiptId: string }) => Promise<void>;
+  /** Configured recipient addresses; compared trimmed and lowercased. */
+  recipients: () => string[];
+  /** Sends one email to one recipient; throws on failure. */
+  sendEmail: (to: string, email: SummaryEmail) => Promise<void>;
+  /**
+   * Called after a failed send (with the recipient) and once per call when no
+   * recipient is configured (without one). The email stays pending either way.
+   */
+  reportEmailError?: (error: unknown, context: { month: string; receiptId: string; recipient?: string }) => Promise<void>;
 }
 
 export interface SummaryResult {
   created: boolean;
   month: string;
   receiptId: string | null;
-  emailed: boolean;
+  /** Recipients this call sent the month's summary to. */
+  sentTo: string[];
+  /** Configured recipients still without a send record for the month after this call. */
+  pending: string[];
 }
+
+/** Missing months appended per call, newest kept. */
+const MAX_CATCH_UP_MONTHS = 3;
+/** The previous month and the two before it get their pending emails. */
+const EMAIL_MONTHS = 3;
 
 type Counts = { pass: number; fail: number; error: number };
 type LatestResult = CheckResult | null;
@@ -76,12 +98,25 @@ function summaryCheck(): CheckDefinition {
   return check;
 }
 
+type MonthWindow = { month: string; start: Date; end: Date };
+
+const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function monthLabel(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/** The UTC calendar month `offset` months after "YYYY-MM": "YYYY-MM" and [start, end). */
+function monthWindow(month: string, offset = 0): MonthWindow {
+  const [year, mon] = month.split("-").map(Number) as [number, number];
+  const start = new Date(Date.UTC(year, mon - 1 + offset, 1));
+  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+  return { month: monthLabel(start), start, end };
+}
+
 /** The UTC calendar month before `now`: "YYYY-MM" and [start, end). */
-export function previousMonthWindow(now: Date): { month: string; start: Date; end: Date } {
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 1, 1));
-  const month = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, "0")}`;
-  return { month, start, end };
+export function previousMonthWindow(now: Date): MonthWindow {
+  return monthWindow(monthLabel(now), -1);
 }
 
 async function findSummary(
@@ -297,34 +332,88 @@ export function renderSummaryEmail(
   };
 }
 
-async function emailAlreadySent(month: string): Promise<boolean> {
-  const result = await db.execute(sql`SELECT 1 FROM app_settings WHERE key = ${SUMMARY_EMAIL_KEY_PREFIX + month}`);
-  return result.rows.length > 0;
+function normalizeAddress(address: string): string {
+  return address.trim().toLowerCase();
 }
 
-async function markEmailSent(month: string, receiptId: string): Promise<void> {
-  const value = JSON.stringify({ receiptId, sentAt: new Date().toISOString() });
-  await db.execute(sql`
-    INSERT INTO app_settings (key, value, updated_at)
-    VALUES (${SUMMARY_EMAIL_KEY_PREFIX + month}, ${value}::jsonb, now())
-    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
-  `);
+/** Configured recipients, trimmed, without empties or duplicates (compared lowercased). */
+function configuredRecipients(deps: SummaryDeps): Array<{ to: string; key: string }> {
+  const seen = new Set<string>();
+  const out: Array<{ to: string; key: string }> = [];
+  for (const raw of deps.recipients()) {
+    const to = raw.trim();
+    const key = normalizeAddress(to);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ to, key });
+  }
+  return out;
 }
 
 /**
- * Append the previous month's summary receipt unless it exists, then email it
- * unless app_settings records that its email went out. A failed send leaves
- * the receipt and no record, so a later call sends it; it never appends a
- * second receipt for the month.
+ * The app_settings record of a month's summary email:
+ * { receiptId, sentTo: { "<address, trimmed and lowercased>": "<ISO time>" } }.
  */
-export async function ensureMonthlySummary(now: Date, deps: SummaryDeps): Promise<SummaryResult> {
-  const check = summaryCheck();
-  const window = previousMonthWindow(now);
+async function sentRecipients(month: string): Promise<Set<string>> {
+  const result = await db.execute(sql`SELECT value FROM app_settings WHERE key = ${SUMMARY_EMAIL_KEY_PREFIX + month}`);
+  const value = (result.rows[0] as { value: unknown } | undefined)?.value;
+  const parsed = typeof value === "string" ? (JSON.parse(value) as unknown) : value;
+  const sentTo = (parsed as { sentTo?: unknown } | null | undefined)?.sentTo;
+  if (!sentTo || typeof sentTo !== "object" || Array.isArray(sentTo)) return new Set();
+  return new Set(Object.keys(sentTo).map(normalizeAddress));
+}
+
+async function markRecipientSent(month: string, receiptId: string, recipientKey: string): Promise<void> {
+  const entry = JSON.stringify({ [recipientKey]: new Date().toISOString() });
+  await db.execute(sql`
+    INSERT INTO app_settings (key, value, updated_at)
+    VALUES (
+      ${SUMMARY_EMAIL_KEY_PREFIX + month},
+      jsonb_build_object('receiptId', ${receiptId}::text, 'sentTo', ${entry}::jsonb),
+      now()
+    )
+    ON CONFLICT (key) DO UPDATE SET
+      value = jsonb_build_object(
+        'receiptId', ${receiptId}::text,
+        'sentTo', COALESCE(app_settings.value -> 'sentTo', '{}'::jsonb) || ${entry}::jsonb
+      ),
+      updated_at = now()
+  `);
+}
+
+type StoredSummary = { id: string; sequence: number; receiptHash: string; outputs: SummaryOutputs };
+
+/** The newest month that has a summary receipt, or null. */
+async function newestSummaryMonth(checkId: string): Promise<string | null> {
+  const result = await db.execute(sql`
+    SELECT max(payload::jsonb -> 'inputs' ->> 'month') AS month
+    FROM evidence_receipts
+    WHERE check_id = ${checkId} AND check_kind = 'summary'
+  `);
+  const month = (result.rows[0] as { month: string | null } | undefined)?.month ?? null;
+  return month && MONTH_PATTERN.test(month) ? month : null;
+}
+
+/** The months to append: after the newest summary up to the previous month, the most recent few, oldest first. */
+function monthsToCreate(newest: string | null, previous: string): string[] {
+  if (newest === null) return [previous];
+  const months: string[] = [];
+  for (let k = 1; ; k++) {
+    const month = monthWindow(newest, k).month;
+    if (month > previous) break;
+    months.push(month);
+  }
+  return months.slice(-MAX_CATCH_UP_MONTHS);
+}
+
+/**
+ * Append the month's summary receipt unless one exists, in one transaction
+ * under the chain lock, so its chainHead is the receipt it links to.
+ */
+async function storeSummary(check: CheckDefinition, window: MonthWindow, today: string): Promise<StoredSummary & { created: boolean }> {
   const { month } = window;
   const startedAt = new Date();
-  const today = now.toISOString().slice(0, 10);
-
-  const stored = await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const executor = tx as unknown as Executor;
     await executor.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${HASH_CHAIN_LOCK}))`);
     const existing = await findSummary(executor, check.id, month);
@@ -376,37 +465,91 @@ export async function ensureMonthlySummary(now: Date, deps: SummaryDeps): Promis
     }
     return { created: true, id: receipt.id, sequence: receipt.sequence, receiptHash: receipt.receiptHash, outputs };
   });
+}
 
-  const result: SummaryResult = { created: stored.created, month, receiptId: stored.id, emailed: false };
-  if (await emailAlreadySent(month)) return result;
-
-  try {
-    await deps.sendEmail(renderSummaryEmail(month, stored.outputs, stored));
-  } catch (error) {
-    // The receipt stays; the next daily run sends the email again.
-    console.warn(`[evidence] summary email for ${month} not sent:`, error instanceof Error ? error.message : error);
-    await deps.reportEmailError?.(error, { month, receiptId: stored.id });
-    return result;
-  }
-  await markEmailSent(month, stored.id);
-  return { ...result, emailed: true };
+async function readSummary(checkId: string, month: string): Promise<StoredSummary | null> {
+  const found = await findSummary(db as unknown as Executor, checkId, month);
+  if (!found) return null;
+  return {
+    id: found.id,
+    sequence: found.sequence,
+    receiptHash: found.receiptHash,
+    outputs: (JSON.parse(found.payload) as { outputs: SummaryOutputs }).outputs
+  };
 }
 
 /**
- * Production sender: one email per recipient (EVIDENCE_ALERT_EMAIL, else
- * SECURITY_ALERT_EMAIL), each within 30 s. No recipient throws, so the email
- * stays pending until one is configured. A failed send goes to error_log.
+ * Append the summary of every month that lacks one (see monthsToCreate), then
+ * send the summaries of the previous month and the two before it to each
+ * configured recipient without a send record for that month. Each successful
+ * send is recorded at once; a failed send is reported and stays pending for
+ * a later call. Never appends a second receipt for a month.
+ */
+export async function ensureMonthlySummaries(now: Date, deps: SummaryDeps): Promise<SummaryResult[]> {
+  const check = summaryCheck();
+  const previous = previousMonthWindow(now).month;
+  const today = now.toISOString().slice(0, 10);
+  const results = new Map<string, SummaryResult>();
+
+  for (const month of monthsToCreate(await newestSummaryMonth(check.id), previous)) {
+    const stored = await storeSummary(check, monthWindow(month), today);
+    results.set(month, { created: stored.created, month, receiptId: stored.id, sentTo: [], pending: [] });
+  }
+
+  const recipients = configuredRecipients(deps);
+  let noRecipientReported = false;
+  for (let k = EMAIL_MONTHS - 1; k >= 0; k--) {
+    const month = monthWindow(previous, -k).month;
+    const stored = await readSummary(check.id, month);
+    if (!stored) continue;
+    const result = results.get(month) ?? { created: false, month, receiptId: stored.id, sentTo: [], pending: [] };
+    results.set(month, result);
+
+    if (recipients.length === 0) {
+      if (!noRecipientReported) {
+        noRecipientReported = true;
+        const error = new Error("no EVIDENCE_ALERT_EMAIL or SECURITY_ALERT_EMAIL; the summary emails stay pending");
+        console.warn(`[evidence] ${error.message}`);
+        await deps.reportEmailError?.(error, { month, receiptId: stored.id });
+      }
+      continue;
+    }
+
+    const sent = await sentRecipients(month);
+    const pending = recipients.filter((r) => !sent.has(r.key));
+    if (pending.length === 0) continue;
+    const email = renderSummaryEmail(month, stored.outputs, stored);
+    for (const recipient of pending) {
+      try {
+        await deps.sendEmail(recipient.to, email);
+      } catch (error) {
+        // Stays pending; a later call sends it again to this recipient only.
+        console.warn(
+          `[evidence] summary email for ${month} to ${recipient.to} not sent:`,
+          error instanceof Error ? error.message : error
+        );
+        await deps.reportEmailError?.(error, { month, receiptId: stored.id, recipient: recipient.to });
+        result.pending.push(recipient.to);
+        continue;
+      }
+      await markRecipientSent(month, stored.id, recipient.key);
+      result.sentTo.push(recipient.to);
+    }
+  }
+
+  return [...results.values()].sort((a, b) => a.month.localeCompare(b.month));
+}
+
+/**
+ * Production dependencies: recipients from EVIDENCE_ALERT_EMAIL, else
+ * SECURITY_ALERT_EMAIL; each send within 30 s; a failed send or a missing
+ * recipient goes to error_log.
  */
 export function productionSummaryDeps(): SummaryDeps {
   return {
-    sendEmail: async (email) => {
-      const recipients = evidenceAlertRecipients();
-      if (recipients.length === 0) {
-        throw new Error("no EVIDENCE_ALERT_EMAIL or SECURITY_ALERT_EMAIL; the summary email stays pending");
-      }
-      for (const to of recipients) {
-        await withDeadline(getEmailSender().send({ to, ...email }), 30_000, "evidence summary email");
-      }
+    recipients: () => evidenceAlertRecipients(),
+    sendEmail: async (to, email) => {
+      await withDeadline(getEmailSender().send({ to, ...email }), 30_000, "evidence summary email");
     },
     reportEmailError: async (error, context) => {
       await recordAppError({

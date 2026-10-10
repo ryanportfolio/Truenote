@@ -503,7 +503,9 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
       "runtime role (truenote_app unless overridden), and every control row it returns (at least one) has passed " +
       "true. Then, in one transaction that always ends in ROLLBACK, an UPDATE and a DELETE aimed at the newest row " +
       "and a TRUNCATE, each in its own savepoint, run on evidence_receipts and on security_events, and all six " +
-      "statements are refused (raise an error). On an empty table the UPDATE and DELETE have no row to aim at and " +
+      "statements are refused. A statement counts as refused only when it fails with the append-only trigger's " +
+      "error: SQLSTATE P0001 and a message ending in \"is append-only\"; any other error is recorded with its " +
+      "SQLSTATE and message as not refused. On an empty table the UPDATE and DELETE have no row to aim at and " +
       "count as not refused; a lock or statement timeout stops the run without a receipt. After the rollback, the " +
       "rows that existed before the tests must be unchanged (their count and the newest row's hash), else the run " +
       "stops without a receipt. The failed controls, the sha256 of each object definition the verifier returns, " +
