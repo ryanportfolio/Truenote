@@ -111,11 +111,37 @@ fi
 rclone copy "source:$S3_BUCKET" files --retries 3 --quiet
 mkdir -p files
 
-# 4. Code repository bundle.
+#    Count the files the dump references that the copy lacks: a document purged
+#    between the dump and the copy, or a file that was already missing. The
+#    count goes into the manifest; scripts/backup/check-offsite.mjs flags a rise.
+pg_restore --data-only --table=document_versions -f "$work/document_versions.sql" db.dump
+awk '
+  /^COPY public\.document_versions \(/ {
+    h = $0; sub(/^[^(]*\(/, "", h); sub(/\) FROM stdin;$/, "", h)
+    n = split(h, cols, ", "); for (i = 1; i <= n; i++) if (cols[i] == "source_url") k = i
+    if (!k) exit 2
+    rows = 1; next
+  }
+  rows && $0 == "\\." { rows = 0; next }
+  rows { split($0, f, "\t"); if (f[k] != "\\N") print f[k] }
+' "$work/document_versions.sql" | sort -u > "$work/referenced.txt"
+if ! grep -q '^COPY public\.document_versions (.*source_url' "$work/document_versions.sql"; then
+  echo "[backup] dump has no document_versions.source_url column" >&2
+  exit 65
+fi
+referenced=$(wc -l < "$work/referenced.txt" | tr -d ' ')
+missing=0
+while IFS= read -r key; do
+  [ -f "files/$key" ] || missing=$((missing + 1))
+done < "$work/referenced.txt"
+rm -f "$work/document_versions.sql" "$work/referenced.txt"
+
+# 4. Code repository bundle. `git bundle verify` needs a repository.
 if [ -n "${BACKUP_GIT_URL:-}" ]; then
   git clone --quiet --mirror "$BACKUP_GIT_URL" "$work/repo.git"
   git -C "$work/repo.git" bundle create "$work/parts/code.bundle" --all 2>/dev/null
-  git bundle verify --quiet code.bundle
+  git -C "$work/repo.git" bundle verify --quiet "$work/parts/code.bundle"
+  rm -rf "$work/repo.git"
 fi
 
 # 5. Inner manifest: SHA-256 of every part.
@@ -148,10 +174,10 @@ objects=""
 for key in $keys; do
   objects="$objects${objects:+,}\"$key\""
 done
-printf '{"run_id":"%s","started_at":"%s","finished_at":"%s","objects":[%s],"size":%s,"sha256":"%s","dump_bytes":%s,"bucket_files":%s,"code_bundle":%s,"age_recipient":"%s"}\n' \
+printf '{"run_id":"%s","started_at":"%s","finished_at":"%s","objects":[%s],"size":%s,"sha256":"%s","dump_bytes":%s,"bucket_files":%s,"referenced_files":%s,"referenced_files_missing":%s,"code_bundle":%s,"age_recipient":"%s"}\n' \
   "$run_id" "$started_at" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$objects" "$size" "$sha" "$dump_size" "$file_count" \
-  "$([ -n "${BACKUP_GIT_URL:-}" ] && echo true || echo false)" "$BACKUP_AGE_RECIPIENT" > manifest.json
+  "$referenced" "$missing" "$([ -n "${BACKUP_GIT_URL:-}" ] && echo true || echo false)" "$BACKUP_AGE_RECIPIENT" > manifest.json
 rclone copyto manifest.json "offsite:$OFFSITE_S3_BUCKET/manifests/$run_id.json" --no-check-dest --retries 3 --quiet
 
-echo "[backup] run $run_id ok: $keys, $size bytes, sha256 $sha, $file_count bucket files"
+echo "[backup] run $run_id ok: $keys, $size bytes, sha256 $sha, $file_count bucket files, $missing of $referenced referenced files missing"
 ping "${HEALTHCHECK_URL:-}"

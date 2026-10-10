@@ -57,12 +57,24 @@ echo "[restore] start $(date -u +%Y-%m-%dT%H:%M:%SZ), run $run_id"
 rclone copyto "offsite:$OFFSITE_S3_BUCKET/manifests/$run_id.json" "$work/manifest.json" --quiet
 want_sha=$(sed -n 's/.*"sha256":"\([0-9a-f]\{64\}\)".*/\1/p' "$work/manifest.json")
 want_size=$(sed -n 's/.*"size":\([0-9]*\).*/\1/p' "$work/manifest.json")
-key=$(sed -n 's/.*"objects":\["\([^"]*\)".*/\1/p' "$work/manifest.json")
-if [ -z "$want_sha" ] || [ -z "$want_size" ] || [ -z "$key" ]; then
+keys=$(sed -n 's/.*"objects":\[\([^]]*\)\].*/\1/p' "$work/manifest.json" | tr -d '"' | tr ',' ' ')
+if [ -z "$want_sha" ] || [ -z "$want_size" ] || [ -z "$keys" ]; then
   echo "[restore] manifest unreadable" >&2
   exit 65
 fi
-rclone copyto "offsite:$OFFSITE_S3_BUCKET/$key" "$work/backup.tar.age" --quiet
+# A monthly run lists its weekly and monthly copies; the weekly one expires
+# first, so take the first listed copy that still exists.
+key=""
+for candidate in $keys; do
+  if rclone copyto "offsite:$OFFSITE_S3_BUCKET/$candidate" "$work/backup.tar.age" --quiet 2>/dev/null; then
+    key="$candidate"
+    break
+  fi
+done
+if [ -z "$key" ]; then
+  echo "[restore] no listed copy could be downloaded: $keys" >&2
+  exit 65
+fi
 got_size=$(wc -c < "$work/backup.tar.age" | tr -d ' ')
 got_sha=$(sha256sum "$work/backup.tar.age" | cut -d' ' -f1)
 if [ "$got_size" != "$want_size" ] || [ "$got_sha" != "$want_sha" ]; then
@@ -110,7 +122,11 @@ else
   echo "[restore] $file_count files in the backup; TEST_S3_BUCKET unset, not copied"
 fi
 if [ -s code.bundle ]; then
-  git bundle verify --quiet code.bundle && echo "[restore] code bundle verifies"
+  # `git bundle verify` needs a repository; an empty one is enough for a
+  # bundle of every ref, which has no prerequisites.
+  git init --quiet --bare "$work/verify.git"
+  git -C "$work/verify.git" bundle verify --quiet "$work/parts/code.bundle"
+  echo "[restore] code bundle verifies"
 fi
 
 # 5. Counts: the backup's count record, then the restored database.

@@ -123,6 +123,17 @@ try {
   }
   if (!(manifest.objects ?? []).length) failures.push("manifest lists no object");
   if (!(manifest.dump_bytes > 0)) failures.push("manifest records an empty dump");
+  // Files the dump references but the copy lacks: known gaps stay constant;
+  // a rise means a file vanished, for example a purge between dump and copy.
+  console.log(`referenced files missing from the copy: ${manifest.referenced_files_missing} of ${manifest.referenced_files}`);
+  if (manifests.length > 1) {
+    const previous = JSON.parse((await s3Get(manifests[manifests.length - 2])).toString("utf8"));
+    if (manifest.referenced_files_missing > previous.referenced_files_missing) {
+      failures.push(
+        `referenced files missing rose from ${previous.referenced_files_missing} to ${manifest.referenced_files_missing}; check which, and run the backup again`
+      );
+    }
+  }
 } catch (err) {
   failures.push(err instanceof Error ? err.message : String(err));
 }
