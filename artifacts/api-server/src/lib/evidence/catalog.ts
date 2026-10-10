@@ -276,7 +276,9 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
       "returns no source with b's doc_id, no source whose excerpt or doc_title holds b's token, and no answer " +
       "text holding it; GET /api/kb/documents/<b> answers 404; and GET /api/sessions/<csr-b's " +
       "session id> answers 404. A leak in any of the three probes fails and names the response field; a " +
-      "failed login, a missed positive control or an unexpected status records error.",
+      "failed login, a missed positive control or an unexpected status records error. Every session is " +
+      "logged out; a logout still failed (non-2xx or no response) after one retry turns a pass into error " +
+      "and leaves a fail a fail.",
     limits:
       "Probes one pair of synthetic programs with one canary each, through the public API, run by the system " +
       "under test. It does not prove isolation for every query, document or route."
@@ -297,7 +299,9 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
       "/api/kb/documents/<a> answers 200 (positive controls). Then asking with aConfidential's token returns " +
       "no source with its doc_id, no source whose excerpt or doc_title holds its token, and no answer text " +
       "holding it, and GET /api/kb/documents/<aConfidential> answers 404. Either leak fails and names the " +
-      "response field; a failed login, a missed positive control or an unexpected status records error.",
+      "response field; a failed login, a missed positive control or an unexpected status records error. " +
+      "Every session is logged out; a logout still failed (non-2xx or no response) after one retry turns a " +
+      "pass into error and leaves a fail a fail.",
     limits:
       "Probes csr-a's one clearance level against one canary above it. It does not test other " +
       "clearance levels, and checks run as the system under test."
@@ -316,7 +320,9 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
       "A 2xx, or a 4xx other than 401, 403, 408, 423 or 429 (the handler answered, so the request got past the " +
       "block), fails. No manager demo account (a csr is refused by the role check, which does not prove the " +
       "demo block), a failed login, or any other status (401, 403 without demo_account, 408, 423 from the " +
-      "password-reset guard that runs before the demo block, 429, 5xx, no response) records error.",
+      "password-reset guard that runs before the demo block, 429, 5xx, no response) records error. The " +
+      "session is logged out; a logout still failed (non-2xx or no response) after one retry turns a pass " +
+      "into error and leaves a fail a fail.",
     limits:
       "Probes the upload route only, with an empty request that the block refuses before body parsing; " +
       "other write routes rely on the same middleware but are not probed."
@@ -332,9 +338,11 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
     passCondition:
       "Positive control first: synthetic csr-a logs in with its right password and must get 200 with a session " +
       "cookie, then logs out. Anything else (such as the 401 every csr login gets when LOCAL_LOGIN_MODE refuses " +
-      "local login for CSRs) records error, because a refused wrong password would then prove nothing. Then " +
+      "local login for CSRs), or a control logout still failed (non-2xx or no response) after one retry, records " +
+      "error before any wrong password is sent, because a refused wrong password would then prove nothing. Then " +
       "exactly one POST /api/auth/login for csr-a with a random wrong password must answer 401. A 200 fails (the " +
-      "session is logged out); any other status (such as 400, 429 or 5xx) or no response records error.",
+      "session is logged out; a logout still failed after one retry is listed but leaves the fail a fail); any " +
+      "other status (such as 400, 429 or 5xx) or no response records error.",
     limits:
       "Proves refusal of one wrong password only. It does not prove account lockout or throttling after " +
       "repeated failures (AC-7): the per-account lock needs 5 consecutive failures by default, and the " +
@@ -351,7 +359,9 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
     cadenceStatus: "proposed",
     passCondition:
       "Every security_events row from the last 8 days with action auth.local.login, auth.break_glass.login " +
-      "or auth.oidc.login whose actor is a user with is_synthetic, whatever its outcome, falls between " +
+      "or auth.oidc.login whose actor is a current user with is_synthetic, or whose actor_email ends in " +
+      ".invalid in any letter case (a synthetic user deleted since; the fence in 0019_synthetic_fence.sql " +
+      "gives synthetic users, and only them, such emails), whatever its outcome, falls between " +
       "startedAt minus 2 minutes and finishedAt plus 2 minutes of some synthetic evidence receipt recorded in " +
       "the same period. That covers logins (outcome success) and refused login attempts recorded under those " +
       "actions (outcome denied, such as a refusal by LOCAL_LOGIN_MODE or by an account lock); a refused " +

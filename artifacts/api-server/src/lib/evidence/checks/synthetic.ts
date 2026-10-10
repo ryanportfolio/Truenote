@@ -17,7 +17,9 @@ import type { CheckOutcome } from "../receipts.js";
  * ids and the names of response fields that held a canary. Passwords and
  * canary tokens are never recorded. Every session a check opens is logged
  * out in a finally block, also after the runner's time limit aborted the
- * check: once the signal fires, no request but the logouts goes out.
+ * check: once the signal fires, no request but the logouts goes out. A
+ * logout that fails is retried once; one still failed after its retry turns
+ * a `pass` into `error` and leaves a `fail` a `fail`.
  */
 
 export interface SyntheticCredentials { email: string; password: string }
@@ -35,7 +37,7 @@ export interface AccountFacts { maxClassification: string; isSynthetic: boolean;
 export interface SyntheticDeps {
   accountFacts(email: string): Promise<AccountFacts | null>;
   documentFacts(documentId: string): Promise<DocumentFacts | null>;
-  /** Login events of synthetic accounts, any outcome (success or denied). */
+  /** Login events of synthetic accounts, any outcome (success or denied), also of deleted ones (actor email ending in .invalid). */
   syntheticLogins(since: Date): Promise<Array<{ occurredAt: string; email: string | null; outcome?: string | null }>>;
   syntheticRunWindows(since: Date): Promise<Array<{ startedAt: string; finishedAt: string }>>;
   now(): Date;
@@ -54,13 +56,17 @@ export const SESSION_COOKIE = "kbase_session";
 export const LOGIN_ACTIONS = ["auth.local.login", "auth.break_glass.login", "auth.oidc.login"] as const;
 const ASK_TIMEOUT_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 20_000;
+const LOGOUT_TIMEOUT_MS = 10_000;
 /**
  * Upper bound on one synthetic check's HTTP time. The longest is program
  * isolation: three asks, five other requests (two logins, two document
- * reads, one session read) and two logouts. The runner's time limit for
- * synthetic checks must exceed this plus the database reads.
+ * reads, one session read) and two logouts, each retried once when it
+ * fails, so four logout requests. Bad password refusal also opens at most two
+ * sessions (four logout requests) but sends fewer other requests. The
+ * runner's time limit for synthetic checks must exceed this plus the
+ * database reads.
  */
-export const SYNTHETIC_HTTP_WORST_CASE_MS = 3 * ASK_TIMEOUT_MS + 7 * REQUEST_TIMEOUT_MS;
+export const SYNTHETIC_HTTP_WORST_CASE_MS = 3 * ASK_TIMEOUT_MS + 5 * REQUEST_TIMEOUT_MS + 4 * LOGOUT_TIMEOUT_MS;
 const LOGIN_LOOKBACK_MS = 8 * 86_400_000;
 const WINDOW_SLACK_MS = 2 * 60_000;
 const USER_AGENT = "truenote-evidence-harness (+https://truenote.org/.well-known/security.txt)";
@@ -218,10 +224,21 @@ function statusText(response: { status: number; error: string | null }): string 
   return response.status === 0 ? `no response (${response.error ?? "unknown error"})` : String(response.status);
 }
 
-/** Tracks every session a check opens so the finally block can log all of them out. */
+function succeeded(response: HttpResponse): boolean {
+  return response.status >= 200 && response.status < 300;
+}
+
+/**
+ * Tracks every session a check opens so the finally block can log all of
+ * them out. A logout that fails (non-2xx or no response) is retried once;
+ * one still failed after its retry is described in `failed`, by the
+ * account's email and the statuses, never by the cookie.
+ */
 class Sessions {
-  private readonly open: string[] = [];
+  private readonly open: Array<{ cookie: string; email: string }> = [];
+  /** Status of every logout request, retries included; 0 is no response. */
   readonly logouts: Array<number> = [];
+  readonly failed: string[] = [];
 
   constructor(
     private readonly cfg: SyntheticConfig,
@@ -230,16 +247,38 @@ class Sessions {
 
   async login(email: string, password: string): Promise<HttpResponse> {
     const response = await call(this.cfg, "POST", "/api/auth/login", { json: { email, password }, signal: this.signal });
-    if (response.cookie) this.open.push(response.cookie);
+    if (response.cookie) this.open.push({ cookie: response.cookie, email });
     return response;
   }
 
+  /** Logouts pass no signal, so they still go out after the runner's time limit. */
   async closeAll(): Promise<void> {
     while (this.open.length > 0) {
-      const cookie = this.open.pop()!;
-      const response = await call(this.cfg, "POST", "/api/auth/logout", { cookie });
-      this.logouts.push(response.status);
+      const { cookie, email } = this.open.pop()!;
+      const first = await call(this.cfg, "POST", "/api/auth/logout", { cookie, timeoutMs: LOGOUT_TIMEOUT_MS });
+      this.logouts.push(first.status);
+      if (succeeded(first)) continue;
+      const retry = await call(this.cfg, "POST", "/api/auth/logout", { cookie, timeoutMs: LOGOUT_TIMEOUT_MS });
+      this.logouts.push(retry.status);
+      if (succeeded(retry)) continue;
+      this.failed.push(
+        `logout of a ${email} session answered ${statusText(first)}, then ${statusText(retry)} on its retry, so the session may still be open`
+      );
     }
+  }
+}
+
+/**
+ * Logs out every open session and records the logouts. A logout still failed
+ * after its retry is an error: it turns a pass into `error` and leaves a
+ * `fail` a `fail` (Findings.outcome), so a leak is never hidden by cleanup.
+ */
+async function closeSessions(f: Findings, sessions: Sessions): Promise<void> {
+  await sessions.closeAll();
+  f.outputs.logouts = sessions.logouts;
+  if (sessions.failed.length > 0) {
+    f.outputs.failedLogouts = [...sessions.failed];
+    f.errors.push(...sessions.failed);
   }
 }
 
@@ -416,7 +455,9 @@ export async function checkProgramIsolation(cfg: SyntheticConfig, deps: Syntheti
   if (f.errors.length > 0) return f.outcome("", inputs);
 
   const sessions = new Sessions(cfg, signal);
-  try {
+  // The probes return early on a missing precondition; the outcome is built
+  // only after the finally block, so it includes the logout results.
+  const probe = async (): Promise<void> => {
     // csr-b: a chat session owned by csr-b, and the b positive control.
     let bSessionId: string | null = null;
     const loginB = await sessions.login(cfg.csrB.email, cfg.csrB.password);
@@ -440,7 +481,7 @@ export async function checkProgramIsolation(cfg: SyntheticConfig, deps: Syntheti
     f.outputs.csrALogin = statusText(loginA);
     if (loginA.status !== 200 || !loginA.cookie) {
       f.errors.push(`csr-a login answered ${statusText(loginA)}`);
-      return f.outcome("", inputs);
+      return;
     }
     const cookieA = loginA.cookie;
 
@@ -474,9 +515,11 @@ export async function checkProgramIsolation(cfg: SyntheticConfig, deps: Syntheti
       f.outputs.csrAGetSessionB = { sessionId: bSessionId, status: statusText(sessionB) };
       expectNotFound(f, "csr-a GET csr-b's session", sessionB);
     }
+  };
+  try {
+    await probe();
   } finally {
-    await sessions.closeAll();
-    f.outputs.logouts = sessions.logouts;
+    await closeSessions(f, sessions);
   }
   return f.outcome(
     "csr-a retrieved its own canary, and canary b, csr-b's document and csr-b's session were all withheld from csr-a.",
@@ -519,12 +562,13 @@ export async function checkClassificationCeiling(cfg: SyntheticConfig, deps: Syn
   if (f.errors.length > 0) return f.outcome("", inputs);
 
   const sessions = new Sessions(cfg, signal);
-  try {
+  // The outcome is built after the finally block, so it includes the logouts.
+  const probe = async (): Promise<void> => {
     const loginA = await sessions.login(cfg.csrA.email, cfg.csrA.password);
     f.outputs.csrALogin = statusText(loginA);
     if (loginA.status !== 200 || !loginA.cookie) {
       f.errors.push(`csr-a login answered ${statusText(loginA)}`);
-      return f.outcome("", inputs);
+      return;
     }
     const cookieA = loginA.cookie;
 
@@ -553,9 +597,11 @@ export async function checkClassificationCeiling(cfg: SyntheticConfig, deps: Syn
     const docC = await call(cfg, "GET", `/api/kb/documents/${encodeURIComponent(c.documentId)}`, { cookie: cookieA, signal });
     f.outputs.csrAGetDocAConfidential = statusText(docC);
     expectNotFound(f, "csr-a GET document aConfidential", docC);
+  };
+  try {
+    await probe();
   } finally {
-    await sessions.closeAll();
-    f.outputs.logouts = sessions.logouts;
+    await closeSessions(f, sessions);
   }
   return f.outcome(
     `csr-a (clearance ${clearance}) retrieved its own canary but not the ${factsC!.classification} canary in the same program, by ask or by id.`,
@@ -608,12 +654,13 @@ export async function checkDemoWriteBlock(cfg: SyntheticConfig, _deps: Synthetic
   inputs.demoAccount = manager.email;
 
   const sessions = new Sessions(cfg, signal);
-  try {
+  // The outcome is built after the finally block, so it includes the logouts.
+  const probe = async (): Promise<void> => {
     const login = await sessions.login(manager.email as string, manager.password as string);
     f.outputs.login = statusText(login);
     if (login.status !== 200 || !login.cookie) {
       f.errors.push(`demo manager login answered ${statusText(login)}`);
-      return f.outcome("", inputs);
+      return;
     }
     const upload = await call(cfg, "POST", "/api/documents/upload", { cookie: login.cookie, signal });
     const code = (upload.body as { code?: unknown } | null)?.code;
@@ -627,9 +674,11 @@ export async function checkDemoWriteBlock(cfg: SyntheticConfig, _deps: Synthetic
     } else {
       f.errors.push(`demo manager upload answered ${statusText(upload)}${typeof code === "string" ? ` (${code})` : ""}, expected 403 demo_account`);
     }
+  };
+  try {
+    await probe();
   } finally {
-    await sessions.closeAll();
-    f.outputs.logouts = sessions.logouts;
+    await closeSessions(f, sessions);
   }
   return f.outcome("The demo manager account's upload was refused with 403 demo_account.", inputs);
 }
@@ -641,8 +690,9 @@ export async function checkDemoWriteBlock(cfg: SyntheticConfig, _deps: Synthetic
  * again. Without it a server that refuses every csr-a login (LOCAL_LOGIN_MODE
  * break_glass or disabled answers 401 to any password) would pass. The
  * success also resets csr-a's failed-login count, so the one wrong password
- * after it never comes near the account lock. A control logout that fails
- * (non-2xx or no response) ends the check with `error`.
+ * after it never comes near the account lock. A control logout still failed
+ * after its retry (non-2xx or no response) ends the check with `error`
+ * before the wrong-password attempt.
  */
 export async function checkBadPasswordRefused(cfg: SyntheticConfig, _deps: SyntheticDeps, signal?: AbortSignal): Promise<CheckOutcome> {
   const f = new Findings();
@@ -655,30 +705,29 @@ export async function checkBadPasswordRefused(cfg: SyntheticConfig, _deps: Synth
   };
   const wrongPassword = `wrong-${randomBytes(24).toString("base64url")}`;
   const sessions = new Sessions(cfg, signal);
-  // Logouts up to this index belong to the control and go in controlLogouts.
+  // Logouts and failed logouts up to these indexes belong to the control.
   let controlLogoutCount = 0;
-  try {
+  let controlFailedCount = 0;
+  // The outcome is built after the finally block, so it includes the logouts.
+  const probe = async (): Promise<void> => {
     const control = await sessions.login(cfg.csrA.email, cfg.csrA.password);
     f.outputs.controlLogin = statusText(control);
     await sessions.closeAll();
     controlLogoutCount = sessions.logouts.length;
+    controlFailedCount = sessions.failed.length;
     f.outputs.controlLogouts = sessions.logouts.slice(0, controlLogoutCount);
     if (control.status !== 200 || !control.cookie) {
       f.errors.push(
         `csr-a login with the right password answered ${statusText(control)}${control.status === 200 ? " without a session cookie" : ""}, ` +
           "so a refused wrong password would prove nothing"
       );
-      return f.outcome("", inputs);
     }
-    // Status 0 is a network error or timeout; a non-2xx is a refused logout.
-    const badLogouts = sessions.logouts.slice(0, controlLogoutCount).filter((status) => status < 200 || status >= 300);
-    if (badLogouts.length > 0) {
-      f.errors.push(
-        `csr-a logout after the control login answered ${badLogouts.map((status) => (status === 0 ? "no response" : String(status))).join(", ")}, ` +
-          "so the positive control did not complete"
-      );
-      return f.outcome("", inputs);
+    if (controlFailedCount > 0) {
+      const failed = sessions.failed.slice(0, controlFailedCount);
+      f.outputs.controlFailedLogouts = failed;
+      f.errors.push(...failed.map((line) => `control ${line}; the positive control did not complete`));
     }
+    if (f.errors.length > 0) return;
     const login = await sessions.login(cfg.csrA.email, wrongPassword);
     f.outputs.login = statusText(login);
     if (login.status === 401) {
@@ -688,10 +737,18 @@ export async function checkBadPasswordRefused(cfg: SyntheticConfig, _deps: Synth
     } else {
       f.errors.push(`login with a wrong password answered ${statusText(login)}, expected 401`);
     }
+  };
+  try {
+    await probe();
   } finally {
     await sessions.closeAll();
     // Only the logouts after the control; the control's are in controlLogouts.
     f.outputs.logouts = sessions.logouts.slice(controlLogoutCount);
+    const failed = sessions.failed.slice(controlFailedCount);
+    if (failed.length > 0) {
+      f.outputs.failedLogouts = failed;
+      f.errors.push(...failed);
+    }
   }
   return f.outcome(
     "csr-a logged in with the right password (200), then one login with a random wrong password was refused with 401.",
@@ -785,14 +842,18 @@ export function syntheticDepsFromDb(): SyntheticDeps {
       };
     },
     async syntheticLogins(since) {
+      // A synthetic user row can be deleted after deactivation; its events
+      // keep actor_user_id and actor_email. The fence (0019) makes an email
+      // ending in .invalid equivalent to a synthetic user, so such an event
+      // counts even when no users row matches.
       const result = await executor.execute(sql`
         SELECT to_char(e.occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "occurredAt",
                COALESCE(e.actor_email, u.email) AS email,
                e.outcome
         FROM security_events e
-        JOIN users u ON u.id = e.actor_user_id
+        LEFT JOIN users u ON u.id = e.actor_user_id
         WHERE e.action IN ${[...LOGIN_ACTIONS]}
-          AND u.is_synthetic
+          AND (u.is_synthetic IS TRUE OR lower(e.actor_email) LIKE '%.invalid')
           AND e.occurred_at >= ${since.toISOString()}::timestamptz
         ORDER BY e.occurred_at
       `);

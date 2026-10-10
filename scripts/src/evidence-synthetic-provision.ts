@@ -30,7 +30,9 @@
  *
  * Idempotent. An existing user keeps its password, which must then be in the
  * output file and match the stored hash; --rotate-passwords gives both users
- * new ones. Canary tokens are reused from the output file. A canary document
+ * new ones and, in the same transaction, deletes their sessions and their
+ * unconsumed MFA challenges, so nothing opened with an old password stays
+ * usable. Other users' sessions are untouched. Canary tokens are reused from the output file. A canary document
  * is reused when the documents list shows it active with the right
  * classification and its id and token are in the output file; otherwise a new
  * version is uploaded and the script waits until ingestion makes it active.
@@ -271,6 +273,7 @@ async function provisionDatabase(client: Client, opts: Options, previous: Previo
   const problems: string[] = [];
   const created: Array<{ type: string; id: string | null; name: string }> = [];
   const changed: Array<{ type: string; id: string; fields: string[] }> = [];
+  const revoked: Array<{ userId: string; sessions: number; mfaChallenges: number }> = [];
   const programIds: Partial<Record<ProgramKey, string>> = {};
   const userIds: Partial<Record<UserKey, string>> = {};
   const passwords: Partial<Record<UserKey, string>> = {};
@@ -395,6 +398,11 @@ async function provisionDatabase(client: Client, opts: Options, previous: Previo
         );
         continue;
       }
+      // A new password ends the user's sessions and pending MFA challenges in
+      // the same transaction, as the admin password reset does
+      // (routes/admin/users.ts: invalidateMfaChallenges, then DELETE FROM
+      // sessions); session lookup never compares password hashes.
+      let ended = "";
       if (write) {
         await client.query(
           `UPDATE users
@@ -405,8 +413,19 @@ async function provisionDatabase(client: Client, opts: Options, previous: Previo
           [row.id, programId, spec.name, hash]
         );
         changed.push({ type: "user", id: row.id, fields });
+        if (hash !== null) {
+          const challenges = await client.query(
+            "DELETE FROM mfa_challenges WHERE user_id = $1::uuid AND consumed_at IS NULL",
+            [row.id]
+          );
+          const sessions = await client.query("DELETE FROM sessions WHERE user_id = $1::uuid", [row.id]);
+          revoked.push({ userId: row.id, sessions: sessions.rowCount ?? 0, mfaChallenges: challenges.rowCount ?? 0 });
+          ended = `; ended ${sessions.rowCount ?? 0} session(s) and ${challenges.rowCount ?? 0} pending MFA challenge(s)`;
+        }
+      } else if (opts.rotatePasswords) {
+        ended = "; would end its sessions and pending MFA challenges";
       }
-      result(`user ${spec.email}: exists (${row.id}); ${verb}change ${fields.join(", ")}${notChanged}`);
+      result(`user ${spec.email}: exists (${row.id}); ${verb}change ${fields.join(", ")}${ended}${notChanged}`);
     }
 
     if (problems.length > 0) {
@@ -431,6 +450,7 @@ async function provisionDatabase(client: Client, opts: Options, previous: Previo
           created,
           changed,
           passwordsRotated: opts.rotatePasswords,
+          sessionsEnded: revoked,
           programs: [programIds.a, programIds.b],
           users: [userIds.csrA, userIds.csrB]
         })
