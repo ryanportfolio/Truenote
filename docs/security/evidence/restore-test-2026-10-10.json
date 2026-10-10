@@ -1,0 +1,81 @@
+{
+  "capturedAt": "2026-10-10T15:42:00Z",
+  "purpose": "First path C restore test: restore the off-site copy into a separate temporary Railway project and reach a cited answer (backup-restore-runbook.md, section 4.7; contingency-plan.md, section 6).",
+  "operator": "Claude Code agent on the owner's workstation, after the owner's go on 2026-10-10",
+  "ownerDecisions": [
+    "2026-10-10: production's AI provider keys may be used in the test project, because production holds only test data (deviation from section 4.7, which asks for separate low-limit keys).",
+    "2026-10-10: the off-site copy stays in B2 region us-east-005 (contingency-plan.md, section 1)."
+  ],
+  "clock": "Times marked local come from the workstation clock, which ran about 4.5 minutes behind Railway's (12:07:36 local against 12:12:06 on the database server, 2026-10-10). RTO uses local times only; RPO adjusts the decision time to server time.",
+  "source": {
+    "offsiteRun": "20261010T120903Z",
+    "object": "weekly/20261010T120903Z.tar.age",
+    "objectBytes": 30533080,
+    "objectSha256": "bce27c6901460d1fe3abd6637ff123519040f7366347a7aadc66ce7798726b23",
+    "restorePoint": "2026-10-10T12:09:03Z",
+    "checkBeforeRestore": "node scripts/backup/check-offsite.mjs printed PASS, including decryption with the local identity"
+  },
+  "target": {
+    "project": "truenote-restore-test (f1248739-1c13-41f0-a478-2847d7b8a045), created for this test and deleted after it",
+    "region": "us-west2 for both services (deployment metadata multiRegionConfig); bucket truenote-restore-files in sjc",
+    "sourceCommit": "29bf48672e327fe51906643bc0db38ab90fd6a1c (main), uploaded from a clean LF worktree with .release-commit",
+    "services": [
+      {
+        "name": "restore-db",
+        "dockerfile": "Dockerfile.backup",
+        "startCommand": "docker-entrypoint.sh postgres",
+        "deployment": "74deb3d2-473c-4411-8656-3c164f8d3917",
+        "imageDigest": "sha256:4daf5c70eb60d13525a7e390e65cfff1da8fa301a2d4cd4b11d3a3ef432d1a92",
+        "volume": "none (test target)"
+      },
+      {
+        "name": "web",
+        "dockerfile": "Dockerfile.railway",
+        "deployment": "eed2265d-0d50-44d6-909e-af14e749b500",
+        "imageDigest": "sha256:3c8acd34691eae943a8679827c6602b610b3a47d13c3cbae0e5fe39d72343fa6",
+        "variablesSet": ["DATABASE_URL (truenote_app at restore-db.railway.internal)", "RAG_STORAGE_DRIVER", "S3_* (test bucket)", "APP_BASE_URL=http://localhost:8081", "LOCAL_LOGIN_MODE=enabled", "TRUENOTE_PROCESS=web", "PORT=8080", "OPENAI_API_KEY, OPENROUTER_API_KEY, COHERE_API_KEY (production values, owner decision)", "DEMO_LOGIN_ACCOUNTS (production value)"],
+        "variablesLeftUnset": ["RESEND_*", "SIEM_*", "OIDC_*", "BOOTSTRAP_SUPER_USER_*", "SECURITY_ALERT_EMAIL", "VISION_AGENT_API_KEY"]
+      }
+    ],
+    "exposure": "No domain and no TCP proxy on either service (railway domain list and tcp-proxy list empty); web reached only through an SSH tunnel to 127.0.0.1:8081. No worker service."
+  },
+  "timeline": [
+    { "at": "2026-10-10T15:25:18Z", "clock": "local", "step": "Decision time; check-offsite.mjs PASS" },
+    { "at": "2026-10-10T15:27:50Z", "clock": "local", "step": "restore-db deployment SUCCESS; log shows database system is ready to accept connections" },
+    { "at": "2026-10-10T15:32:32Z", "clock": "server", "step": "restore-offsite.sh start" },
+    { "at": "2026-10-10T15:32:34Z", "clock": "server", "step": "Object matched its manifest, decrypted, all parts matched the inner manifest, database restored" },
+    { "at": "2026-10-10T15:32:35Z", "clock": "server", "step": "31 files copied to the test bucket and checked; code bundle verified; restore script done" },
+    { "at": "2026-10-10T15:30:30Z", "clock": "local", "step": "web deployment SUCCESS; log shows [api-server] listening on http://0.0.0.0:8080" },
+    { "at": "2026-10-10T15:32:29.913Z", "clock": "local", "step": "First cited answer to the demo CSR through the tunnel" }
+  ],
+  "measured": {
+    "rto": "7 min 12 s (decision 15:25:18 to first cited answer 15:32:30, both local)",
+    "rpo": "about 3 h 20 min (decision about 15:29:48 server time minus restore point 12:09:03); the approved target for this scenario is 7 days"
+  },
+  "checks": {
+    "5.1": "pass: no listed table missing",
+    "5.2": "pass: restored counts equal the backup's count record (programs 1, users 14, documents 37, document_versions 39, chunks 176, query_log 276, security_events 831, last sequence 831)",
+    "5.3 link": "pass: broken_links = 0",
+    "5.3 recompute": "pass: hash_mismatches = 0 with TimeZone UTC over 831 events; last event 2026-10-10T05:41:23Z, before the restore point",
+    "schema_migrations": "latest rows 0014_backup_role.sql, 0012_evidence_receipts.sql, 0011_monitoring_state.sql",
+    "roles": "truenote_app and truenote_backup recreated by the restore script with login and no password; truenote_app given a generated password for web",
+    "5.4 step 3": "pass: GET /health returned {\"ok\":true}; GET / returned 200",
+    "5.4 step 4": "partial: no super user exists in the copy (none is configured in production either); the demo manager account loaded the Documents and Users APIs (200); the security-audit API is super-user only and returned 403",
+    "5.4 step 5": "pass by API, not in a browser: the demo CSR asked 'How much does it cost to cancel a Pro subscription?'; refused=false with 2 citations, both excerpts from 'Cancellation Policy'; 9.4 s",
+    "5.4 step 6": "not run: production has one program, so a cross-program refusal cannot be tested",
+    "5.4 step 7": "not run (optional eval)"
+  },
+  "confirmsSettled": {
+    "service region": "serviceInstanceUpdate with multiRegionConfig {\"us-west2\":{\"numReplicas\":1}} over Railway's GraphQL API; the region input field had no effect",
+    "start command": "serviceInstanceUpdate with startCommand over Railway's GraphQL API",
+    "session cookie over http://localhost": "the server issued kbase_session with Secure, HttpOnly, SameSite=Lax, and accepted it from an HTTP client; a browser was not tested",
+    "project deletion": "railway delete --project <id> --yes: both services showed REMOVED at once; Railway scheduled the project's deletion for 2026-10-12T15:37:32Z"
+  },
+  "deviations": [
+    "The identity used was the plain test key (not passphrase-protected), sent over railway ssh as base64 into /tmp/truenote-identity.age; the restore script deleted it on exit (checked). It is the test key to be replaced at go-live.",
+    "Production AI keys were used (owner decision above).",
+    "Steps 4 and 5 ran against the API with a Node script; the browser check was not run.",
+    "The SSH config block was written to a scratch file instead of ~/.ssh/config, so nothing needed removing there; the tunnel process was stopped and the scratch files deleted."
+  ],
+  "cleanup": "Test project deletion requested at about 15:37 UTC (services REMOVED, project and bucket deleted by Railway on 2026-10-12). Local scratch files with the generated test passwords deleted; the scratch directory unlinked from Railway."
+}
