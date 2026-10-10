@@ -139,3 +139,12 @@ jobs:
           path: codeql-results
           if-no-files-found: error
           retention-days: 30
+
+  notify-failure:
+    name: Report a failed scheduled run
+    needs: [verify, supply-chain, secrets, codeql]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/scheduled-failure-issue.yml
