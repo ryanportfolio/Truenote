@@ -20,6 +20,9 @@ jobs:
       issues: write
     steps:
       - name: Open or update the failure issue
+        # bash runs with -eo pipefail here: a failed issue lookup stops the
+        # step instead of falling through to creating a duplicate issue.
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

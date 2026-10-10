@@ -27,18 +27,23 @@ jobs:
     env:
       ZAP_IMAGE: ghcr.io/zaproxy/zaproxy:stable
     steps:
+      # The scan runs the digest recorded here, so the summary names the
+      # exact scanner image even if the stable tag moves mid-run.
       - name: Pull and record the ZAP image digest
+        id: zap-image
         run: |
           docker pull "$ZAP_IMAGE"
+          digest_ref=$(docker image inspect --format '{{index .RepoDigests 0}}' "$ZAP_IMAGE")
+          echo "ref=${digest_ref}" >> "$GITHUB_OUTPUT"
           {
             echo "### Scanner image"
-            echo "- \`$(docker image inspect --format '{{index .RepoDigests 0}}' "$ZAP_IMAGE")\`"
+            echo "- \`${digest_ref}\`"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: ZAP baseline scan
         uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
         with:
           target: https://truenote.org
-          docker_name: ${{ env.ZAP_IMAGE }}
+          docker_name: ${{ steps.zap-image.outputs.ref }}
           allow_issue_writing: false
           fail_action: false
           artifact_name: zap-baseline-truenote-org

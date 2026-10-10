@@ -83,6 +83,10 @@ jobs:
           severity-cutoff: high
           output-format: table
 
+  # Report only on every trigger: pgvector/pgvector:pg18 is a third-party
+  # image no pull request here can change, so failing on its findings would
+  # block unrelated changes. Its findings reach code scanning and the daily
+  # run's evidence instead.
   pgvector-image:
     name: Grype scan of the pgvector image
     runs-on: ubuntu-latest
