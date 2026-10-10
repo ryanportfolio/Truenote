@@ -9,7 +9,6 @@ import {
   recordAppError,
   safeErrorMessage
 } from "./lib/observability/error-log.js";
-import { startSiemOutboxWorker } from "./lib/security/siem-outbox.js";
 
 const PORT = Number(process.env.API_PORT) || 5000;
 installProcessErrorLogging("api-server");
@@ -67,7 +66,6 @@ async function main(): Promise<void> {
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`[api-server] listening on http://0.0.0.0:${PORT}`);
   });
-  const stopSiemOutboxWorker = startSiemOutboxWorker();
 
   // Hourly hygiene: drop expired session rows AND expired password-
   // reset tokens. Both tables grow unbounded otherwise (their queries
@@ -115,7 +113,6 @@ async function main(): Promise<void> {
   const shutdown = (signal: string): void => {
     console.log(`[api-server] received ${signal}, draining…`);
     clearInterval(purgeTimer);
-    stopSiemOutboxWorker();
     server.close(() => {
       closePool().finally(() => process.exit(0));
     });

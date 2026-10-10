@@ -15,7 +15,7 @@ production.
 ## Scope and assumptions
 
 In scope: browser/frontend, API, worker, object storage, PostgreSQL, authentication,
-authorization, document ingestion, retrieval, generation, providers, audit/SIEM,
+authorization, document ingestion, retrieval, generation, providers, audit/alerting,
 GitHub/CI, deployment configuration, and any path that could affect a CDE.
 
 Current assumptions requiring owner approval:
@@ -47,7 +47,7 @@ Current assumptions requiring owner approval:
 Primary assets include account credentials and sessions, authorization/program
 assignments, document source/content/classification, retrieval chunks, prompts and
 conversation history, citations, model/provider configuration, security/audit
-events, SIEM signing material, secrets, source/CI artifacts, database definitions,
+events, the exported log copy and its Railway token, secrets, source/CI artifacts, database definitions,
 and CDE connectivity or segmentation controls.
 
 ## Actors
@@ -70,7 +70,7 @@ and CDE connectivity or segmentation controls.
 | TB-04 API → OpenRouter/providers | Question, excerpts, history, rewrite/naming input | Prompts, content, PII | Same local deterministic firewall for the question, history, rewrite and naming input (since 2026-10-10 approved excerpts get secret/SSN/PAN redaction only); pinned routes; ZDR/data-collection/fallback policy tests; owner screenshots | Guardrail assignment/runtime receipts and contextual PII coverage missing; output coverage separate |
 | TB-05 Upload/storage → scanner/LandingAI | Raw untrusted bytes before parsed-text DLP | Files, embedded content, metadata, regulated data | Signatures, size/type validation, EICAR/scanner enforcement | Raw bytes reach storage/scanner/parser before parsed DLP; provider suitability/configuration unverified |
 | TB-06 Retrieved content/provider output → answer | Untrusted excerpts and model text | CSR decisions, citations, sensitive output | Citation validation, cite-or-refuse, output sensitive scan | Broader PII/output policy and adversarial runtime testing incomplete |
-| TB-07 API/database → SIEM | Security metadata and signed webhook | Audit integrity, incident evidence, signing key | Hash chain, transactional outbox, signed bounded delivery tests | Production delivery, alert, retention and dead-letter response unverified |
+| TB-07 API/database → logs, alert email and log copy | Security metadata in worker log lines, alert emails through Resend, and a daily export to a private GitHub repository | Audit integrity, incident evidence, the Railway token used by the export | Hash chain, ordered cursor over committed events, alert rules, audit-write-failure alert outside the database, uptime check | Ten of eleven alert rules tested in production on 2026-10-10 (break-glass waits for SSO); retention period open; daily log export running since 2026-10-10 |
 | TB-08 GitHub/CI and operator workstation → Railway deployment | Source, dependencies, workflows, approvals, artifacts; `railway up` uploads of an operator's local checkout | Production code/configuration and evidence | Locked dependencies, scans, SBOM, PR template, evidence gate | Branch protection, CODEOWNER, named reviewer and current hosted receipts missing. Deploys are `railway up` uploads from an operator workstation; merging to `main` deploys nothing. Nothing ties the deployed bytes to a CI-verified `main` commit |
 | TB-09 Railway/Replit/providers ↔ CDE | Hosting, network paths, administrator access: Railway `web` and `worker` services, Railway Postgres 18 with pgvector, Railway Bucket object storage; Replit only as the `truenote.org` DNS rollback target until the owner retires it; AI providers | CDE reachability and segmentation | Scope/data-flow and independent-test plan | Boundary/applicability unsigned; no independent segmentation evidence |
 
@@ -102,10 +102,10 @@ risk acceptance. Grades use the exact evidence vocabulary in
 | TN-TM-014 | Integrity / AI hallucination | CSR receives unsupported procedure, fee, date, or policy | TB-06; High | Valid citation required or standard refusal; eval harness; `artifacts/api-server/src/lib/generation/answer.ts`, `artifacts/api-server/src/lib/eval` | Verified | Retain released-model eval and independent domain/adversarial results — Product/Data owner |
 | TN-TM-015 | Information disclosure / Integrity | Citation points outside authorized content or to stale/revoked evidence | TB-02/TB-06; Critical | Immutable citation snapshots, ownership/version/lifecycle checks and tests; `artifacts/api-server/src/lib/citations.ts`, `artifacts/api-server/src/lib/__tests__/citations.test.ts` | Verified | Independent citation authorization/staleness test in deployed release — Product Security |
 | TN-TM-016 | Repudiation / Tampering | Actor alters/deletes security events or breaks hash continuity | TB-02/TB-07; High | Append-only trigger, serialized hash chain, audit logic; `docs/security/p0-p1-security-controls.sql`, `artifacts/api-server/src/lib/security/audit.ts` | Implemented, unverified | Execute production catalog verifier and mutation/hash-chain exercise with retained output — Platform/SecOps |
-| TN-TM-017 | Repudiation / Availability | SIEM event is silently dropped, replayed, stuck, or dead-lettered without response | TB-07; High | Transactional outbox, lease fencing, signing, retry/dead-letter tests; `artifacts/api-server/src/lib/security/siem-outbox.ts`, `docs/compliance/pci/production-evidence-capture-runbook.md` | Operational evidence required | Run delivery/retry/dead-letter/alert exercises and assign responder/retention — SecOps |
+| TN-TM-017 | Repudiation / Availability | A security event or alert is silently skipped, suppressed, or delayed, or the off-Railway log copy stops | TB-07; High | Cursor over committed events in sequence order, email retry without advancing the cursor, two-minute pass deadline, monitor-failing and audit-write-failure alerts, export that fails rather than writing a partial day; `artifacts/api-server/src/lib/monitoring/security-monitor.ts`, `docs/security/monitoring.md` | Operational evidence required | Test the break-glass alert once SSO is on, set retention and assign the responder; owner: SecOps |
 | TN-TM-018 | Denial of service / Cost | Authenticated actor exhausts parsing, Argon2, queue, model, or storage capacity | TB-01/TB-03/TB-05; High | Per-user/program ask limits and per-user workload buckets; `artifacts/api-server/src/lib/security/distributed-rate-limit.ts`, `docs/compliance/pci/rate-limit-route-assessment-2026-07-16.md` | Implemented, unverified | Capacity-test thresholds, multi-replica consistency, edge/read/OIDC controls and cleanup — Platform/Security |
 | TN-TM-019 | Tampering / Disclosure | Encoded or crafted asset path escapes fixed static root or serves unintended content | TB-01; High | Flat basename allowlist/fixed root and traversal tests; `artifacts/api-server/src/lib/security/static-assets.ts`, `artifacts/api-server/src/lib/security/__tests__/static-assets.test.ts` | Verified | Hosted HTTP test for encoded separators, alternate normalization and proxy behavior — Platform/Security |
-| TN-TM-020 | Information disclosure | Secrets, private keys, PAN/SSN, or multiline attacker text enters logs/evidence/email fallback | TB-02/TB-07/TB-08; Critical | Recursive redaction, complete PEM handling, single-line safe errors, production email fail-closed tests; `artifacts/api-server/src/lib/observability/error-log.ts`, `artifacts/api-server/src/lib/email/sender.ts` | Implemented, unverified | Production log/SIEM/email synthetic canaries, retention/access review and historical secret scan — SecOps/Product Security |
+| TN-TM-020 | Information disclosure | Secrets, private keys, PAN/SSN, or multiline attacker text enters logs/evidence/email fallback | TB-02/TB-07/TB-08; Critical | Recursive redaction, complete PEM handling, single-line safe errors, production email fail-closed tests; `artifacts/api-server/src/lib/observability/error-log.ts`, `artifacts/api-server/src/lib/email/sender.ts` | Implemented, unverified | Production log, exported-log and email synthetic canaries, retention/access review and historical secret scan — SecOps/Product Security |
 | TN-TM-021 | Supply chain | Compromised dependency, install script, action, or artifact reaches build/release | TB-08; Critical | Frozen lockfile, central overrides, one-package build allowlist, audit/SBOM/Gitleaks/CodeQL workflow, evidence gate; `pnpm-workspace.yaml`, `.github/workflows/security.yml` | Implemented, unverified | Hosted reviewed-commit receipts, action pinning policy, finding disposition and artifact provenance — Engineering/Product Security |
 | TN-TM-022 | Tampering / Repudiation | Author bypasses review/checks or changes workflow/evidence before deployment, or an operator's `railway up` upload deploys bytes that differ from the CI-verified `main` commit | TB-08; Critical | PR/change templates and structural evidence gate; `.github/pull_request_template.md`, `scripts/src/verify-pci-evidence.ts` | Gap | Assign reviewer/CODEOWNER/change authority; enforce protected branch/ruleset and capture settings/API evidence; bind each Railway deployment to a CI-verified `main` commit and record the deployed commit. Accountable: Engineering/Security |
 | TN-TM-023 | Elevation / CDE impact | Truenote or provider path bypasses/weakens CDE segmentation or becomes an unassessed path | TB-09; Critical | Scope/data-flow record and independent segmentation test plan; `docs/compliance/pci/scope-and-data-flow.md`, `docs/compliance/pci/independent-testing-plan.md` | Gap | QSA signs boundary; implement approved network controls; independent Requirement 11.4 segmentation test — PCI/Platform |
@@ -124,7 +124,7 @@ risk acceptance. Grades use the exact evidence vocabulary in
 2. **TN-TM-023:** Obtain a signed CDE boundary and independent segmentation test.
 3. **TN-TM-022:** Enforce non-author review and required checks on protected
    `main`, and tie each Railway deployment to a CI-verified `main` commit.
-4. **TN-TM-016/TN-TM-017:** Verify production database/audit/SIEM definitions and
+4. **TN-TM-016/TN-TM-017:** Verify production database/audit/monitoring definitions and
    end-to-end operation.
 5. **TN-TM-008/TN-TM-009/TN-TM-010/TN-TM-013:** Commission adversarial prompt,
    document, file, and output testing with retest closure.
@@ -144,7 +144,7 @@ Re-review before release when any of these changes:
 
 - CDE/PAN policy, segmentation, hosting, domains, proxy, identity, roles or sessions;
 - provider, model, routing, retention/ZDR, guardrail, embedding, reranking, parsing,
-  scanner, email, SIEM, object storage or database;
+  scanner, email, log export, object storage or database;
 - upload type/size, document lifecycle, classification, source approval, retrieval,
   citation/refusal, prompt or output handling;
 - security DDL, audit schema, rate-limit scope/threshold, queue/concurrency behavior;

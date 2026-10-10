@@ -2,7 +2,7 @@
 
 Truenote's log review, alerting and availability monitoring. It addresses NIST SP 800-53 Rev. 5 Moderate AU-5, AU-6, AU-6(1), AU-6(3) and SI-4, and the readiness part of CA-7 (POA&M items POAM-2026-012 and POAM-2026-013).
 
-Status, 2026-10-10: the code is in the repository but not deployed. The steps under "Turning it on" need the owner's go. The off-Railway log copy and the uptime check live in the private repository `ryanportfolio/truenote-ops` (created 2026-10-10). Its uptime check runs against `/health` until `/health/ready` is deployed; its log export waits for the `RAILWAY_TOKEN` secret.
+Status, 2026-10-10: deployed. `0011` was applied at 05:01 UTC, `SECURITY_ALERT_EMAIL` was set on `web` and `worker`, and both were deployed from `ed228fca` (#216). By 05:06 UTC the monitor had printed all 743 existing events, raising no alerts for history, and `/health/ready` returned 200 on both hosts. The off-Railway log copy and the uptime check live in the private repository `ryanportfolio/truenote-ops` (created 2026-10-10). Its uptime check watches `/health/ready` on both hosts. Its log export ran first on 2026-10-10 at 15:18 UTC and committed 2026-10-07 to 2026-10-09 (commit `7187cbd`); later days follow at 02:23 UTC daily.
 
 ## Design decisions
 
@@ -11,7 +11,7 @@ The owner's decisions on 2026-10-10:
 - No new log vendor. Railway keeps logs for 30 days on the Pro plan. A daily job in the private repository `ryanportfolio/truenote-ops` exports them and commits them there, so a copy exists outside Railway.
 - Alerts are sent from Truenote itself, by email through Resend, which the app already uses.
 - An uptime check in the same private repository opens an issue there when Truenote is down. GitHub emails the owner about the new issue. The Truenote repository is public, so outage issues do not go there.
-- The SIEM delivery outbox (`docs/security/p1-siem-delivery-outbox.sql`) is not finished. Security events reach the log through the security monitor below instead. Removing the outbox code and updating the documents that describe it is a separate change.
+- The SIEM delivery outbox is retired. Its code and `docs/security/p1-siem-delivery-outbox.sql` were removed; `lib/db/sql/0013_drop_siem_delivery_outbox.sql` drops its empty table. Security events reach the log through the security monitor below.
 - The retention period (AU-11) stays open until the employer names the framework it assesses against. NIST 800-53 Moderate leaves the period to the organization; FedRAMP Moderate (OMB M-21-31) and PCI DSS 10.5.1 require 12 months. Until then, nothing deletes the exported logs.
 
 ## Where records live
@@ -95,13 +95,13 @@ Each step needs the owner's go.
 | Rule | Test | Date | Result |
 |---|---|---|---|
 | `break_glass_login` | Requires `LOCAL_LOGIN_MODE=break_glass`; test when SSO is enabled | | Pending |
-| `super_user_login` | Agent account logs in | | Pending |
-| `account_change` | Agent account resets a test user's password | | Pending |
-| `security_setting_change` | Toggle the demo limit switch off and back on | | Pending |
-| `error_log_cleared` | Clear the error log when it holds no needed entries | | Pending |
-| `failed_logins_ip` | 10 wrong passwords for a nonexistent account from one address | | Pending |
-| `failed_logins_total` | Covered by a 25-attempt run of the test above | | Pending |
-| `denied_spike` | Covered by a 50-attempt run of the test above | | Pending |
-| `audit_write_failure` | Needs a failing append; method to be agreed with the owner | | Pending |
-| `security_monitor_failing` | Needs five failed passes; method to be agreed with the owner | | Pending |
+| `super_user_login` | A real login by `claude-agent@truenote.org` at 05:04:54 UTC, made by another agent session | 2026-10-10 | Passed: alert email "[Truenote] Security alert: Super user login" received by the owner |
+| `account_change` | The agent account created the CSR `alert-test-user-20261010@example.invalid`, deactivated it and deleted it, 15:24 UTC | 2026-10-10 | Passed: one email listing all three changes |
+| `security_setting_change` | Demo limit switch turned off and back on within a second, 15:24 UTC | 2026-10-10 | Passed: both changes in the alert. The two events carry no source IP; the route does not pass one |
+| `error_log_cleared` | Error log cleared by the agent account, 15:24 UTC | 2026-10-10 | Passed. The copy meant to be kept first was not made (the export request was rejected), so the cleared entries survive only in Railway logs (30 days) and the daily export |
+| `failed_logins_ip` | 50 wrong passwords for `alert-test-20261010@example.invalid` from one address, about 05:08 UTC (all answered 401) | 2026-10-10 | Passed: 50 against threshold 10 |
+| `failed_logins_total` | Same run | 2026-10-10 | Passed: 50 against threshold 25 |
+| `denied_spike` | Same run | 2026-10-10 | Passed: 50 against threshold 50. The three alerts arrived as one email, "[Truenote] 3 security alerts" |
+| `audit_write_failure` | `EXECUTE` on `append_security_event` revoked from `truenote_app` for about 5 seconds around 15:26 UTC while one failed login was sent, then granted back | 2026-10-10 | Passed: `web` logged `[security-audit] append failed` and emailed the alert. The email shows the query wrapper text rather than the database's reason |
+| `security_monitor_failing` | `SELECT` on `security_monitor_state` revoked from `truenote_app` for about 6.5 minutes from about 15:27 UTC, then granted back | 2026-10-10 | Passed: alert after five failed passes; the cursor caught up after the grant |
 | Health failure | Uptime check pointed at `https://truenote.org/health/ready` before that route was deployed, then back at `/health` | 2026-10-10 | Passed after one fix. The first run counted the URL as up because the SPA fallback answers unknown paths with 200 and HTML; the check now requires the JSON body `{"ok":true}`. The rerun opened `ryanportfolio/truenote-ops` issue 1; the recovery run commented and closed it at 04:53 UTC |
