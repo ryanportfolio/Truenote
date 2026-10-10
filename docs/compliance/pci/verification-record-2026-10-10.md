@@ -7,7 +7,7 @@
 | Check | Result |
 |---|---|
 | Production verifier source identity | `production-control-verification.sql` SHA-256 `A6ECF082FD5F358A17F2A9CCCCD81495C28600A8699AABDFC2560732A9C77EC9`; changed by #223; source only, not an execution receipt |
-| Threat-model source identity | `threat-model.md` SHA-256 `22E242B35664065B21EB08112161603E8A2FD12D0E77F627F0520E514A784038`; includes both changes; engineering source only, not a signed review or risk acceptance |
+| Threat-model source identity | `threat-model.md` SHA-256 `EF2758731DB148F478CA93F8A4CECFDD0F65C77E892D80F92B89736B9BE590C3`; includes both changes; engineering source only, not a signed review or risk acceptance |
 
 This record supersedes
 [`verification-record-2026-10-07.md`](./verification-record-2026-10-07.md) as the
@@ -74,8 +74,8 @@ open, except SIEM delivery, which #223 replaces. In addition:
 - A screenshot or export of the changed OpenRouter guardrail configuration.
 - A deployed answer request showing contact details from an approved excerpt
   reach the model while a synthetic secret in a document title does not.
-- Six of eleven alert rules not yet tested in production
-  (`docs/security/monitoring.md`, "Alert test record").
+- The break-glass alert, the one rule of eleven not yet tested in production; it
+  needs SSO (`docs/security/monitoring.md`, "Alert test record").
 - A review of the daily log export to `ryanportfolio/truenote-ops`, which first
   ran on 2026-10-10 and committed 2026-10-07 to 2026-10-09.
 - The audit retention period (AU-11), open until the employer names its

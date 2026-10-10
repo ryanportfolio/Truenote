@@ -11,11 +11,19 @@
 -- The function and trigger drops cover databases where the source file was
 -- applied in full (a restore from the old Replit development database).
 
+-- Block new security events (and so the enqueue trigger, where installed)
+-- before checking that the outbox is empty, so no row can arrive between the
+-- check and the drop. scripts/railway-apply-sql.mjs runs the file in one
+-- transaction, so the locks hold until the drops commit; event writers wait
+-- for those milliseconds.
+LOCK TABLE security_events IN SHARE ROW EXCLUSIVE MODE;
+
 DO $$
 BEGIN
   -- Nested: PL/pgSQL plans a whole IF condition at once, so a combined
   -- condition would fail on a missing table before the existence test ran.
   IF to_regclass('public.siem_delivery_outbox') IS NOT NULL THEN
+    EXECUTE 'LOCK TABLE siem_delivery_outbox IN ACCESS EXCLUSIVE MODE';
     IF EXISTS (SELECT 1 FROM siem_delivery_outbox) THEN
       RAISE EXCEPTION 'siem_delivery_outbox has rows; inspect them before dropping the table';
     END IF;

@@ -96,12 +96,12 @@ Each step needs the owner's go.
 |---|---|---|---|
 | `break_glass_login` | Requires `LOCAL_LOGIN_MODE=break_glass`; test when SSO is enabled | | Pending |
 | `super_user_login` | A real login by `claude-agent@truenote.org` at 05:04:54 UTC, made by another agent session | 2026-10-10 | Passed: alert email "[Truenote] Security alert: Super user login" received by the owner |
-| `account_change` | Agent account resets a test user's password | | Pending |
-| `security_setting_change` | Toggle the demo limit switch off and back on | | Pending |
-| `error_log_cleared` | Clear the error log when it holds no needed entries | | Pending |
+| `account_change` | The agent account created the CSR `alert-test-user-20261010@example.invalid`, deactivated it and deleted it, 15:24 UTC | 2026-10-10 | Passed: one email listing all three changes |
+| `security_setting_change` | Demo limit switch turned off and back on within a second, 15:24 UTC | 2026-10-10 | Passed: both changes in the alert. The two events carry no source IP; the route does not pass one |
+| `error_log_cleared` | Error log cleared by the agent account, 15:24 UTC | 2026-10-10 | Passed. The copy meant to be kept first was not made (the export request was rejected), so the cleared entries survive only in Railway logs (30 days) and the daily export |
 | `failed_logins_ip` | 50 wrong passwords for `alert-test-20261010@example.invalid` from one address, about 05:08 UTC (all answered 401) | 2026-10-10 | Passed: 50 against threshold 10 |
 | `failed_logins_total` | Same run | 2026-10-10 | Passed: 50 against threshold 25 |
 | `denied_spike` | Same run | 2026-10-10 | Passed: 50 against threshold 50. The three alerts arrived as one email, "[Truenote] 3 security alerts" |
-| `audit_write_failure` | Needs a failing append; method to be agreed with the owner | | Pending |
-| `security_monitor_failing` | Needs five failed passes; method to be agreed with the owner | | Pending |
+| `audit_write_failure` | `EXECUTE` on `append_security_event` revoked from `truenote_app` for about 5 seconds around 15:26 UTC while one failed login was sent, then granted back | 2026-10-10 | Passed: `web` logged `[security-audit] append failed` and emailed the alert. The email shows the query wrapper text rather than the database's reason |
+| `security_monitor_failing` | `SELECT` on `security_monitor_state` revoked from `truenote_app` for about 6.5 minutes from about 15:27 UTC, then granted back | 2026-10-10 | Passed: alert after five failed passes; the cursor caught up after the grant |
 | Health failure | Uptime check pointed at `https://truenote.org/health/ready` before that route was deployed, then back at `/health` | 2026-10-10 | Passed after one fix. The first run counted the URL as up because the SPA fallback answers unknown paths with 200 and HTML; the check now requires the JSON body `{"ok":true}`. The rerun opened `ryanportfolio/truenote-ops` issue 1; the recovery run commented and closed it at 04:53 UTC |
