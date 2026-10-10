@@ -51,7 +51,10 @@ import { getMinPasswordLength } from "../lib/config.js";
 import { getEmailSender } from "../lib/email/sender.js";
 import { resolveAppBaseUrl } from "../lib/email/links.js";
 import { recordAppError } from "../lib/observability/error-log.js";
-import { renderResetEmail } from "../lib/email/templates.js";
+import {
+  renderResetEmail,
+  renderSsoResetNoticeEmail
+} from "../lib/email/templates.js";
 import { recordSecurityEventBestEffort } from "../lib/security/audit.js";
 import { loginPasswordIpLimit } from "../lib/security/route-rate-limit.js";
 
@@ -571,6 +574,10 @@ authRouter.post("/change-password", requireAuth, workloadRateLimitMiddleware("pa
  * thread. Send failures are logged; the user sees the same outcome
  * either way (no email arrives → they retry).
  *
+ * An account LOCAL_LOGIN_MODE does not allow local login (company SSO
+ * only) gets an email pointing at the sign-in page instead of a reset
+ * link; no token is minted. The response is still the same 204.
+ *
  * Rate limiting is intentionally NOT included in Phase 2.5 — a real
  * deployment should add per-email + per-IP limits to avoid being a
  * spam relay. Tracked as a follow-up.
@@ -654,6 +661,7 @@ authRouter.post("/forgot-password", async (req, res, next) => {
             id: users.id,
             email: users.email,
             name: users.name,
+            role: users.role,
             isActive: users.isActive
           })
           .from(users)
@@ -661,6 +669,17 @@ authRouter.post("/forgot-password", async (req, res, next) => {
           .limit(1);
         const row = rows[0];
         if (!row || !row.isActive) return;
+
+        // An SSO-only account has no password to reset, and reset-password
+        // would refuse the link, so mint no token and point it at SSO.
+        if (!isLocalLoginAllowed(getOidcConfig().localLoginMode, row.role)) {
+          const notice = renderSsoResetNoticeEmail({
+            name: row.name,
+            signInUrl: `${baseUrl}/login`
+          });
+          await getEmailSender().send({ to: row.email, ...notice });
+          return;
+        }
 
         const { token, expiresAt } = await createResetToken(row.id);
         const resetUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;

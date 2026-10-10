@@ -138,6 +138,7 @@ describe("POST /api/admin/users invitation by login mode", () => {
     expect(result.body.invitation).toBeUndefined();
     expect(fake.send).not.toHaveBeenCalled();
     expect(fake.createResetToken).not.toHaveBeenCalled();
+    expect((result.body.item as { localLoginAllowed: boolean }).localLoginAllowed).toBe(true);
   });
 
   it.each(["break_glass", "disabled"])(
@@ -148,6 +149,7 @@ describe("POST /api/admin/users invitation by login mode", () => {
       expect(result.status).toBe(201);
       expect(result.body.tempPassword).toBeUndefined();
       expect(result.body.invitation).toEqual({ kind: "sso", emailSent: true });
+      expect((result.body.item as { localLoginAllowed: boolean }).localLoginAllowed).toBe(false);
       expect(fake.createResetToken).not.toHaveBeenCalled();
       expect(fake.send).toHaveBeenCalledTimes(1);
       const email = fake.send.mock.calls[0]![0] as { to: string; text: string; html: string };

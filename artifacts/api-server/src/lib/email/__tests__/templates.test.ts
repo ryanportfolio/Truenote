@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderSsoInviteEmail, SSO_SIGN_IN_LABEL } from "../templates.js";
+import { renderSsoInviteEmail, renderSsoResetNoticeEmail, SSO_SIGN_IN_LABEL } from "../templates.js";
 
 describe("renderSsoInviteEmail", () => {
   it("links to the sign-in page and names the SSO button", () => {
@@ -24,5 +24,20 @@ describe("renderSsoInviteEmail", () => {
     expect(email.html).not.toContain("<b>Eve</b>");
     expect(email.html).not.toContain("<script>");
     expect(email.html).toContain("&lt;b&gt;Eve&lt;/b&gt;");
+  });
+});
+
+describe("renderSsoResetNoticeEmail", () => {
+  it("points at the sign-in page and carries no reset link", () => {
+    const email = renderSsoResetNoticeEmail({
+      name: "<b>Eve</b>",
+      signInUrl: "https://app.example.com/login"
+    });
+    for (const body of [email.html, email.text]) {
+      expect(body).toContain("https://app.example.com/login");
+      expect(body).toContain(SSO_SIGN_IN_LABEL);
+      expect(body).not.toContain("reset-password");
+    }
+    expect(email.html).not.toContain("<b>Eve</b>");
   });
 });

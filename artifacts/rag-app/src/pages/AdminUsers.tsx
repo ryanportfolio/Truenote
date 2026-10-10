@@ -195,7 +195,9 @@ function AdminUsersInner({ user }: AdminUsersPageProps): JSX.Element {
       <h1 className="sr-only">Users</h1>
       {teamView ? (
         <p className="text-sm text-muted-foreground">
-          The CSRs on your team. You can reset their passwords here.
+          {items.length > 0 && items.every((u) => !u.localLoginAllowed)
+            ? "The CSRs on your team. They sign in with company SSO, so there are no passwords to reset here."
+            : "The CSRs on your team. You can reset their passwords here."}
         </p>
       ) : null}
 
@@ -846,7 +848,7 @@ function UsersTable({
       <EmptyState
         icon={Users}
         title="No users in this scope"
-        hint="Create the first user with the form above — they get a one-time temporary password."
+        hint="Create the first user with the form above. They get a one-time temporary password, or an invitation email when they sign in with company SSO."
       />
     );
   }
@@ -903,6 +905,8 @@ function UserRow({
   const manageable = canManageUserClient(actor, item);
   // A supervisor's only action is resetting a team member's password.
   const resetOnly = !manageable && canResetTeamPasswordClient(actor, item);
+  // SSO-only accounts have no password; the server refuses a reset (409).
+  const ssoOnly = !item.localLoginAllowed;
   const teamView = actor.role === "supervisor";
 
   async function handleSaveName(): Promise<void> {
@@ -1007,7 +1011,11 @@ function UserRow({
                 Inactive
               </span>
             ) : null}
-            {item.mustResetPassword ? (
+            {ssoOnly ? (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                Company SSO
+              </span>
+            ) : item.mustResetPassword ? (
               <span className="rounded-full bg-warning/20 px-2 py-0.5 text-xs text-warning-foreground">
                 Reset pending
               </span>
@@ -1078,14 +1086,16 @@ function UserRow({
                   ? "Deactivate"
                   : "Reactivate"}
             </button>
-            <button
-              type="button"
-              onClick={() => void handleResetPassword()}
-              disabled={busy === "reset"}
-              className="btn-whisper px-3 py-1 text-xs"
-            >
-              {busy === "reset" ? "Resetting…" : "Reset password"}
-            </button>
+            {ssoOnly ? null : (
+              <button
+                type="button"
+                onClick={() => void handleResetPassword()}
+                disabled={busy === "reset"}
+                className="btn-whisper px-3 py-1 text-xs"
+              >
+                {busy === "reset" ? "Resetting…" : "Reset password"}
+              </button>
+            )}
             {/* Delete is gated behind deactivation: an active user must be
               * deactivated first (which revokes their sessions), then the
               * destructive, irreversible delete becomes available. */}
@@ -1100,7 +1110,7 @@ function UserRow({
               </button>
             ) : null}
           </div>
-        ) : resetOnly ? (
+        ) : resetOnly && !ssoOnly ? (
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
