@@ -104,13 +104,17 @@ function checkCi(sha) {
   return latest;
 }
 
+// Returns the deployments, or the reason they could not be read, so a
+// failing CLI is never mistaken for "not created yet".
 function listDeployments(service) {
   const result = railway(["deployment", "list", "-p", PROJECT, "-e", ENVIRONMENT, "-s", service, "--json", "--limit", "20"]);
-  if (result.status !== 0) return [];
+  if (result.status !== 0) {
+    return { deployments: [], error: `railway deployment list exited ${result.status}: ${(result.stderr ?? "").trim().slice(0, 300)}` };
+  }
   try {
-    return JSON.parse(result.stdout);
-  } catch {
-    return [];
+    return { deployments: JSON.parse(result.stdout), error: null };
+  } catch (error) {
+    return { deployments: [], error: `railway deployment list returned invalid JSON: ${error.message}` };
   }
 }
 
@@ -126,9 +130,15 @@ async function deploy(service, sourceDir, deployMessage) {
   // invocation's nonce, and by a creation time after this upload started.
   const deadline = Date.now() + DEPLOY_TIMEOUT_MS;
   let found = null;
+  let lastError = null;
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-    const deployments = listDeployments(service);
+    const { deployments, error } = listDeployments(service);
+    if (error) {
+      lastError = error;
+      console.error(`${service}: ${error}`);
+      continue;
+    }
     const current = found
       ? deployments.find((d) => d.id === found.id)
       : deployments.find(
@@ -139,10 +149,15 @@ async function deploy(service, sourceDir, deployMessage) {
     console.log(`${service}: ${found.id} ${found.status}`);
     if (FINAL.includes(found.status)) break;
   }
-  if (!found) return { id: "", status: "NOT_FOUND", imageDigest: "" };
+  // The upload was accepted, so production may be running the release even
+  // when polling never saw it: POLL_FAILED says the status is unknown.
+  if (!found) {
+    if (lastError) console.error(`${service}: status unknown; find "${deployMessage}" in railway deployment list.`);
+    return { id: "", status: lastError ? "POLL_FAILED" : "NOT_FOUND", imageDigest: "" };
+  }
   return {
     id: found.id,
-    status: FINAL.includes(found.status) ? found.status : `TIMEOUT_${found.status}`,
+    status: FINAL.includes(found.status) ? found.status : `${lastError ? "POLL_FAILED" : "TIMEOUT"}_${found.status}`,
     imageDigest: found.meta?.imageDigest ?? ""
   };
 }
@@ -187,7 +202,25 @@ async function main() {
   // LF checkout of the exact commit: the bytes GitHub and CI hold.
   const sourceDir = mkdtempSync(path.join(os.tmpdir(), `truenote-release-${sha.slice(0, 12)}-`));
   git(["-c", "core.autocrlf=false", "-c", "core.eol=lf", "worktree", "add", "--detach", sourceDir, sha]);
-  const rows = [];
+  const removeCheckout = () => {
+    const removed = run("git", ["worktree", "remove", "--force", sourceDir]);
+    if (removed.status !== 0) console.error(`remove the temporary checkout by hand: ${sourceDir}`);
+  };
+  const row = (service, result) =>
+    [new Date().toISOString(), sha, ci.id, service, result.id, result.status, result.imageDigest, args.message];
+
+  // Ctrl+C or a stopped job: record the service in progress as INTERRUPTED
+  // (its upload may already be live) and remove the checkout before exiting.
+  let pending = null;
+  const onSignal = (signal) => {
+    if (pending) record([row(pending, { id: "", status: "INTERRUPTED", imageDigest: "" })]);
+    removeCheckout();
+    console.error(`stopped by ${signal}`);
+    process.exit(130);
+  };
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+
   try {
     if (git(["-C", sourceDir, "rev-parse", "HEAD"]) !== sha) {
       throw new Refusal("temporary checkout is not at the release commit");
@@ -196,8 +229,11 @@ async function main() {
     // the same commit cannot be mistaken for this one.
     const deployMessage = `${sha.slice(0, 12)} ci ${ci.id} run ${randomBytes(4).toString("hex")}: ${args.message}`;
     for (const service of args.services) {
+      pending = service;
       const result = await deploy(service, sourceDir, deployMessage);
-      rows.push([new Date().toISOString(), sha, ci.id, service, result.id, result.status, result.imageDigest, args.message]);
+      pending = null;
+      // Recorded at once, so a later interruption cannot lose this receipt.
+      record([row(service, result)]);
       console.log(`${service}: ${result.status} ${result.id} ${result.imageDigest}`);
       if (result.status !== "SUCCESS") {
         process.exitCode = 1;
@@ -205,9 +241,9 @@ async function main() {
       }
     }
   } finally {
-    const removed = run("git", ["worktree", "remove", "--force", sourceDir]);
-    if (removed.status !== 0) console.error(`remove the temporary checkout by hand: ${sourceDir}`);
-    if (rows.length > 0) record(rows);
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
+    removeCheckout();
   }
 }
 
