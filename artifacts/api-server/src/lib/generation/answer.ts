@@ -169,16 +169,14 @@ async function callGenerationModel(
     signal?: AbortSignal;
   }
 ): Promise<{ text: string | null; usage: ProviderTokenUsage | null }> {
-  const protectedSystemPrompt = protectProviderText(systemPrompt).text;
-  const protectedUserPrompt = protectProviderText(userPrompt).text;
   const request = {
     model,
     ...(options.reasoningEffort === "none"
       ? { temperature: 0 }
       : { reasoning_effort: options.reasoningEffort }),
     messages: [
-      { role: "system", content: protectedSystemPrompt },
-      { role: "user", content: protectedUserPrompt }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
     ]
   } satisfies OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
 
@@ -376,8 +374,15 @@ export async function generateAnswer(
     };
   }
 
-  const systemPrompt = buildSystemPrompt(input.programName);
-  const userPrompt = buildUserPrompt(input.question, input.chunks);
+  // The provider firewall covers the system prompt and the typed question.
+  // Excerpts go verbatim: they come from approved documents that the upload
+  // scan already quarantines for payment cards, SSNs and secrets, and redacting
+  // their contact emails or phone numbers left the model unable to answer.
+  const systemPrompt = protectProviderText(buildSystemPrompt(input.programName)).text;
+  const userPrompt = buildUserPrompt(
+    protectProviderText(input.question).text,
+    input.chunks
+  );
 
   // Walk the admin-ordered ZDR-only OpenRouter chain. Any request error, empty
   // answer, or invalid/missing citation advances to the next route. A valid

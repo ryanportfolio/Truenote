@@ -1,10 +1,10 @@
 # Outages and Service Credits: Agent FAQ
 
-Larkspur Cloud Customer Support · FAQ CS-FAQ-012 · Version 4 · Effective September 1, 2026 · Owner: Support Operations
+Cloudshelf Customer Support · FAQ CS-FAQ-012 · Version 4 · Effective September 1, 2026 · Owner: Support Operations
 
 ## How do I check whether there is an outage?
 
-Open the status page at status.larkspur.example. If it shows an active incident, read the customer the latest public update word for word. Do not guess at causes or fix times.
+Open the status page at status.cloudshelf.example. If it shows an active incident, read the customer the latest public update word for word. Do not guess at causes or fix times.
 
 If the status page shows no incident but three or more customers report the same problem within 30 minutes, post in the incident channel. The Incident Commander decides whether to declare an outage.
 
@@ -29,6 +29,6 @@ Follow the Cancellation Policy. The outage does not waive the cancellation fee u
 
 ## Is the outage line different from the support line?
 
-Yes. The outage line, 1-800-555-0142, stays open 24/7, including holidays when regular support is closed.
+Yes. The outage line, extension 4400, stays open 24/7, including holidays when regular support is closed.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.

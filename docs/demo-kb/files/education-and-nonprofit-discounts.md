@@ -1,6 +1,6 @@
 # Education and Nonprofit Discounts
 
-Larkspur Cloud Customer Support · Policy CS-POL-027 · Version 2 · Effective September 1, 2026 · Owner: Billing Operations
+Cloudshelf Customer Support · Policy CS-POL-027 · Version 2 · Effective September 1, 2026 · Owner: Billing Operations
 
 ## When to use this
 
@@ -8,7 +8,7 @@ Use this policy when a customer asks about a student, teacher, school or nonprof
 
 ## The discount
 
-Verified nonprofits and education customers get 30% off Pro and Enterprise. Billing Operations approves every discount. Basic is not eligible. This is the only discount Larkspur Cloud offers; agents may not create or promise any other discount.
+Verified nonprofits and education customers get 30% off Pro and Enterprise. Billing Operations approves every discount. Basic is not eligible. This is the only discount Cloudshelf offers; agents may not create or promise any other discount.
 
 ## Who qualifies
 
@@ -51,4 +51,4 @@ Verified nonprofits and education customers get 30% off Pro and Enterprise. Bill
 
 If the customer asks for a supervisor, escalate to a Tier 2 supervisor within 15 minutes. Supervisors cannot create discounts either.
 
-Synthetic document for the Truenote demonstration. Larkspur Cloud is a fictional company; all names and numbers are invented.
+Synthetic demonstration document. Cloudshelf is a fictional company; all policies and numbers are invented.

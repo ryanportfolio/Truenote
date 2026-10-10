@@ -153,7 +153,7 @@ describe("provider input firewall portable security gate", () => {
     });
   });
 
-  it("protects OpenRouter answer-generation prompts before client invocation", async () => {
+  it("protects the OpenRouter answer-generation question and passes approved excerpts verbatim", async () => {
     const captured: ChatRequest[] = [];
     const chunks: GenerateAnswerInput["chunks"] = [{
       id: "chunk-1",
@@ -180,12 +180,11 @@ describe("provider input firewall portable security gate", () => {
     );
 
     const outbound = userMessage(captured[0]);
-    assert.equal(outbound.includes("csr@example.com"), false);
-    assert.equal(outbound.includes("212-555-0198"), false);
     assert.equal(outbound.includes("192.0.2.10"), false);
-    assert.match(outbound, /\[REDACTED_PII_EMAIL\]/);
-    assert.match(outbound, /\[REDACTED_PII_PHONE\]/);
-    assert.match(outbound, /\[REDACTED_PII_IP_ADDRESS\]/);
+    assert.match(outbound, /QUESTION: What is linked to \[REDACTED_PII_IP_ADDRESS\]\?/);
+    // Excerpts come from approved documents; the upload scan quarantines the
+    // blocking classes (cards, SSNs, secrets) before a chunk can exist.
+    assert.match(outbound, /Call 212-555-0198 or email csr@example\.com\./);
     assert.equal(result.payload.refused, false);
   });
 

@@ -288,7 +288,7 @@ describe("generateAnswer ZDR route fallback", () => {
     );
   });
 
-  it("redacts sensitive question and excerpt data before OpenRouter", async () => {
+  it("redacts the question but sends approved excerpts verbatim to OpenRouter", async () => {
     const requests: CapturedRequest[] = [];
     const sensitiveChunks = [
       { ...chunks[0]!, content: "Call 212-555-0198 or email csr@example.com." }
@@ -304,10 +304,9 @@ describe("generateAnswer ZDR route fallback", () => {
     );
 
     const userMessage = requests[0]?.messages?.find((message) => message.role === "user");
-    expect(userMessage?.content).toContain("[REDACTED_PII_EMAIL]");
-    expect(userMessage?.content).toContain("[REDACTED_PII_PHONE]");
-    expect(userMessage?.content).toContain("[REDACTED_PII_IP_ADDRESS]");
-    expect(userMessage?.content).not.toContain("csr@example.com");
+    expect(userMessage?.content).toContain("QUESTION: What is linked to [REDACTED_PII_IP_ADDRESS]?");
+    expect(userMessage?.content).not.toContain("192.0.2.10");
+    expect(userMessage?.content).toContain("Call 212-555-0198 or email csr@example.com.");
   });
 
   it("routes Granite 4.2 8B only to its CoreWeave ZDR endpoint", async () => {

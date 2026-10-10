@@ -18,10 +18,20 @@ requests are constructed:
 
 - OpenAI embedding batches;
 - Cohere rerank queries and candidate documents;
-- OpenRouter answer-generation system/user messages;
+- the OpenRouter answer-generation system message and the question inside the
+  user message;
 - OpenRouter follow-up rewrite and session-naming system/user messages; and
 - direct-OpenAI evaluation faithfulness-judge excerpt/answer prompts
   (added 2026-07-17 after an audit found this path previously unprotected).
+
+Since 2026-10-10, retrieved excerpts in the OpenRouter answer-generation user
+message are sent as stored, without this transformation (owner decision). They
+come from documents an administrator approved, and the upload content scan
+quarantines a document version that contains a blocking secret, SSN, or
+payment-card finding before it is chunked. Redacting the excerpts removed
+contact emails and phone numbers from approved procedures, so the model could
+not answer questions about them. Excerpts sent to OpenAI embeddings, Cohere
+reranking, and the faithfulness judge still pass through the firewall.
 
 It redacts these deterministic classes:
 

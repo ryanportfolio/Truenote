@@ -67,8 +67,8 @@ const CANCELLATION_DOC: SeedDoc = {
     "Legacy customers (signed before 2022-01-01) are exempt from all",
     "cancellation fees regardless of plan.",
     "",
-    "Customers in California and New York may cancel at any time without",
-    "fee under state consumer-protection law.",
+    "Customers who cancel within 14 days of a price-increase notice pay no",
+    "cancellation fee.",
     "",
     "## How to Cancel",
     "",
@@ -140,9 +140,9 @@ const SEED_EVAL_QUESTIONS: SeedEval[] = [
     expectedAnswerContains: ["5-7", "business days"]
   },
   {
-    question: "What state laws override the standard cancellation policy?",
+    question: "Which customers besides legacy customers pay no cancellation fee?",
     expectedDocTitle: CANCELLATION_DOC.title,
-    expectedAnswerContains: ["California", "New York"]
+    expectedAnswerContains: ["price-increase", "14 days"]
   },
   {
     question: "Who must approve a courtesy refund?",
