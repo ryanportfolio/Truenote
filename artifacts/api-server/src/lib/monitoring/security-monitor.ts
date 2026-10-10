@@ -393,17 +393,21 @@ export async function getSecurityMonitorStatus(
         (SELECT last_sequence FROM security_monitor_state WHERE id) AS last_sequence,
         (SELECT updated_at FROM security_monitor_state WHERE id) AS advanced_at,
         (SELECT max(sequence) FROM security_events) AS latest_sequence,
+        -- Counted, not subtracted: a rolled-back insert leaves a gap in the
+        -- sequence.
+        (SELECT count(*)
+           FROM security_events
+          WHERE sequence > COALESCE(
+            (SELECT last_sequence FROM security_monitor_state WHERE id), 0
+          )) AS pending_events,
         (SELECT beat_at FROM service_heartbeats WHERE service = 'worker') AS worker_beat_at
     `);
     const row = (result.rows[0] ?? {}) as Record<string, unknown>;
-    const lastSequence = numberOrNull(row["last_sequence"]);
-    const latestSequence = numberOrNull(row["latest_sequence"]);
     return {
       storageReady: true,
-      lastSequence,
-      latestSequence,
-      pendingEvents:
-        latestSequence === null ? 0 : latestSequence - (lastSequence ?? 0),
+      lastSequence: numberOrNull(row["last_sequence"]),
+      latestSequence: numberOrNull(row["latest_sequence"]),
+      pendingEvents: Number(row["pending_events"] ?? 0),
       advancedAt: isoOrNull(row["advanced_at"]),
       workerBeatAt: isoOrNull(row["worker_beat_at"])
     };

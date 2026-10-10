@@ -2,7 +2,7 @@
 
 Truenote's log review, alerting and availability monitoring. It addresses NIST SP 800-53 Rev. 5 Moderate AU-5, AU-6, AU-6(1), AU-6(3) and SI-4, and the readiness part of CA-7 (POA&M items POAM-2026-012 and POAM-2026-013).
 
-Status, 2026-10-10: the code is in the repository but not deployed. The steps under "Turning it on" need the owner's go. The off-Railway log copy and the uptime check live in the private repository `ryanportfolio/truenote-ops` (created 2026-10-10). Its uptime check runs against `/health` until `/health/ready` is deployed; its log export waits for the `RAILWAY_TOKEN` secret.
+Status, 2026-10-10: deployed. `0011` was applied at 05:01 UTC, `SECURITY_ALERT_EMAIL` was set on `web` and `worker`, and both were deployed from `ed228fca` (#216). By 05:06 UTC the monitor had printed all 743 existing events, raising no alerts for history, and `/health/ready` returned 200 on both hosts. The off-Railway log copy and the uptime check live in the private repository `ryanportfolio/truenote-ops` (created 2026-10-10). Its uptime check runs against `/health` until `/health/ready` is deployed; its log export waits for the `RAILWAY_TOKEN` secret.
 
 ## Design decisions
 
@@ -95,13 +95,13 @@ Each step needs the owner's go.
 | Rule | Test | Date | Result |
 |---|---|---|---|
 | `break_glass_login` | Requires `LOCAL_LOGIN_MODE=break_glass`; test when SSO is enabled | | Pending |
-| `super_user_login` | Agent account logs in | | Pending |
+| `super_user_login` | A real login by `claude-agent@truenote.org` at 05:04:54 UTC, made by another agent session | 2026-10-10 | Passed: alert email "[Truenote] Security alert: Super user login" received by the owner |
 | `account_change` | Agent account resets a test user's password | | Pending |
 | `security_setting_change` | Toggle the demo limit switch off and back on | | Pending |
 | `error_log_cleared` | Clear the error log when it holds no needed entries | | Pending |
-| `failed_logins_ip` | 10 wrong passwords for a nonexistent account from one address | | Pending |
-| `failed_logins_total` | Covered by a 25-attempt run of the test above | | Pending |
-| `denied_spike` | Covered by a 50-attempt run of the test above | | Pending |
+| `failed_logins_ip` | 50 wrong passwords for `alert-test-20261010@example.invalid` from one address, about 05:08 UTC (all answered 401) | 2026-10-10 | Passed: 50 against threshold 10 |
+| `failed_logins_total` | Same run | 2026-10-10 | Passed: 50 against threshold 25 |
+| `denied_spike` | Same run | 2026-10-10 | Passed: 50 against threshold 50. The three alerts arrived as one email, "[Truenote] 3 security alerts" |
 | `audit_write_failure` | Needs a failing append; method to be agreed with the owner | | Pending |
 | `security_monitor_failing` | Needs five failed passes; method to be agreed with the owner | | Pending |
 | Health failure | Uptime check pointed at `https://truenote.org/health/ready` before that route was deployed, then back at `/health` | 2026-10-10 | Passed after one fix. The first run counted the URL as up because the SPA fallback answers unknown paths with 200 and HTML; the check now requires the JSON body `{"ok":true}`. The rerun opened `ryanportfolio/truenote-ops` issue 1; the recovery run commented and closed it at 04:53 UTC |

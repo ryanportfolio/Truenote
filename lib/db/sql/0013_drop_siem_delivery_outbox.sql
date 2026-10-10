@@ -13,9 +13,12 @@
 
 DO $$
 BEGIN
-  IF to_regclass('public.siem_delivery_outbox') IS NOT NULL
-     AND EXISTS (SELECT 1 FROM siem_delivery_outbox) THEN
-    RAISE EXCEPTION 'siem_delivery_outbox has rows; inspect them before dropping the table';
+  -- Nested: PL/pgSQL plans a whole IF condition at once, so a combined
+  -- condition would fail on a missing table before the existence test ran.
+  IF to_regclass('public.siem_delivery_outbox') IS NOT NULL THEN
+    IF EXISTS (SELECT 1 FROM siem_delivery_outbox) THEN
+      RAISE EXCEPTION 'siem_delivery_outbox has rows; inspect them before dropping the table';
+    END IF;
   END IF;
 END;
 $$;
