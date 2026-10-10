@@ -47,3 +47,4 @@ yarn-error.log*
 # agent scratch space (CLAUDE.md: .tmp/ for scratch)
 .tmp/
 
+.release-commit

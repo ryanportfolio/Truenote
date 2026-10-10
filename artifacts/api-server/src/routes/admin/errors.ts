@@ -11,6 +11,7 @@ import {
   requireFreshPassword,
   requireSuperUser
 } from "../../middleware/current-user.js";
+import { adminConfigWriteLimit } from "../../lib/security/route-rate-limit.js";
 
 export const errorsRouter = Router();
 
@@ -162,7 +163,7 @@ errorsRouter.get("/", async (req, res, next) => {
   }
 });
 
-errorsRouter.delete("/", async (req, res, next) => {
+errorsRouter.delete("/", adminConfigWriteLimit, async (req, res, next) => {
   try {
     const user = authedUser(req);
     const deletedCount = await db.transaction(async (tx) => {

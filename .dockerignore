@@ -15,6 +15,7 @@
 !scripts/**
 !docs/
 !docs/**
+!.release-commit
 **/node_modules
 **/dist
 **/.env

@@ -14,7 +14,7 @@
 // and appends one register row per service, failed attempts included.
 // Run from the repo root on a machine with the Railway and GitHub CLIs logged in.
 import { randomBytes } from "node:crypto";
-import { closeSync, mkdtempSync, openSync, readFileSync, writeSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readFileSync, writeFileSync, writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -228,6 +228,10 @@ async function main() {
     if (git(["-C", sourceDir, "rev-parse", "HEAD"]) !== sha) {
       throw new Refusal("temporary checkout is not at the release commit");
     }
+    // railway up uploads no .git; the evidence harness reads the commit from
+    // this file (artifacts/api-server/src/lib/evidence/receipts.ts). The
+    // checkout is clean by construction, so no +dirty suffix.
+    writeFileSync(path.join(sourceDir, ".release-commit"), `${sha}\n`);
     for (const service of args.services) {
       pending = service;
       const result = await deploy(service, sourceDir, deployMessage);

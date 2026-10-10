@@ -39,7 +39,7 @@ import {
   type SourceUsageSuggestion,
   type UsageMatrix
 } from "../../lib/source-usage.js";
-import { sourceUsageReadLimit } from "../../lib/security/route-rate-limit.js";
+import { adminReadLimit, sourceUsageReadLimit } from "../../lib/security/route-rate-limit.js";
 
 export const insightsRouter = Router();
 
@@ -114,7 +114,7 @@ interface TotalsRow {
   negative_feedback: number;
 }
 
-insightsRouter.get("/kb-gaps", async (req, res, next) => {
+insightsRouter.get("/kb-gaps", adminReadLimit, async (req, res, next) => {
   try {
     const user = authedUser(req);
     const programId = await resolveEffectiveProgramId(user, req);

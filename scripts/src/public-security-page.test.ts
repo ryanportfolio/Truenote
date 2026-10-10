@@ -162,6 +162,15 @@ describe("public security reporting surface", () => {
     assert.ok(viteConfig.includes('fileName: "security/pci/styles.css"'));
     assert.ok(apiApp.includes('"/security/pci/"'));
     assert.ok(apiApp.includes('res.sendFile("security-pci.html"'));
+    for (const publicSource of [securityOverview, pciReadiness]) {
+      assert.ok(publicSource.includes('href="/security/compliance/"'));
+      assert.ok(publicSource.includes('<a href="/compliance">Detailed documents</a>'));
+    }
+    assert.ok(viteConfig.includes("buildCompliancePages"));
+    assert.ok(viteConfig.includes('fileName: "security/compliance/index.html"'));
+    assert.ok(apiApp.includes('"/security/compliance/:slug"'));
+    assert.ok(apiApp.includes("listPublicCompliancePages(dist)"));
+    assert.ok(apiApp.includes("publicCompliancePageFile(compliancePages, req.params.slug)"));
   });
 
   it("keeps sensitive-data, safe-testing, and assurance boundaries on the public page", () => {
