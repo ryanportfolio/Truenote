@@ -1,6 +1,6 @@
 # SSO with MFA for customer users: options and plan
 
-Status: proposal for the owner's decision, October 9, 2026. Nothing here has been built, configured or deployed. No production setting, Railway variable or provider account was touched. The WorkOS API key was not used.
+Status: proposal for the owner's decision, October 9, 2026. No production setting, Railway variable or provider account was touched. The WorkOS API key was not used. Update, October 10: the code parts of steps 1, 2, 3a, 4, 5 and 6 merged in ryanportfolio/Truenote#226 (direct Entra, no WorkOS, passkey plus recovery codes for the emergency login); nothing is configured or deployed yet. The idle re-authentication choice under "Sessions" and the step 2 SSO invitation email are not built. The "What the existing code does" section describes `main` before that build.
 
 Scope: how call-center CSRs, supervisors and managers sign in to Truenote through their company's identity provider with MFA, how the single emergency super_user signs in, and what has to be true before the first real customer data enters production (go-live, no date set).
 
@@ -49,7 +49,7 @@ Gaps found:
 5. **Existing local sessions survive a mode switch.** `findSessionByToken` in `lib/auth/sessions.ts` does not check `auth_method`. After `LOCAL_LOGIN_MODE` changes to `break_glass`, every CSR's existing password session stays valid for up to seven days.
 6. **Sessions last seven days with no idle timeout.** The October 9 security review already lists idle reauthentication as a gap. With SSO there is a second effect: a user disabled in Entra keeps Truenote access until the session ends, because Entra does not notify custom apps ([Continuous Access Evaluation](https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-continuous-access-evaluation) covers Microsoft's own services).
 7. **No lockout for local accounts.** The only limit is 2,000 attempts per IP per 10 minutes (`loginIpLimiter`). Fine for SSO users, whose IdP locks out; not enough for the break-glass account.
-8. **The break-glass account has no MFA.**
+8. **The break-glass account has no MFA.** A second factor added only to `POST /login` would not be enough: `POST /api/auth/reset-password` (`routes/auth.ts` lines 586-626) issues a session as soon as a valid reset link is used, including for a `super_user` in `break_glass`.
 9. **Logout is local only.** Signing out of Truenote leaves the Entra session open, so the next "Sign in with SSO" succeeds without a prompt. Acceptable on dedicated agent desktops, worth knowing on shared ones.
 
 ## Design
@@ -67,13 +67,14 @@ The first connection is the employer's own single-tenant app registration, so a 
 
 A new `user_identities` table: `(issuer, subject)` unique, plus `tenant_id`, `object_id`, `user_id`, `connection_id`, created and last-used timestamps.
 
-- First SSO login: the user must already have an invited, active Truenote account. The email from the token is used only to find that invitation, and only if the token's tenant matches the connection and the account's program is on the connection's allow-list. The identity is then bound to `tid` and `oid`.
+- First SSO login: the user must already have an invited, active Truenote account. The email from the token is used only to find that invitation, and only if the token's tenant matches the connection and the account's program is on the connection's allow-list. The identity is then bound to `tid` and `oid`. A token whose `xms_edov` claim is false (email not verified by the domain owner) never binds.
+- Each invitation records the connection it is for, and a first login binds only through that connection. Without this, once two connections share a program (step 3b), a token from tenant B carrying the email of a pending invitation meant for tenant A could bind to that account. Microsoft documents this email-claim risk ([MSRC, June 2023](https://www.microsoft.com/en-us/msrc/blog/2023/06/potential-risk-of-privilege-escalation-in-azure-ad-applications)). With the employer's single connection the risk does not arise; it must be closed before the second connection.
 - Every later login: look up by `(issuer, subject)` only. Email changes in Entra no longer matter.
 - A token from tenant A can never reach an account in a program that tenant A's connection is not allowed into, even if the email matches.
 
 ### Provisioning, roles and programs
 
-- **Now: invitation first.** A Truenote admin creates the account with role and program, as today. Role and program always come from Truenote's database, never from the token. SSO-only accounts get no usable password, and the password reset and invitation flows refuse them.
+- **Now: invitation first.** A Truenote admin creates the account with role and program, as today. Role and program always come from Truenote's database, never from the token. SSO-only accounts get no usable password, and the password reset and invitation flows refuse them. The invitation itself changes too: today single and bulk invitations send a `/reset-password` link and ask the user to choose a password, which an SSO-only account cannot use. SSO accounts get an invitation email that links to the sign-in page and says to use "Sign in with SSO".
 - **Optional just-in-time creation, per connection, off by default.** When on, a first-time user from that tenant gets an account in the connection's single default program with the `csr` role, or a role mapped from an Entra app role in the `roles` claim. JIT never creates `super_user`, `senior_manager` or `manager`.
 - **SCIM later, with a trigger.** Build a SCIM 2.0 endpoint (or adopt WorkOS Directory Sync) before the second customer, or sooner if a customer has high staff turnover. Until then, offboarding relies on short sessions plus the customer removing the user in Entra, and a Truenote admin deactivating the account.
 
@@ -86,15 +87,17 @@ If WorkOS is added later, its customers cannot be checked by layer 2. Before tha
 
 ### Sessions
 
-- SSO sessions: idle timeout (default 15 minutes, configurable; PCI DSS 8.2.8 asks for 15 when in scope) and an absolute limit of 10 hours, about one call-center shift. When the idle timeout fires, the user goes back through Entra; usually Entra signs them in again silently, and a user disabled in Entra is stopped there. Measure how often CSRs hit this between calls before fixing the defaults.
+- SSO sessions: idle timeout (default 15 minutes, configurable; PCI DSS 8.2.8 asks for 15 when in scope) and an absolute limit of 10 hours, about one call-center shift. When the idle timeout fires, the user goes back through Entra. A user disabled in Entra is stopped there, but Entra usually signs everyone else in again silently, so the person at an unattended, unlocked browser gets back in without proving who they are. That is not re-authentication in the sense of PCI DSS 8.2.8 ([PCI SSC FAQ 1147](https://www.pcisecuritystandards.org/faqs/1147/)). Two ways to close it, for the owner to choose: the sign-in after an idle expiry sends `prompt=login` (or `max_age`) to Entra and Truenote checks `auth_time` in the returned token; or the customer enforces a workstation screen lock of 15 minutes or less, and that is recorded as the control. Measure how often CSRs hit this between calls before fixing the defaults.
 - Session lookup refuses a `local` session for any user whom the current `LOCAL_LOGIN_MODE` would not allow to log in locally. A mode switch takes effect on the next request.
+- Local sessions get the same idle limit whenever `LOCAL_LOGIN_MODE` is not `enabled`, which covers the emergency super_user in `break_glass`. Its absolute limit stays the local seven days unless the owner sets a shorter one; record that as an accepted exception under AC-12.
 - Logout stays local by default. Optional: send the user on to Entra's `end_session_endpoint` for shared workstations.
 
 ### Local login and the emergency super_user
 
 - Fix the order in `POST /login`: decide whether the account may use local login before verifying the password. If not, run the dummy hash verify (to keep timing equal) and return the same 401 "Invalid credentials". The login page already offers "Sign in with SSO".
 - Production runs `LOCAL_LOGIN_MODE=break_glass` from go-live: only `super_user` may log in locally.
-- Second factor for that account, recommended: a passkey (a hardware security key, or a passkey in Microsoft Authenticator) through WebAuthn, plus ten single-use recovery codes stored as hashes, printed and kept offline. Passkeys resist phishing; TOTP does not. Cheaper option: TOTP in Microsoft Authenticator with the secret encrypted at rest.
+- Second factor for that account, recommended: a passkey through WebAuthn, on a hardware security key (FIDO2) or a platform passkey provider such as Windows Hello, iCloud Keychain or Google Password Manager, plus ten single-use recovery codes stored as hashes, printed and kept offline. Microsoft Authenticator cannot hold this passkey: it supports passkeys only for Microsoft Entra ID ([passkey FAQ](https://learn.microsoft.com/en-us/entra/identity/authentication/passkey-faq)). Passkeys resist phishing; TOTP does not. Cheaper option: TOTP in Microsoft Authenticator with the secret encrypted at rest.
+- Password reset must not bypass the factor. A reset link for a user with a passkey, or for a `super_user` in `break_glass`, sets the password and ends the user's sessions but issues no session; the user then signs in through `/login` and the second factor.
 - Lockout for local accounts: after 5 failed attempts, lock for 30 minutes and write a security event. Every break-glass login writes `auth.break_glass.login` (already exists) and should alert the owner once SIEM delivery exists.
 - If go-live arrives before the second factor is built, record a written exception: the super_user account stays deactivated (`is_active = false`); it is activated only by the owner through `railway ssh` (the owner's Railway and GitHub accounts must have MFA on), with a dated record of reason, start and end, and deactivated after use.
 
@@ -110,10 +113,10 @@ The repository has no NIST 800-53 control mapping and no POA&M file on `main`. T
 | IA-4 | Accounts bound to immutable `tid` plus `oid` | |
 | IA-5, IA-5(1) | Passwords limited to one account; existing 15-character minimum stays | Break-glass credential handling procedure |
 | IA-8 | If customer users are treated as non-organizational users, the same controls apply | Classification decision |
-| IA-11 | Idle timeout sends users back through the IdP | |
+| IA-11 | Idle timeout sends users back through the IdP | A silent IdP sign-in is not re-authentication: needs `prompt=login` or `max_age` after idle expiry, or a recorded screen-lock control |
 | AC-2, AC-2(2), AC-2(3), AC-2(4), AC-2(13) | Invitation records, emergency account defined and kept inactive or MFA-protected, short sessions after Entra disable, security events for account changes | AC-2(1) automated account management needs SCIM; AC-2(3) inactive-account disabling needs a scheduled job |
 | AC-7 | IdP lockout for SSO users; new lockout for local accounts | |
-| AC-2(5), AC-12, SC-23 | Idle and absolute session limits; session invalidation on mode change | |
+| AC-2(5), AC-12, SC-23 | Idle and absolute session limits; idle limit on local sessions outside `enabled`; session invalidation on mode change | Emergency local session keeps the seven-day absolute limit unless shortened (recorded exception) |
 | AC-11 | Truenote's idle timeout ends the application session | Screen lock on CSR workstations is the customer's control |
 | AU-2, AU-12 | Existing login security events, plus new events for connection changes, identity binding, lockout and refused MFA | External delivery still depends on the SIEM gap |
 
@@ -135,13 +138,13 @@ Estimates are engineering days for one developer, including tests. Nothing start
 | Step | Work | Effort |
 |---|---|---|
 | 1 | Local login order fix; session lookup refuses local sessions the current mode disallows; per-account lockout | 1 day |
-| 2 | `user_identities` table (SQL migration), bind on first login, look up by issuer and subject, tenant check, refuse SSO users in password reset and invitation flows | 2 days |
+| 2 | `user_identities` table (SQL migration), bind on first login, look up by issuer and subject, tenant check, refuse SSO users in password reset and invitation flows, SSO invitation email | 2 days |
 | 3a | `sso_connections` and program allow-list tables (SQL migration) holding the employer's single connection; callback checks `tid` and the program allow-list | 1 day |
-| 4 | Idle and absolute SSO session limits, configurable | 1-1.5 days |
-| 5 | Break-glass passkey plus recovery codes (or TOTP, about 1.5 days) | 2-3 days |
+| 4 | Idle and absolute SSO session limits, configurable; idle limit on local sessions outside `enabled` | 1-1.5 days |
+| 5 | Break-glass passkey plus recovery codes (or TOTP, about 1.5 days); reset links no longer sign in a user who has a second factor | 2-3 days |
 | 6 | Real Entra tests with the employer's tenant (below), security docs and Moderate package evidence | 2 days |
 | | **Total before go-live** | **9-10.5 days** |
-| 3b | Before the second customer: login page asks for work email and routes to the tenant, per-connection issuer and credentials, Truenote multi-tenant app, super_user admin screen for connections, hostile-tenant tests | 3 days |
+| 3b | Before the second customer: login page asks for work email and routes to the tenant, per-connection issuer and credentials, invitations bound to their connection, Truenote multi-tenant app, super_user admin screen for connections, hostile-tenant tests | 3 days |
 | Later | Optional JIT per connection | 1 day |
 | Later | SCIM 2.0 endpoint, or WorkOS Directory Sync | 4-6 days, or 2-3 with WorkOS |
 | Later | WorkOS SSO connection type | 2-3 days |
@@ -192,6 +195,9 @@ Real Entra tests for go-live use the employer's tenant with the test accounts fr
 | Tenant A user with a passkey or Windows Hello | Signed in (`amr` includes `mfa`) |
 | Tenant A user not assigned to the app | Stopped by Entra before reaching Truenote |
 | Tenant B user whose email matches a Truenote account in program A (step 3b) | Refused; no identity bound |
+| Tenant B user whose email matches a pending invitation for tenant A in a program both connections serve (step 3b) | Refused; no identity bound |
+| SSO user invited by single or bulk invitation | Email links to the sign-in page, not `/reset-password`; first "Sign in with SSO" binds the identity |
+| SSO user returns after the idle limit | With `prompt=login` chosen: Entra asks for credentials again; otherwise the recorded screen-lock control applies |
 | Tenant A user whose program is not on the connection's allow-list | Refused |
 | User's email changed in Entra after first login | Same Truenote account |
 | User disabled in Entra, then idle | Session ends at the idle limit; the next sign-in through Entra is refused |
@@ -201,6 +207,7 @@ Real Entra tests for go-live use the employer's tenant with the test accounts fr
 | SSO-only user enters the correct password on the local form | Same 401 and similar timing as a wrong password |
 | Mode switched to `break_glass` | Existing CSR password sessions refused on next request |
 | Break-glass login: password plus passkey, wrong factor, recovery code reused, 5 failures | Success; refused; refused; locked with a security event |
+| Break-glass super user follows a valid reset link | Password set, sessions ended, no session issued; `/login` then asks for the second factor |
 | SSO user asks a question | Retrieval stays within the user's program (existing program-scope tests still pass) |
 
 The eval harness is not affected; no retrieval or generation code changes.
@@ -209,9 +216,10 @@ The eval harness is not affected; no retrieval or generation code changes.
 
 1. Approve direct Entra now with WorkOS deferred, or choose WorkOS now.
 2. Passkey or TOTP for the break-glass account.
-3. Whether to add a Railway staging environment, or test on production before go-live with test accounts only.
-4. When to send the request list to the employer's IT team.
-5. Go-ahead for steps 1 to 6.
+3. Idle re-authentication for SSO users: `prompt=login` (or `max_age`) after an idle expiry, or a customer screen-lock control recorded instead.
+4. Whether to add a Railway staging environment, or test on production before go-live with test accounts only.
+5. When to send the request list to the employer's IT team.
+6. Go-ahead for steps 1 to 6.
 
 ## Sources
 
