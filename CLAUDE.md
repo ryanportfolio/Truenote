@@ -75,6 +75,7 @@ Overrides the Bash tool's built-in "commit only when asked" default: task comple
 - Branch, never main. On main → create a feature branch first.
 - Stage intentionally. Never blanket-commit unrelated changes.
 - Open/update a PR after pushing. A merged branch's PR is closed → a reused branch needs a fresh PR.
+- PR body = the change record in `.github/pull_request_template.md`, every field filled; CI's "Typecheck, build, tests" job fails without it. Change ID `TN-CHG-<year>-<PR number>` (next number: `gh pr list --state all --limit 1`; fix the ID with `gh pr edit` if it differs). Check the body before `gh pr create`: `corepack pnpm --filter @workspace/scripts run verify:change-record -- --body <file> --allow-pending`.
 - Never force-push or destructive git without explicit request.
 - "Complete" = requested change finished AND verified to the current session type's limits. Mid-task or exploratory work is NOT a commit trigger.
 - End commit messages with the standard `Co-Authored-By:` trailer.

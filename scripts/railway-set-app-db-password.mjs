@@ -1,20 +1,25 @@
 #!/usr/bin/env node
-// Set or rotate the password of truenote_app, the application's database role
-// (lib/db/sql/0007_app_runtime_role.sql), without printing it anywhere.
+// Set or rotate the password of a login role without printing it anywhere:
+// truenote_app, the application's role (lib/db/sql/0007_app_runtime_role.sql),
+// or with --role backup, truenote_backup, the backup job's read-only role
+// (lib/db/sql/0014_backup_role.sql).
 //
-//   node scripts/railway-set-app-db-password.mjs          # status only
-//   node scripts/railway-set-app-db-password.mjs --apply  # new password (owner's go first)
+//   node scripts/railway-set-app-db-password.mjs [--role backup]          # status only
+//   node scripts/railway-set-app-db-password.mjs [--role backup] --apply  # new password (owner's go first)
 //
 // --apply generates a random password in memory and:
 //   1. stores it in the pgvector service variable TRUENOTE_APP_DB_PASSWORD
-//      (--stdin, --skip-deploys: pgvector is not redeployed), which web and
-//      worker reference in DATABASE_URL;
+//      (TRUENOTE_BACKUP_DB_PASSWORD for --role backup; --stdin, --skip-deploys:
+//      pgvector is not redeployed), which web and worker reference in
+//      DATABASE_URL and the backup service in BACKUP_DATABASE_URL;
 //   2. sets the role's password to a SCRAM-SHA-256 verifier computed here, so
 //      the plaintext never reaches the database server, its logs or psql;
 //   3. checks that the stored verifier is the one computed here.
 // Running services keep their open connections; new connections use the new
 // password only after web and worker are redeployed, so redeploy both right
-// after a rotation (.claude/reference/deployment.md, "Database roles").
+// after a rotation (.claude/reference/deployment.md, "Database roles"). The
+// backup service resolves BACKUP_DATABASE_URL when it deploys, so redeploy it
+// after rotating truenote_backup.
 //
 // Run from the repo root on a machine with the Railway CLI logged in.
 import { createHash, createHmac, pbkdf2Sync, randomBytes } from "node:crypto";
@@ -23,14 +28,23 @@ import { spawnSync } from "node:child_process";
 const PROJECT = "2aa5cb01-5438-4fbd-aade-626d4e252977";
 const ENVIRONMENT = "b35c4090-cbcd-4deb-9434-e9b63a309bd9";
 const SERVICE = "pgvector";
-const ROLE = "truenote_app";
-const VARIABLE = "TRUENOTE_APP_DB_PASSWORD";
+const ROLES = {
+  app: { role: "truenote_app", variable: "TRUENOTE_APP_DB_PASSWORD", sql: "0007_app_runtime_role.sql" },
+  backup: { role: "truenote_backup", variable: "TRUENOTE_BACKUP_DB_PASSWORD", sql: "0014_backup_role.sql" }
+};
 
-const flag = process.argv[2];
-if (flag !== undefined && flag !== "--apply") {
-  console.error("usage: node scripts/railway-set-app-db-password.mjs [--apply]");
+const args = process.argv.slice(2);
+let which = "app";
+if (args[0] === "--role") {
+  which = args[1];
+  args.splice(0, 2);
+}
+const flag = args[0];
+if (!(which in ROLES) || args.length > 1 || (flag !== undefined && flag !== "--apply")) {
+  console.error("usage: node scripts/railway-set-app-db-password.mjs [--role backup] [--apply]");
   process.exit(2);
 }
+const { role: ROLE, variable: VARIABLE, sql: SQL_FILE } = ROLES[which];
 
 const psql =
   'psql -h localhost -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -X -A -t -q -v ON_ERROR_STOP=1';
@@ -85,7 +99,7 @@ console.log(`${SERVICE} variable ${VARIABLE}: ${names === null ? "unknown (railw
 
 if (flag !== "--apply") process.exit(0);
 if (!roleState.out.startsWith(`role ${ROLE}: login=true superuser=false`)) {
-  console.error(`refusing: ${ROLE} must exist as a non-superuser login role (apply 0007_app_runtime_role.sql first)`);
+  console.error(`refusing: ${ROLE} must exist as a non-superuser login role (apply ${SQL_FILE} first)`);
   process.exit(3);
 }
 
@@ -121,4 +135,8 @@ if (alter.status !== 0 || alter.out !== "verifier stored") {
   process.exit(alter.status || 1);
 }
 console.log(`role ${ROLE}: verifier stored`);
-console.log("Redeploy web and worker if their DATABASE_URL uses this role.");
+console.log(
+  which === "app"
+    ? "Redeploy web and worker if their DATABASE_URL uses this role."
+    : "Redeploy the backup service (railway redeploy -s backup -y) so its next run uses the new password."
+);
