@@ -8,6 +8,7 @@ import {
   programs,
   queryLog
 } from "@workspace/db/schema";
+import { answerFeedbackWriteLimit } from "../lib/security/route-rate-limit.js";
 import { retrieve } from "../lib/retrieval/query.js";
 import { generateAnswer, REFUSAL_TEXT } from "../lib/generation/answer.js";
 import { rewriteFollowUp, type HistoryTurn } from "../lib/generation/rewrite.js";
@@ -785,7 +786,7 @@ async function canWriteQueryLogRow(
   return user.role === "super_user" || row.programId === user.programId;
 }
 
-askRouter.post("/feedback", async (req, res, next) => {
+askRouter.post("/feedback", answerFeedbackWriteLimit, async (req, res, next) => {
   try {
     const parsed = FeedbackBody.safeParse(req.body);
     if (!parsed.success) {
@@ -815,7 +816,7 @@ const FlagMissingBody = z.object({
  * flagged_missing = true). One-way: the UI never un-flags, so this only
  * sets true.
  */
-askRouter.post("/flag-missing", async (req, res, next) => {
+askRouter.post("/flag-missing", answerFeedbackWriteLimit, async (req, res, next) => {
   try {
     const parsed = FlagMissingBody.safeParse(req.body);
     if (!parsed.success) {
