@@ -19,7 +19,10 @@ import {
 } from "./middleware/security-audit.js";
 import { SecurityControlsNotReadyError } from "./lib/security/errors.js";
 import { compressedAssetFileName } from "./lib/security/static-assets.js";
-import { publicCompliancePageFile } from "./lib/compliance/public-pages.js";
+import {
+  listPublicCompliancePages,
+  publicCompliancePageFile
+} from "./lib/compliance/public-pages.js";
 import {
   addScriptNonceToHtml,
   contentSecurityPolicy,
@@ -99,6 +102,7 @@ export function createApp(): Express {
   // keep Express's revalidation behavior.
   if (process.env.NODE_ENV === "production") {
     const assetsDir = path.join(dist, "assets");
+    const compliancePages = listPublicCompliancePages(dist);
     app.get(
       ["/security/pci", "/security/pci/", "/security/pci/index.html"],
       (_req: Request, res: Response, next: NextFunction) => {
@@ -177,7 +181,7 @@ export function createApp(): Express {
         "/security/compliance/:slug/index.html"
       ],
       (req: Request, res: Response, next: NextFunction): void => {
-        const file = publicCompliancePageFile(dist, req.params.slug);
+        const file = publicCompliancePageFile(compliancePages, req.params.slug);
         if (!file) {
           next();
           return;

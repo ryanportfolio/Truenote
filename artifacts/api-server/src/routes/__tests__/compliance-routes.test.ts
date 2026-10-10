@@ -16,7 +16,10 @@ import {
   complianceDocumentKey,
   sha256Hex
 } from "../../lib/compliance/documents.js";
-import { publicCompliancePageFile } from "../../lib/compliance/public-pages.js";
+import {
+  listPublicCompliancePages,
+  publicCompliancePageFile
+} from "../../lib/compliance/public-pages.js";
 
 const audit = vi.hoisted(() => ({
   events: [] as SecurityEventInput[],
@@ -252,22 +255,27 @@ describe("/api/compliance/documents/:slug", () => {
   });
 });
 
-describe("publicCompliancePageFile", () => {
+describe("public compliance page lookup", () => {
   const dist = mkdtempSync(path.join(tmpdir(), "compliance-pages-"));
   mkdirSync(path.join(dist, "security", "compliance", "overview"), { recursive: true });
   writeFileSync(path.join(dist, "security", "compliance", "overview", "index.html"), "<p>ok</p>");
+  mkdirSync(path.join(dist, "security", "compliance", "Bad_Name"), { recursive: true });
+  writeFileSync(path.join(dist, "security", "compliance", "Bad_Name", "index.html"), "<p>no</p>");
+  mkdirSync(path.join(dist, "security", "compliance", "empty"), { recursive: true });
+  const pages = listPublicCompliancePages(dist);
   afterAll(() => rmSync(dist, { recursive: true, force: true }));
 
   it("returns the built page for a known slug", () => {
-    expect(publicCompliancePageFile(dist, "overview")).toBe(
+    expect([...pages.keys()]).toEqual(["overview"]);
+    expect(publicCompliancePageFile(pages, "overview")).toBe(
       path.join(dist, "security", "compliance", "overview", "index.html")
     );
   });
 
-  it.each(["missing", "..", "../security", "styles.css", "Overview", "", undefined])(
+  it.each(["missing", "..", "../security", "styles.css", "Overview", "Bad_Name", "empty", "", undefined])(
     "returns null for %s",
     (slug) => {
-      expect(publicCompliancePageFile(dist, slug)).toBeNull();
+      expect(publicCompliancePageFile(pages, slug)).toBeNull();
     }
   );
 });

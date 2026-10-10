@@ -45,3 +45,6 @@ export const userAdminWriteLimit = perUserLimit(30, 60_000);
 
 /** Security page setting changes (the demo-limits switch): 30 a minute per user. */
 export const securitySettingWriteLimit = perUserLimit(30, 60_000);
+
+/** Compliance document reads (list and documents): 60 a minute per user. */
+export const complianceReadLimit = perUserLimit(60, 60_000);

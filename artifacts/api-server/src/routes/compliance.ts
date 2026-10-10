@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { clientIpFrom } from "../lib/auth/rate-limit.js";
+import { complianceReadLimit } from "../lib/security/route-rate-limit.js";
 import {
   ComplianceIntegrityError,
   isComplianceSlug,
@@ -26,7 +27,7 @@ export const complianceRouter = Router();
 
 complianceRouter.use(requireAuth, requireFreshPassword, requireSuperUser);
 
-complianceRouter.get("/documents", async (_req, res, next) => {
+complianceRouter.get("/documents", complianceReadLimit, async (_req, res, next) => {
   try {
     const manifest = await readComplianceManifest();
     res.json({
@@ -44,7 +45,7 @@ complianceRouter.get("/documents", async (_req, res, next) => {
   }
 });
 
-complianceRouter.get("/documents/:slug", async (req, res, next) => {
+complianceRouter.get("/documents/:slug", complianceReadLimit, async (req, res, next) => {
   try {
     const user = authedUser(req);
     const requested = req.params.slug;
