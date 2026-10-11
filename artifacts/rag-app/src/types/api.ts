@@ -658,9 +658,15 @@ export interface ModelRoutingOption {
   model: string;
   provider: string;
   providerLabel: string;
-  reasoningEffort: "none" | "low" | "medium";
+  reasoningEffort: ReasoningEffort;
+  defaultReasoningEffort: ReasoningEffort;
+  /** Efforts this model accepts; the page offers only these. */
+  supportedEfforts: ReasoningEffort[];
   description: string;
 }
+
+/** OpenRouter reasoning efforts. "none" turns reasoning off. */
+export type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
 
 export interface ModelRoutingConfig {
   /** Ordered approved-route ids; index 0 is the primary. */
@@ -791,12 +797,15 @@ export interface EvalRunConfiguration {
     label: string;
     model: string;
     providerLabel: string;
+    /** Absent on runs before efforts were adjustable. */
+    reasoningEffort?: string;
   };
   routeChain?: Array<{
     id: string;
     label: string;
     model: string;
     providerLabel: string;
+    reasoningEffort?: string;
   }>;
   /** Legacy direct backup snapshot; absent on ZDR-only runs. */
   fallback?: {

@@ -50,13 +50,15 @@ async function captureConfiguration(judge: boolean) {
         id: primaryRoute.id,
         label: primaryRoute.label,
         model: primaryRoute.model,
-        providerLabel: primaryRoute.providerLabel
+        providerLabel: primaryRoute.providerLabel,
+        reasoningEffort: primaryRoute.reasoningEffort
       },
       routeChain: modelState.routes.map((route) => ({
         id: route.id,
         label: route.label,
         model: route.model,
-        providerLabel: route.providerLabel
+        providerLabel: route.providerLabel,
+        reasoningEffort: route.reasoningEffort
       })),
       retrieval: {
         topK: retrieval.topK,

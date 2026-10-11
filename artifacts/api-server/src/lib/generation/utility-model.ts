@@ -6,6 +6,11 @@ import {
   type ApprovedModelRouteId
 } from "./model-routing.js";
 
+/** The OpenAI SDK's effort union; OpenRouter also accepts "none" and "xhigh". */
+type SdkReasoningEffort = NonNullable<
+  OpenAI.Chat.ChatCompletionCreateParamsNonStreaming["reasoning_effort"]
+>;
+
 /**
  * Auxiliary LLM calls (follow-up rewrite, session naming) route through the
  * same OpenRouter Zero Data Retention boundary as answer generation, instead
@@ -78,9 +83,7 @@ export async function runUtilityCompletion(
 
   const request = {
     model: route.model,
-    ...(route.reasoningEffort === "none"
-      ? { temperature: 0 }
-      : { reasoning_effort: route.reasoningEffort }),
+    ...(route.reasoningEffort === "none" ? { temperature: 0 } : {}),
     messages: [
       { role: "system", content: protectedSystem },
       { role: "user", content: protectedUser }
@@ -90,6 +93,10 @@ export async function runUtilityCompletion(
   const completion = await client.chat.completions.create(
     {
       ...request,
+      // OpenRouter's efforts include "none" and "xhigh", which the OpenAI
+      // SDK types lack. "none" is sent too: models that reason by default
+      // would otherwise reason anyway.
+      reasoning_effort: route.reasoningEffort as SdkReasoningEffort,
       provider: {
         only: [route.provider],
         zdr: true,

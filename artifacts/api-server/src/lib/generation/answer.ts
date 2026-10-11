@@ -10,7 +10,8 @@ import {
 import { recordAppError } from "../observability/error-log.js";
 import {
   getActiveModelChain,
-  type ApprovedModelRoute
+  type ApprovedModelRoute,
+  type ReasoningEffort
 } from "./model-routing.js";
 import { scanTextForSensitiveContent } from "../security/content-scan.js";
 import {
@@ -18,6 +19,11 @@ import {
   protectProviderText
 } from "../security/provider-input-firewall.js";
 import { findUngroundedFigure } from "./figure-grounding.js";
+
+/** The OpenAI SDK's effort union; OpenRouter also accepts "none" and "xhigh". */
+type SdkReasoningEffort = NonNullable<
+  OpenAI.Chat.ChatCompletionCreateParamsNonStreaming["reasoning_effort"]
+>;
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
@@ -164,7 +170,7 @@ async function callGenerationModel(
   userPrompt: string,
   options: {
     openRouterProvider: string;
-    reasoningEffort: "none" | "low" | "medium";
+    reasoningEffort: ReasoningEffort;
     /** Per-attempt bounds. A slow provider hits this and the chain advances to the next route. */
     timeoutMs: number;
     maxRetries: number;
@@ -174,9 +180,8 @@ async function callGenerationModel(
 ): Promise<{ text: string | null; usage: ProviderTokenUsage | null }> {
   const request = {
     model,
-    ...(options.reasoningEffort === "none"
-      ? { temperature: 0 }
-      : { reasoning_effort: options.reasoningEffort }),
+    // reasoning_effort is added below with the OpenRouter-only fields.
+    ...(options.reasoningEffort === "none" ? { temperature: 0 } : {}),
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
@@ -189,6 +194,10 @@ async function callGenerationModel(
   const completion = await client.chat.completions.create(
     {
       ...request,
+      // OpenRouter's efforts include "none" and "xhigh", which the OpenAI
+      // SDK types lack. "none" is sent too: models that reason by default
+      // would otherwise reason anyway.
+      reasoning_effort: options.reasoningEffort as SdkReasoningEffort,
       provider: {
         only: [options.openRouterProvider],
         zdr: true,

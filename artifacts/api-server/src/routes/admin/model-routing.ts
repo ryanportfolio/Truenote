@@ -10,6 +10,7 @@ import {
 import { adminConfigWriteLimit } from "../../lib/security/route-rate-limit.js";
 import {
   ApprovedModelRouteIdSchema,
+  effortsAreSupported,
   getModelRoutingState,
   isMissingModelSettingsTable,
   saveModelRouteOrder,
@@ -27,9 +28,13 @@ modelRoutingRouter.use(
 
 // `purpose` picks the chain: "answers" (CSR answers, the default so older
 // clients keep working) or "gaps" (the Gaps page's refusal analysis).
+// `efforts` maps route ids to reasoning efforts; each must be one that
+// route's model supports (`supportedEfforts`). Omitted routes keep their
+// default.
 const UpdateBody = z.object({
   order: z.array(ApprovedModelRouteIdSchema).min(1),
-  purpose: z.enum(["answers", "gaps"]).default("answers")
+  purpose: z.enum(["answers", "gaps"]).default("answers"),
+  efforts: z.record(z.string()).optional()
 });
 
 function responseFor(answers: ModelRoutingState, gaps: ModelRoutingState) {
@@ -60,10 +65,19 @@ modelRoutingRouter.put("/", adminConfigWriteLimit, async (req, res, next) => {
     res.status(400).json({ error: "Provide an ordered list of approved model routes" });
     return;
   }
+  if (parsed.data.efforts && !effortsAreSupported(parsed.data.efforts)) {
+    res.status(400).json({ error: "Pick an effort level that model supports" });
+    return;
+  }
 
   try {
     const user = authedUser(req);
-    await saveModelRouteOrder(parsed.data.order, user.id, parsed.data.purpose);
+    await saveModelRouteOrder(
+      parsed.data.order,
+      user.id,
+      parsed.data.purpose,
+      parsed.data.efforts
+    );
     res.json(responseFor(...(await bothStates())));
   } catch (error) {
     if (isMissingModelSettingsTable(error)) {
