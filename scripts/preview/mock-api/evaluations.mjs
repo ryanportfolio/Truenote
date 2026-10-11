@@ -816,16 +816,77 @@ export function registerEvaluationRoutes({
       });
     const summary = lines.find((l, i) => i > 0 && l.trim() && !l.startsWith("#")) ?? doc.title;
     for (const question of doc.questions ?? []) items.push({ question, expectedAnswer: summary.trim() });
+    items.push(...draftTopUps(doc.title, lines, summary.trim()));
     const seen = new Set();
     return items
       .filter((item) => {
-        const k = item.question.toLowerCase();
+        const k = item.question.trim().toLowerCase();
         if (seen.has(k)) return false;
         seen.add(k);
         return true;
       })
       .slice(0, count)
       .map((item) => ({ ...item, expectedDocId: doc.id, expectedDocTitle: doc.title }));
+  }
+
+  /**
+   * Extra draft candidates so a short document still fills `count`: section
+   * questions, one yes/no check per passage sentence, then title-based
+   * questions answered from the summary. The ten title questions alone cover
+   * the maximum count of 10 for a document with no usable text.
+   */
+  function draftTopUps(title, lines, summary) {
+    const lcFirst = (t) => t.charAt(0).toLowerCase() + t.slice(1);
+    const lcTitle = lcFirst(title);
+    const sections = [];
+    let current = { heading: null, texts: [] };
+    sections.push(current);
+    for (const line of lines) {
+      const heading = /^#{2,6}\s+(.+)$/.exec(line);
+      if (heading) {
+        current = { heading: heading[1].trim(), texts: [] };
+        sections.push(current);
+        continue;
+      }
+      if (line.startsWith("#") || line.startsWith("|")) continue;
+      const text = line.replace(/^(\d+\. |> |- )/, "").trim();
+      if (text.length >= 20) current.texts.push(text);
+    }
+    const out = [];
+    for (const { heading, texts } of sections) {
+      if (texts.length === 0 || heading === null) continue;
+      const question = /^when to use/i.test(heading)
+        ? `When should an agent use "${title}"?`
+        : `What does the "${heading}" section of "${title}" say?`;
+      out.push({ question, expectedAnswer: texts.join(" ") });
+    }
+    // Yes/no checks only for body sections: the summary is a fragment, and the
+    // "When to use" bullets are boilerplate already covered above.
+    const sentences = sections
+      .filter((s) => s.heading !== null && !/^when to use/i.test(s.heading))
+      .flatMap((s) => s.texts)
+      .flatMap((t) => t.split(/(?<=[.!?])\s+/))
+      .map((t) => t.trim())
+      .filter((t) => t.length >= 20);
+    for (const sentence of sentences) {
+      const claim = lcFirst(sentence.replace(/[.!?]+$/, ""));
+      out.push({ question: `Does "${title}" say that ${claim}?`, expectedAnswer: `Yes. ${sentence}` });
+    }
+    const all = sections.flatMap((s) => s.texts);
+    const last = all[all.length - 1] ?? summary;
+    out.push(
+      { question: `What is "${title}" about?`, expectedAnswer: summary },
+      { question: `Which document covers ${lcTitle}?`, expectedAnswer: `"${title}".` },
+      { question: `What is the last point in "${title}"?`, expectedAnswer: last },
+      { question: `Where can I check the current guidance on ${lcTitle}?`, expectedAnswer: `"${title}": ${summary}` },
+      { question: `Summarize "${title}" in one sentence.`, expectedAnswer: summary },
+      { question: `What should a CSR know about ${lcTitle} before answering a caller?`, expectedAnswer: summary },
+      { question: `Is there a policy on ${lcTitle}?`, expectedAnswer: `Yes. "${title}": ${summary}` },
+      { question: `What does the knowledge base say about ${lcTitle}?`, expectedAnswer: summary },
+      { question: `Which source answers questions about ${lcTitle}?`, expectedAnswer: `"${title}".` },
+      { question: `Is "${title}" the source to cite for ${lcTitle}?`, expectedAnswer: `Yes. ${summary}` }
+    );
+    return out;
   }
 
   const FIXED_SUGGESTIONS = [
