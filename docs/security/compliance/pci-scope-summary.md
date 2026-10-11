@@ -14,7 +14,7 @@ Truenote is not automatically out of scope either. PCI DSS asks whether a system
 
 Scope is decided by each customer, its Qualified Security Assessor and its acquirer. Truenote supplies the analysis and evidence for that decision.
 
-A customer can take the representative desktop out of scope by moving payment capture off it, for example with DTMF masking, an IVR or a pay-by-link flow. Whether that is commercially workable is the customer's choice.
+A customer may reduce the desktop's scope by moving payment capture off it, for example with DTMF masking, an IVR or a pay-by-link flow. Whether that takes the desktop, and Truenote with it, out of scope depends on the customer's assessed data flows and its assessor's determination: a system that can still affect payment security, for example through payment instructions, may stay in scope.
 
 ## What Truenote has prepared
 

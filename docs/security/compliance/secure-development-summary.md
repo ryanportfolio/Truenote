@@ -11,7 +11,7 @@ updated: 2026-10-11
 3. Each pull request must pass four required checks: typecheck, build and tests; a production dependency audit with an SBOM; a Gitleaks secret scan; and CodeQL static analysis. A new High CodeQL alert blocks the merge.
 4. Each pull request is reviewed by several independent AI reviewers (OpenAI Codex), and confirmed findings are fixed before the merge.
 5. The pull request description is the written change record: purpose, security impact, testing, deployment steps, rollback and approval.
-6. Production is deployed by a GitHub Actions workflow, only from main and only when the commit's security checks passed. Each deployment is recorded with its commit, CI run, deployment ID and image digest. The system owner's go precedes every deploy and is recorded.
+6. The application services are deployed by a GitHub Actions workflow, only from main and only when the commit's security checks passed. The database, malware scanner and backup services are deployed by hand from a clean checkout of reviewed main, and recovery deploys follow a documented manual procedure. Every deployment is recorded with its commit, CI run, deployment ID and image digest, and the system owner's go precedes it.
 7. Database schema changes are reviewed SQL files, applied in one transaction with a recorded hash, and refused if already applied.
 
 ## Change types

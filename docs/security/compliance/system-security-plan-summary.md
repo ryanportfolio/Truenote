@@ -49,7 +49,7 @@ All 287 controls and enhancements of the Moderate baseline are mapped, each with
 - Every answer shown to a representative carries a clickable citation or is an explicit refusal.
 - Local sign-in credentials are hashed with Argon2id; session and reset tokens are stored hashed; a nonce-based content security policy is enforced.
 - The application connects to the database with a least-privilege role, and the security event log is append-only.
-- Uploads are scanned by a self-hosted malware scanner; a file that cannot be scanned is quarantined.
+- Uploads are scanned by a self-hosted malware scanner. While scanning is enabled, a file that cannot be scanned is quarantined; switching scanning off is a recorded administrative exception that expires after 24 hours.
 - Security alerts, a daily export of logs outside the hosting platform, and uptime checks are in operation.
 - An encrypted copy of the database, files and code is made weekly at a second provider and checked weekly; a restore from it was tested on October 10, 2026.
 - Production is deployed only from reviewed, CI-passed code, and each deployment is recorded.
