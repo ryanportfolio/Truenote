@@ -6,9 +6,10 @@
 # Base: Cisco's official ClamAV image, 1.4 LTS on Debian trixie, pinned by
 # digest. It ships with a signature database, so the first start needs only
 # freshclam's incremental update. Bump the digest for ClamAV patch releases.
-# Node comes from the official Node 22 image on the same Debian release.
+# Node comes from the official Node 24 LTS image on the same Debian release,
+# the same Node line as the web and worker image.
 # Build context: the repository root (RAILWAY_DOCKERFILE_PATH=services/scanner/Dockerfile).
-FROM node:22-trixie-slim@sha256:154ba2f4d6fec323d28e4f4bb86bba4677f1223391a1979cf521304e03a98dfa AS node
+FROM node:24-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66 AS node
 
 FROM clamav/clamav-debian:1.4.6@sha256:6d0680780fd29855cb7018f68272cb520821f614259e2066f8ec669069ac91b3
 # Debian security fixes released after the base image was built.

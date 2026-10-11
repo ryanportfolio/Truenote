@@ -2,6 +2,10 @@
 
 > Living list. Grows via `/recall save <text>` when something bites you. Read before non-trivial work.
 
+## 2026-10-11: Node 24 processes are named `MainThread` in `/proc`
+
+Node 24 renames its main thread, so the `Name:` line of `/proc/<pid>/status` (and `comm`) reads `MainThread` instead of `node`. Moving the scanner image's Node stage from 22 to 24 failed `scanner-image.yml`'s root-start check with `no node process found`, though the smoke tests passed. Identify processes by argv[0] from `/proc/<pid>/cmdline` (or by `/proc/<pid>/exe` where readable). Matching every `node` then caught Docker's `HEALTHCHECK` (`node -e ...`), which Docker runs as the container user, root in the `--user 0` test, so the check also needs the script name (`node:server.mjs`). Cost: two failed CI runs on #265.
+
 ## 2026-10-11: A deploy ships every commit since the live one, including SQL it needs
 
 The deploy of `main` at `12fc7b1d` (live 2026-10-11 01:59 UTC) had been put to the owner as the changes merged since the asking session's own last deploy, not since the commit then live (`15141354`). It also shipped #226 and #209, whose code reads `users.locked_until` from `0015`-`0017`, which were not applied, and every login answered 500 until they were. Before asking for a deploy, take the live commit from the newest rows of `docs/release-register.csv` (or `railway deployment list`), run `git diff --stat <live> origin/main` and `git diff --name-only <live> origin/main -- lib/db/sql`, and list every SQL file the target needs that `schema_migrations` lacks.
