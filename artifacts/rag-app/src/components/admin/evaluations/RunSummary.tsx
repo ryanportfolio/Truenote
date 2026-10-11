@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { PortalArt } from "@/components/DemoPortal";
 import {
   compareMetric,
   evalPassRate,
@@ -38,6 +39,10 @@ export function RunSummary({
   const trial = run.configuration?.trial === true;
   const noise = summary ? noiseThreshold(summary.totalQuestions) : null;
 
+  if (run.status === "queued" || run.status === "running") {
+    return <RunProgress run={run} trial={trial} routes={routes} />;
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
@@ -72,11 +77,62 @@ export function RunSummary({
   );
 }
 
+/** The Gaps analysis loader (portal art on its loop) while the run is queued or answering. */
+function RunProgress({
+  run,
+  trial,
+  routes
+}: {
+  run: EvalRunListItem;
+  trial: boolean;
+  routes: ModelRoutingOption[];
+}): JSX.Element {
+  const running = run.status === "running";
+  const total = run.questionCount;
+  const done = Math.min(run.completedQuestions, total);
+  const pct = total > 0 ? (done / total) * 100 : 0;
+  const what = trial ? "trial" : "evaluation";
+
+  return (
+    <div className="flex min-h-[13rem] flex-col items-center gap-2 overflow-hidden rounded-lg border border-border bg-card px-5 py-4 shadow-card sm:flex-row sm:gap-6">
+      <div className="gap-portal" aria-hidden>
+        <PortalArt role="manager" burst={1} />
+      </div>
+      <div className="w-full max-w-md text-center sm:text-left">
+        <p role="status" className="font-display text-xl font-semibold tracking-tight">
+          {running ? `Running the ${what}` : `Starting the ${what}`}
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {running
+            ? `${done} of ${total} questions answered so far.`
+            : `Queued. It starts as soon as the worker picks it up, then asks all ${total} questions.`}
+        </p>
+        <div
+          role="progressbar"
+          aria-label="Questions answered"
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-valuenow={done}
+          className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"
+        >
+          <div
+            className="h-full rounded-full bg-primary motion-safe:transition-[width] motion-safe:duration-240 motion-safe:ease-out-quart"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        {run.configuration ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {trial
+              ? `${trialSetupLine(run.configuration, routes)}${run.judge ? ", faithfulness judge on" : ""}`
+              : liveSetupLine(run.configuration, run.judge)}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function leadSentence(run: EvalRunListItem, diff: ResultDiff | null): string {
-  if (run.status === "queued") return "Queued: waiting for the worker to start.";
-  if (run.status === "running") {
-    return `Running: ${run.completedQuestions} of ${run.questionCount} questions answered so far.`;
-  }
   if (run.status === "failed" || !run.summary) return "This run did not finish, so it has no score.";
   const { passed, totalQuestions } = run.summary;
   const lead = `${passed} of ${totalQuestions} passed (${formatPct(evalPassRate(run.summary))}).`;
