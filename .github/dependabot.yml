@@ -12,11 +12,17 @@ updates:
     open-pull-requests-limit: 5
     versioning-strategy: increase-if-necessary
   - package-ecosystem: docker
-    directory: /
+    # The scanner image pins its ClamAV and Node bases by digest; Dependabot
+    # proposes new digests when the upstream images are rebuilt.
+    directories: ["/", "/services/scanner"]
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
     # Odd-numbered Node releases never become LTS; the image tracks LTS lines.
+    # The scanner stays on the ClamAV 1.4 LTS line: patch releases and digest
+    # updates only.
     ignore:
       - dependency-name: node
         versions: ["25.x", "27.x", "29.x"]
+      - dependency-name: clamav/clamav-debian
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
