@@ -1,9 +1,10 @@
 name: Deploy production
 
 # Deploys web and worker to Railway production from main. Started by hand
-# (Actions, "Deploy production", Run workflow on main). The job waits for the
-# owner's approval on the protected "production" environment, which is the
-# only place the RAILWAY_TOKEN secret is available. scripts/railway-deploy.mjs
+# (Actions, "Deploy production", Run workflow on main) after the owner's go.
+# The "production" environment releases the RAILWAY_TOKEN secret only to runs
+# on protected branches; it has no required reviewer since 2026-10-10 (owner
+# decision, .claude/reference/deployment.md). scripts/railway-deploy.mjs
 # refuses unless the checkout is main at freshly fetched origin/main and the
 # "Security and quality" push run for that commit succeeded, then deploys web,
 # waits for SUCCESS, then worker. GitHub records the run as a deployment to

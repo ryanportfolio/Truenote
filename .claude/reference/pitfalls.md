@@ -2,6 +2,14 @@
 
 > Living list. Grows via `/recall save <text>` when something bites you. Read before non-trivial work.
 
+## 2026-10-11: A deploy ships every commit since the live one, including SQL it needs
+
+The deploy of `main` at `12fc7b1d` (live 2026-10-11 01:59 UTC) had been put to the owner as the changes merged since the asking session's own last deploy, not since the commit then live (`15141354`). It also shipped #226 and #209, whose code reads `users.locked_until` from `0015`-`0017`, which were not applied, and every login answered 500 until they were. Before asking for a deploy, take the live commit from the newest rows of `docs/release-register.csv` (or `railway deployment list`), run `git diff --stat <live> origin/main` and `git diff --name-only <live> origin/main -- lib/db/sql`, and list every SQL file the target needs that `schema_migrations` lacks.
+
+## 2026-10-11: `railway volume add --mount-path /data` in Git Bash fails
+
+Git Bash rewrote `/data` to a Windows path and the CLI answered `Mount path must start with a /`. Prefix `MSYS_NO_PATHCONV=1` for any Railway command taking a container path (`--mount-path`, variable values such as `SCANNER_DATABASE_DIR=/data/clamav`).
+
 ## 2026-10-10: A PR without the change record fails CI
 
 PR #215 was opened with a free-form body; the "Verify pull-request change record" step of "Typecheck, build, tests" failed with `missing field: ...` for every field of `.github/pull_request_template.md`, and the PR had to be edited. Fill the template (Change ID `TN-CHG-<year>-<PR number>`, `Author: @ryanportfolio`, single-owner wording for 6.5.4 and the reviewer as in recent merged PRs) and check it before `gh pr create`: `corepack pnpm --filter @workspace/scripts run verify:change-record -- --body <file> --allow-pending`. Without `--allow-pending` it also demands `approved` and a named reviewer, which CI does not.
