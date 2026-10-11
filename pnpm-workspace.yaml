@@ -7,7 +7,6 @@ allowBuilds:
   esbuild: true
 
 overrides:
-  "postcss@<8.5.18": ">=8.5.18"
   "form-data@2.5.5": "2.5.6"
   "form-data@4.0.5": "4.0.6"
   "nanoid@<3.3.18": ">=3.3.18 <4"
@@ -20,19 +19,29 @@ catalog:
   zod: ^3.23.8
   react: ^18.3.1
   react-dom: ^18.3.1
-  "@types/node": ^20.16.5
+  "@types/node": ^24.0.0
   "@types/react": ^18.3.5
   "@types/react-dom": ^18.3.0
-  vite: ^5.4.8
-  "@vitejs/plugin-react": ^4.3.1
+  vite: ^8.3.4
+  "@vitejs/plugin-react": ^6.1.2
   tailwindcss: ^3.4.11
-  postcss: ^8.4.47
-  autoprefixer: ^10.4.20
+  postcss: ^8.5.29
+  autoprefixer: ^10.6.1
   drizzle-orm: 0.45.2
-  vitest: ^2.1.1
+  vitest: ^5.0.3
 
 # Dependabot version updates run pnpm with minimum-release-age=4320 (its
 # default 3-day cooldown). A manifest specifier whose floor is younger than
 # that has no mature match, and every npm update in the job fails. Applying
 # the same age locally keeps pnpm add/update from writing such floors.
 minimumReleaseAge: 4320
+
+# GHSA-vfj7-8cjw-p6xm (braces, CVE-2026-93687): no patched braces release
+# exists. It reaches the repo only through tailwindcss 3 (chokidar, micromatch,
+# fast-glob), a build-time devDependency of rag-app that expands the globs in
+# tailwind.config.ts and stays out of the runtime image. Owner-approved
+# exception TN-VULN-2026-009 (docs/compliance/pci/vulnerability-register.md);
+# remove this entry once braces 3.0.4 or later is in the lockfile.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-vfj7-8cjw-p6xm
