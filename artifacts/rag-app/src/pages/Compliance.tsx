@@ -251,8 +251,9 @@ function ComplianceDocumentView({ slug }: { slug: string }): JSX.Element {
     );
   }
 
+  // Full width: the package's tables run to five or more columns.
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
+    <div className="flex w-full min-w-0 flex-col gap-6 px-6 py-8">
       <BackLink />
       {state.status === "error" ? (
         <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -292,7 +293,7 @@ function ComplianceDocumentView({ slug }: { slug: string }): JSX.Element {
             </dl>
           </header>
           <SensitiveNotice />
-          <article className="rounded-lg border border-border bg-card p-5 text-sm leading-relaxed shadow-card">
+          <article className="min-w-0 rounded-lg border border-border bg-card p-5 text-sm leading-relaxed shadow-card">
             <ComplianceMarkdown markdown={state.document.markdown} />
           </article>
         </>
