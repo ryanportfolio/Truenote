@@ -41,13 +41,15 @@ export function RunSummary({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <p className="flex flex-wrap items-center gap-2 text-base font-medium">
+        <p className="text-base font-medium">
           {trial ? (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-              Trial
-            </span>
+            <>
+              <span className="mr-1 inline-block rounded-full bg-muted px-2 py-0.5 align-middle text-xs font-medium text-muted-foreground">
+                Trial
+              </span>{" "}
+            </>
           ) : null}
-          <span>{leadSentence(run, diff)}</span>
+          {leadSentence(run, diff)}
         </p>
         {run.configuration ? (
           <p className="text-xs text-muted-foreground">

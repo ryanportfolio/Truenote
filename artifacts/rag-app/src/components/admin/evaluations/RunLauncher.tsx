@@ -234,7 +234,7 @@ function TrialForm({
         </p>
       ) : null}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-        <label className="flex flex-col gap-1 text-sm" htmlFor={`${ids}-model`}>
+        <label className="flex flex-col gap-1 text-sm sm:col-span-2 lg:col-span-1" htmlFor={`${ids}-model`}>
           <span className="font-medium">Model</span>
           {routes === null && !routesError ? (
             <span role="status" className="skeleton block h-10 w-full">
@@ -246,7 +246,7 @@ function TrialForm({
               value={routeId}
               onChange={(event) => chooseRoute(event.target.value)}
               disabled={!routes || routes.length === 0 || starting}
-              className={cn("select-quiet", INPUT_CLASS)}
+              className={cn("select-quiet", INPUT_CLASS, "pr-8")}
             >
               {(routes ?? []).map((candidate) => (
                 <option key={candidate.id} value={candidate.id}>
@@ -264,7 +264,7 @@ function TrialForm({
               value={effort}
               onChange={(event) => setEffort(event.target.value as ReasoningEffort)}
               disabled={starting}
-              className={cn("select-quiet", INPUT_CLASS)}
+              className={cn("select-quiet", INPUT_CLASS, "pr-8")}
             >
               {effortOptions.map((option) => (
                 <option key={option.value} value={option.value}>
