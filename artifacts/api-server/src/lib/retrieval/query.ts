@@ -49,6 +49,11 @@ export interface RetrievalInput {
   maxClassification: Classification;
   topK?: number;
   candidateK?: number;
+  /**
+   * Per-call confidence-threshold override for evaluation trial runs. Live
+   * asks never pass it; they use the env-configured runtime threshold.
+   */
+  threshold?: number;
   /** Include the stage-level trace (pre/post-rerank candidates). Used by the eval harness. */
   withTrace?: boolean;
 }
@@ -412,7 +417,7 @@ export async function retrieve(
     rerankModel: getRerankModel()
   });
   const runtime = getRetrievalRuntimeConfig();
-  const threshold = runtime.threshold;
+  const threshold = input.threshold ?? runtime.threshold;
   const topK = input.topK ?? runtime.topK;
   const candidateK = input.candidateK ?? runtime.candidateK;
   const neighborAnchors = runtime.neighborAnchors;
