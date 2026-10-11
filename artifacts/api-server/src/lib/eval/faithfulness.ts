@@ -18,15 +18,35 @@ import { getDeadlineConfig } from "../deadlines.js";
  * One structured-output call does extract + judge together — at eval-set
  * scale (~50-200 questions) the two-call variant buys nothing but latency.
  *
- * Kept on direct OpenAI so the judge is operationally independent of the
- * OpenRouter answer path and still runs if the primary provider is down.
- * gpt-6.1-sol is a reasoning model: it takes reasoning_effort (low and up; no
- * "none") in place of temperature, so judge runs are not bit-for-bit
+ * Runs on OpenRouter, pinned to the Azure endpoint with Zero Data Retention
+ * required, data collection denied and no provider fallback, for the same
+ * model the judge used on direct OpenAI. OpenRouter lists openai/gpt-6.1-sol
+ * on Azure in its ZDR index with response_format/structured_outputs supported
+ * (checked 2026-10-11). Judge prompts carry excerpts and answers, so they now
+ * stay inside the same ZDR boundary as answer generation. Scores stay
+ * comparable with earlier runs because the model is unchanged.
+ * The judge model is a reasoning model: it takes reasoning_effort (low and up;
+ * no "none") in place of temperature, so judge runs are not bit-for-bit
  * deterministic. Changing the judge model shifts faithfulness scores; re-run
  * the eval baseline before comparing against older runs.
  */
-const JUDGE_MODEL = "gpt-6.1-sol";
-const JUDGE_REASONING_EFFORT = "medium";
+export const JUDGE_MODEL = "openai/gpt-6.1-sol";
+export const JUDGE_REASONING_EFFORT = "medium" as const;
+
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+
+/**
+ * OpenRouter-only request field pinning eval judges to one ZDR endpoint. The
+ * OpenAI SDK types lack it, so request bodies carrying it are cast.
+ */
+export const JUDGE_PROVIDER = {
+  only: ["azure"],
+  zdr: true,
+  data_collection: "deny",
+  allow_fallbacks: false
+} as const;
+
+export type JudgeProviderField = { provider: typeof JUDGE_PROVIDER };
 
 export const ClaimJudgmentSchema = z.object({
   /** The atomic factual claim, quoted or minimally paraphrased from the answer. */
@@ -59,8 +79,14 @@ export interface JudgeFaithfulnessDeps {
 }
 
 let _client: OpenAI | null = null;
-function getClient(): OpenAI {
-  if (!_client) _client = new OpenAI();
+/** Shared lazily built OpenRouter client for the eval judges. */
+export function getJudgeClient(): OpenAI {
+  if (!_client) {
+    _client = new OpenAI({
+      apiKey: process.env.OPENROUTER_API_KEY,
+      baseURL: OPENROUTER_BASE_URL
+    });
+  }
   return _client;
 }
 
@@ -87,26 +113,27 @@ export async function judgeFaithfulness(
   input: JudgeFaithfulnessInput,
   deps: JudgeFaithfulnessDeps = {}
 ): Promise<FaithfulnessJudgment> {
-  const client = deps.client ?? getClient();
+  const client = deps.client ?? getJudgeClient();
   // Same deterministic pre-provider firewall as the embedding/rerank/generation
-  // paths: the judge runs on direct OpenAI (non-ZDR), so sensitive content must
-  // be redacted before the prompt is built. Generation saw redacted excerpts
-  // too, so the judge scores the same view the answer was produced from.
+  // paths: sensitive content is redacted before the prompt is built, ZDR route
+  // or not. Generation saw redacted excerpts too, so the judge scores the same
+  // view the answer was produced from.
   const protectedExcerpts = protectProviderText(formatExcerpts(input.chunks)).text;
   const protectedAnswer = protectProviderText(input.answer).text;
   const userPrompt = `EXCERPTS:\n${protectedExcerpts}\n\nANSWER:\n${protectedAnswer}`;
 
   const { faithfulness } = getDeadlineConfig();
+  const request = {
+    model: JUDGE_MODEL,
+    reasoning_effort: JUDGE_REASONING_EFFORT,
+    messages: [
+      { role: "system" as const, content: JUDGE_SYSTEM_PROMPT },
+      { role: "user" as const, content: userPrompt }
+    ],
+    response_format: zodResponseFormat(FaithfulnessSchema, "faithfulness")
+  };
   const completion = await client.beta.chat.completions.parse(
-    {
-      model: JUDGE_MODEL,
-      reasoning_effort: JUDGE_REASONING_EFFORT,
-      messages: [
-        { role: "system", content: JUDGE_SYSTEM_PROMPT },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: zodResponseFormat(FaithfulnessSchema, "faithfulness")
-    },
+    { ...request, provider: JUDGE_PROVIDER } as typeof request & JudgeProviderField,
     {
       timeout: faithfulness.timeoutMs,
       maxRetries: faithfulness.maxRetries

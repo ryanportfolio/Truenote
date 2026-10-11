@@ -12,6 +12,7 @@ import {
 } from "../generation/answer.js";
 import type { ApprovedModelRoute } from "../generation/model-routing.js";
 import { judgeFaithfulness } from "./faithfulness.js";
+import { judgeAnswerCorrectness } from "./correctness.js";
 import { recordAppError } from "../observability/error-log.js";
 
 /**
@@ -29,12 +30,14 @@ import { recordAppError } from "../observability/error-log.js";
  * traffic.
  *
  * Scoring rules:
- *   - "In-KB" question = has expected_doc_id OR expected_answer_contains
- *     non-empty. Pass iff: not refused, AND if expected_doc_id is set
- *     it appears in the cited chunks' documents, AND every phrase in
- *     expected_answer_contains is present in the answer (case-insensitive,
- *     substring).
- *   - "Out-of-KB" question = both fields empty/null. Pass iff refused.
+ *   - "In-KB" question = has expected_doc_id, expected_answer_contains
+ *     non-empty, or expected_answer. Pass iff: not refused, AND if
+ *     expected_doc_id is set it appears in the cited chunks' documents, AND
+ *     every phrase in expected_answer_contains is present in the answer
+ *     (case-insensitive, substring), AND if expected_answer is set the
+ *     correctness judge grades the answer "correct" (a judge failure fails
+ *     the question).
+ *   - "Out-of-KB" question = all three empty/null. Pass iff refused.
  *
  * Citation matching uses the doc_id, not the chunk_id — chunk ids
  * change with every re-ingest, doc ids don't, so authoring eval
@@ -127,8 +130,17 @@ export interface EvalQuestionResult {
   /** Null when expected_doc_id is unset (citation rule doesn't apply). */
   citationCorrect: boolean | null;
   phrasesPresent: { phrase: string; present: boolean }[];
-  /** Null when expected_answer_contains is empty. */
+  /** Reference answer the correctness judge grades against; null when unset. */
+  expectedAnswer: string | null;
+  /**
+   * AND of the phrase check (when phrases exist) and a "correct" verdict
+   * (when expectedAnswer exists). Null when neither applies.
+   */
   answerCorrect: boolean | null;
+  /** Correctness judge verdict; null when not graded (no expected answer, refused, or judge failed). */
+  correctness: { verdict: "correct" | "partial" | "incorrect"; reason: string } | null;
+  /** True when the correctness judge call failed; the question then fails. */
+  correctnessJudgeFailed: boolean;
   // Stage-level retrieval metrics (null when expected_doc_id is unset)
   /** Expected doc appeared in the merged vector+BM25 candidates (pre-rerank). */
   retrievalHit: boolean | null;
@@ -212,6 +224,8 @@ export interface EvalSummary {
   failedFallbackCount: number;
   /** Optional faithfulness judge calls that failed and were excluded. */
   judgeFailures: number;
+  /** Correctness judge calls that failed (each fails its question). */
+  correctnessJudgeFailures: number;
   // Latency
   latencyP50Ms: number;
   latencyP95Ms: number;
@@ -225,7 +239,11 @@ export interface EvalReport {
   results: EvalQuestionResult[];
 }
 
-/** Stable fingerprint of the exact scored definitions, not just their count. */
+/**
+ * Stable fingerprint of the exact scored definitions, not just their count.
+ * expectedAnswer enters only when set, so question sets without expected
+ * answers keep the hash they had before the field existed.
+ */
 export function evalQuestionSetHash(results: EvalQuestionResult[]): string {
   const definitions = results.map((result) => ({
     questionId: result.questionId,
@@ -233,7 +251,8 @@ export function evalQuestionSetHash(results: EvalQuestionResult[]): string {
     programId: result.programId,
     kind: result.kind,
     expectedDocId: result.expectedDocId,
-    expectedAnswerContains: result.expectedAnswerContains
+    expectedAnswerContains: result.expectedAnswerContains,
+    ...(result.expectedAnswer ? { expectedAnswer: result.expectedAnswer } : {})
   }));
   return createHash("sha256").update(JSON.stringify(definitions)).digest("hex");
 }
@@ -264,22 +283,142 @@ export function inlineCitedChunkIds(
     .map((source) => source.chunk_id);
 }
 
+/** Settings a trial run applies instead of the live configuration. */
+export interface EvalTrialSettings {
+  /** The one approved route to call, with the trial's reasoning effort. No fallback chain. */
+  route: ApprovedModelRoute;
+  /** Retrieval confidence-threshold override; runtime threshold when absent. */
+  threshold?: number;
+  /** Retrieval top-K override; runtime top-K when absent. */
+  topK?: number;
+}
+
 export interface EvalRunCallbacks {
-  /** Called after each sequential question finishes. Useful for persisted UI progress. */
+  /**
+   * Called after each question finishes, in completion order, one call at a
+   * time. A throw stops new questions from starting; in-flight questions
+   * finish, then runEval rejects with that error and no report.
+   */
   onProgress?: (completed: number, total: number) => void | Promise<void>;
   /** Pin the ordered approved-route chain so configuration cannot drift mid-suite. */
   routeChain?: ApprovedModelRoute[];
+  /** Trial run: pinned route and retrieval overrides. Takes precedence over routeChain. */
+  trial?: EvalTrialSettings;
 }
+
+/** Pipeline and judge functions; injectable so the runner can be driven without a database or provider. */
+export interface EvalRunnerDeps {
+  retrieve?: typeof retrieve;
+  generateAnswer?: typeof generateAnswer;
+  judgeFaithfulness?: typeof judgeFaithfulness;
+  judgeAnswerCorrectness?: typeof judgeAnswerCorrectness;
+}
+
+/** Questions evaluated at once. Small, to stay under provider rate limits. */
+export const EVAL_QUESTION_CONCURRENCY = 3;
 
 function classify(q: {
   expectedDocId: string | null;
   expectedAnswerContains: string[] | null;
+  expectedAnswer: string | null;
 }): "in-kb" | "out-of-kb" {
   const hasDoc = q.expectedDocId !== null;
   const hasPhrases =
     Array.isArray(q.expectedAnswerContains) &&
     q.expectedAnswerContains.length > 0;
-  return hasDoc || hasPhrases ? "in-kb" : "out-of-kb";
+  const hasAnswer = Boolean(q.expectedAnswer);
+  return hasDoc || hasPhrases || hasAnswer ? "in-kb" : "out-of-kb";
+}
+
+/**
+ * In-KB answer correctness: AND of the phrase check (when phrases exist) and
+ * a "correct" verdict (when an expected answer exists). Null when neither
+ * applies. A missing verdict (refused, or judge failed) counts as not correct.
+ */
+export function combineAnswerCorrect(input: {
+  phrasesPresent: { present: boolean }[];
+  hasExpectedAnswer: boolean;
+  verdict: "correct" | "partial" | "incorrect" | null;
+}): boolean | null {
+  const checks: boolean[] = [];
+  if (input.phrasesPresent.length > 0) {
+    checks.push(input.phrasesPresent.every((p) => p.present));
+  }
+  if (input.hasExpectedAnswer) checks.push(input.verdict === "correct");
+  return checks.length === 0 ? null : checks.every(Boolean);
+}
+
+/** Pass rule for one scored question. */
+export function questionPasses(input: {
+  kind: "in-kb" | "out-of-kb";
+  refused: boolean;
+  citationCorrect: boolean | null;
+  answerCorrect: boolean | null;
+  correctnessJudgeFailed: boolean;
+}): boolean {
+  // Out-of-KB question passes iff the system correctly refused.
+  if (input.kind === "out-of-kb") return input.refused;
+  // In-KB question: not refused, and every applicable check passes.
+  return (
+    !input.refused &&
+    (input.citationCorrect === null || input.citationCorrect) &&
+    input.answerCorrect !== false &&
+    !input.correctnessJudgeFailed
+  );
+}
+
+/**
+ * Run `worker` over `items` with at most `limit` in flight. Results keep the
+ * input order. After each item, `onDone` runs; calls are serialized in
+ * completion order. When `onDone` throws, no new item starts, in-flight items
+ * finish without further `onDone` calls, and the first error is rethrown.
+ */
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>,
+  onDone?: (completed: number, total: number) => void | Promise<void>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  let completed = 0;
+  let stopped = false;
+  let failure: { error: unknown } | null = null;
+  let doneChain: Promise<void> = Promise.resolve();
+
+  const reportDone = (count: number): Promise<void> => {
+    doneChain = doneChain.then(async () => {
+      if (stopped || !onDone) return;
+      try {
+        await onDone(count, items.length);
+      } catch (error) {
+        stopped = true;
+        failure ??= { error };
+      }
+    });
+    return doneChain;
+  };
+
+  const lane = async (): Promise<void> => {
+    while (!stopped && next < items.length) {
+      const index = next;
+      next += 1;
+      try {
+        results[index] = await worker(items[index] as T, index);
+      } catch (error) {
+        stopped = true;
+        failure ??= { error };
+        return;
+      }
+      completed += 1;
+      await reportDone(completed);
+    }
+  };
+
+  const lanes = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: lanes }, () => lane()));
+  if (failure) throw (failure as { error: unknown }).error;
+  return results;
 }
 
 export function percentile(sortedMs: number[], p: number): number {
@@ -301,6 +440,8 @@ export interface EvalQuestionDefinition {
   notes: string | null;
   /** Held-out from tuning. Absent on snapshots queued before the column existed. */
   isProtected: boolean;
+  /** Reference answer for the correctness judge. Absent on snapshots queued before the column existed. */
+  expectedAnswer: string | null;
 }
 
 /**
@@ -343,10 +484,15 @@ export async function loadEvalQuestions(
   // column can be added by raw DDL (per the repo's schema protocol) without a
   // Drizzle binding in lib/db/src/schema.ts. Missing column ⇒ every question
   // is unprotected.
-  const protectedFlags = await loadProtectedFlags(rows.map((row) => row.id));
+  const ids = rows.map((row) => row.id);
+  const protectedFlags = await loadProtectedFlags(ids);
+  // expected_answer is read the same tolerant way (lib/db/sql/0021); missing
+  // column => every expected answer is null.
+  const expectedAnswers = await loadExpectedAnswers(ids);
   return rows.map((row) => ({
     ...row,
-    isProtected: protectedFlags.get(row.id) ?? false
+    isProtected: protectedFlags.get(row.id) ?? false,
+    expectedAnswer: expectedAnswers.get(row.id) ?? null
   }));
 }
 
@@ -398,6 +544,86 @@ async function loadProtectedFlags(ids: string[]): Promise<Map<string, boolean>> 
 }
 
 /**
+ * Read eval_questions.expected_answer for the given ids, tolerant of the
+ * column not existing yet. Separate from the is_protected read so one missing
+ * column does not hide the other.
+ */
+async function loadExpectedAnswers(ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (ids.length === 0) return out;
+  try {
+    const idList = sql.join(
+      ids.map((id) => sql`${id}::uuid`),
+      sql`, `
+    );
+    const result = await db.execute(sql`
+      SELECT id::text AS id, expected_answer
+      FROM eval_questions
+      WHERE id IN (${idList})
+    `);
+    for (const row of result.rows as Array<{ id: string; expected_answer: unknown }>) {
+      if (typeof row.expected_answer === "string" && row.expected_answer.trim()) {
+        out.set(row.id, row.expected_answer);
+      }
+    }
+  } catch (error) {
+    if (!isMissingProtectedColumn(error)) throw error;
+  }
+  return out;
+}
+
+interface EvaluateOneSettings {
+  judge: boolean;
+  routeChain?: ApprovedModelRoute[];
+  trial?: EvalTrialSettings;
+  deps: EvalRunnerDeps;
+}
+
+/** Fields shared by the early-return and error results: nothing ran or scored. */
+function unscoredResult(
+  q: EvalQuestionDefinition,
+  kind: "in-kb" | "out-of-kb",
+  latencyMs: number,
+  error: string
+): EvalQuestionResult {
+  const expectedPhrases = q.expectedAnswerContains ?? [];
+  const expectedAnswer = q.expectedAnswer ?? null;
+  return {
+    questionId: q.id,
+    question: q.question,
+    programId: q.programId,
+    programName: q.programName,
+    expectedDocId: q.expectedDocId,
+    expectedAnswerContains: expectedPhrases,
+    notes: q.notes,
+    isProtected: q.isProtected === true,
+    answer: "",
+    refused: false,
+    topScore: null,
+    citedChunkIds: [],
+    citedDocIds: [],
+    latencyMs,
+    generationPath: "not-run",
+    kind,
+    pass: false,
+    citationCorrect: q.expectedDocId === null ? null : false,
+    phrasesPresent: expectedPhrases.map((p) => ({ phrase: p, present: false })),
+    expectedAnswer,
+    answerCorrect: expectedPhrases.length === 0 && !expectedAnswer ? null : false,
+    correctness: null,
+    correctnessJudgeFailed: false,
+    retrievalHit: null,
+    rerankHit: null,
+    expectedDocRank: null,
+    failureStage: null,
+    faithfulnessPct: null,
+    unsupportedClaims: [],
+    faithfulnessJudgeFailed: false,
+    error
+  };
+}
+
+/**
  * Run one question through the pipeline and score it. Catches errors
  * so a single bad question doesn't abort the whole run — the report
  * carries the error per row so operators can see which questions are
@@ -405,63 +631,50 @@ async function loadProtectedFlags(ids: string[]): Promise<Map<string, boolean>> 
  */
 async function evaluateOne(
   q: EvalQuestionDefinition,
-  judge: boolean,
-  routeChain?: ApprovedModelRoute[]
+  settings: EvaluateOneSettings
 ): Promise<EvalQuestionResult> {
   const expectedPhrases = q.expectedAnswerContains ?? [];
-  const kind = classify(q);
+  // Snapshots queued before expected answers existed lack the field.
+  const expectedAnswer = q.expectedAnswer ?? null;
+  const kind = classify({ ...q, expectedAnswer });
   const startedAt = Date.now();
+  const runRetrieve = settings.deps.retrieve ?? retrieve;
+  const runGenerate = settings.deps.generateAnswer ?? generateAnswer;
+  const runFaithfulness = settings.deps.judgeFaithfulness ?? judgeFaithfulness;
+  const runCorrectness = settings.deps.judgeAnswerCorrectness ?? judgeAnswerCorrectness;
+  const { trial } = settings;
 
   if (!q.programId) {
     return {
-      questionId: q.id,
-      question: q.question,
+      ...unscoredResult(q, kind, 0, "eval_question has no program_id — cannot run retrieval"),
       programId: null,
-      programName: null,
-      expectedDocId: q.expectedDocId,
-      expectedAnswerContains: expectedPhrases,
-      notes: q.notes,
-      isProtected: q.isProtected === true,
-      answer: "",
-      refused: false,
-      topScore: null,
-      citedChunkIds: [],
-      citedDocIds: [],
-      latencyMs: 0,
-      generationPath: "not-run",
-      kind,
-      pass: false,
-      citationCorrect: q.expectedDocId === null ? null : false,
-      phrasesPresent: expectedPhrases.map((p) => ({ phrase: p, present: false })),
-      answerCorrect: expectedPhrases.length === 0 ? null : false,
-      retrievalHit: null,
-      rerankHit: null,
-      expectedDocRank: null,
-      failureStage: null,
-      faithfulnessPct: null,
-      unsupportedClaims: [],
-      faithfulnessJudgeFailed: false,
-      error: "eval_question has no program_id — cannot run retrieval"
+      programName: null
     };
   }
 
   try {
-    const retrieval = await retrieve({
+    const retrieval = await runRetrieve({
       programId: q.programId,
       question: q.question,
       // Eval is a super-user security/quality operation. Live asks resolve
       // the authenticated user's clearance before retrieval.
       maxClassification: "restricted",
-      withTrace: true
+      withTrace: true,
+      ...(trial?.threshold !== undefined ? { threshold: trial.threshold } : {}),
+      ...(trial?.topK !== undefined ? { topK: trial.topK } : {})
     });
-    const generation = await generateAnswer(
+    const generation = await runGenerate(
       {
         programName: q.programName ?? "the program",
         question: q.question,
         chunks: retrieval.chunks,
         refusedByRetrieval: retrieval.refused
       },
-      routeChain ? { routeChain } : {}
+      trial
+        ? { primaryRoute: trial.route }
+        : settings.routeChain
+          ? { routeChain: settings.routeChain }
+          : {}
     );
     const latencyMs = Date.now() - startedAt;
 
@@ -482,10 +695,6 @@ async function evaluateOne(
       phrase,
       present: answerLower.includes(phrase.toLowerCase())
     }));
-    const answerCorrect: boolean | null =
-      expectedPhrases.length === 0
-        ? null
-        : phrasesPresent.every((p) => p.present);
 
     const citationCorrect: boolean | null =
       q.expectedDocId === null ? null : citedDocIds.includes(q.expectedDocId);
@@ -511,20 +720,56 @@ async function evaluateOne(
         ? null
         : expectedDocRank(retrieval.trace?.ranked ?? [], q.expectedDocId);
 
-    let pass: boolean;
-    if (kind === "out-of-kb") {
-      // Out-of-KB question passes iff the system correctly refused.
-      pass = refused;
-    } else {
-      // In-KB question: not refused, and every applicable check passes.
-      pass =
-        !refused &&
-        (citationCorrect === null || citationCorrect) &&
-        (answerCorrect === null || answerCorrect);
+    // Correctness judge — in-KB questions with an expected answer that got a
+    // non-refused answer, whether or not the faithfulness judge is on. Runs
+    // AFTER latencyMs is captured: judge time is eval overhead. Unlike the
+    // faithfulness judge, a failure fails the question: without a grade the
+    // pass rule cannot be applied.
+    let correctness: EvalQuestionResult["correctness"] = null;
+    let correctnessJudgeFailed = false;
+    if (kind === "in-kb" && expectedAnswer && !refused) {
+      try {
+        const judgment = await runCorrectness({
+          question: q.question,
+          expectedAnswer,
+          answer
+        });
+        correctness = { verdict: judgment.verdict, reason: judgment.reason };
+      } catch (err) {
+        correctnessJudgeFailed = true;
+        console.warn(
+          `[eval] correctness judge failed for question ${q.id}:`,
+          err instanceof Error ? err.message : err
+        );
+        void recordAppError({
+          severity: "warning",
+          source: "evaluation",
+          operation: "correctness-judge",
+          error: err,
+          programId: q.programId,
+          context: { questionId: q.id }
+        });
+      }
     }
 
+    const answerCorrect = combineAnswerCorrect({
+      phrasesPresent,
+      hasExpectedAnswer: Boolean(expectedAnswer),
+      verdict: correctness?.verdict ?? null
+    });
+
+    const pass = questionPasses({
+      kind,
+      refused,
+      citationCorrect,
+      answerCorrect,
+      correctnessJudgeFailed
+    });
+
+    // A grading failure is not a pipeline-stage failure: leave it
+    // unattributed, like other errored questions.
     const failureStage =
-      kind === "in-kb" && !pass
+      kind === "in-kb" && !pass && !correctnessJudgeFailed
         ? attributeFailure({ retrievalHit, rerankHit, gateRefused: retrieval.refused })
         : null;
 
@@ -536,9 +781,9 @@ async function evaluateOne(
     let faithfulnessPct: number | null = null;
     let unsupportedClaims: string[] = [];
     let faithfulnessJudgeFailed = false;
-    if (judge && !refused && retrieval.chunks.length > 0) {
+    if (settings.judge && !refused && retrieval.chunks.length > 0) {
       try {
-        const judgment = await judgeFaithfulness({ answer, chunks: retrieval.chunks });
+        const judgment = await runFaithfulness({ answer, chunks: retrieval.chunks });
         faithfulnessPct = judgment.faithfulnessPct;
         unsupportedClaims = judgment.unsupportedClaims;
       } catch (err) {
@@ -578,7 +823,10 @@ async function evaluateOne(
       pass,
       citationCorrect,
       phrasesPresent,
+      expectedAnswer,
       answerCorrect,
+      correctness,
+      correctnessJudgeFailed,
       retrievalHit,
       rerankHit,
       expectedDocRank: docRank,
@@ -586,39 +834,15 @@ async function evaluateOne(
       faithfulnessPct,
       unsupportedClaims,
       faithfulnessJudgeFailed,
-      error: null
+      error: correctnessJudgeFailed ? "Answer grading failed" : null
     };
   } catch (err) {
-    return {
-      questionId: q.id,
-      question: q.question,
-      programId: q.programId,
-      programName: q.programName,
-      expectedDocId: q.expectedDocId,
-      expectedAnswerContains: expectedPhrases,
-      notes: q.notes,
-      isProtected: q.isProtected === true,
-      answer: "",
-      refused: false,
-      topScore: null,
-      citedChunkIds: [],
-      citedDocIds: [],
-      latencyMs: Date.now() - startedAt,
-      generationPath: "not-run",
+    return unscoredResult(
+      q,
       kind,
-      pass: false,
-      citationCorrect: q.expectedDocId === null ? null : false,
-      phrasesPresent: expectedPhrases.map((p) => ({ phrase: p, present: false })),
-      answerCorrect: expectedPhrases.length === 0 ? null : false,
-      retrievalHit: null,
-      rerankHit: null,
-      expectedDocRank: null,
-      failureStage: null,
-      faithfulnessPct: null,
-      unsupportedClaims: [],
-      faithfulnessJudgeFailed: false,
-      error: err instanceof Error ? err.message : String(err)
-    };
+      Date.now() - startedAt,
+      err instanceof Error ? err.message : String(err)
+    );
   }
 }
 
@@ -691,6 +915,7 @@ export function summarizeEvalResults(results: EvalQuestionResult[]): EvalSummary
     (r) => r.generationPath === "fallback-failed"
   ).length;
   const judgeFailures = results.filter((r) => r.faithfulnessJudgeFailed).length;
+  const correctnessJudgeFailures = results.filter((r) => r.correctnessJudgeFailed).length;
 
   const sortedLatency = results
     .map((r) => r.latencyMs)
@@ -737,6 +962,7 @@ export function summarizeEvalResults(results: EvalQuestionResult[]): EvalSummary
     fallbackGenerationCount,
     failedFallbackCount,
     judgeFailures,
+    correctnessJudgeFailures,
     latencyP50Ms: percentile(sortedLatency, 50),
     latencyP95Ms: percentile(sortedLatency, 95)
   };
@@ -744,21 +970,26 @@ export function summarizeEvalResults(results: EvalQuestionResult[]): EvalSummary
 
 export async function runEval(
   opts: EvalRunOptions = {},
-  callbacks: EvalRunCallbacks = {}
+  callbacks: EvalRunCallbacks = {},
+  deps: EvalRunnerDeps = {}
 ): Promise<EvalReport> {
   const startedAt = new Date();
   const questions = opts.questionSnapshot ?? (await loadEvalQuestions(opts));
-  const results: EvalQuestionResult[] = [];
-  // Sequential, not parallel. Concurrency would muddle the latency
-  // numbers (each question would queue behind the others on the
-  // shared OpenAI/Cohere pools) and could trip rate limits. Eval
-  // runs are infrequent — the simple loop is the right default.
-  for (const q of questions) {
-    results.push(
-      await evaluateOne(q, opts.judge ?? false, callbacks.routeChain)
-    );
-    await callbacks.onProgress?.(results.length, questions.length);
-  }
+  // A small fixed pool: three questions in flight. Latency per question
+  // includes some queueing on the shared provider pools, so compare
+  // latency only between runs made at the same concurrency.
+  const results = await mapWithConcurrency(
+    questions,
+    EVAL_QUESTION_CONCURRENCY,
+    (q) =>
+      evaluateOne(q, {
+        judge: opts.judge ?? false,
+        ...(callbacks.routeChain ? { routeChain: callbacks.routeChain } : {}),
+        ...(callbacks.trial ? { trial: callbacks.trial } : {}),
+        deps
+      }),
+    callbacks.onProgress
+  );
   const finishedAt = new Date();
   return {
     startedAt: startedAt.toISOString(),

@@ -71,6 +71,9 @@ export const adminReadLimit = perUserLimit(60, 60_000);
 /** Gaps page analysis (a retrieval per question plus a model call when not cached): 10 a minute per user. */
 export const gapAnalysisLimit = perUserLimit(10, 60_000);
 
+/** Eval question drafting from a source (one model call per request): 10 a minute per user. */
+export const evalQuestionDraftLimit = perUserLimit(10, 60_000);
+
 /** Admin configuration writes (model routing, error-log deletion): 30 a minute per user. */
 export const adminConfigWriteLimit = perUserLimit(30, 60_000);
 

@@ -694,6 +694,10 @@ export interface EvalQuestionItem {
   expectedDocId: string | null;
   expectedDocTitle: string | null;
   expectedAnswerContains: string[];
+  /** Reference answer an AI grader compares the live answer against. */
+  expectedAnswer: string | null;
+  /** Held-out question: kept out of tuning so its score stays honest. */
+  isProtected: boolean;
   notes: string | null;
   createdAt: string | null;
 }
@@ -701,6 +705,8 @@ export interface EvalQuestionItem {
 export interface EvalQuestionListResponse {
   items: EvalQuestionItem[];
   noProgramSelected?: boolean;
+  /** False until the expected-answer column exists in the database. */
+  expectedAnswerReady?: boolean;
 }
 
 export interface SaveEvalQuestionRequest {
@@ -708,8 +714,53 @@ export interface SaveEvalQuestionRequest {
   question: string;
   expectedDocId?: string | null;
   expectedAnswerContains?: string[];
+  expectedAnswer?: string | null;
+  isProtected?: boolean;
   notes?: string | null;
 }
+
+export interface BulkCreateEvalQuestionsResponse {
+  created: EvalQuestionItem[];
+  /** One entry per rejected item; `index` points into the request's items. */
+  errors: Array<{ index: number; error: string }>;
+}
+
+/** A question CSRs asked that the assistant refused or a CSR flagged. */
+export interface EvalQuestionSuggestion {
+  question: string;
+  askCount: number;
+  lastAskedAt: string;
+  outcome: "refused" | "flagged";
+  alreadyInSet: boolean;
+}
+
+export interface EvalQuestionSuggestionsResponse {
+  items: EvalQuestionSuggestion[];
+}
+
+/** A model-drafted question from one source document, not yet saved. */
+export interface EvalQuestionDraft {
+  question: string;
+  expectedAnswer: string;
+  expectedDocId: string;
+  expectedDocTitle: string;
+}
+
+export interface EvalQuestionDraftResponse {
+  items: EvalQuestionDraft[];
+}
+
+/** Trial run: one pinned approved route plus optional retrieval overrides. */
+export interface EvalTrialSettings {
+  routeId: string;
+  reasoningEffort?: ReasoningEffort;
+  /** 0..1 */
+  threshold?: number;
+  /** 1..20 */
+  topK?: number;
+}
+
+export type EvalCorrectnessVerdict = "correct" | "partial" | "incorrect";
 
 export type EvalFailureStage = "retrieval" | "rerank" | "threshold" | "generation";
 
@@ -743,6 +794,12 @@ export interface EvalQuestionResult {
   error: string | null;
   /** Absent on runs recorded before protected questions existed. */
   isProtected?: boolean;
+  /** Absent on runs recorded before expected answers existed. */
+  expectedAnswer?: string | null;
+  /** AI grade against expectedAnswer; null when not graded. Absent on older runs. */
+  correctness?: { verdict: EvalCorrectnessVerdict; reason: string } | null;
+  /** True when grading against expectedAnswer failed. Absent on older runs. */
+  correctnessJudgeFailed?: boolean;
 }
 
 export interface EvalSplitStat {
@@ -779,6 +836,8 @@ export interface EvalSummary {
   fallbackGenerationCount: number;
   failedFallbackCount: number;
   judgeFailures: number;
+  /** Absent on runs recorded before answer grading existed (read as 0). */
+  correctnessJudgeFailures?: number;
   latencyP50Ms: number;
   latencyP95Ms: number;
 }
@@ -793,6 +852,10 @@ export interface EvalReport {
 
 export interface EvalRunConfiguration {
   judge: boolean;
+  /** True for a trial run. Absent on runs from before trials existed (read as false). */
+  trial?: boolean;
+  /** The overrides a trial run applied; absent on non-trial runs. */
+  trialOverrides?: EvalTrialSettings;
   questionSetHash: string | null;
   generation: {
     id: string;

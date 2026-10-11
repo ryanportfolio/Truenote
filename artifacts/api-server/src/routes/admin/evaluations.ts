@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { documents, evalQuestions } from "@workspace/db/schema";
 import { db } from "../../lib/db-client.js";
@@ -16,9 +16,18 @@ import {
   reconcileQueuedEvalRuns
 } from "../../lib/eval/queue.js";
 import { loadEvalQuestions } from "../../lib/eval/runner.js";
+import { findApprovedModelRoute } from "../../lib/generation/model-routing.js";
+import {
+  QuestionDraftUnavailableError,
+  draftQuestionsWithChain,
+  loadDocumentExcerpts,
+  loadQuestionSuggestions
+} from "../../lib/eval/question-sources.js";
+import { evalQuestionDraftLimit } from "../../lib/security/route-rate-limit.js";
 import {
   cancelEvalRun,
   createEvalRun,
+  EvalTrialOverridesSchema,
   failStaleEvalRuns,
   getEvalRunDetail,
   isEvalPersistenceReady,
@@ -49,26 +58,63 @@ export const EvalQuestionBody = z
     question: z.string().trim().min(1).max(2000),
     expectedDocId: Uuid.nullable().optional(),
     expectedAnswerContains: z.array(Phrase).max(20).default([]),
-    notes: z.string().trim().max(2000).nullable().optional()
+    notes: z.string().trim().max(2000).nullable().optional(),
+    expectedAnswer: z
+      .string()
+      .trim()
+      .max(2000)
+      .nullable()
+      .optional()
+      .transform((value) => (value ? value : null)),
+    isProtected: z.boolean().optional()
   })
   .superRefine((value, context) => {
     if (
       value.kind === "in-kb" &&
       !value.expectedDocId &&
-      value.expectedAnswerContains.length === 0
+      value.expectedAnswerContains.length === 0 &&
+      !value.expectedAnswer
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "An in-KB question needs an expected document or phrase",
+        message: "An in-KB question needs an expected source, phrase, or answer",
         path: ["expectedAnswerContains"]
       });
     }
   });
 
+type EvalQuestionInput = z.infer<typeof EvalQuestionBody>;
+
+const BulkQuestionsBody = z.object({
+  items: z.array(z.unknown()).min(1).max(100)
+});
+
+const SuggestionsQuery = z.object({
+  days: z.coerce.number().int().min(1).max(90).default(30)
+});
+
+const DraftBody = z.object({
+  documentId: Uuid,
+  count: z.number().int().min(1).max(10).default(5)
+});
+
 const RunBody = z.object({
   judge: z.boolean().default(false),
-  questionId: Uuid.optional()
+  questionId: Uuid.optional(),
+  /** Trial run: one pinned approved route, optional effort and retrieval overrides. */
+  trial: EvalTrialOverridesSchema.optional()
 });
+
+function runBodyError(error: z.ZodError): string {
+  const path = (issue: z.ZodIssue) => issue.path.join(".");
+  if (error.issues.some((issue) => path(issue) === "trial.routeId")) {
+    return "Pick an approved model";
+  }
+  if (error.issues.some((issue) => path(issue) === "trial.reasoningEffort")) {
+    return "Pick an effort level that model supports";
+  }
+  return "Invalid evaluation run request";
+}
 
 const RunListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20)
@@ -86,6 +132,8 @@ export interface EvalQuestionItem {
   expectedDocTitle: string | null;
   expectedAnswerContains: string[];
   notes: string | null;
+  expectedAnswer: string | null;
+  isProtected: boolean;
   createdAt: string | null;
 }
 
@@ -104,8 +152,11 @@ function normalizePhrases(values: string[]): string[] {
 function questionKind(input: {
   expectedDocId: string | null;
   expectedAnswerContains: string[] | null;
+  expectedAnswer: string | null;
 }): "in-kb" | "out-of-kb" {
-  return input.expectedDocId || (input.expectedAnswerContains?.length ?? 0) > 0
+  return input.expectedDocId ||
+    (input.expectedAnswerContains?.length ?? 0) > 0 ||
+    input.expectedAnswer
     ? "in-kb"
     : "out-of-kb";
 }
@@ -119,7 +170,8 @@ function mapQuestion(row: {
   expectedAnswerContains: string[] | null;
   notes: string | null;
   createdAt: Date | null;
-}): EvalQuestionItem {
+}, extras: QuestionExtras | undefined): EvalQuestionItem {
+  const expectedAnswer = extras?.expectedAnswer ?? null;
   return {
     id: row.id,
     // Every row returned by these routes is filtered to a non-null selected
@@ -127,13 +179,234 @@ function mapQuestion(row: {
     // legacy row violates that contract.
     programId: row.programId ?? "",
     question: row.question,
-    kind: questionKind(row),
+    kind: questionKind({ ...row, expectedAnswer }),
     expectedDocId: row.expectedDocId,
     expectedDocTitle: row.expectedDocTitle,
     expectedAnswerContains: row.expectedAnswerContains ?? [],
     notes: row.notes,
+    expectedAnswer,
+    isProtected: extras?.isProtected ?? false,
     createdAt: row.createdAt ? row.createdAt.toISOString() : null
   };
+}
+
+// expected_answer and is_protected are added by raw DDL and stay unbound in
+// Drizzle (like the runner's is_protected read). These helpers read and write
+// them only when the column exists, so a deployment ahead of its SQL file
+// keeps working.
+interface QuestionExtras {
+  expectedAnswer: string | null;
+  isProtected: boolean;
+}
+
+interface QuestionExtraColumns {
+  expectedAnswer: boolean;
+  isProtected: boolean;
+}
+
+const COLUMN_CHECK_TTL_MS = 60_000;
+let columnCheck: { at: number; columns: QuestionExtraColumns } | null = null;
+
+const EXPECTED_ANSWER_COLUMN_MISSING =
+  "Expected answers need a database update first (lib/db/sql/0021_eval_expected_answer.sql).";
+
+async function questionExtraColumns(): Promise<QuestionExtraColumns> {
+  if (columnCheck && Date.now() - columnCheck.at < COLUMN_CHECK_TTL_MS) {
+    return columnCheck.columns;
+  }
+  const result = await db.execute(sql`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'eval_questions'
+      AND column_name IN ('expected_answer', 'is_protected')
+  `);
+  const names = new Set(
+    (result.rows as Array<{ column_name: string }>).map((row) => row.column_name)
+  );
+  const columns = {
+    expectedAnswer: names.has("expected_answer"),
+    isProtected: names.has("is_protected")
+  };
+  columnCheck = { at: Date.now(), columns };
+  return columns;
+}
+
+/** PostgreSQL undefined_column (42703), including driver-wrapped errors. */
+function isUndefinedColumn(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current; depth += 1) {
+    if (
+      typeof current === "object" &&
+      current !== null &&
+      (current as { code?: unknown }).code === "42703"
+    ) {
+      return true;
+    }
+    current =
+      typeof current === "object" && current !== null && "cause" in current
+        ? (current as { cause?: unknown }).cause
+        : null;
+  }
+  return false;
+}
+
+async function loadQuestionExtras(
+  programId: string,
+  ids?: string[]
+): Promise<Map<string, QuestionExtras>> {
+  const out = new Map<string, QuestionExtras>();
+  if (ids && ids.length === 0) return out;
+  const columns = await questionExtraColumns();
+  if (!columns.expectedAnswer && !columns.isProtected) return out;
+  const idFilter = ids
+    ? sql` AND id IN (${sql.join(
+        ids.map((id) => sql`${id}::uuid`),
+        sql`, `
+      )})`
+    : sql``;
+  try {
+    const result = await db.execute(sql`
+      SELECT id::text AS id,
+             ${columns.expectedAnswer ? sql`expected_answer` : sql`NULL::text`} AS expected_answer,
+             ${columns.isProtected ? sql`is_protected` : sql`false`} AS is_protected
+      FROM eval_questions
+      WHERE program_id = ${programId}::uuid${idFilter}
+    `);
+    for (const row of result.rows as Array<{
+      id: string;
+      expected_answer: string | null;
+      is_protected: unknown;
+    }>) {
+      out.set(row.id, {
+        expectedAnswer: row.expected_answer ?? null,
+        isProtected: row.is_protected === true
+      });
+    }
+  } catch (error) {
+    if (!isUndefinedColumn(error)) throw error;
+    columnCheck = null;
+  }
+  return out;
+}
+
+/** The database or an open transaction; extras are written with the row. */
+type QuestionWriter = Pick<typeof db, "execute">;
+
+/**
+ * Write expected_answer (always, when the column exists) and is_protected
+ * (only when given and the column exists) for one question. Callers pass the
+ * transaction that wrote the row, so a failed UPDATE rolls the row back too.
+ */
+async function writeQuestionExtras(
+  executor: QuestionWriter,
+  programId: string,
+  id: string,
+  values: { expectedAnswer: string | null; isProtected: boolean | undefined },
+  columns: QuestionExtraColumns
+): Promise<void> {
+  const sets: SQL[] = [];
+  if (columns.expectedAnswer) {
+    sets.push(sql`expected_answer = ${values.expectedAnswer}`);
+  }
+  if (columns.isProtected && values.isProtected !== undefined) {
+    sets.push(sql`is_protected = ${values.isProtected}`);
+  }
+  if (sets.length === 0) return;
+  await executor.execute(sql`
+    UPDATE eval_questions
+    SET ${sql.join(sets, sql`, `)}
+    WHERE id = ${id}::uuid AND program_id = ${programId}::uuid
+  `);
+}
+
+function normalizedExpectations(data: EvalQuestionInput): {
+  expectedDocId: string | null;
+  expectedAnswerContains: string[];
+  expectedAnswer: string | null;
+} {
+  const inKb = data.kind === "in-kb";
+  return {
+    expectedDocId: inKb ? (data.expectedDocId ?? null) : null,
+    expectedAnswerContains: inKb
+      ? normalizePhrases(data.expectedAnswerContains)
+      : [],
+    expectedAnswer: inKb ? (data.expectedAnswer ?? null) : null
+  };
+}
+
+type CreateQuestionOutcome =
+  | { ok: true; item: EvalQuestionItem }
+  | { ok: false; status: number; error: string };
+
+/** Validate references and insert one question in the selected program. */
+async function createQuestion(
+  programId: string,
+  data: EvalQuestionInput
+): Promise<CreateQuestionOutcome> {
+  const expectations = normalizedExpectations(data);
+  const columns = await questionExtraColumns();
+  if (expectations.expectedAnswer && !columns.expectedAnswer) {
+    return { ok: false, status: 409, error: EXPECTED_ANSWER_COLUMN_MISSING };
+  }
+  const expectedDocument = await expectedDocumentTitle(
+    programId,
+    expectations.expectedDocId
+  );
+  if (!expectedDocument.valid) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Expected document must belong to the selected program"
+    };
+  }
+  const isProtected = data.isProtected ?? false;
+  const row = await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(evalQuestions)
+      .values({
+        programId,
+        question: data.question,
+        expectedDocId: expectations.expectedDocId,
+        expectedAnswerContains: expectations.expectedAnswerContains,
+        notes: data.notes || null
+      })
+      .returning();
+    const created = inserted[0];
+    if (!created) return null;
+    await writeQuestionExtras(
+      tx,
+      programId,
+      created.id,
+      { expectedAnswer: expectations.expectedAnswer, isProtected },
+      columns
+    );
+    return created;
+  });
+  if (!row) {
+    return {
+      ok: false,
+      status: 500,
+      error: "Failed to create evaluation question"
+    };
+  }
+  return {
+    ok: true,
+    item: mapQuestion(
+      { ...row, expectedDocTitle: expectedDocument.title },
+      {
+        expectedAnswer: columns.expectedAnswer ? expectations.expectedAnswer : null,
+        isProtected: columns.isProtected ? isProtected : false
+      }
+    )
+  };
+}
+
+function questionBodyError(error: z.ZodError): string {
+  return (
+    error.issues.find((issue) => issue.code === z.ZodIssueCode.custom)?.message ??
+    "Invalid evaluation question"
+  );
 }
 
 async function effectiveProgram(req: Request): Promise<string | null> {
@@ -172,7 +445,7 @@ evaluationsRouter.get("/questions", async (req, res, next) => {
   try {
     const programId = await effectiveProgram(req);
     if (programId === null) {
-      res.json({ items: [], noProgramSelected: true });
+      res.json({ items: [], noProgramSelected: true, expectedAnswerReady: false });
       return;
     }
     const rows = await db
@@ -196,7 +469,28 @@ evaluationsRouter.get("/questions", async (req, res, next) => {
       )
       .where(eq(evalQuestions.programId, programId))
       .orderBy(asc(evalQuestions.createdAt), asc(evalQuestions.id));
-    res.json({ items: rows.map(mapQuestion) });
+    const extras = await loadQuestionExtras(programId);
+    const columns = await questionExtraColumns();
+    res.json({
+      items: rows.map((row) => mapQuestion(row, extras.get(row.id))),
+      expectedAnswerReady: columns.expectedAnswer
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+evaluationsRouter.get("/questions/suggestions", async (req, res, next) => {
+  try {
+    const parsed = SuggestionsQuery.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid query parameters" });
+      return;
+    }
+    const programId = await effectiveProgram(req);
+    if (!requireSelectedProgram(programId, res)) return;
+    const items = await loadQuestionSuggestions(programId, parsed.data.days);
+    res.json({ items });
   } catch (error) {
     next(error);
   }
@@ -211,44 +505,98 @@ evaluationsRouter.post("/questions", async (req, res, next) => {
     }
     const programId = await effectiveProgram(req);
     if (!requireSelectedProgram(programId, res)) return;
-    const expectedDocId =
-      parsed.data.kind === "in-kb" ? (parsed.data.expectedDocId ?? null) : null;
-    const expectedAnswerContains =
-      parsed.data.kind === "in-kb"
-        ? normalizePhrases(parsed.data.expectedAnswerContains)
-        : [];
-    const expectedDocument = await expectedDocumentTitle(programId, expectedDocId);
-    if (!expectedDocument.valid) {
-      res.status(400).json({
-        error: "Expected document must belong to the selected program"
-      });
+    const outcome = await createQuestion(programId, parsed.data);
+    if (!outcome.ok) {
+      res.status(outcome.status).json({ error: outcome.error });
       return;
     }
-    const inserted = await db
-      .insert(evalQuestions)
-      .values({
-        programId,
-        question: parsed.data.question,
-        expectedDocId,
-        expectedAnswerContains,
-        notes: parsed.data.notes || null
-      })
-      .returning();
-    const row = inserted[0];
-    if (!row) {
-      res.status(500).json({ error: "Failed to create evaluation question" });
-      return;
-    }
-    res.status(201).json({
-      item: mapQuestion({
-        ...row,
-        expectedDocTitle: expectedDocument.title
-      })
-    });
+    res.status(201).json({ item: outcome.item });
   } catch (error) {
     next(error);
   }
 });
+
+evaluationsRouter.post("/questions/bulk", async (req, res, next) => {
+  try {
+    const parsed = BulkQuestionsBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Send between 1 and 100 questions" });
+      return;
+    }
+    const programId = await effectiveProgram(req);
+    if (!requireSelectedProgram(programId, res)) return;
+    const created: EvalQuestionItem[] = [];
+    const errors: Array<{ index: number; error: string }> = [];
+    for (const [index, raw] of parsed.data.items.entries()) {
+      const item = EvalQuestionBody.safeParse(raw);
+      if (!item.success) {
+        errors.push({ index, error: questionBodyError(item.error) });
+        continue;
+      }
+      const outcome = await createQuestion(programId, item.data);
+      if (outcome.ok) created.push(outcome.item);
+      else errors.push({ index, error: outcome.error });
+    }
+    res.json({ created, errors });
+  } catch (error) {
+    next(error);
+  }
+});
+
+evaluationsRouter.post(
+  "/questions/draft",
+  evalQuestionDraftLimit,
+  async (req, res, next) => {
+    try {
+      const parsed = DraftBody.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "Invalid draft request" });
+        return;
+      }
+      const programId = await effectiveProgram(req);
+      if (!requireSelectedProgram(programId, res)) return;
+      const { documentId, count } = parsed.data;
+      const source = await expectedDocumentTitle(programId, documentId);
+      if (!source.valid) {
+        res.status(404).json({ error: "Source not found in this program" });
+        return;
+      }
+      const documentTitle = source.title ?? "";
+      const excerpts = await loadDocumentExcerpts(programId, documentId);
+      if (!excerpts) {
+        // No processed text on the current version: no model call can draft
+        // from it.
+        res.status(503).json({ error: "Drafting failed. Try again." });
+        return;
+      }
+      let drafted;
+      try {
+        drafted = await draftQuestionsWithChain({
+          programId,
+          documentTitle,
+          excerpts,
+          count
+        });
+      } catch (error) {
+        if (error instanceof QuestionDraftUnavailableError) {
+          res.status(503).json({ error: "Drafting failed. Try again." });
+          return;
+        }
+        throw error;
+      }
+      res.json({
+        items: drafted.map((item) => ({
+          question: item.question,
+          expectedAnswer: item.expectedAnswer,
+          expectedDocId: documentId,
+          expectedDocTitle: source.title
+        }))
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 evaluationsRouter.put("/questions/:id", async (req, res, next) => {
   try {
@@ -274,44 +622,62 @@ evaluationsRouter.put("/questions/:id", async (req, res, next) => {
       res.status(404).json({ error: "Evaluation question not found" });
       return;
     }
-    const expectedDocId =
-      parsed.data.kind === "in-kb" ? (parsed.data.expectedDocId ?? null) : null;
-    const expectedAnswerContains =
-      parsed.data.kind === "in-kb"
-        ? normalizePhrases(parsed.data.expectedAnswerContains)
-        : [];
-    const expectedDocument = await expectedDocumentTitle(programId, expectedDocId);
+    const expectations = normalizedExpectations(parsed.data);
+    const columns = await questionExtraColumns();
+    if (expectations.expectedAnswer && !columns.expectedAnswer) {
+      res.status(409).json({ error: EXPECTED_ANSWER_COLUMN_MISSING });
+      return;
+    }
+    const expectedDocument = await expectedDocumentTitle(
+      programId,
+      expectations.expectedDocId
+    );
     if (!expectedDocument.valid) {
       res.status(400).json({
         error: "Expected document must belong to the selected program"
       });
       return;
     }
-    const updated = await db
-      .update(evalQuestions)
-      .set({
-        question: parsed.data.question,
-        expectedDocId,
-        expectedAnswerContains,
-        notes: parsed.data.notes || null
-      })
-      .where(
-        and(
-          eq(evalQuestions.id, params.data.id),
-          eq(evalQuestions.programId, programId)
+    const row = await db.transaction(async (tx) => {
+      const updated = await tx
+        .update(evalQuestions)
+        .set({
+          question: parsed.data.question,
+          expectedDocId: expectations.expectedDocId,
+          expectedAnswerContains: expectations.expectedAnswerContains,
+          notes: parsed.data.notes || null
+        })
+        .where(
+          and(
+            eq(evalQuestions.id, params.data.id),
+            eq(evalQuestions.programId, programId)
+          )
         )
-      )
-      .returning();
-    const row = updated[0];
+        .returning();
+      const saved = updated[0];
+      if (!saved) return null;
+      await writeQuestionExtras(
+        tx,
+        programId,
+        saved.id,
+        {
+          expectedAnswer: expectations.expectedAnswer,
+          isProtected: parsed.data.isProtected
+        },
+        columns
+      );
+      return saved;
+    });
     if (!row) {
       res.status(404).json({ error: "Evaluation question not found" });
       return;
     }
+    const extras = await loadQuestionExtras(programId, [row.id]);
     res.json({
-      item: mapQuestion({
-        ...row,
-        expectedDocTitle: expectedDocument.title
-      })
+      item: mapQuestion(
+        { ...row, expectedDocTitle: expectedDocument.title },
+        extras.get(row.id)
+      )
     });
   } catch (error) {
     next(error);
@@ -395,8 +761,20 @@ evaluationsRouter.post("/runs", workloadRateLimitMiddleware("evaluation_run"), a
   try {
     const parsed = RunBody.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: "Invalid evaluation run request" });
+      res.status(400).json({ error: runBodyError(parsed.error) });
       return;
+    }
+    const trial = parsed.data.trial ?? null;
+    if (trial?.reasoningEffort !== undefined) {
+      const route = findApprovedModelRoute(trial.routeId);
+      if (!route) {
+        res.status(400).json({ error: "Pick an approved model" });
+        return;
+      }
+      if (!route.supportedEfforts.includes(trial.reasoningEffort)) {
+        res.status(400).json({ error: "Pick an effort level that model supports" });
+        return;
+      }
     }
     const programId = await effectiveProgram(req);
     if (!requireSelectedProgram(programId, res)) return;
@@ -430,7 +808,8 @@ evaluationsRouter.post("/runs", workloadRateLimitMiddleware("evaluation_run"), a
         questionId: parsed.data.questionId ?? null,
         judge: parsed.data.judge,
         questionCount,
-        questionSnapshot
+        questionSnapshot,
+        trialOverrides: trial
       });
     } catch (error) {
       if (isMissingEvalRunsTable(error)) {

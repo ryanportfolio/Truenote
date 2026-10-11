@@ -129,7 +129,12 @@ CREATE TABLE eval_questions (
   created_at TIMESTAMPTZ DEFAULT now(),
   -- Held-out flag, lib/db/sql/0002_eval_questions_is_protected.sql (applied
   -- 2026-10-08). See eval.md, "Protected (held-out) questions".
-  is_protected BOOLEAN NOT NULL DEFAULT false
+  is_protected BOOLEAN NOT NULL DEFAULT false,
+  -- Reference answer the correctness judge grades against,
+  -- lib/db/sql/0021_eval_expected_answer.sql (not yet applied in production).
+  -- Nullable, no default; not bound in Drizzle (tolerant raw queries).
+  -- See eval.md, "Expected answers".
+  expected_answer TEXT
 );
 ```
 
