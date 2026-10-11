@@ -186,7 +186,11 @@ function looksLikePaymentCard(candidate: string): boolean {
 }
 
 /**
- * Payment-card candidates. Spaces, tabs and dashes may separate any digits.
+ * Payment-card candidates, tried in order; a card one pattern matches is
+ * removed before the next runs. An unbroken run of 13 to 19 digits comes
+ * first, so a number next to the card (`Row 1<tab>4111...`) cannot join it
+ * into a longer candidate that fails the Luhn check and hides it.
+ * Spaces, tabs and dashes may separate any digits.
  * Dots, slashes and underscores count only between card-shaped groups
  * (4-4-4-1..7 or 4-6-4..5), so lists of IP addresses or version numbers do
  * not read as one long number. Only spaces and tabs count as whitespace, so
@@ -196,6 +200,7 @@ function looksLikePaymentCard(candidate: string): boolean {
  */
 const CARD_GROUP_SEPARATOR = String.raw`(?:[ \t]*[./_\-\u2010-\u2015\u2212][ \t]*|[ \t]+)`;
 const CARD_CANDIDATE_PATTERNS: readonly RegExp[] = [
+  /\b\d{13,19}\b/g,
   /\b(?:\d[ \t\-\u2010-\u2015\u2212]*?){13,19}\b/g,
   new RegExp(
     String.raw`\b\d{4}(?:${CARD_GROUP_SEPARATOR}\d{4}){2}${CARD_GROUP_SEPARATOR}\d{1,7}\b`,
