@@ -11,6 +11,7 @@ import { History, Maximize2, MessageSquare, PictureInPicture2 } from "lucide-rea
 import { askQuestionStream, getSession, listSessions } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/EmptyState";
+import { PortalArt } from "@/components/DemoPortal";
 import { AskExamples } from "@/components/chat/AskExamples";
 import {
   MiniWindowPortal,
@@ -68,9 +69,9 @@ function RetrievalState({ stage }: { stage: AskStage | null }): JSX.Element {
         {stage ? STAGE_LABEL[stage] : "Sending…"}
       </p>
       <div aria-hidden className="retrieval-instrument">
-        <span className="retrieval-ring retrieval-ring-one" />
-        <span className="retrieval-ring retrieval-ring-two" />
-        <span className="retrieval-core" />
+        <div className="gap-portal retrieval-portal">
+          <PortalArt role="csr" burst={1} />
+        </div>
         <div className="retrieval-lines">
           <i />
           <i />
