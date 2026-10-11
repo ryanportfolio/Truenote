@@ -109,6 +109,11 @@ export function QuestionForm({
 
   const expectationsInvalid = error?.expectations === true;
 
+  /** Drops the "add an expectation" alert once the user supplies one. */
+  function clearExpectationsError(provided: boolean): void {
+    if (provided && expectationsInvalid) setError(null);
+  }
+
   return (
     <form
       onSubmit={(event) => void save(event)}
@@ -122,7 +127,7 @@ export function QuestionForm({
       <h3 id={`${ids}-title`} className="text-base font-semibold">
         {title}
       </h3>
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <fieldset className="flex flex-wrap gap-2 lg:col-span-2">
           <legend className="mb-1 block w-full text-sm font-medium">Expected behavior</legend>
           {(["in-kb", "out-of-kb"] as const).map((value) => (
@@ -176,7 +181,10 @@ export function QuestionForm({
                 id={`${ids}-answer`}
                 name="expectedAnswer"
                 value={expectedAnswerReady ? expectedAnswer : ""}
-                onChange={(event) => setExpectedAnswer(event.target.value)}
+                onChange={(event) => {
+                  setExpectedAnswer(event.target.value);
+                  clearExpectationsError(event.target.value.trim().length > 0);
+                }}
                 maxLength={2000}
                 rows={3}
                 disabled={saving || !expectedAnswerReady}
@@ -198,10 +206,13 @@ export function QuestionForm({
                 id={`${ids}-source`}
                 name="expectedDocId"
                 value={expectedDocId}
-                onChange={(event) => setExpectedDocId(event.target.value)}
+                onChange={(event) => {
+                  setExpectedDocId(event.target.value);
+                  clearExpectationsError(event.target.value !== "");
+                }}
                 disabled={saving}
                 aria-invalid={expectationsInvalid || undefined}
-                className={cn("select-quiet", FIELD_CLASS, "pr-8")}
+                className={cn("select-quiet", FIELD_CLASS, "w-full min-w-0 pr-8")}
               >
                 <option value="">Any source</option>
                 {documents.map((document) => (
@@ -219,7 +230,10 @@ export function QuestionForm({
                 id={`${ids}-phrases`}
                 name="expectedAnswerContains"
                 value={phrases}
-                onChange={(event) => setPhrases(event.target.value)}
+                onChange={(event) => {
+                  setPhrases(event.target.value);
+                  clearExpectationsError(event.target.value.trim().length > 0);
+                }}
                 rows={3}
                 disabled={saving}
                 aria-invalid={expectationsInvalid || undefined}

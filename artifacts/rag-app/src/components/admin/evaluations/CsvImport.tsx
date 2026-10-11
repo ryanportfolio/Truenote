@@ -103,8 +103,9 @@ export function CsvImport({
         created.push(...response.created);
       }
     } catch (reason) {
+      const message = reason instanceof Error ? reason.message.trim() : "Import stopped";
       setImportError(
-        `${reason instanceof Error ? reason.message : "Import stopped"}. Rows not marked Added were not saved; import again to retry them.`
+        `${message}${/[.!?]$/.test(message) ? "" : "."} Rows not marked Added were not saved; import again to retry them.`
       );
     } finally {
       setOutcomes(next);
