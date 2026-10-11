@@ -187,7 +187,7 @@ Each step changes production and waits for the owner's go, in this order. Run th
    ```
 
    It writes the evidence queue's new expiry over the stored one and prints `evidence-run: retryLimit 1, retryDelay 600, expireInSeconds 5400`. Until then a run longer than 30 minutes is marked failed and retried.
-3. Deploy web and worker from the same commit through the "Deploy production" workflow: `gh workflow run deploy-production.yml --repo ryanportfolio/Truenote --ref main -f message="<what ships>" -f service=both`, then approve the job. A daily run between this deploy and step 5 records `error` ("Not configured") for the four account checks; a second one in a row emails the owner.
+3. Deploy web and worker from the same commit through the "Deploy production" workflow: `gh workflow run deploy-production.yml --repo ryanportfolio/Truenote --ref main -f message="<what ships>" -f service=both`. A daily run between this deploy and step 5 records `error` ("Not configured") for the four account checks; a second one in a row emails the owner.
 4. Provision the accounts and canaries through the SSH tunnel, in Windows PowerShell, first as a dry run, then with `--apply`:
 
    ```powershell
@@ -205,6 +205,8 @@ Each step changes production and waits for the owner's go, in this order. Run th
 
    In Git Bash, redirect the file instead: `railway variable set EVIDENCE_SYNTHETIC_ACCOUNTS --stdin ... -s worker < ~/.claude/secrets/truenote-synthetic-accounts.json`.
 6. Once the worker is back, trigger a run of the five checks as a super_user: `POST /api/admin/evidence/runs` with `{"checkIds":["synthetic.program-isolation","synthetic.classification-ceiling","synthetic.demo-write-block","synthetic.bad-password-refused","synthetic.login-windows"]}`. Check the five new receipts (`GET /api/admin/evidence/receipts`): each has a result and a `release.commit`, an `error` names its cause, no receipt holds a password or canary token, and `synthetic.login-windows` passes: no synthetic login or login attempt was recorded outside a check's run, provisioning included. List `synthetic.login-windows` last, as above, so it sees the windows of the other four.
+
+Done on 2026-10-11 with the owner's go. The first run, `70df1a85`, recorded `error` for the isolation and classification checks because the answer model refused the question phrasing; #248 changed it. After that deploy, run `0a9962c1` recorded `pass` for the isolation, classification, demo-write-block and bad-password checks. `synthetic.login-windows` recorded `fail` for one known exception: a csr-a login at 2026-10-11T03:29:18Z, outside every run, from a debugging probe by the agent session. It leaves the 8-day window on 2026-10-19. Step 4 needs the agent account at `confidential` clearance to create the confidential canary (`.claude/reference/deployment.md`, "Agent account").
 
 ### Known risk: local login restrictions
 
@@ -225,7 +227,7 @@ So turning on SSO, fully or partly, without setting `LOCAL_LOGIN_MODE=enabled` s
 Each step changes production or the owner's accounts and waits for the owner's go, in this order. Run the local steps from a checkout of the `main` commit being deployed.
 
 1. Apply the operator rule: `node scripts/railway-apply-sql.mjs lib/db/sql/0020_operator_receipts.sql` (dry run), then with `--apply`. Afterwards check the definition in the database: `pg_get_functiondef('public.append_evidence_receipt(text)'::regprocedure)` must contain the `operator` rule, and the function must still be owned by the migration role and executable by `truenote_app`.
-2. Deploy web and worker from the same commit through the "Deploy production" workflow (`gh workflow run deploy-production.yml --repo ryanportfolio/Truenote --ref main -f message="<what ships>" -f service=both`, then approve the job). If phase 2's deploy (step 3 there) has not run yet, this one deploy ships both.
+2. Deploy web and worker from the same commit through the "Deploy production" workflow (`gh workflow run deploy-production.yml --repo ryanportfolio/Truenote --ref main -f message="<what ships>" -f service=both`). If phase 2's deploy (step 3 there) has not run yet, this one deploy ships both.
 3. Confirm that `EVIDENCE_ALERT_EMAIL`, or else `SECURITY_ALERT_EMAIL`, is set on `worker`. The attestation reminders and the monthly summary go there; with neither set they stay pending.
 4. Create the private repository `ryanportfolio/truenote-evidence` with a ruleset on its default branch that blocks force-push and deletion, and clone it to the owner's machine, outside the Truenote checkout.
 5. Each month: open the SSH tunnel to `pgvector` on port 5434 (`docs/security/backup-restore-runbook.md`, section 4.4, step 5) and run the operator script as `postgres` in Windows PowerShell, from the Truenote checkout. Set the connection once for the session:
