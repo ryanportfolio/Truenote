@@ -10,6 +10,7 @@ import {
   MAX_GAP_GROUPS,
   assembleGapThemes,
   buildGapAnalysisPrompt,
+  describeGapReply,
   parseModelThemes,
   type GapProbe,
   type GapQuestionGroup,
@@ -205,12 +206,17 @@ async function runAnalysis(
   // Walk the gaps chain: a request error or a reply with no usable themes
   // advances to the next route, like answer generation.
   for (const route of await getActiveModelChain("gaps")) {
+    let context: Record<string, unknown> | undefined;
     try {
       const text = await completeAsJson(route, prompt);
       const modelThemes = text ? parseModelThemes(text) : null;
-      if (!modelThemes) throw new Error("reply held no themes JSON");
-      const { themes, ungroupedQuestions } = assembleGapThemes(modelThemes, groups, probes);
-      if (themes.length === 0) throw new Error("reply held no usable themes");
+      const { themes, ungroupedQuestions } = modelThemes
+        ? assembleGapThemes(modelThemes, groups, probes)
+        : { themes: [], ungroupedQuestions: groups.length };
+      if (themes.length === 0) {
+        context = describeGapReply(text, modelThemes, groups);
+        throw new Error(modelThemes ? "reply held no usable themes" : "reply held no themes JSON");
+      }
       return {
         ...base,
         status: "ready",
@@ -228,7 +234,8 @@ async function runAnalysis(
         provider: route.provider,
         model: route.model,
         routeId: route.id,
-        programId: scope.programId
+        programId: scope.programId,
+        context
       });
     }
   }
