@@ -1,0 +1,23 @@
+{
+ "root": "/home/user/Truenote",
+ "head": "e97d6da1e4c00ca2b0573f08229c15fa67aedc9a",
+ "snapshot": "e97d6da1e4c00ca2b0573f08229c15fa67aedc9a",
+ "ref": "e97d6da1e4c00ca2b0573f08229c15fa67aedc9a",
+ "taken": "2026-10-11T18:57:16.450Z",
+ "extras": [
+  "artifacts/api-server/src/lib/eval"
+ ],
+ "uncovered": [],
+ "files": {
+  "artifacts/api-server/src/lib/eval/__tests__/attribute-failure.test.ts": "fcdb182e301bd2c4e25a355a7c9d4990ecb93791f86ec1cf41dc4000506ce832",
+  "artifacts/api-server/src/lib/eval/__tests__/cited-documents.test.ts": "76a681286b8b0c9317250a711144def2af0b504d58ce5868baaf65474814e7fb",
+  "artifacts/api-server/src/lib/eval/__tests__/faithfulness.test.ts": "6f1bc58fbbdc7345619f87fc7d600d3bd7c7a753e3523c22ba01fd380aee6047",
+  "artifacts/api-server/src/lib/eval/__tests__/persistence.test.ts": "49010ade097aabef77e29c20f4a1e5cc141df700f9323a1e3d698cc218347d7a",
+  "artifacts/api-server/src/lib/eval/__tests__/queue.test.ts": "9b1a8a31624f5ad367bd6a91b3953b58bb8981cb206bc45f517d74b15b97e7f5",
+  "artifacts/api-server/src/lib/eval/__tests__/summary.test.ts": "aa53aae2b96cf6f84371dbe1e322879a495494782b9078432b47cb88f9853a2f",
+  "artifacts/api-server/src/lib/eval/faithfulness.ts": "6175695c18b03eff85b5276cf9719286e6a3c01ddfcc31134fb2cb3bd68ca761",
+  "artifacts/api-server/src/lib/eval/persistence.ts": "9141220241eb5bf818cd815314f7bacac94ba17aab85f0fdf798c00bb8808e18",
+  "artifacts/api-server/src/lib/eval/queue.ts": "2a3030a0b00b0d21d84d58e3d7bea29887b75ba20fa02ae7187cb00d1d95026c",
+  "artifacts/api-server/src/lib/eval/runner.ts": "db97621c8dbab52ca5c0061b2e737ba67ed4ff213b095b027f788d8bf514245e"
+ }
+}
