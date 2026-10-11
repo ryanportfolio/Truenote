@@ -18,11 +18,14 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-    # Odd-numbered Node releases never become LTS; the image tracks LTS lines.
-    # The scanner stays on the ClamAV 1.4 LTS line: patch releases and digest
-    # updates only.
+    # Node major upgrades are planned changes to the next LTS line, not
+    # Dependabot updates: odd-numbered releases never become LTS, and a
+    # version list such as "25.x" did not match tags like 25-bookworm-slim
+    # (Dependabot opened #266 and #267 for Node 25). Digest updates within
+    # the current major still arrive. The scanner stays on the ClamAV 1.4
+    # LTS line: patch releases and digest updates only.
     ignore:
       - dependency-name: node
-        versions: ["25.x", "27.x", "29.x"]
+        update-types: ["version-update:semver-major"]
       - dependency-name: clamav/clamav-debian
         update-types: ["version-update:semver-major", "version-update:semver-minor"]

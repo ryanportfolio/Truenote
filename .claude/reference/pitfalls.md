@@ -119,3 +119,7 @@ Privilege tests that `SET LOCAL ROLE truenote_app` inside the `pgvector` contain
 ### 2026-10-10: Stopping processes by a command-line pattern kills other sessions' work
 
 Several sessions work in sibling worktrees at once and run the same tools, so their process command lines look alike. On 2026-10-10 a `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*codex-fullreview*' } | Stop-Process` meant to end one session's Codex review also killed another session's review (its run directory had the same `codex-fullreview-` prefix) and the calling shell itself, whose own command line contained the pattern. `TaskStop` on a background Bash task can leave its children running (`codex.exe`, `ssh.exe`), which is what invited the pattern kill. Fix: stop only processes you started, by PID. Record the PID at launch (for example `echo $! > <run dir>/pid` after starting in the background), or match on the full, unique run-directory path plus your own worktree path, and list the matches before stopping anything.
+
+## 2026-10-11: Dependabot `ignore` versions did not match Docker tags
+
+`.github/dependabot.yml` ignored `node` with `versions: ["25.x", "27.x", "29.x"]`, yet Dependabot opened #266 (`24-bookworm-slim` to `25-bookworm-slim`) and #267 (scanner, `24-trixie-slim` to `25-trixie-slim`). The version list did not match tags with a suffix. The rule now ignores `update-types: ["version-update:semver-major"]` for `node`, so Node majors are planned changes; digest updates within the major still arrive.
