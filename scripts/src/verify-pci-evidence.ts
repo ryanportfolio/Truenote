@@ -164,7 +164,7 @@ export function verifySecurityWorkflow(workflow: string): string[] {
       const step = stepWithRun(steps, command);
       if (!step || /^\s+if:/m.test(step)) issues.push(message);
     }
-    const changeCommand = 'corepack pnpm --filter @workspace/scripts run verify:change-record -- --event "$GITHUB_EVENT_PATH" --allow-pending';
+    const changeCommand = 'corepack pnpm --filter @workspace/scripts run verify:change-record -- --event "$GITHUB_EVENT_PATH" --changed-files "$RUNNER_TEMP/changed-files.txt" --allow-pending';
     const changeStep = stepWithRun(steps, changeCommand);
     if (!changeStep) issues.push("pull-request change-record verifier is not a verify-job step");
     else if (!changeStep.split("\n").some(

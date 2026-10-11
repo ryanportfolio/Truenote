@@ -91,6 +91,14 @@ Every production change records reason and description, security impact,
 authorized approval, security testing, applicable Requirement 6.2.4 testing for
 bespoke/custom software, and a secure recovery procedure.
 
+Automated dependency updates are the exception to the pull-request template: a
+pull request opened by Dependabot that changes only dependency manifests, the
+lockfile, Dockerfiles or workflow files passes the change-record check without
+it. Its record is the pull request itself (diff, the upstream release notes
+Dependabot attaches, and the CI test, audit and image-scan results), and the
+owner's merge is the approval. The production deploy that ships it still
+follows the normal deploy record.
+
 ### 6.5.2 Significant-change completion
 
 The record identifies significance. Applicable PCI DSS requirements and affected
