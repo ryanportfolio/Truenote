@@ -47,12 +47,6 @@ function formatDate(isoDate: string): string {
       });
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function SensitiveNotice(): JSX.Element {
   return (
     <p
@@ -147,7 +141,6 @@ function ComplianceList(): JSX.Element {
                 <th className="px-4 py-2 font-medium">Version</th>
                 <th className="hidden px-4 py-2 font-medium sm:table-cell">Date</th>
                 <th className="hidden px-4 py-2 font-medium md:table-cell">SHA-256</th>
-                <th className="hidden px-4 py-2 text-right font-medium md:table-cell">Size</th>
               </tr>
             </thead>
             <tbody>
@@ -175,9 +168,6 @@ function ComplianceList(): JSX.Element {
                     <code className="font-mono text-[13px] text-muted-foreground" title={doc.sha256}>
                       {doc.sha256.slice(0, 12)}
                     </code>
-                  </td>
-                  <td className="hidden px-4 py-3 text-right text-muted-foreground md:table-cell">
-                    {formatSize(doc.size)}
                   </td>
                 </tr>
               ))}
@@ -251,8 +241,9 @@ function ComplianceDocumentView({ slug }: { slug: string }): JSX.Element {
     );
   }
 
+  // Full width: the package's tables run to five or more columns.
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
+    <div className="flex w-full min-w-0 flex-col gap-6 px-6 py-8">
       <BackLink />
       {state.status === "error" ? (
         <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -292,7 +283,7 @@ function ComplianceDocumentView({ slug }: { slug: string }): JSX.Element {
             </dl>
           </header>
           <SensitiveNotice />
-          <article className="rounded-lg border border-border bg-card p-5 text-sm leading-relaxed shadow-card">
+          <article className="min-w-0 rounded-lg border border-border bg-card p-5 text-sm leading-relaxed shadow-card">
             <ComplianceMarkdown markdown={state.document.markdown} />
           </article>
         </>
