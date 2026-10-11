@@ -4,17 +4,17 @@ import path from "node:path";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { brotliCompress, constants, gzip } from "node:zlib";
 import { promisify } from "node:util";
-import { buildCompliancePages, COMPLIANCE_SLUG_PATTERN } from "./compliance-pages";
+import { buildCompliancePages, COMPLIANCE_SLUG_PATTERN } from "./compliance-pages.ts";
 
 const brotli = promisify(brotliCompress);
 const gzipFile = promisify(gzip);
 
 const securityPagePath = path.resolve(
-  __dirname,
+  import.meta.dirname,
   "../../docs/security/truenote-security-capabilities.html"
 );
 const pciPagePath = path.resolve(
-  __dirname,
+  import.meta.dirname,
   "../../docs/security/truenote-pci-security-capabilities.html"
 );
 
@@ -184,7 +184,7 @@ function precompressAssets() {
     name: "precompress-assets",
     apply: "build" as const,
     async closeBundle(): Promise<void> {
-      const assetsDir = path.resolve(__dirname, "dist/assets");
+      const assetsDir = path.resolve(import.meta.dirname, "dist/assets");
       const entries = await readdir(assetsDir, { withFileTypes: true });
       await Promise.all(
         entries
@@ -223,7 +223,7 @@ export default defineConfig({
   base: "/",
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "src")
+      "@": path.resolve(import.meta.dirname, "src")
     }
   },
   server: {
