@@ -1,4 +1,5 @@
 import type {
+  EvalQuestionResult,
   EvalRunConfiguration,
   EvalRunListItem,
   EvalSummary
@@ -28,7 +29,11 @@ export function compareMetric(
   return { value, tone: improved ? "better" : "worse" };
 }
 
-function sameConfiguration(
+/**
+ * True when two runs used the same pipeline setup (judge, routes, retrieval).
+ * Runs without a stored configuration never match.
+ */
+export function sameConfiguration(
   left: EvalRunConfiguration | null,
   right: EvalRunConfiguration | null
 ): boolean {
@@ -65,4 +70,126 @@ export function comparableToBaseline(
     run.configuration.questionSetHash === baseline.configuration?.questionSetHash &&
     sameConfiguration(run.configuration, baseline.configuration)
   );
+}
+
+export interface ResultDiff {
+  /** Passed in the baseline, failed in this run. */
+  newlyFailing: EvalQuestionResult[];
+  /** Failed in the baseline, passed in this run. */
+  newlyPassing: EvalQuestionResult[];
+  /** In both runs with the same pass or fail outcome. */
+  unchanged: number;
+  onlyInCurrent: EvalQuestionResult[];
+  onlyInBaseline: EvalQuestionResult[];
+}
+
+/** Compare two runs question by question (matched on questionId). */
+export function diffResults(
+  current: EvalQuestionResult[],
+  baseline: EvalQuestionResult[]
+): ResultDiff {
+  const baselineById = new Map(baseline.map((result) => [result.questionId, result]));
+  const currentIds = new Set(current.map((result) => result.questionId));
+  const diff: ResultDiff = {
+    newlyFailing: [],
+    newlyPassing: [],
+    unchanged: 0,
+    onlyInCurrent: [],
+    onlyInBaseline: baseline.filter((result) => !currentIds.has(result.questionId))
+  };
+  for (const result of current) {
+    const before = baselineById.get(result.questionId);
+    if (!before) diff.onlyInCurrent.push(result);
+    else if (before.pass && !result.pass) diff.newlyFailing.push(result);
+    else if (!before.pass && result.pass) diff.newlyPassing.push(result);
+    else diff.unchanged += 1;
+  }
+  return diff;
+}
+
+export interface NoiseThreshold {
+  /** Points one question moves the overall pass rate, to 1 decimal. */
+  perQuestion: number;
+  /** Changes smaller than this are within noise (two questions). */
+  noise: number;
+}
+
+/** Below 30 scored questions a single question moves the score visibly. */
+export function noiseThreshold(total: number): NoiseThreshold | null {
+  if (total <= 0 || total >= 30) return null;
+  const perQuestion = Math.round((100 / total) * 10) / 10;
+  return { perQuestion, noise: Math.round(perQuestion * 2 * 10) / 10 };
+}
+
+export interface RunEstimate {
+  questions: number;
+  answerCalls: number;
+  /** Upper bound: refused answers skip the faithfulness judge. */
+  judgeCalls: number;
+  /** Questions with an expected answer, each graded by one AI call. */
+  gradedAnswers: number;
+  /** Null when no completed run gives a latency to estimate from. */
+  minutes: number | null;
+}
+
+/** Questions answered at once by the eval worker. */
+export const EVAL_CONCURRENCY = 3;
+
+export function estimate({
+  questions,
+  judge,
+  expectedAnswers,
+  latencyP50Ms
+}: {
+  questions: number;
+  judge: boolean;
+  expectedAnswers: number;
+  latencyP50Ms: number | null;
+}): RunEstimate {
+  return {
+    questions,
+    answerCalls: questions,
+    judgeCalls: judge ? questions : 0,
+    gradedAnswers: expectedAnswers,
+    minutes:
+      latencyP50Ms === null || latencyP50Ms <= 0
+        ? null
+        : Math.max(1, Math.round((latencyP50Ms * questions) / EVAL_CONCURRENCY / 60_000))
+  };
+}
+
+export interface CountedMetric {
+  passed: number;
+  total: number;
+}
+
+/** Numerators and denominators behind the percentage metrics, from a report. */
+export function metricCounts(results: EvalQuestionResult[]): {
+  overall: CountedMetric;
+  answer: CountedMetric;
+  citation: CountedMetric;
+  outOfKbRefused: CountedMetric;
+  retrieval: CountedMetric;
+  rerank: CountedMetric;
+} {
+  const count = (
+    rows: EvalQuestionResult[],
+    value: (row: EvalQuestionResult) => boolean | null
+  ): CountedMetric => {
+    const applicable = rows.filter((row) => value(row) !== null);
+    return {
+      passed: applicable.filter((row) => value(row) === true).length,
+      total: applicable.length
+    };
+  };
+  const inKb = results.filter((row) => row.kind === "in-kb");
+  const outOfKb = results.filter((row) => row.kind === "out-of-kb");
+  return {
+    overall: count(results, (row) => row.pass),
+    answer: count(inKb, (row) => row.answerCorrect),
+    citation: count(inKb, (row) => row.citationCorrect),
+    outOfKbRefused: count(outOfKb, (row) => row.refused),
+    retrieval: count(inKb, (row) => row.retrievalHit),
+    rerank: count(inKb, (row) => row.rerankHit)
+  };
 }

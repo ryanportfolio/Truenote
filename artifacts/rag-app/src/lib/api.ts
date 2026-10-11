@@ -23,8 +23,12 @@ import type {
   SourceUsageResponse,
   UpdateKbCategoryRequest,
   UpdateKbTagRequest,
+  BulkCreateEvalQuestionsResponse,
+  EvalQuestionDraftResponse,
   EvalQuestionItem,
   EvalQuestionListResponse,
+  EvalQuestionSuggestionsResponse,
+  EvalTrialSettings,
   EvalRunDetailResponse,
   EvalRunListItem,
   EvalRunListResponse,
@@ -1338,6 +1342,40 @@ export async function updateEvalQuestion(
   return (await asJson<{ item: EvalQuestionItem }>(response)).item;
 }
 
+/** Create up to 100 questions at once; each item is validated on its own. */
+export async function bulkCreateEvalQuestions(
+  items: SaveEvalQuestionRequest[]
+): Promise<BulkCreateEvalQuestionsResponse> {
+  const response = await fetch(
+    "/api/admin/evaluations/questions/bulk",
+    jsonRequest("POST", { items })
+  );
+  return asJson<BulkCreateEvalQuestionsResponse>(response);
+}
+
+/** Questions CSRs asked in the last `days` days that were refused or flagged. */
+export async function listEvalQuestionSuggestions(
+  days = 30
+): Promise<EvalQuestionSuggestionsResponse> {
+  const response = await fetch(
+    `/api/admin/evaluations/questions/suggestions?days=${encodeURIComponent(days)}`,
+    withDefaults()
+  );
+  return asJson<EvalQuestionSuggestionsResponse>(response);
+}
+
+/** Model-drafted questions with expected answers from one source document. */
+export async function draftEvalQuestions(
+  documentId: string,
+  count: number
+): Promise<EvalQuestionDraftResponse> {
+  const response = await fetch(
+    "/api/admin/evaluations/questions/draft",
+    jsonRequest("POST", { documentId, count })
+  );
+  return asJson<EvalQuestionDraftResponse>(response);
+}
+
 export async function deleteEvalQuestion(id: string): Promise<void> {
   const response = await fetch(
     `/api/admin/evaluations/questions/${encodeURIComponent(id)}`,
@@ -1359,6 +1397,8 @@ export async function listEvalRuns(
 export async function startEvalRun(input: {
   judge?: boolean;
   questionId?: string;
+  /** Run on a pinned route and settings without changing the live setup. */
+  trial?: EvalTrialSettings;
 } = {}): Promise<EvalRunListItem> {
   const response = await fetch(
     "/api/admin/evaluations/runs",
