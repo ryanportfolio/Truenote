@@ -166,9 +166,10 @@ function TrialForm({
   const route = routes?.find((candidate) => candidate.id === routeId) ?? null;
 
   useEffect(() => {
-    if (routes && routes.length > 0 && !routeId) {
-      setRouteId(routes[0].id);
-      setEffort(initialEffort(routes[0]));
+    const first = routes?.[0];
+    if (first && !routeId) {
+      setRouteId(first.id);
+      setEffort(initialEffort(first));
     }
   }, [routes, routeId]);
 

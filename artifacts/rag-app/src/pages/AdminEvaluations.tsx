@@ -7,21 +7,13 @@ import {
   type FormEvent,
   type ReactNode
 } from "react";
-import {
-  CheckCircle2,
-  FlaskConical,
-  Pencil,
-  Play,
-  Plus,
-  Star,
-  Trash2,
-  XCircle
-} from "lucide-react";
+import { FlaskConical, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import {
   cancelEvalRun,
   createEvalQuestion,
   deleteEvalQuestion,
   getEvalRun,
+  getModelRouting,
   listDocuments,
   listEvalQuestions,
   listEvalRuns,
@@ -29,27 +21,22 @@ import {
   startEvalRun,
   updateEvalQuestion
 } from "@/lib/api";
-import {
-  comparableToBaseline,
-  compareMetric,
-  evalPassRate,
-  type MetricDelta
-} from "@/lib/evaluationMetrics";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/EmptyState";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { RelativeTime } from "@/components/RelativeTime";
+import { RunLauncher } from "@/components/admin/evaluations/RunLauncher";
+import { RunsPanel } from "@/components/admin/evaluations/RunsPanel";
 import type {
   CurrentUser,
   DocumentListItem,
   EvalQuestionItem,
   EvalQuestionKind,
-  EvalQuestionResult,
   EvalRunDetailResponse,
   EvalRunListItem,
   EvalRunListResponse,
-  EvalSummary,
+  EvalTrialSettings,
+  ModelRoutingOption,
   SaveEvalQuestionRequest
 } from "@/types/api";
 
@@ -93,6 +80,8 @@ function EvaluationCenter(): JSX.Element {
   const [cancelingRunId, setCancelingRunId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<EvalQuestionItem | null>(null);
+  const [routes, setRoutes] = useState<ModelRoutingOption[] | null>(null);
+  const [routesError, setRoutesError] = useState<string | null>(null);
   const requestGenerationRef = useRef(0);
   const programGenerationRef = useRef(0);
 
@@ -147,6 +136,28 @@ function EvaluationCenter(): JSX.Element {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Approved answer routes: the trial picker's options, and how a trial's
+  // reasoning setting reads (toggle routes say on/off). Not program-scoped.
+  useEffect(() => {
+    let cancelled = false;
+    getModelRouting()
+      .then((config) => {
+        if (!cancelled) setRoutes(config.routes);
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) {
+          setRoutesError(
+            reason instanceof Error
+              ? `Approved models could not load: ${reason.message}`
+              : "Approved models could not load."
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     function reloadForProgram(): void {
@@ -237,13 +248,19 @@ function EvaluationCenter(): JSX.Element {
     detailRequestNonce
   ]);
 
-  async function beginRun(questionId?: string): Promise<void> {
+  async function beginRun(
+    { questionId, trial }: { questionId?: string; trial?: EvalTrialSettings } = {}
+  ): Promise<boolean> {
     const programGeneration = programGenerationRef.current;
     setStarting(true);
     setError(null);
     try {
-      const item = await startEvalRun({ judge, ...(questionId ? { questionId } : {}) });
-      if (programGeneration !== programGenerationRef.current) return;
+      const item = await startEvalRun({
+        judge,
+        ...(questionId ? { questionId } : {}),
+        ...(trial ? { trial } : {})
+      });
+      if (programGeneration !== programGenerationRef.current) return false;
       setRunsState((current) =>
         current
           ? { ...current, items: [item, ...current.items.filter((run) => run.id !== item.id)] }
@@ -252,10 +269,12 @@ function EvaluationCenter(): JSX.Element {
       setSelectedRunId(item.id);
       setTab("results");
       setDetail({ item, report: null });
+      return true;
     } catch (reason) {
       if (programGeneration === programGenerationRef.current) {
         setError(reason instanceof Error ? reason.message : "Evaluation could not start");
       }
+      return false;
     } finally {
       if (programGeneration === programGenerationRef.current) setStarting(false);
     }
@@ -326,52 +345,33 @@ function EvaluationCenter(): JSX.Element {
   const selectedRun =
     runsState?.items.find((run) => run.id === selectedRunId) ?? detail?.item ?? null;
   const baseline = runsState?.items.find((run) => run.isBaseline) ?? null;
+  const runs = runsState?.items;
+  const lastCompleted = useMemo(
+    () =>
+      (runs ?? [])
+        .filter((run) => run.status === "completed" && run.summary !== null)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null,
+    [runs]
+  );
+  const latestLive = useMemo(
+    () =>
+      (runs ?? [])
+        .filter((run) => run.configuration !== null && run.configuration.trial !== true)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null,
+    [runs]
+  );
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight">
-            Evaluation Center
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Test retrieval, citations, answers, and safe refusals against a versioned
-            question set before changing the production pipeline.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          <div className="flex flex-col items-start gap-0.5">
-            <label className="inline-flex min-h-6 items-center gap-2 text-sm text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={judge}
-                onChange={(event) => setJudge(event.target.checked)}
-                disabled={starting || Boolean(activeRun)}
-                className="h-4 w-4 rounded border-input accent-primary"
-                aria-describedby="faithfulness-cost-help"
-              />
-              Judge faithfulness
-            </label>
-            <span id="faithfulness-cost-help" className="text-[11px] text-muted-foreground">
-              One extra model call per non-refused answer.
-            </span>
-          </div>
-          <button
-            type="button"
-            className="btn-primary gap-2 px-5 py-2 text-base"
-            onClick={() => void beginRun()}
-            disabled={
-              starting ||
-              Boolean(activeRun) ||
-              !persistenceReady ||
-              noProgramSelected ||
-              questions.length === 0
-            }
-          >
-            <Play className="h-4 w-4" aria-hidden />
-            {starting ? "Queueing…" : activeRun ? "Run in progress" : "Run evaluation"}
-          </button>
-        </div>
+      <header>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          Evaluation Center
+        </h1>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+          A test set of questions with known right answers, plus questions the assistant
+          should refuse. A run asks every question through the live assistant and grades the
+          answers, so you can see whether a change made answers better or worse.
+        </p>
       </header>
 
       {error ? (
@@ -396,6 +396,28 @@ function EvaluationCenter(): JSX.Element {
 
       {!noProgramSelected ? (
         <>
+          <RunLauncher
+            questions={questions}
+            judge={judge}
+            onJudgeChange={setJudge}
+            starting={starting}
+            running={Boolean(activeRun)}
+            disabled={loading || !persistenceReady || questions.length === 0}
+            latencyP50Ms={lastCompleted?.summary?.latencyP50Ms ?? null}
+            liveRetrieval={
+              latestLive?.configuration
+                ? {
+                    threshold: latestLive.configuration.retrieval.threshold,
+                    topK: latestLive.configuration.retrieval.topK
+                  }
+                : null
+            }
+            routes={routes}
+            routesError={routesError}
+            onRun={() => void beginRun()}
+            onTrial={(trial) => beginRun({ trial })}
+          />
+
           <div
             role="tablist"
             aria-label="Evaluation Center sections"
@@ -423,6 +445,7 @@ function EvaluationCenter(): JSX.Element {
                 selectedRun={selectedRun}
                 detail={detail}
                 baseline={baseline}
+                routes={routes ?? []}
                 cancelingRunId={cancelingRunId}
                 onSelect={setSelectedRunId}
                 onRetryDetail={() => setDetailRequestNonce((current) => current + 1)}
@@ -459,7 +482,7 @@ function EvaluationCenter(): JSX.Element {
                   if (scopeGeneration !== programGenerationRef.current) return;
                   setQuestions((current) => current.filter((question) => question.id !== id));
                 }}
-                onRun={(id) => void beginRun(id)}
+                onRun={(id) => void beginRun({ questionId: id })}
                 onError={(message, scopeGeneration) => {
                   if (scopeGeneration === programGenerationRef.current) setError(message);
                 }}
@@ -644,7 +667,10 @@ function QuestionForm({ item, documents, scopeGeneration, onCancel, onSaved }: {
   async function save(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const expectedAnswerContains = Array.from(new Set(phrases.split("\n").map((value) => value.trim()).filter(Boolean)));
-    if (kind === "in-kb" && !expectedDocId && expectedAnswerContains.length === 0) {
+    // This form does not edit expected answers yet; keep an existing one so
+    // saving here never erases it (the server replaces it on every PUT).
+    const expectedAnswer = item?.expectedAnswer ?? null;
+    if (kind === "in-kb" && !expectedDocId && expectedAnswerContains.length === 0 && !expectedAnswer) {
       setError("Choose an expected document or add at least one expected phrase.");
       return;
     }
@@ -653,6 +679,7 @@ function QuestionForm({ item, documents, scopeGeneration, onCancel, onSaved }: {
       question: question.trim(),
       expectedDocId: kind === "in-kb" ? expectedDocId || null : null,
       expectedAnswerContains: kind === "in-kb" ? expectedAnswerContains : [],
+      expectedAnswer: kind === "in-kb" ? expectedAnswer : null,
       notes: notes.trim() || null
     };
     setSaving(true);

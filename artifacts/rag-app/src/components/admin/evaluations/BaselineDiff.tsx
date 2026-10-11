@@ -46,8 +46,8 @@ export function BaselineDiff({
         </p>
       ) : !sameQuestions ? (
         <p className="border-b border-border bg-warning/10 px-4 py-2 text-xs text-warning-foreground">
-          The question set changed since the baseline, so only questions in both runs are
-          compared and the score deltas are hidden.
+          The question set or scope differs from the baseline, so the score deltas are
+          hidden; only questions in both runs are compared below.
         </p>
       ) : null}
 
