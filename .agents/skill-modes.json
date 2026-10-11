@@ -13,6 +13,7 @@
     "claude-review": "native",
     "codex-fullreview": "disabled",
     "codex-review": "native",
+    "coordinate": "disabled",
     "dare": "native",
     "design-truenote-ui": "native",
     "enhance-prompt": "native",
