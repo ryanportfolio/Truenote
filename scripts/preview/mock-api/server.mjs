@@ -5,6 +5,7 @@
 import http from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { buildSeed, CLEARANCE_RANK, nextId } from "./seed.mjs";
+import { registerEvaluationRoutes } from "./evaluations.mjs";
 
 const PORT = Number(process.env.MOCK_PORT) || 5099;
 const FRONTEND_PORT = Number(process.env.PORT) || 5173;
@@ -2385,6 +2386,17 @@ route("PUT", /^\/api\/admin\/model-routing$/, ({ user, body }) => {
   }
   modelEfforts[purpose] = { ...modelEfforts[purpose], ...efforts };
   return modelRoutingConfig();
+});
+registerEvaluationRoutes({
+  route,
+  getState: () => state,
+  badRequest,
+  HttpError,
+  requireRole,
+  effectiveProgramId,
+  requireProgram,
+  MODEL_ROUTES,
+  modelRoutingConfig
 });
 
 // Gap analysis fixture: fixed themes over the seed's refused questions, a
