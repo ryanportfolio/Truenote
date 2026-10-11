@@ -6,7 +6,8 @@ import type {
   CurrentUser,
   ModelRoutingConfig,
   ModelRoutingOption,
-  ModelRoutingPurpose
+  ModelRoutingPurpose,
+  ReasoningEffort
 } from "@/types/api";
 
 interface AdminModelRoutingPageProps {
@@ -38,6 +39,29 @@ function move<T>(items: T[], from: number, to: number): T[] {
   if (moved === undefined) return next;
   next.splice(to, 0, moved);
   return next;
+}
+
+const EFFORT_LABEL: Record<ReasoningEffort, string> = {
+  none: "None (no reasoning)",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high"
+};
+
+/** A model that only switches reasoning on or off names its two levels so. */
+const TOGGLE_LABEL: Partial<Record<ReasoningEffort, string>> = {
+  none: "Off (no reasoning)",
+  medium: "On"
+};
+
+function effortLabel(option: ModelRoutingOption, effort: ReasoningEffort): string {
+  return (option.reasoningControl === "toggle" ? TOGGLE_LABEL[effort] : null) ?? EFFORT_LABEL[effort];
+}
+
+/** Route id → effort, as a comparable key and as the PUT body. */
+function effortsOf(routes: ModelRoutingOption[]): Record<string, ReasoningEffort> {
+  return Object.fromEntries(routes.map((route) => [route.id, route.reasoningEffort]));
 }
 
 const CHAINS: ReadonlyArray<{
@@ -93,7 +117,9 @@ function ModelRoutingPanel(): JSX.Element {
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Drag to set each fallback order. The top model runs first; if a model
-          errors, the next one down is tried, and so on. Every route is
+          errors, the next one down is tried, and so on. Effort sets how much
+          each model reasons before it replies: higher is slower and costs
+          more. Each model lists only the levels it supports. Every route is
           restricted to a Zero Data Retention endpoint.
         </p>
       </header>
@@ -170,6 +196,7 @@ function RouteChain({
   const [savedOrder, setSavedOrder] = useState<string[]>(() =>
     initial.map((route) => route.id)
   );
+  const [savedEfforts, setSavedEfforts] = useState(() => JSON.stringify(effortsOf(initial)));
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -177,7 +204,16 @@ function RouteChain({
   const headingId = `model-chain-${purpose}`;
 
   const currentOrder = routes.map((route) => route.id);
-  const orderChanged = currentOrder.join("\u0000") !== savedOrder.join("\u0000");
+  const dirty =
+    currentOrder.join("\u0000") !== savedOrder.join("\u0000") ||
+    JSON.stringify(effortsOf(routes)) !== savedEfforts;
+
+  function setEffort(id: string, effort: ReasoningEffort): void {
+    setRoutes((prev) =>
+      prev.map((route) => (route.id === id ? { ...route, reasoningEffort: effort } : route))
+    );
+    setSaved(false);
+  }
 
   function reorder(from: number, to: number): void {
     if (to < 0 || to >= routes.length || from === to) return;
@@ -193,15 +229,16 @@ function RouteChain({
   }
 
   async function save(): Promise<void> {
-    if (!orderChanged) return;
+    if (!dirty) return;
     setSaving(true);
     setError(null);
     setSaved(false);
     try {
-      const next = await updateModelRouting(currentOrder, purpose);
+      const next = await updateModelRouting(currentOrder, purpose, effortsOf(routes));
       const stored = purpose === "gaps" ? next.gapsRoutes : next.routes;
       setRoutes(stored);
       setSavedOrder(stored.map((route) => route.id));
+      setSavedEfforts(JSON.stringify(effortsOf(stored)));
       setSaved(true);
     } catch (reason) {
       setError(
@@ -295,11 +332,25 @@ function RouteChain({
                   <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                     {option.providerLabel}
                   </span>
-                  <span className="text-xs text-muted-foreground">
-                    {option.reasoningEffort === "none"
-                      ? "Standard generation"
-                      : `${option.reasoningEffort === "low" ? "Low" : "Medium"} reasoning`}
-                  </span>
+                  <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                    {option.reasoningControl === "toggle" ? "Reasoning" : "Effort"}
+                    <select
+                      value={option.reasoningEffort}
+                      disabled={saving}
+                      onChange={(event) =>
+                        setEffort(option.id, event.target.value as ReasoningEffort)
+                      }
+                      aria-label={`${option.reasoningControl === "toggle" ? "Reasoning" : "Effort"} for ${option.label} in ${title}`}
+                      className="select-quiet rounded-md border border-input bg-card py-0.5 pl-2 pr-6 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {option.supportedEfforts.map((effort) => (
+                        <option key={effort} value={effort}>
+                          {effortLabel(option, effort)}
+                          {effort === option.defaultReasoningEffort ? " (default)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </span>
                 <span className="mt-1 block text-sm text-muted-foreground">
                   {option.description}
@@ -318,17 +369,17 @@ function RouteChain({
           {saved ? (
             <span className="inline-flex items-center gap-1.5">
               <Check className="h-4 w-4" aria-hidden />
-              {title} order updated
+              {title} settings updated
             </span>
           ) : null}
         </div>
         <button
           type="button"
           onClick={() => void save()}
-          disabled={saving || !canSave || !orderChanged}
+          disabled={saving || !canSave || !dirty}
           className="btn-primary px-5 py-2 text-base"
         >
-          {saving ? "Saving…" : `Save ${title.toLowerCase()} order`}
+          {saving ? "Saving…" : `Save ${title.toLowerCase()}`}
         </button>
       </div>
     </section>

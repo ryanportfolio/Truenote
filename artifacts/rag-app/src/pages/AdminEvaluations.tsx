@@ -600,7 +600,9 @@ function RunsPanel({
           {selectedRun.configuration ? (
             <p className="text-xs text-muted-foreground">
               {(selectedRun.configuration.routeChain ?? [selectedRun.configuration.generation])
-                .map((route) => route.label)
+                .map((route) =>
+                  route.reasoningEffort ? `${route.label} (${route.reasoningEffort})` : route.label
+                )
                 .join(" → ")}
               {selectedRun.configuration.fallback
                 ? ` → ${selectedRun.configuration.fallback.label} legacy direct backup`

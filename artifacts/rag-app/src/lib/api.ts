@@ -1078,14 +1078,15 @@ export async function getModelRouting(): Promise<ModelRoutingConfig> {
 
 export async function updateModelRouting(
   order: string[],
-  purpose: ModelRoutingPurpose = "answers"
+  purpose: ModelRoutingPurpose = "answers",
+  efforts: Record<string, string> = {}
 ): Promise<ModelRoutingConfig> {
   const response = await fetch(
     "/api/admin/model-routing",
     withDefaults({
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order, purpose })
+      body: JSON.stringify({ order, purpose, efforts })
     })
   );
   return asJson<ModelRoutingConfig>(response);

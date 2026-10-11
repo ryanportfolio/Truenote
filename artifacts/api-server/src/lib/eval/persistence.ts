@@ -18,6 +18,8 @@ export interface EvalRunConfiguration {
     label: string;
     model: string;
     providerLabel: string;
+    /** Reasoning effort sent; absent on runs before efforts were adjustable. */
+    reasoningEffort?: string;
   };
   /** Ordered OpenRouter chain pinned for this run; absent on legacy runs. */
   routeChain?: Array<{
@@ -25,6 +27,7 @@ export interface EvalRunConfiguration {
     label: string;
     model: string;
     providerLabel: string;
+    reasoningEffort?: string;
   }>;
   /** Legacy direct backup snapshot; absent on ZDR-only runs. */
   fallback?: {

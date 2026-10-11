@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { db } from "./db-client.js";
 import { teamUserFilterSql } from "./teams.js";
 import { retrieve } from "./retrieval/query.js";
-import { getActiveModelChain } from "./generation/model-routing.js";
+import { getActiveModelChain, type ApprovedModelRoute } from "./generation/model-routing.js";
 import { runUtilityCompletion } from "./generation/utility-model.js";
 import { recordAppError } from "./observability/error-log.js";
 import type { Classification } from "./security/classification.js";
@@ -206,10 +206,7 @@ async function runAnalysis(
   // advances to the next route, like answer generation.
   for (const route of await getActiveModelChain("gaps")) {
     try {
-      const text = await runUtilityCompletion(
-        { ...prompt, timeoutMs: MODEL_TIMEOUT_MS, maxRetries: 0 },
-        { route }
-      );
+      const text = await completeAsJson(route, prompt);
       const modelThemes = text ? parseModelThemes(text) : null;
       if (!modelThemes) throw new Error("reply held no themes JSON");
       const { themes, ungroupedQuestions } = assembleGapThemes(modelThemes, groups, probes);
@@ -236,6 +233,34 @@ async function runAnalysis(
     }
   }
   throw new GapAnalysisUnavailableError();
+}
+
+/**
+ * Ask for the themes in JSON mode where the endpoint supports it. A provider
+ * that rejects JSON mode (HTTP 400) gets one retry on the same route
+ * without it; the tolerant parser still reads a plain-text reply.
+ */
+async function completeAsJson(
+  route: ApprovedModelRoute,
+  prompt: { system: string; user: string }
+): Promise<string | null> {
+  const input = { ...prompt, timeoutMs: MODEL_TIMEOUT_MS, maxRetries: 0 };
+  if (!route.jsonMode) return runUtilityCompletion(input, { route });
+  try {
+    return await runUtilityCompletion({ ...input, json: true }, { route });
+  } catch (error) {
+    if ((error as { status?: unknown } | null)?.status !== 400) throw error;
+    void recordAppError({
+      severity: "warning",
+      source: "generation",
+      operation: "gap-analysis-json-mode",
+      error,
+      provider: route.provider,
+      model: route.model,
+      routeId: route.id
+    });
+    return runUtilityCompletion(input, { route });
+  }
 }
 
 /**

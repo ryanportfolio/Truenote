@@ -10,7 +10,9 @@ import {
 import { recordAppError } from "../observability/error-log.js";
 import {
   getActiveModelChain,
-  type ApprovedModelRoute
+  reasoningRequestFields,
+  type ApprovedModelRoute,
+  type ReasoningEffort
 } from "./model-routing.js";
 import { scanTextForSensitiveContent } from "../security/content-scan.js";
 import {
@@ -164,7 +166,8 @@ async function callGenerationModel(
   userPrompt: string,
   options: {
     openRouterProvider: string;
-    reasoningEffort: "none" | "low" | "medium";
+    reasoningEffort: ReasoningEffort;
+    reasoningControl: ApprovedModelRoute["reasoningControl"];
     /** Per-attempt bounds. A slow provider hits this and the chain advances to the next route. */
     timeoutMs: number;
     maxRetries: number;
@@ -174,9 +177,8 @@ async function callGenerationModel(
 ): Promise<{ text: string | null; usage: ProviderTokenUsage | null }> {
   const request = {
     model,
-    ...(options.reasoningEffort === "none"
-      ? { temperature: 0 }
-      : { reasoning_effort: options.reasoningEffort }),
+    // The effort is added below with the OpenRouter-only fields.
+    ...(options.reasoningEffort === "none" ? { temperature: 0 } : {}),
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
@@ -189,6 +191,9 @@ async function callGenerationModel(
   const completion = await client.chat.completions.create(
     {
       ...request,
+      // OpenRouter-only shape (efforts "none" and "xhigh", or the reasoning
+      // switch), which the OpenAI SDK types lack.
+      ...reasoningRequestFields(options),
       provider: {
         only: [options.openRouterProvider],
         zdr: true,
@@ -417,6 +422,7 @@ export async function generateAnswer(
         {
           openRouterProvider: route.provider,
           reasoningEffort: route.reasoningEffort,
+          reasoningControl: route.reasoningControl,
           timeoutMs: generationDeadline.timeoutMs,
           maxRetries: generationDeadline.maxRetries,
           signal: input.signal

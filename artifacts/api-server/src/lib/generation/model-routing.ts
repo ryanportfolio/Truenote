@@ -8,10 +8,15 @@ export const ApprovedModelRouteIdSchema = z.enum([
   "nemotron-3-super-deepinfra-nitro",
   "nemotron-3-ultra-baseten-nitro",
   "mercury-2.5-inception",
-  "granite-4.2-8b-coreweave"
+  "granite-4.2-8b-coreweave",
+  "nemotron-3.5-lightning-coreweave"
 ]);
 
 export type ApprovedModelRouteId = z.infer<typeof ApprovedModelRouteIdSchema>;
+
+/** OpenRouter `reasoning_effort` values. "none" turns reasoning off. */
+export const ReasoningEffortSchema = z.enum(["none", "low", "medium", "high", "xhigh"]);
+export type ReasoningEffort = z.infer<typeof ReasoningEffortSchema>;
 
 export interface ApprovedModelRoute {
   id: ApprovedModelRouteId;
@@ -19,7 +24,20 @@ export interface ApprovedModelRoute {
   model: string;
   provider: string;
   providerLabel: string;
-  reasoningEffort: "none" | "low" | "medium";
+  /** Effort sent with each request; an admin may pick another supported one. */
+  reasoningEffort: ReasoningEffort;
+  /** The effort before any admin choice. */
+  defaultReasoningEffort: ReasoningEffort;
+  /** Efforts the model accepts, from OpenRouter's model metadata. */
+  supportedEfforts: readonly ReasoningEffort[];
+  /**
+   * How the effort reaches the provider: "effort" sends `reasoning_effort`;
+   * "toggle" is for endpoints that only switch reasoning on or off
+   * (`reasoning.enabled`), offered as "none" (off) and "medium" (on).
+   */
+  reasoningControl: "effort" | "toggle";
+  /** The pinned endpoint accepts `response_format` (JSON mode). */
+  jsonMode: boolean;
   description: string;
 }
 
@@ -30,6 +48,15 @@ export interface ApprovedModelRoute {
  * 3 Ultra) and "wandb" (Granite 4.1 8B) pins had no ZDR endpoint, so every
  * request to them was rejected. Before adding or re-pinning a route, confirm
  * the model/provider pair appears in that index.
+ *
+ * supportedEfforts is each model's `reasoning.supported_efforts` in
+ * OpenRouter's model list (GET /api/v1/models), re-checked 2026-10-11; every
+ * "effort" route's pinned endpoint lists `reasoning_effort` among its
+ * supported parameters (GET /api/v1/models/<model>/endpoints). Nemotron 3.5
+ * Lightning lists no efforts and its endpoints take only `reasoning`, so it
+ * is a "toggle" route. jsonMode is `response_format` in the same endpoint
+ * list (all but BaseTen's Nemotron 3 Ultra). Re-check all three when
+ * re-pinning.
  */
 export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
   {
@@ -39,6 +66,10 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     provider: "deepinfra",
     providerLabel: "DeepInfra",
     reasoningEffort: "medium",
+    defaultReasoningEffort: "medium",
+    supportedEfforts: ["low", "medium"],
+    reasoningControl: "effort",
+    jsonMode: true,
     description: "Default ZDR route for grounded answers."
   },
   {
@@ -48,6 +79,10 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     provider: "azure",
     providerLabel: "Azure",
     reasoningEffort: "medium",
+    defaultReasoningEffort: "medium",
+    supportedEfforts: ["none", "low", "medium", "high", "xhigh"],
+    reasoningControl: "effort",
+    jsonMode: true,
     description: "Fast, economical route for grounded answers."
   },
   {
@@ -57,6 +92,10 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     provider: "baseten",
     providerLabel: "BaseTen",
     reasoningEffort: "medium",
+    defaultReasoningEffort: "medium",
+    supportedEfforts: ["medium", "high"],
+    reasoningControl: "effort",
+    jsonMode: false,
     description: "Larger open model for harder multi-step questions."
   },
   {
@@ -66,6 +105,10 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     provider: "inception",
     providerLabel: "Inception",
     reasoningEffort: "low",
+    defaultReasoningEffort: "low",
+    supportedEfforts: ["none", "low", "medium", "high"],
+    reasoningControl: "effort",
+    jsonMode: true,
     description: "Ultra-fast diffusion model for low-latency grounded answers."
   },
   {
@@ -75,9 +118,38 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     provider: "coreweave",
     providerLabel: "CoreWeave",
     reasoningEffort: "low",
+    defaultReasoningEffort: "low",
+    supportedEfforts: ["none", "low", "high"],
+    reasoningControl: "effort",
+    jsonMode: true,
     description: "Compact IBM reasoning model on CoreWeave's ZDR endpoint."
+  },
+  {
+    id: "nemotron-3.5-lightning-coreweave",
+    label: "Nemotron 3.5 Lightning",
+    model: "nvidia/nemotron-3.5-lightning",
+    provider: "coreweave",
+    providerLabel: "CoreWeave",
+    reasoningEffort: "medium",
+    defaultReasoningEffort: "medium",
+    supportedEfforts: ["none", "medium"],
+    reasoningControl: "toggle",
+    jsonMode: true,
+    description: "Small, fast NVIDIA model (3B active) on CoreWeave's full-precision ZDR endpoint."
   }
 ];
+
+/**
+ * The OpenRouter request fields that carry a route's effort. "none" is sent
+ * too: models that reason by default would otherwise reason anyway.
+ */
+export function reasoningRequestFields(
+  route: Pick<ApprovedModelRoute, "reasoningControl" | "reasoningEffort">
+): Record<string, unknown> {
+  return route.reasoningControl === "toggle"
+    ? { reasoning: { enabled: route.reasoningEffort !== "none" } }
+    : { reasoning_effort: route.reasoningEffort };
+}
 
 export const DEFAULT_MODEL_ROUTE = APPROVED_MODEL_ROUTES[0]!;
 
@@ -114,7 +186,9 @@ const CACHE_TTL_MS = 30_000;
 /** Current stored shape: an ordered chain of approved route ids. Index 0 is
  *  the primary; each subsequent id is tried when the one before it errors. */
 const StoredOrderSchema = z.object({
-  order: z.array(z.string()).min(1)
+  order: z.array(z.string()).min(1),
+  /** Route id → chosen effort; absent or unsupported entries use the default. */
+  efforts: z.record(z.string()).optional()
 });
 /** Legacy shape from before ordered fallback chains: a single primary id.
  *  Still read-compatible so an existing app_settings row keeps working — the
@@ -140,7 +214,8 @@ export const DEFAULT_MODEL_ROUTE_ORDER: readonly ApprovedModelRouteId[] =
  * APPROVED_MODEL_ROUTES can enter the chain.
  */
 export function resolveModelRouteOrder(
-  ids: readonly string[]
+  ids: readonly string[],
+  efforts: Readonly<Record<string, string>> = {}
 ): ApprovedModelRoute[] {
   const seen = new Set<string>();
   const chain: ApprovedModelRoute[] = [];
@@ -159,17 +234,35 @@ export function resolveModelRouteOrder(
       seen.add(route.id);
     }
   }
-  return chain;
+  return chain.map((route) => withEffort(route, efforts[route.id]));
 }
 
-/** Extract the stored id order from either the current `{ order }` shape or
- *  the legacy `{ selectedId }` shape. Anything unrecognized → default order. */
-function readStoredOrder(value: unknown): readonly string[] {
+/** The route with a chosen effort when the model supports it, else its default. */
+function withEffort(route: ApprovedModelRoute, effort: string | undefined): ApprovedModelRoute {
+  const parsed = ReasoningEffortSchema.safeParse(effort);
+  return parsed.success && route.supportedEfforts.includes(parsed.data)
+    ? { ...route, reasoningEffort: parsed.data }
+    : route;
+}
+
+/** True when every entry names an approved route and an effort that route supports. */
+export function effortsAreSupported(efforts: Readonly<Record<string, string>>): boolean {
+  return Object.entries(efforts).every(([id, effort]) => {
+    const route = findApprovedModelRoute(id);
+    const parsed = ReasoningEffortSchema.safeParse(effort);
+    return Boolean(route && parsed.success && route.supportedEfforts.includes(parsed.data));
+  });
+}
+
+/** Extract the stored order and efforts from either the current `{ order,
+ *  efforts? }` shape or the legacy `{ selectedId }` shape. Anything
+ *  unrecognized → default order and efforts. */
+function readStored(value: unknown): { order: readonly string[]; efforts: Record<string, string> } {
   const ordered = StoredOrderSchema.safeParse(value);
-  if (ordered.success) return ordered.data.order;
+  if (ordered.success) return { order: ordered.data.order, efforts: ordered.data.efforts ?? {} };
   const legacy = StoredSelectionSchema.safeParse(value);
-  if (legacy.success) return [legacy.data.selectedId];
-  return DEFAULT_MODEL_ROUTE_ORDER;
+  if (legacy.success) return { order: [legacy.data.selectedId], efforts: {} };
+  return { order: DEFAULT_MODEL_ROUTE_ORDER, efforts: {} };
 }
 
 export interface ModelRoutingState {
@@ -234,8 +327,9 @@ export async function getModelRoutingState(
       LIMIT 1
     `);
     const row = result.rows[0] as unknown as SettingRow | undefined;
+    const stored = readStored(row?.value);
     state = {
-      routes: resolveModelRouteOrder(readStoredOrder(row?.value)),
+      routes: resolveModelRouteOrder(stored.order, stored.efforts),
       persistenceReady: true
     };
   } catch (error) {
@@ -270,12 +364,17 @@ export async function getActiveModelChain(
 export async function saveModelRouteOrder(
   ids: readonly ApprovedModelRouteId[],
   updatedBy: string,
-  purpose: ModelRoutingPurpose = "answers"
+  purpose: ModelRoutingPurpose = "answers",
+  efforts: Readonly<Record<string, string>> = {}
 ): Promise<ModelRoutingState> {
   // Normalize through the same resolver the read path uses, so the stored
-  // order is always a full, deduped permutation of the allowlist.
-  const routes = resolveModelRouteOrder(ids);
-  const value = JSON.stringify({ order: routes.map((route) => route.id) });
+  // order is always a full, deduped permutation of the allowlist and every
+  // stored effort is one its model supports.
+  const routes = resolveModelRouteOrder(ids, efforts);
+  const value = JSON.stringify({
+    order: routes.map((route) => route.id),
+    efforts: Object.fromEntries(routes.map((route) => [route.id, route.reasoningEffort]))
+  });
   await db.execute(sql`
     INSERT INTO app_settings (key, value, updated_by, updated_at)
     VALUES (${SETTING_KEYS[purpose]}, ${value}::jsonb, ${updatedBy}::uuid, now())

@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { protectProviderText } from "../security/provider-input-firewall.js";
 import {
+  reasoningRequestFields,
   resolveApprovedModelRoute,
   type ApprovedModelRoute,
   type ApprovedModelRouteId
@@ -49,6 +50,11 @@ export interface UtilityCompletionInput {
   maxRetries: number;
   /** Cancels the in-flight call (client disconnect or overall ask deadline). */
   signal?: AbortSignal;
+  /**
+   * Ask for a JSON object reply (`response_format: json_object`). Sent only
+   * when the route's endpoint supports it (route.jsonMode).
+   */
+  json?: boolean;
 }
 
 export interface UtilityCompletionDeps {
@@ -78,9 +84,7 @@ export async function runUtilityCompletion(
 
   const request = {
     model: route.model,
-    ...(route.reasoningEffort === "none"
-      ? { temperature: 0 }
-      : { reasoning_effort: route.reasoningEffort }),
+    ...(route.reasoningEffort === "none" ? { temperature: 0 } : {}),
     messages: [
       { role: "system", content: protectedSystem },
       { role: "user", content: protectedUser }
@@ -90,6 +94,10 @@ export async function runUtilityCompletion(
   const completion = await client.chat.completions.create(
     {
       ...request,
+      // OpenRouter-only shape (efforts "none" and "xhigh", or the reasoning
+      // switch), which the OpenAI SDK types lack.
+      ...reasoningRequestFields(route),
+      ...(input.json && route.jsonMode ? { response_format: { type: "json_object" } } : {}),
       provider: {
         only: [route.provider],
         zdr: true,

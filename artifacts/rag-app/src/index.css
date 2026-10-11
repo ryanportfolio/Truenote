@@ -2069,32 +2069,12 @@
       linear-gradient(135deg, oklch(var(--card)), oklch(var(--primary) / 0.035));
   }
 
-  .retrieval-ring {
-    position: absolute;
-    border: 1px solid oklch(var(--primary) / 0.28);
-    border-radius: 50%;
-  }
-
-  .retrieval-ring-one {
-    width: 5rem;
-    height: 2.4rem;
-    transform: rotate(18deg);
-  }
-
-  .retrieval-ring-two {
-    width: 3.8rem;
-    height: 5.8rem;
-    border-color: oklch(var(--archive-green) / 0.44);
-    transform: rotate(-23deg);
-  }
-
-  .retrieval-core {
-    width: 1.05rem;
-    height: 1.05rem;
-    border-radius: 50%;
-    background: oklch(var(--primary));
-    box-shadow: 0 0 0 0.55rem oklch(var(--primary) / 0.08),
-      0 0 2rem oklch(var(--primary) / 0.28);
+  /* The Gaps loader's portal (see .gap-portal), smaller, while an answer is
+   * prepared. Sits above the reading lines. */
+  .retrieval-portal {
+    --art: 6rem;
+    z-index: 1;
+    margin-block: 0.5rem;
   }
 
   .retrieval-lines {
@@ -2108,9 +2088,20 @@
   }
 
   .retrieval-lines i {
+    position: relative;
     width: 21%;
     height: 1px;
     background: linear-gradient(90deg, transparent, oklch(var(--primary) / 0.28), transparent);
+  }
+
+  /* Lit by the portal's beam (motion below); hidden at rest. */
+  .retrieval-lines i:last-child::after {
+    content: "";
+    position: absolute;
+    inset: -0.5px 0;
+    background: linear-gradient(90deg, oklch(var(--primary) / 0.75), transparent);
+    opacity: 0;
+    transform-origin: left;
   }
 
   .composer-dock {
@@ -2215,9 +2206,20 @@
   .mini-window .retrieval-instrument {
     min-height: 4.5rem;
   }
+
+  .mini-window .retrieval-portal {
+    --art: 3.6rem;
+    margin-block: 0.25rem;
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  /* Ask: the portal's beam reads out to the right-hand line, which lights
+   * for as long as the beam holds (same 5.6s cycle, started together). */
+  .retrieval-lines i:last-child::after {
+    animation: retrieval-read 5.6s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  }
+
   .archive-plane {
     display: block;
     will-change: transform;
@@ -2262,18 +2264,6 @@
   .archive-refraction::after {
     animation: archive-verification-pass 14s cubic-bezier(0.25, 1, 0.5, 1) infinite;
     will-change: opacity, transform;
-  }
-
-  .retrieval-ring-one {
-    animation: retrieval-orbit-one 2.8s linear infinite;
-  }
-
-  .retrieval-ring-two {
-    animation: retrieval-orbit-two 3.4s linear infinite reverse;
-  }
-
-  .retrieval-core {
-    animation: retrieval-core 1.7s ease-in-out infinite;
   }
 }
 
@@ -2469,6 +2459,24 @@
   }
 }
 
+@keyframes retrieval-read {
+  0%,
+  44% {
+    opacity: 0;
+    transform: scaleX(0.2);
+  }
+  52%,
+  64% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  76%,
+  100% {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+}
+
 @keyframes gp-halo {
   0%,
   100% {
@@ -2637,26 +2645,6 @@
   100% {
     opacity: 0;
     transform: translate3d(610%, 0, 0) rotate(17deg);
-  }
-}
-
-@keyframes retrieval-orbit-one {
-  to {
-    transform: rotate(378deg);
-  }
-}
-
-@keyframes retrieval-orbit-two {
-  to {
-    transform: rotate(337deg);
-  }
-}
-
-@keyframes retrieval-core {
-  50% {
-    box-shadow: 0 0 0 0.85rem oklch(var(--primary) / 0.05),
-      0 0 2.7rem oklch(var(--primary) / 0.42);
-    transform: scale(0.88);
   }
 }
 
