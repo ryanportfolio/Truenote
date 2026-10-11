@@ -214,40 +214,65 @@ function isCardShaped(groupLengths: readonly number[]): boolean {
  * check. Spaces, tabs and dashes may separate any digits; dots, slashes and
  * underscores count only between card-shaped groups, so lists of IP
  * addresses or version numbers do not read as one long number.
+ *
+ * Each window is checked from its last group backwards with a running Luhn
+ * sum, so every group costs at most 19 digit steps and the scan stays linear
+ * in the text.
  */
 function findPaymentCards(text: string): { start: number; end: number }[] {
   const found: { start: number; end: number }[] = [];
   for (const span of text.matchAll(CARD_SPAN_PATTERN)) {
     const offset = span.index ?? 0;
-    const groups = [...span[0].matchAll(CARD_DIGIT_GROUP)].map((group) => ({
-      start: offset + (group.index ?? 0),
-      end: offset + (group.index ?? 0) + group[0].length,
-      digits: group[0]
-    }));
-    let i = 0;
-    while (i < groups.length) {
-      // Last group index a window from i can reach without passing 19 digits.
-      let reach = i - 1;
-      for (let total = 0; reach + 1 < groups.length; reach += 1) {
-        total += groups[reach + 1]!.digits.length;
-        if (total > 19) break;
+    const starts: number[] = [];
+    const ends: number[] = [];
+    const digits: string[] = [];
+    // strictBefore[k]: separators up to group k that are not spaces, tabs or dashes.
+    const strictBefore: number[] = [];
+    let strictCount = 0;
+    for (const group of span[0].matchAll(CARD_DIGIT_GROUP)) {
+      const start = offset + (group.index ?? 0);
+      if (ends.length > 0 && !LOOSE_CARD_SEPARATOR.test(text.slice(ends[ends.length - 1], start))) {
+        strictCount += 1;
       }
-      let matchedEnd = -1;
-      for (let j = reach; j >= i && matchedEnd < 0; j -= 1) {
-        const window = groups.slice(i, j + 1);
-        const digits = window.map((group) => group.digits).join("");
-        if (digits.length < 13 || digits.length > 19 || !looksLikePaymentCard(digits)) continue;
-        const looseOnly = window
-          .slice(1)
-          .every((group, k) => LOOSE_CARD_SEPARATOR.test(text.slice(window[k]!.end, group.start)));
-        if (looseOnly || isCardShaped(window.map((group) => group.digits.length))) matchedEnd = j;
+      starts.push(start);
+      ends.push(start + group[0].length);
+      digits.push(group[0]);
+      strictBefore.push(strictCount);
+    }
+
+    // longestEnd[k]: last group of the longest valid window starting at group k.
+    const longestEnd = new Int32Array(digits.length).fill(-1);
+    for (let j = 0; j < digits.length; j += 1) {
+      let sum = 0;
+      let count = 0;
+      for (let k = j; k >= 0; k -= 1) {
+        const group = digits[k]!;
+        if (count + group.length > 19) break;
+        for (let p = group.length - 1; p >= 0; p -= 1) {
+          let value = group.charCodeAt(p) - 48;
+          if (count % 2 === 1) {
+            value *= 2;
+            if (value > 9) value -= 9;
+          }
+          sum += value;
+          count += 1;
+        }
+        if (count < 13 || sum % 10 !== 0 || j <= longestEnd[k]!) continue;
+        const looseOnly = strictBefore[j] === strictBefore[k];
+        if (looseOnly || isCardShaped(digits.slice(k, j + 1).map((g) => g.length))) {
+          longestEnd[k] = j;
+        }
       }
-      if (matchedEnd < 0) {
+    }
+
+    for (let i = 0; i < digits.length; ) {
+      const end = longestEnd[i]!;
+      if (end < 0) {
         i += 1;
         continue;
       }
-      found.push({ start: groups[i]!.start, end: groups[matchedEnd]!.end });
-      i = matchedEnd + 1;
+      found.push({ start: starts[i]!, end: ends[end]! });
+      i = end + 1;
     }
   }
   return found;

@@ -76,7 +76,10 @@ function allowAskContent(
 ): boolean {
   // History is client-supplied and reaches the rewrite provider, so inspect it
   // with the current question. Record rule metadata only, never matched text.
-  const findings = blockingAskContentFindings(question, history);
+  // Only the first MAX_QUESTION_CHARS of the question can leave this request
+  // (a longer one is refused and stored truncated), so scanning stops there
+  // and a 1 MB body cannot hold the event loop.
+  const findings = blockingAskContentFindings(question.slice(0, MAX_QUESTION_CHARS), history);
   if (findings.length === 0) return true;
   recordSecurityEventBestEffort({
     action: "ask.sensitive_input_blocked",
