@@ -3,7 +3,10 @@ name: Scanner image
 # Builds the `scanner` service image (services/scanner/Dockerfile), runs it,
 # and checks the real ClamAV engine through the HTTP contract: clean files
 # pass, EICAR and zips nested past the recursion limit are infected, a wrong
-# token or HMAC gets 401, an oversize body is refused. Also runs the wrapper's
+# token or HMAC gets 401, an oversize body is refused. A second container
+# starts as root with an empty database volume, as the production service
+# does, and must pass the same smoke test with clamd, freshclam and node
+# running as clamav and the signatures on the volume. Also runs the wrapper's
 # contract tests against a fake clamd and a report-only Grype scan of the image. Every action is pinned to a full commit SHA.
 on:
   pull_request:
@@ -28,7 +31,7 @@ jobs:
   scanner:
     name: Build and test the scanner image
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
       security-events: write
@@ -70,6 +73,58 @@ jobs:
       - name: Container logs
         if: always()
         run: docker logs scanner 2>&1 | tail -n 200
+      # The production service mounts a root-owned volume and starts the
+      # container as root (RAILWAY_RUN_UID=0). Same here: an empty Docker
+      # volume, --user 0, and SCANNER_DATABASE_DIR inside the volume.
+      - name: Run the container as root with a database volume
+        run: |
+          docker volume create scanner-db
+          docker run --detach --name scanner-root --user 0 --publish 127.0.0.1:8081:8080 \
+            --volume scanner-db:/data \
+            --env SCANNER_DATABASE_DIR=/data/clamav \
+            --env SCANNER_TOKEN --env SCANNER_HMAC_KEY \
+            "truenote-scanner:${GITHUB_SHA}"
+      - name: EICAR and contract smoke test against the root-started container
+        run: node services/scanner/test/smoke.mjs http://127.0.0.1:8081
+      - name: Check clamd, freshclam and node in the root-started container are not uid 0
+        run: |
+          # Name and the four Uid values (real, effective, saved, filesystem)
+          # of every process, read from /proc because ps may be absent.
+          procs=$(docker exec scanner-root sh -c '
+            for f in /proc/[0-9]*/status; do
+              name=$(sed -n "s/^Name:[[:space:]]*//p" "$f" 2>/dev/null)
+              uids=$(sed -n "s/^Uid:[[:space:]]*//p" "$f" 2>/dev/null)
+              if [ -n "$name" ]; then echo "$name" $uids; fi
+            done
+            true')
+          echo "$procs"
+          for name in clamd freshclam node; do
+            lines=$(printf '%s\n' "$procs" | grep -E "^${name} " || true)
+            if [ -z "$lines" ]; then
+              echo "no ${name} process found"
+              exit 1
+            fi
+            if ! printf '%s\n' "$lines" | awk '{ for (i = 2; i <= NF; i++) if ($i == "0") bad = 1 } END { exit bad }'; then
+              echo "${name} runs with uid 0"
+              exit 1
+            fi
+          done
+      - name: Check the signatures are on the volume and owned by clamav (uid 1000)
+        run: |
+          dir_uid=$(docker exec scanner-root stat -c '%u' /data/clamav)
+          echo "/data/clamav uid ${dir_uid}"
+          test "$dir_uid" = "1000"
+          files=$(docker exec scanner-root find /data/clamav -maxdepth 1 -type f \( -name '*.cvd' -o -name '*.cld' -o -name '*.cud' \) -printf '%U %f\n')
+          echo "$files"
+          printf '%s\n' "$files" | grep -Eq ' main\.(cvd|cld)$'
+          printf '%s\n' "$files" | grep -Eq ' daily\.(cvd|cld)$'
+          if printf '%s\n' "$files" | grep -Evq '^1000 '; then
+            echo "a signature file is not owned by uid 1000"
+            exit 1
+          fi
+      - name: Root-started container logs
+        if: failure()
+        run: docker logs scanner-root 2>&1 | tail -n 200 || true
       - name: Grype report
         id: report
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
