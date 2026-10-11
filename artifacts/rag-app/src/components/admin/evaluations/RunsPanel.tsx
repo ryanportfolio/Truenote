@@ -49,7 +49,11 @@ export function RunsPanel({
   onBaseline: (run: EvalRunListItem) => Promise<void>;
   onCancel: (run: EvalRunListItem) => Promise<void>;
 }): JSX.Element {
-  const [focusRequest, setFocusRequest] = useState<ResultFocusRequest | null>(null);
+  // Tagged with the run it was made in, so a request never carries over to
+  // another run's results.
+  const [focusRequest, setFocusRequest] = useState<
+    (ResultFocusRequest & { runId: string }) | null
+  >(null);
   const compareToBaseline =
     selectedRun !== null &&
     baseline !== null &&
@@ -153,6 +157,7 @@ export function RunsPanel({
               onRetry={baselineDetail.retry}
               onShow={(questionId) =>
                 setFocusRequest((current) => ({
+                  runId: selectedRun.id,
                   questionId,
                   nonce: (current?.nonce ?? 0) + 1
                 }))
@@ -165,7 +170,11 @@ export function RunsPanel({
               <span className="sr-only">Loading run details…</span>
             </div>
           ) : selectedResults ? (
-            <ResultDetails results={selectedResults} focusRequest={focusRequest} />
+            <ResultDetails
+              key={selectedRun.id}
+              results={selectedResults}
+              focusRequest={focusRequest?.runId === selectedRun.id ? focusRequest : null}
+            />
           ) : selectedRun.status === "completed" ? (
             <div
               role={detailError ? "alert" : undefined}
@@ -193,7 +202,10 @@ export function RunsPanel({
       <RunHistory
         runs={runs}
         selectedRunId={selectedRun?.id ?? null}
-        onSelect={onSelect}
+        onSelect={(id) => {
+          setFocusRequest(null);
+          onSelect(id);
+        }}
         onBaseline={onBaseline}
       />
     </div>

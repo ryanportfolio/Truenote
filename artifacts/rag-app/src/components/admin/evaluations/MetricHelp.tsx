@@ -20,7 +20,7 @@ export const METRIC_HELP: Record<MetricName, string> = {
   "Overall pass":
     "Share of questions with the right outcome: a correct, cited answer when the documents cover it, or a refusal when they don't.",
   "Answer accuracy":
-    "Of the answerable questions with expected phrases or an expected answer, the share whose answer included those phrases and matched the expected answer.",
+    "Of the answerable questions with expected phrases or an expected answer, the share whose answer contained every phrase and was graded correct against the expected answer.",
   "Citation accuracy":
     "Of the answerable questions with an expected source, the share whose answer cited that source.",
   "Out-of-KB refused":
@@ -34,7 +34,7 @@ export const METRIC_HELP: Record<MetricName, string> = {
   Faithfulness:
     "With the faithfulness judge on, how much of each answer the cited excerpts support, averaged over the answers it scored.",
   "Expected source rank":
-    "Average position of the expected source among the excerpts the model reads; 1 means it came first.",
+    "Average position of the expected source among the excerpts the model reads, counting only questions where it was found; 1 means it came first.",
   "Generation fallback":
     "Questions answered by a later model in the chain because the first one failed or timed out.",
   "Failure stage":

@@ -115,13 +115,30 @@ export function RunLauncher({
       </div>
 
       <p className="mt-3 text-xs tabular-nums text-muted-foreground">
-        {plan.questions} question{plan.questions === 1 ? "" : "s"} · about {plan.answerCalls} answer
-        call{plan.answerCalls === 1 ? "" : "s"}
-        {plan.judgeCalls > 0 ? ` and up to ${plan.judgeCalls} judge calls` : ""}
-        {plan.gradedAnswers > 0
-          ? ` · ${plan.gradedAnswers} answer${plan.gradedAnswers === 1 ? "" : "s"} graded by AI`
-          : ""}
-        {plan.minutes !== null ? ` · about ${plan.minutes} min` : ""}
+        <span className="whitespace-nowrap">
+          {plan.questions} question{plan.questions === 1 ? "" : "s"}
+        </span>
+        {" · "}
+        <span className="whitespace-nowrap">
+          about {plan.answerCalls} answer call{plan.answerCalls === 1 ? "" : "s"}
+        </span>
+        {plan.judgeCalls > 0 ? (
+          <span className="whitespace-nowrap"> and up to {plan.judgeCalls} judge calls</span>
+        ) : null}
+        {plan.gradedAnswers > 0 ? (
+          <>
+            {" · "}
+            <span className="whitespace-nowrap">
+              {plan.gradedAnswers} answer{plan.gradedAnswers === 1 ? "" : "s"} graded by AI
+            </span>
+          </>
+        ) : null}
+        {plan.minutes !== null ? (
+          <>
+            {" · "}
+            <span className="whitespace-nowrap">about {plan.minutes} min</span>
+          </>
+        ) : null}
       </p>
 
       <div id="eval-trial-panel" hidden={!trialOpen}>
