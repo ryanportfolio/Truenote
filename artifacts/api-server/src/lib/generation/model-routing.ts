@@ -8,7 +8,8 @@ export const ApprovedModelRouteIdSchema = z.enum([
   "nemotron-3-super-deepinfra-nitro",
   "nemotron-3-ultra-baseten-nitro",
   "mercury-2.5-inception",
-  "granite-4.2-8b-coreweave"
+  "granite-4.2-8b-coreweave",
+  "nemotron-3.5-lightning-coreweave"
 ]);
 
 export type ApprovedModelRouteId = z.infer<typeof ApprovedModelRouteIdSchema>;
@@ -29,6 +30,14 @@ export interface ApprovedModelRoute {
   defaultReasoningEffort: ReasoningEffort;
   /** Efforts the model accepts, from OpenRouter's model metadata. */
   supportedEfforts: readonly ReasoningEffort[];
+  /**
+   * How the effort reaches the provider: "effort" sends `reasoning_effort`;
+   * "toggle" is for endpoints that only switch reasoning on or off
+   * (`reasoning.enabled`), offered as "none" (off) and "medium" (on).
+   */
+  reasoningControl: "effort" | "toggle";
+  /** The pinned endpoint accepts `response_format` (JSON mode). */
+  jsonMode: boolean;
   description: string;
 }
 
@@ -42,8 +51,12 @@ export interface ApprovedModelRoute {
  *
  * supportedEfforts is each model's `reasoning.supported_efforts` in
  * OpenRouter's model list (GET /api/v1/models), re-checked 2026-10-11; every
- * pinned endpoint lists `reasoning_effort` among its supported parameters
- * (GET /api/v1/models/<model>/endpoints). Re-check both when re-pinning.
+ * "effort" route's pinned endpoint lists `reasoning_effort` among its
+ * supported parameters (GET /api/v1/models/<model>/endpoints). Nemotron 3.5
+ * Lightning lists no efforts and its endpoints take only `reasoning`, so it
+ * is a "toggle" route. jsonMode is `response_format` in the same endpoint
+ * list (all but BaseTen's Nemotron 3 Ultra). Re-check all three when
+ * re-pinning.
  */
 export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
   {
@@ -55,6 +68,8 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     reasoningEffort: "medium",
     defaultReasoningEffort: "medium",
     supportedEfforts: ["low", "medium"],
+    reasoningControl: "effort",
+    jsonMode: true,
     description: "Default ZDR route for grounded answers."
   },
   {
@@ -66,6 +81,8 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     reasoningEffort: "medium",
     defaultReasoningEffort: "medium",
     supportedEfforts: ["none", "low", "medium", "high", "xhigh"],
+    reasoningControl: "effort",
+    jsonMode: true,
     description: "Fast, economical route for grounded answers."
   },
   {
@@ -77,6 +94,8 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     reasoningEffort: "medium",
     defaultReasoningEffort: "medium",
     supportedEfforts: ["medium", "high"],
+    reasoningControl: "effort",
+    jsonMode: false,
     description: "Larger open model for harder multi-step questions."
   },
   {
@@ -88,6 +107,8 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     reasoningEffort: "low",
     defaultReasoningEffort: "low",
     supportedEfforts: ["none", "low", "medium", "high"],
+    reasoningControl: "effort",
+    jsonMode: true,
     description: "Ultra-fast diffusion model for low-latency grounded answers."
   },
   {
@@ -99,9 +120,36 @@ export const APPROVED_MODEL_ROUTES: readonly ApprovedModelRoute[] = [
     reasoningEffort: "low",
     defaultReasoningEffort: "low",
     supportedEfforts: ["none", "low", "high"],
+    reasoningControl: "effort",
+    jsonMode: true,
     description: "Compact IBM reasoning model on CoreWeave's ZDR endpoint."
+  },
+  {
+    id: "nemotron-3.5-lightning-coreweave",
+    label: "Nemotron 3.5 Lightning",
+    model: "nvidia/nemotron-3.5-lightning",
+    provider: "coreweave",
+    providerLabel: "CoreWeave",
+    reasoningEffort: "medium",
+    defaultReasoningEffort: "medium",
+    supportedEfforts: ["none", "medium"],
+    reasoningControl: "toggle",
+    jsonMode: true,
+    description: "Small, fast NVIDIA model (3B active) on CoreWeave's full-precision ZDR endpoint."
   }
 ];
+
+/**
+ * The OpenRouter request fields that carry a route's effort. "none" is sent
+ * too: models that reason by default would otherwise reason anyway.
+ */
+export function reasoningRequestFields(
+  route: Pick<ApprovedModelRoute, "reasoningControl" | "reasoningEffort">
+): Record<string, unknown> {
+  return route.reasoningControl === "toggle"
+    ? { reasoning: { enabled: route.reasoningEffort !== "none" } }
+    : { reasoning_effort: route.reasoningEffort };
+}
 
 export const DEFAULT_MODEL_ROUTE = APPROVED_MODEL_ROUTES[0]!;
 

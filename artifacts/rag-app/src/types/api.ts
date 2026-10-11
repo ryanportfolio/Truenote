@@ -662,6 +662,8 @@ export interface ModelRoutingOption {
   defaultReasoningEffort: ReasoningEffort;
   /** Efforts this model accepts; the page offers only these. */
   supportedEfforts: ReasoningEffort[];
+  /** "toggle": the model only switches reasoning on ("medium") or off ("none"). */
+  reasoningControl: "effort" | "toggle";
   description: string;
 }
 

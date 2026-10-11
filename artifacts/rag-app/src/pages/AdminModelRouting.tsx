@@ -49,6 +49,16 @@ const EFFORT_LABEL: Record<ReasoningEffort, string> = {
   xhigh: "Extra high"
 };
 
+/** A model that only switches reasoning on or off names its two levels so. */
+const TOGGLE_LABEL: Partial<Record<ReasoningEffort, string>> = {
+  none: "Off (no reasoning)",
+  medium: "On"
+};
+
+function effortLabel(option: ModelRoutingOption, effort: ReasoningEffort): string {
+  return (option.reasoningControl === "toggle" ? TOGGLE_LABEL[effort] : null) ?? EFFORT_LABEL[effort];
+}
+
 /** Route id → effort, as a comparable key and as the PUT body. */
 function effortsOf(routes: ModelRoutingOption[]): Record<string, ReasoningEffort> {
   return Object.fromEntries(routes.map((route) => [route.id, route.reasoningEffort]));
@@ -323,19 +333,19 @@ function RouteChain({
                     {option.providerLabel}
                   </span>
                   <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                    Effort
+                    {option.reasoningControl === "toggle" ? "Reasoning" : "Effort"}
                     <select
                       value={option.reasoningEffort}
                       disabled={saving}
                       onChange={(event) =>
                         setEffort(option.id, event.target.value as ReasoningEffort)
                       }
-                      aria-label={`Effort for ${option.label} in ${title}`}
+                      aria-label={`${option.reasoningControl === "toggle" ? "Reasoning" : "Effort"} for ${option.label} in ${title}`}
                       className="select-quiet rounded-md border border-input bg-card py-0.5 pl-2 pr-6 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {option.supportedEfforts.map((effort) => (
                         <option key={effort} value={effort}>
-                          {EFFORT_LABEL[effort]}
+                          {effortLabel(option, effort)}
                           {effort === option.defaultReasoningEffort ? " (default)" : ""}
                         </option>
                       ))}

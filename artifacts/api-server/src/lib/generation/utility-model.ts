@@ -1,15 +1,11 @@
 import OpenAI from "openai";
 import { protectProviderText } from "../security/provider-input-firewall.js";
 import {
+  reasoningRequestFields,
   resolveApprovedModelRoute,
   type ApprovedModelRoute,
   type ApprovedModelRouteId
 } from "./model-routing.js";
-
-/** The OpenAI SDK's effort union; OpenRouter also accepts "none" and "xhigh". */
-type SdkReasoningEffort = NonNullable<
-  OpenAI.Chat.ChatCompletionCreateParamsNonStreaming["reasoning_effort"]
->;
 
 /**
  * Auxiliary LLM calls (follow-up rewrite, session naming) route through the
@@ -54,6 +50,11 @@ export interface UtilityCompletionInput {
   maxRetries: number;
   /** Cancels the in-flight call (client disconnect or overall ask deadline). */
   signal?: AbortSignal;
+  /**
+   * Ask for a JSON object reply (`response_format: json_object`). Sent only
+   * when the route's endpoint supports it (route.jsonMode).
+   */
+  json?: boolean;
 }
 
 export interface UtilityCompletionDeps {
@@ -93,10 +94,10 @@ export async function runUtilityCompletion(
   const completion = await client.chat.completions.create(
     {
       ...request,
-      // OpenRouter's efforts include "none" and "xhigh", which the OpenAI
-      // SDK types lack. "none" is sent too: models that reason by default
-      // would otherwise reason anyway.
-      reasoning_effort: route.reasoningEffort as SdkReasoningEffort,
+      // OpenRouter-only shape (efforts "none" and "xhigh", or the reasoning
+      // switch), which the OpenAI SDK types lack.
+      ...reasoningRequestFields(route),
+      ...(input.json && route.jsonMode ? { response_format: { type: "json_object" } } : {}),
       provider: {
         only: [route.provider],
         zdr: true,

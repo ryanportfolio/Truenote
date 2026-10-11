@@ -10,6 +10,7 @@ import {
 import { recordAppError } from "../observability/error-log.js";
 import {
   getActiveModelChain,
+  reasoningRequestFields,
   type ApprovedModelRoute,
   type ReasoningEffort
 } from "./model-routing.js";
@@ -19,11 +20,6 @@ import {
   protectProviderText
 } from "../security/provider-input-firewall.js";
 import { findUngroundedFigure } from "./figure-grounding.js";
-
-/** The OpenAI SDK's effort union; OpenRouter also accepts "none" and "xhigh". */
-type SdkReasoningEffort = NonNullable<
-  OpenAI.Chat.ChatCompletionCreateParamsNonStreaming["reasoning_effort"]
->;
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
@@ -171,6 +167,7 @@ async function callGenerationModel(
   options: {
     openRouterProvider: string;
     reasoningEffort: ReasoningEffort;
+    reasoningControl: ApprovedModelRoute["reasoningControl"];
     /** Per-attempt bounds. A slow provider hits this and the chain advances to the next route. */
     timeoutMs: number;
     maxRetries: number;
@@ -180,7 +177,7 @@ async function callGenerationModel(
 ): Promise<{ text: string | null; usage: ProviderTokenUsage | null }> {
   const request = {
     model,
-    // reasoning_effort is added below with the OpenRouter-only fields.
+    // The effort is added below with the OpenRouter-only fields.
     ...(options.reasoningEffort === "none" ? { temperature: 0 } : {}),
     messages: [
       { role: "system", content: systemPrompt },
@@ -194,10 +191,9 @@ async function callGenerationModel(
   const completion = await client.chat.completions.create(
     {
       ...request,
-      // OpenRouter's efforts include "none" and "xhigh", which the OpenAI
-      // SDK types lack. "none" is sent too: models that reason by default
-      // would otherwise reason anyway.
-      reasoning_effort: options.reasoningEffort as SdkReasoningEffort,
+      // OpenRouter-only shape (efforts "none" and "xhigh", or the reasoning
+      // switch), which the OpenAI SDK types lack.
+      ...reasoningRequestFields(options),
       provider: {
         only: [options.openRouterProvider],
         zdr: true,
@@ -426,6 +422,7 @@ export async function generateAnswer(
         {
           openRouterProvider: route.provider,
           reasoningEffort: route.reasoningEffort,
+          reasoningControl: route.reasoningControl,
           timeoutMs: generationDeadline.timeoutMs,
           maxRetries: generationDeadline.maxRetries,
           signal: input.signal

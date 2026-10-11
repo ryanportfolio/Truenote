@@ -23,7 +23,8 @@ describe("approved model routing", () => {
       "gpt-5.4-nano-azure-nitro",
       "nemotron-3-ultra-baseten-nitro",
       "mercury-2.5-inception",
-      "granite-4.2-8b-coreweave"
+      "granite-4.2-8b-coreweave",
+      "nemotron-3.5-lightning-coreweave"
     ]);
   });
 
@@ -43,7 +44,8 @@ describe("approved model routing", () => {
       ["openai/gpt-5.4-nano:nitro", "azure"],
       ["nvidia/nemotron-3-ultra-550b-a55b:nitro", "baseten"],
       ["inception/mercury-2.5", "inception"],
-      ["ibm-granite/granite-4.2-8b", "coreweave"]
+      ["ibm-granite/granite-4.2-8b", "coreweave"],
+      ["nvidia/nemotron-3.5-lightning", "coreweave"]
     ]);
   });
 
@@ -72,7 +74,8 @@ describe("resolveModelRouteOrder", () => {
       "nemotron-3-super-deepinfra-nitro",
       "gpt-5.4-nano-azure-nitro",
       "nemotron-3-ultra-baseten-nitro",
-      "granite-4.2-8b-coreweave"
+      "granite-4.2-8b-coreweave",
+      "nemotron-3.5-lightning-coreweave"
     ]);
   });
 
@@ -87,7 +90,8 @@ describe("resolveModelRouteOrder", () => {
       "nemotron-3-super-deepinfra-nitro",
       "nemotron-3-ultra-baseten-nitro",
       "mercury-2.5-inception",
-      "granite-4.2-8b-coreweave"
+      "granite-4.2-8b-coreweave",
+      "nemotron-3.5-lightning-coreweave"
     ]);
   });
 
@@ -104,7 +108,8 @@ describe("resolveModelRouteOrder", () => {
       "mercury-2.5-inception",
       "nemotron-3-ultra-baseten-nitro",
       "nemotron-3-super-deepinfra-nitro",
-      "gpt-5.4-nano-azure-nitro"
+      "gpt-5.4-nano-azure-nitro",
+      "nemotron-3.5-lightning-coreweave"
     ]);
   });
 
