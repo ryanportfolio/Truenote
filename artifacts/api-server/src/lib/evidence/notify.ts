@@ -3,6 +3,7 @@ import { db } from "../db-client.js";
 import { getEmailSender } from "../email/sender.js";
 import { escapeHtml } from "../email/templates.js";
 import { securityAlertRecipients, withDeadline } from "../monitoring/alert-email.js";
+import { getCheck } from "./catalog.js";
 import type { CheckResult } from "./receipts.js";
 import type { RunEntry } from "./runner.js";
 
@@ -20,6 +21,9 @@ import type { RunEntry } from "./runner.js";
  *   before (two in a row, reported once);
  * - recovered: pass now after a fail or error (listed only when an email is
  *   sent anyway).
+ *
+ * The daily run then adds attestation reminders (attestations.ts) through
+ * queueAndSendLines, which uses the same recipients and pending lines.
  */
 
 export type Notice = "new-failure" | "gap-expired" | "repeated-error" | "recovered" | "known-gap" | "unchanged";
@@ -74,13 +78,16 @@ export async function classifyRun(
   if (entries.length === 0) return [];
   const ids = entries.map((entry) => entry.checkId);
   const firstSequence = Math.min(...entries.map((entry) => entry.receipt.sequence));
+  // Prior receipts count only under the check's catalog kind; an entry
+  // outside the catalog matches no prior receipt.
+  const pairs = entries.map((entry) => sql`(${entry.checkId}::text, ${getCheck(entry.checkId)?.kind ?? null}::text)`);
   const priorRows = await executor.execute(sql`
     SELECT check_id, result, recorded_at_text
     FROM (
       SELECT check_id, result, recorded_at_text,
              row_number() OVER (PARTITION BY check_id ORDER BY sequence DESC) AS rn
       FROM evidence_receipts
-      WHERE check_id IN ${ids} AND sequence < ${firstSequence}
+      WHERE (check_id, check_kind) IN (${sql.join(pairs, sql`, `)}) AND sequence < ${firstSequence}
     ) ranked
     WHERE rn <= 2
     ORDER BY check_id, rn
@@ -127,11 +134,25 @@ export function alertLines(runId: string, classified: ClassifiedEntry[]): string
   );
 }
 
+/** Starts every attestation reminder line (attestations.ts). */
+export const ATTESTATION_LINE_PREFIX = "Attestation due";
+
 export function renderAlertEmail(lines: string[]): { subject: string; text: string; html: string } {
-  const count = lines.filter((line) => !line.startsWith(LABEL.recovered)).length;
-  const footer = "Receipts: GET /api/admin/evidence/failures (super_user).";
+  const due = lines.filter((line) => line.startsWith(ATTESTATION_LINE_PREFIX)).length;
+  const count = lines.filter(
+    (line) => !line.startsWith(LABEL.recovered) && !line.startsWith(ATTESTATION_LINE_PREFIX)
+  ).length;
+  const subject = [
+    ...(count > 0 || due === 0 ? [`${count} check(s) need attention`] : []),
+    ...(due > 0 ? [`${due} attestation(s) due`] : [])
+  ].join("; ");
+  const failureLines = lines.length - due;
+  const footer = [
+    ...(failureLines > 0 ? ["Receipts: GET /api/admin/evidence/failures (super_user)."] : []),
+    ...(due > 0 ? ["Upload attestations: POST /api/admin/evidence/attestations/<checkId> (super_user)."] : [])
+  ].join(" ");
   return {
-    subject: `Truenote evidence: ${count} check(s) need attention`,
+    subject: `Truenote evidence: ${subject}`,
     text: [...lines, "", footer].join("\n"),
     html: `<ul>${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul><p>${escapeHtml(footer)}</p>`
   };
@@ -151,17 +172,35 @@ async function readPending(): Promise<string[]> {
   return Array.isArray(value?.lines) ? value.lines.filter((line): line is string => typeof line === "string") : [];
 }
 
-async function writePending(lines: string[]): Promise<void> {
+async function writePending(lines: string[], executor: Executor = db as unknown as Executor): Promise<void> {
   if (lines.length === 0) {
-    await db.execute(sql`DELETE FROM app_settings WHERE key = ${PENDING_KEY}`);
+    await executor.execute(sql`DELETE FROM app_settings WHERE key = ${PENDING_KEY}`);
     return;
   }
   const value = JSON.stringify({ lines: lines.slice(-MAX_PENDING_LINES), updatedAt: new Date().toISOString() });
-  await db.execute(sql`
+  await executor.execute(sql`
     INSERT INTO app_settings (key, value, updated_at)
     VALUES (${PENDING_KEY}, ${value}::jsonb, now())
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
   `);
+}
+
+/**
+ * Send the pending lines in one email per recipient, then clear them. With
+ * no recipient, or when a send throws, they stay pending for the next run.
+ */
+async function sendPending(lines: string[]): Promise<boolean> {
+  const recipients = evidenceAlertRecipients();
+  if (recipients.length === 0) {
+    console.warn(`[evidence] ${lines.length} alert line(s) pending; no EVIDENCE_ALERT_EMAIL or SECURITY_ALERT_EMAIL`);
+    return false;
+  }
+  const email = renderAlertEmail(lines);
+  for (const to of recipients) {
+    await withDeadline(getEmailSender().send({ to, ...email }), 30_000, "evidence alert email");
+  }
+  await writePending([]);
+  return true;
 }
 
 /**
@@ -175,17 +214,27 @@ export async function notifyRun(runId: string, entries: RunEntry[]): Promise<Cla
   const lines = [...pending, ...alertLines(runId, classified)];
   if (lines.length === 0) return classified;
   if (lines.length > pending.length) await writePending(lines);
-  const recipients = evidenceAlertRecipients();
-  if (recipients.length === 0) {
-    console.warn(`[evidence] ${lines.length} alert line(s) pending; no EVIDENCE_ALERT_EMAIL or SECURITY_ALERT_EMAIL`);
-    return classified;
-  }
-  const email = renderAlertEmail(lines);
-  for (const to of recipients) {
-    await withDeadline(getEmailSender().send({ to, ...email }), 30_000, "evidence alert email");
-  }
-  await writePending([]);
+  await sendPending(lines);
   return classified;
+}
+
+/**
+ * Add `lines` to the pending lines and send them all. `alsoInTransaction`
+ * commits with the pending lines (the attestation reminders save their
+ * remembered map there), so what it records is never ahead of what was
+ * queued. Returns whether an email went out; lines not sent stay pending.
+ */
+export async function queueAndSendLines(
+  lines: string[],
+  alsoInTransaction?: (tx: Executor) => Promise<void>
+): Promise<boolean> {
+  const all = [...(await readPending()), ...lines];
+  await db.transaction(async (tx) => {
+    await writePending(all, tx as unknown as Executor);
+    if (alsoInTransaction) await alsoInTransaction(tx as unknown as Executor);
+  });
+  if (all.length === 0) return false;
+  return sendPending(all);
 }
 
 /** EVIDENCE_ALERT_EMAIL when set, else the security monitor's recipients. */
