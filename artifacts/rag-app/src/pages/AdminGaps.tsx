@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Flag, ThumbsDown, ThumbsUp } from "lucide-react";
 import { fetchKbGaps, listQueryLog } from "@/lib/api";
 import { EmptyState } from "@/components/EmptyState";
+import { GapAnalysis } from "@/components/admin/GapAnalysis";
 import { RelativeTime } from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
@@ -91,8 +92,12 @@ function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
   const teamOnly = usageScope(user.role) === "team";
   const canReviewQueue = hasAtLeastRole(user, "manager");
 
-  // Top gaps (aggregated) section state.
+  // Shared by Gap analysis and Top gaps.
   const [windowDays, setWindowDays] = useState<number>(30);
+  // Bumped on a program change so Gap analysis refetches too.
+  const [programEpoch, setProgramEpoch] = useState(0);
+
+  // Top gaps (aggregated) section state.
   const [gaps, setGaps] = useState<KbGapsResponse | null>(null);
   const [gapsLoading, setGapsLoading] = useState(true);
   const [gapsError, setGapsError] = useState<string | null>(null);
@@ -142,6 +147,7 @@ function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
   // cross-tab storage event). Both sections reload.
   useEffect(() => {
     function reload(): void {
+      setProgramEpoch((n) => n + 1);
       setGapsLoading(true);
       void refreshGaps();
       if (!canReviewQueue) return;
@@ -175,34 +181,43 @@ function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
         </div>
       ) : (
         <>
+          <div className="flex justify-end">
+            <div
+              role="group"
+              aria-label="Time window"
+              className="flex overflow-hidden rounded-lg border border-border"
+            >
+              {WINDOW_OPTIONS.map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  aria-pressed={windowDays === days}
+                  onClick={() => setWindowDays(days)}
+                  className={cn(
+                    "px-3 py-1.5 text-xs font-medium transition-colors duration-100",
+                    windowDays === days
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  {days}d
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <GapAnalysis
+            windowDays={windowDays}
+            reloadKey={programEpoch}
+            canAddSources={canReviewQueue}
+          />
+
           {/* ---- Top gaps: grouped + ranked over a window ---- */}
           <section className="flex flex-col gap-3" aria-label="Top gaps">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 Top gaps
               </h2>
-              <div
-                role="group"
-                aria-label="Time window"
-                className="flex overflow-hidden rounded-lg border border-border"
-              >
-                {WINDOW_OPTIONS.map((days) => (
-                  <button
-                    key={days}
-                    type="button"
-                    aria-pressed={windowDays === days}
-                    onClick={() => setWindowDays(days)}
-                    className={cn(
-                      "px-3 py-1.5 text-xs font-medium transition-colors duration-100",
-                      windowDays === days
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    {days}d
-                  </button>
-                ))}
-              </div>
             </div>
 
             {gapsError ? (

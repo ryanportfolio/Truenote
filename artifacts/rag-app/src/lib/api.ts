@@ -41,7 +41,9 @@ import type {
   LoginResult,
   MfaRequiredResponse,
   MfaStatusResponse,
+  GapAnalysisResponse,
   ModelRoutingConfig,
+  ModelRoutingPurpose,
   PasskeySummary,
   ObservabilityResponse,
   PreviewResponse,
@@ -682,6 +684,20 @@ export async function fetchKbGaps(windowDays: number): Promise<KbGapsResponse> {
   return asJson<KbGapsResponse>(response);
 }
 
+export async function fetchGapAnalysis(
+  windowDays: number,
+  refresh: boolean,
+  signal?: AbortSignal
+): Promise<GapAnalysisResponse> {
+  const params = new URLSearchParams({ days: String(windowDays) });
+  if (refresh) params.set("refresh", "1");
+  const response = await fetch(
+    `/api/admin/insights/gap-analysis?${params.toString()}`,
+    withDefaults({ signal })
+  );
+  return asJson<GapAnalysisResponse>(response);
+}
+
 function jsonRequest(method: string, body: unknown): RequestInit {
   return withDefaults({
     method,
@@ -1061,14 +1077,15 @@ export async function getModelRouting(): Promise<ModelRoutingConfig> {
 }
 
 export async function updateModelRouting(
-  order: string[]
+  order: string[],
+  purpose: ModelRoutingPurpose = "answers"
 ): Promise<ModelRoutingConfig> {
   const response = await fetch(
     "/api/admin/model-routing",
     withDefaults({
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order })
+      body: JSON.stringify({ order, purpose })
     })
   );
   return asJson<ModelRoutingConfig>(response);
