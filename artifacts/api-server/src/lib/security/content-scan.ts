@@ -186,35 +186,77 @@ function looksLikePaymentCard(candidate: string): boolean {
 }
 
 /**
- * Payment-card candidates, tried in order; a card one pattern matches is
- * removed before the next runs. An unbroken run of 13 to 19 digits comes
- * first, so a number next to the card (`Row 1<tab>4111...`) cannot join it
- * into a longer candidate that fails the Luhn check and hides it.
- * Spaces, tabs and dashes may separate any digits.
- * Dots, slashes and underscores count only between card-shaped groups
- * (4-4-4-1..7 or 4-6-4..5), so lists of IP addresses or version numbers do
- * not read as one long number. Only spaces and tabs count as whitespace, so
- * numbers on separate lines (or in separate fields joined by newlines) never
- * join. The scan also reads the NFKC form, which turns no-break and other
- * wide spaces into a space and fullwidth digits into ASCII digits.
+ * A run of digit groups joined by card separators. Only spaces and tabs count
+ * as whitespace, so numbers on separate lines (or in separate fields joined
+ * by newlines) never join. The scan also reads the NFKC form, which turns
+ * no-break and other wide spaces into a space and fullwidth digits into ASCII
+ * digits.
  */
-const CARD_GROUP_SEPARATOR = String.raw`(?:[ \t]*[./_\-\u2010-\u2015\u2212][ \t]*|[ \t]+)`;
-const CARD_CANDIDATE_PATTERNS: readonly RegExp[] = [
-  /\b\d{13,19}\b/g,
-  /\b(?:\d[ \t\-\u2010-\u2015\u2212]*?){13,19}\b/g,
-  new RegExp(
-    String.raw`\b\d{4}(?:${CARD_GROUP_SEPARATOR}\d{4}){2}${CARD_GROUP_SEPARATOR}\d{1,7}\b`,
-    "g"
-  ),
-  new RegExp(String.raw`\b\d{4}${CARD_GROUP_SEPARATOR}\d{6}${CARD_GROUP_SEPARATOR}\d{4,5}\b`, "g")
-];
+const CARD_SEPARATOR = String.raw`(?:(?:[ \t]*[./_\-\u2010-\u2015\u2212])+[ \t]*|[ \t]+)`;
+const CARD_SPAN_PATTERN = new RegExp(String.raw`\b\d+(?:${CARD_SEPARATOR}\d+)*\b`, "g");
+const CARD_DIGIT_GROUP = /\d+/g;
+/** Separators that may sit between any digits; others need card-shaped groups. */
+const LOOSE_CARD_SEPARATOR = /^[ \t\-\u2010-\u2015\u2212]+$/;
+
+/** 4-4-4-1..7 (most brands) or 4-6-4..5 (15-digit cards). */
+function isCardShaped(groupLengths: readonly number[]): boolean {
+  const [a, b, c, d] = groupLengths;
+  if (groupLengths.length === 4) return a === 4 && b === 4 && c === 4 && d! >= 1 && d! <= 7;
+  if (groupLengths.length === 3) return a === 4 && b === 6 && (c === 4 || c === 5);
+  return false;
+}
+
+/**
+ * Character ranges of payment-card numbers. Every window of whole digit
+ * groups holding 13 to 19 digits is a candidate, longest first from each
+ * start, so a number next to a card (`Row 1234<tab>4111 1111 1111 1111`)
+ * cannot hide it by joining it into a longer candidate that fails the Luhn
+ * check. Spaces, tabs and dashes may separate any digits; dots, slashes and
+ * underscores count only between card-shaped groups, so lists of IP
+ * addresses or version numbers do not read as one long number.
+ */
+function findPaymentCards(text: string): { start: number; end: number }[] {
+  const found: { start: number; end: number }[] = [];
+  for (const span of text.matchAll(CARD_SPAN_PATTERN)) {
+    const offset = span.index ?? 0;
+    const groups = [...span[0].matchAll(CARD_DIGIT_GROUP)].map((group) => ({
+      start: offset + (group.index ?? 0),
+      end: offset + (group.index ?? 0) + group[0].length,
+      digits: group[0]
+    }));
+    let i = 0;
+    while (i < groups.length) {
+      // Last group index a window from i can reach without passing 19 digits.
+      let reach = i - 1;
+      for (let total = 0; reach + 1 < groups.length; reach += 1) {
+        total += groups[reach + 1]!.digits.length;
+        if (total > 19) break;
+      }
+      let matchedEnd = -1;
+      for (let j = reach; j >= i && matchedEnd < 0; j -= 1) {
+        const window = groups.slice(i, j + 1);
+        const digits = window.map((group) => group.digits).join("");
+        if (digits.length < 13 || digits.length > 19 || !looksLikePaymentCard(digits)) continue;
+        const looseOnly = window
+          .slice(1)
+          .every((group, k) => LOOSE_CARD_SEPARATOR.test(text.slice(window[k]!.end, group.start)));
+        if (looseOnly || isCardShaped(window.map((group) => group.digits.length))) matchedEnd = j;
+      }
+      if (matchedEnd < 0) {
+        i += 1;
+        continue;
+      }
+      found.push({ start: groups[i]!.start, end: groups[matchedEnd]!.end });
+      i = matchedEnd + 1;
+    }
+  }
+  return found;
+}
 
 function redactPaymentCards(text: string): string {
   let redacted = text;
-  for (const pattern of CARD_CANDIDATE_PATTERNS) {
-    redacted = redacted.replace(new RegExp(pattern.source, pattern.flags), (candidate) =>
-      looksLikePaymentCard(candidate) ? "[REDACTED_PII_PAYMENT_CARD]" : candidate
-    );
+  for (const card of findPaymentCards(text).reverse()) {
+    redacted = `${redacted.slice(0, card.start)}[REDACTED_PII_PAYMENT_CARD]${redacted.slice(card.end)}`;
   }
   return redacted;
 }
@@ -249,21 +291,6 @@ function redactExactText(text: string): string {
   return redactPaymentCards(redacted);
 }
 
-function countPaymentCards(text: string): number {
-  // Count each card once: a later pattern sees only text the earlier ones
-  // did not match as a card.
-  let remaining = text;
-  let count = 0;
-  for (const pattern of CARD_CANDIDATE_PATTERNS) {
-    remaining = remaining.replace(new RegExp(pattern.source, pattern.flags), (candidate) => {
-      if (!looksLikePaymentCard(candidate)) return candidate;
-      count += 1;
-      return " ";
-    });
-  }
-  return count;
-}
-
 /**
  * Findings contain rule/count only, never matching sensitive text. Each rule
  * reads both the text as given and its NFKC form and keeps the larger count:
@@ -285,7 +312,10 @@ export function scanTextForSensitiveContent(rawText: string): SecurityFinding[] 
       blocking: rule.blocking
     });
   }
-  const paymentCards = Math.max(countPaymentCards(rawText), countPaymentCards(normalized));
+  const paymentCards = Math.max(
+    findPaymentCards(rawText).length,
+    findPaymentCards(normalized).length
+  );
   if (paymentCards > 0) {
     findings.push({
       category: "pii",
