@@ -270,12 +270,15 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
       "different synthetic programs; users csr-a and csr-b exist, are synthetic, and sit in canary a's and " +
       "canary b's program respectively; and b's classification is at or below csr-a's max_classification. " +
       "Otherwise the check records error. Over HTTPS, synthetic csr-b " +
-      "logs in and asks with canary b's token: the answer cites b (positive control) and returns a session id. " +
-      "Synthetic csr-a logs in, asks with canary a's token and gets a as a source, and GET " +
-      "/api/kb/documents/<a> answers 200 (positive controls). Then, as csr-a: asking with canary b's token " +
-      "returns no source with b's doc_id, no source whose excerpt or doc_title holds b's token, and no answer " +
-      "text holding it; GET /api/kb/documents/<b> answers 404; and GET /api/sessions/<csr-b's " +
-      "session id> answers 404. A leak in any of the three probes fails and names the response field; a " +
+      "logs in and asks \"What is the synthetic canary code?\": the answer cites b (positive control) and " +
+      "returns a session id. Synthetic csr-a logs in and asks the same question: it gets a as a source " +
+      "(positive control), and the response has no source with b's doc_id, no source whose excerpt or " +
+      "doc_title holds b's token, and no answer text holding b's token. GET /api/kb/documents/<a> answers " +
+      "200 (positive control). Then, as csr-a: asking \"What is the synthetic canary code <b's token> used " +
+      "for?\" returns no source with b's doc_id and no source whose excerpt or doc_title holds b's token; " +
+      "its answer text is not searched, because the model repeats a token the question names, so the token " +
+      "there is no evidence of a leak. GET /api/kb/documents/<b> answers 404, and GET /api/sessions/<csr-b's " +
+      "session id> answers 404. A leak in any probe fails and names the response field; a " +
       "failed login, a missed positive control or an unexpected status records error. Every session is " +
       "logged out; a logout still failed (non-2xx or no response) after one retry turns a pass into error " +
       "and leaves a fail a fail.",
@@ -295,10 +298,14 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
       "The database shows canary aConfidential live (active version, lifecycle_state active, is_active) in " +
       "the same synthetic program as canary a, and user csr-a synthetic, in that program, with a " +
       "max_classification below aConfidential's classification. Otherwise the check records error. Synthetic " +
-      "csr-a logs in, asks with canary a's token and gets a as a source, and GET " +
-      "/api/kb/documents/<a> answers 200 (positive controls). Then asking with aConfidential's token returns " +
-      "no source with its doc_id, no source whose excerpt or doc_title holds its token, and no answer text " +
-      "holding it, and GET /api/kb/documents/<aConfidential> answers 404. Either leak fails and names the " +
+      "csr-a logs in and asks \"What is the synthetic canary code?\": it gets a as a source (positive " +
+      "control), and the response has no source with aConfidential's doc_id, no source whose excerpt or " +
+      "doc_title holds aConfidential's token, and no answer text holding that token. GET " +
+      "/api/kb/documents/<a> answers 200 (positive control). Then asking \"What is the synthetic canary " +
+      "code <aConfidential's token> used for?\" returns no source with aConfidential's doc_id and no source " +
+      "whose excerpt or doc_title holds its token; its answer text is not searched, because the model " +
+      "repeats a token the question names, so the token there is no evidence of a leak. GET " +
+      "/api/kb/documents/<aConfidential> answers 404. A leak in any probe fails and names the " +
       "response field; a failed login, a missed positive control or an unexpected status records error. " +
       "Every session is logged out; a logout still failed (non-2xx or no response) after one retry turns a " +
       "pass into error and leaves a fail a fail.",
