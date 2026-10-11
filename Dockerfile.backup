@@ -2,8 +2,8 @@
 # the database of a restore test (scripts/backup/restore-offsite.sh, run inside
 # it over `railway ssh`). Base: the exact image production's `pgvector`
 # service runs (digest read from Railway's deployment metadata on 2026-10-10),
-# so pg_dump, pg_restore and the restore-test server match production. When
-# production's pgvector image changes, update this digest in the same change.
+# so pg_dump, pg_restore and the restore-test server match production. Production
+# builds Dockerfile.pgvector from the same digest; keep the two equal.
 FROM pgvector/pgvector@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
 RUN apt-get update \
  && apt-get install -y --no-install-recommends age rclone git ca-certificates curl \

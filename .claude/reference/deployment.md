@@ -74,6 +74,19 @@ Done on 2026-10-11 with the owner's go, steps 1 to 10:
 - Railway showed the scanner `SLEEPING` about 6 minutes after its last traffic. An EICAR text upload and a clean demo PDF, as the agent account, then woke it: the worker logged that it waited 10 s for the scanner, the scanner restarted without the seeding line, EICAR ended `quarantined` (`infected`, `Eicar-Test-Signature`) and the PDF `clean`. Both test documents were retired. A super user's clean upload is activated at once, so retire such test documents right away.
 - "Scan them now" queued 37 versions: 31 became `clean`, none infected; 6 failed with `NoSuchKey` (originals left in the Replit bucket) and keep `scan_status = 'disabled'`. All 6 are inactive (2 revoked, 2 retired, 2 rejected).
 
+### pgvector image
+
+Since 2026-10-07 `pgvector` runs the upstream image `pgvector/pgvector:pg18` at digest `sha256:2358fcba…` (deployment `e8f67e6f`), start command `/bin/sh -c "unset PGPORT; docker-entrypoint.sh postgres --port=5432"`, restart policy `ON_FAILURE`. Grype finds Debian package vulnerabilities in it that have fixes (POAM-2026-057, OD-A36). `Dockerfile.pgvector` builds the same digest plus `apt-get upgrade`, with every `postgresql*` and `libpq*` package held, so PostgreSQL, the compiled `vector` extension and the data directory stay as they are. `.github/workflows/container-scan.yml` builds and scans that image and fails a pull request on a fixable High or Critical finding. Keep the digest in `Dockerfile.pgvector` and `Dockerfile.backup` equal.
+
+Switching the service to it (each step waits for the owner's go):
+
+1. Confirm a current off-site copy (the weekly `backup` run and `node scripts/backup/check-offsite.mjs`), and record `select version()` and `select extname, extversion from pg_extension` from `railway ssh -s pgvector`.
+2. `railway variable set RAILWAY_DOCKERFILE_PATH=Dockerfile.pgvector -s pgvector --skip-deploys`. The start command, volume and restart policy stay on the service.
+3. Upload `main` once from a clean LF worktree with `.release-commit` (the recovery commands in "Deploying", with `-s pgvector -m "<sha12> pgvector"`). The database restarts; `web` and `worker` reconnect.
+4. Check: `railway logs -s pgvector` ends with `database system is ready to accept connections`; `version()` and the extension versions match step 1; `/health` 200 and a demo login and question on `https://truenote.org`; `railway logs` for `worker` shows pg-boss running. Add a `docs/release-register.csv` row.
+
+Rollback: redeploy deployment `e8f67e6f` (dashboard, or the GraphQL mutation `deploymentRedeploy`), which runs the upstream image on the same volume.
+
 ### Database roles
 
 Two roles, defined by `lib/db/sql/0007_app_runtime_role.sql`:

@@ -1,0 +1,11 @@
+# Image for the `pgvector` database service: the upstream image production
+# already runs (same digest as Dockerfile.backup) plus the Debian security
+# updates published since it was built. PostgreSQL and libpq packages stay
+# held at the base image's versions, so the server version, the compiled
+# vector extension and the data directory format do not change; only OS
+# packages are upgraded. Entrypoint, command and volume path are inherited.
+FROM pgvector/pgvector@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+RUN apt-mark hold $(dpkg-query -W -f '${Package}\n' 'postgresql*' 'libpq*' 2>/dev/null) \
+ && apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
