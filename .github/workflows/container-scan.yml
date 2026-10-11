@@ -175,7 +175,7 @@ jobs:
             docker logs pg 2>&1 | tail -n 50
             exit 1
           fi
-          docker exec pg psql -h 127.0.0.1 -p 5432 -U postgres -X -At \
+          docker exec pg psql -h 127.0.0.1 -p 5432 -U postgres -X -At -v ON_ERROR_STOP=1 \
             -c "select version()" \
             -c "create extension vector" \
             -c "select extversion from pg_extension where extname = 'vector'"
