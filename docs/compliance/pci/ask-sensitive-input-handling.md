@@ -42,7 +42,7 @@ The ask policy currently blocks:
 - United States Social Security number patterns; and
 - payment-card candidates that pass the Luhn check.
 
-The scan reads the NFKC form of the text, so fullwidth digits and no-break or
+The scan reads both the text as given and its NFKC form, so fullwidth digits and no-break or
 other wide spaces are read as ASCII digits and spaces. Card digits may be
 separated by spaces, tabs, hyphens or Unicode dashes anywhere, and by dots,
 slashes or underscores between card-shaped groups (4-4-4-1..7, or 4-6-4..5 for

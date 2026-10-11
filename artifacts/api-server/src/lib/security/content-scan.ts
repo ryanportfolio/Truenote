@@ -189,10 +189,12 @@ function looksLikePaymentCard(candidate: string): boolean {
  * Payment-card candidates. Spaces, tabs and dashes may separate any digits.
  * Dots, slashes and underscores count only between card-shaped groups
  * (4-4-4-1..7 or 4-6-4..5), so lists of IP addresses or version numbers do
- * not read as one long number. Callers pass NFKC text, which turns no-break
- * and other wide spaces into a space and fullwidth digits into ASCII digits.
+ * not read as one long number. Only spaces and tabs count as whitespace, so
+ * numbers on separate lines (or in separate fields joined by newlines) never
+ * join. The scan also reads the NFKC form, which turns no-break and other
+ * wide spaces into a space and fullwidth digits into ASCII digits.
  */
-const CARD_GROUP_SEPARATOR = String.raw`(?:\s*[./_\-\u2010-\u2015\u2212]\s*|\s+)`;
+const CARD_GROUP_SEPARATOR = String.raw`(?:[ \t]*[./_\-\u2010-\u2015\u2212][ \t]*|[ \t]+)`;
 const CARD_CANDIDATE_PATTERNS: readonly RegExp[] = [
   /\b(?:\d[ \t\-\u2010-\u2015\u2212]*?){13,19}\b/g,
   new RegExp(
@@ -242,16 +244,32 @@ function redactExactText(text: string): string {
   return redactPaymentCards(redacted);
 }
 
+function countPaymentCards(text: string): number {
+  // Count each card once: a later pattern sees only text the earlier ones
+  // did not match as a card.
+  let remaining = text;
+  let count = 0;
+  for (const pattern of CARD_CANDIDATE_PATTERNS) {
+    remaining = remaining.replace(new RegExp(pattern.source, pattern.flags), (candidate) => {
+      if (!looksLikePaymentCard(candidate)) return candidate;
+      count += 1;
+      return " ";
+    });
+  }
+  return count;
+}
+
 /**
- * Findings contain rule/count only, never matching sensitive text. The scan
- * reads the NFKC form, so fullwidth digits and no-break spaces cannot hide a
- * card number or SSN.
+ * Findings contain rule/count only, never matching sensitive text. Each rule
+ * reads both the text as given and its NFKC form and keeps the larger count:
+ * NFKC exposes fullwidth digits and no-break spaces, but it can also hide a
+ * value, for example by turning a trailing superscript into one more digit.
  */
 export function scanTextForSensitiveContent(rawText: string): SecurityFinding[] {
-  const text = rawText.normalize("NFKC");
+  const normalized = rawText.normalize("NFKC");
   const findings: SecurityFinding[] = [];
   for (const rule of TEXT_RULES) {
-    const count = countMatches(text, rule.pattern);
+    const count = Math.max(countMatches(rawText, rule.pattern), countMatches(normalized, rule.pattern));
     if (count === 0) continue;
     findings.push({
       category: rule.category,
@@ -262,17 +280,7 @@ export function scanTextForSensitiveContent(rawText: string): SecurityFinding[] 
       blocking: rule.blocking
     });
   }
-  // Count each card once: a later pattern sees only text the earlier ones
-  // did not match as a card.
-  let remaining = text;
-  let paymentCards = 0;
-  for (const pattern of CARD_CANDIDATE_PATTERNS) {
-    remaining = remaining.replace(new RegExp(pattern.source, pattern.flags), (candidate) => {
-      if (!looksLikePaymentCard(candidate)) return candidate;
-      paymentCards += 1;
-      return " ";
-    });
-  }
+  const paymentCards = Math.max(countPaymentCards(rawText), countPaymentCards(normalized));
   if (paymentCards > 0) {
     findings.push({
       category: "pii",
