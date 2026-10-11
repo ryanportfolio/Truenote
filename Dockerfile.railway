@@ -27,10 +27,14 @@ ENV NODE_ENV=production \
     API_PORT=8080
 # Debian security updates newer than the base tag, and no npm: nothing runs it
 # at runtime, and its bundled packages are a separate source of findings.
+# No setuid or setgid files (mount, su, passwd and the like): the services run
+# as node and never change user, so these only help someone who already has a
+# shell in the container.
 RUN apt-get update \
  && apt-get upgrade -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/* \
- && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+ && find / -xdev -perm /6000 -type f -exec chmod ug-s {} +
 # Root keeps ownership of /app, so the node user can read and run the code
 # but cannot change it. Nothing writes under /app at runtime: uploads go to
 # object storage and tsx caches in /tmp.

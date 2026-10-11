@@ -54,6 +54,38 @@ jobs:
             echo "- Image ID: \`$(docker image inspect --format '{{.Id}}' "truenote-app:${GITHUB_SHA}")\`"
             echo "- Base image: \`$(docker image inspect --format '{{index .RepoDigests 0}}' "$BASE_IMAGE")\`"
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Check the image has no setuid or setgid files
+        run: |
+          files=$(docker run --rm --user 0 --entrypoint find "truenote-app:${GITHUB_SHA}" / -xdev -perm /6000 -type f)
+          if [ -n "$files" ]; then
+            echo "setuid or setgid files found:"
+            echo "$files"
+            exit 1
+          fi
+      # Starts the image as Railway starts web (default process, user node).
+      # There is no database here: the bootstrap logs a connection error and
+      # the server must still reach "listening".
+      - name: Start the web process
+        run: |
+          docker run --detach --name app --env APP_BASE_URL=http://127.0.0.1:8080 "truenote-app:${GITHUB_SHA}"
+          for i in $(seq 1 60); do
+            if docker logs app 2>&1 | grep -q '\[api-server\] listening on'; then
+              echo "listening after about $((i * 2)) s"
+              exit 0
+            fi
+            if [ "$(docker inspect --format '{{.State.Running}}' app)" != "true" ]; then
+              echo "the container exited"
+              docker logs app 2>&1 | tail -n 50
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "not listening after 120 s"
+          docker logs app 2>&1 | tail -n 50
+          exit 1
+      - name: Stop the web process
+        if: always()
+        run: docker rm --force app >/dev/null 2>&1 || true
       - name: Grype report
         id: report
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
@@ -110,6 +142,51 @@ jobs:
             echo "- Image ID: \`$(docker image inspect --format '{{.Id}}' "truenote-pgvector:${GITHUB_SHA}")\`"
             echo "- Base image: \`${BASE_IMAGE}\`"
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Check the image has no setuid or setgid files
+        run: |
+          files=$(docker run --rm --user 0 --entrypoint find "truenote-pgvector:${GITHUB_SHA}" / -xdev -perm /6000 -type f)
+          if [ -n "$files" ]; then
+            echo "setuid or setgid files found:"
+            echo "$files"
+            exit 1
+          fi
+      # Starts the image as the Railway service does: as root, with the
+      # service's start command, so the entrypoint must initialise the data
+      # directory and drop to postgres through gosu.
+      - name: Start PostgreSQL as the service does
+        run: |
+          docker run --detach --name pg --user 0 \
+            --env POSTGRES_PASSWORD="$(openssl rand -hex 16)" \
+            "truenote-pgvector:${GITHUB_SHA}" \
+            /bin/sh -c "unset PGPORT; docker-entrypoint.sh postgres --port=5432"
+          ready=""
+          for i in $(seq 1 45); do
+            if docker exec pg pg_isready -h 127.0.0.1 -p 5432 -U postgres >/dev/null 2>&1; then
+              ready=yes
+              break
+            fi
+            if [ "$(docker inspect --format '{{.State.Running}}' pg)" != "true" ]; then
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$ready" ]; then
+            echo "PostgreSQL did not become ready"
+            docker logs pg 2>&1 | tail -n 50
+            exit 1
+          fi
+          docker exec pg psql -h 127.0.0.1 -p 5432 -U postgres -X -At -v ON_ERROR_STOP=1 \
+            -c "select version()" \
+            -c "create extension vector" \
+            -c "select extversion from pg_extension where extname = 'vector'"
+          # The server must run as postgres, not root.
+          uid=$(docker exec pg sh -c 'for d in /proc/[0-9]*; do n=$(cat "$d/comm" 2>/dev/null); [ "$n" = postgres ] && sed -n "s/^Uid:[[:space:]]*\([0-9]*\).*/\1/p" "$d/status"; done' | sort -u)
+          echo "postgres uids: ${uid}"
+          test -n "$uid"
+          if printf '%s\n' "$uid" | grep -qx 0; then exit 1; fi
+      - name: Stop PostgreSQL
+        if: always()
+        run: docker rm --force pg >/dev/null 2>&1 || true
       - name: Grype report
         id: report
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
