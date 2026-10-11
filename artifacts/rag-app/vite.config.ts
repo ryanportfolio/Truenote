@@ -212,6 +212,26 @@ function precompressAssets() {
   };
 }
 
+/**
+ * react-markdown decodes named character references (`&amp;`, or `&M;` in
+ * "POA&M;") through decode-named-character-reference, whose browser build
+ * assigns a string to innerHTML. The CSP's require-trusted-types-for 'script'
+ * blocks that assignment, the render throws, and the page goes blank. Resolve
+ * the package to its default build, which looks the name up in a table.
+ */
+function markdownEntitiesWithoutInnerHtml(): Plugin {
+  return {
+    name: "markdown-entities-without-innerhtml",
+    enforce: "pre",
+    async resolveId(source, importer, options) {
+      if (source !== "decode-named-character-reference") return null;
+      const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+      if (!resolved) return null;
+      return { ...resolved, id: resolved.id.replace(/index\.dom\.js$/, "index.js") };
+    }
+  };
+}
+
 // API server we proxy /api to. Both processes read API_PORT from the
 // environment (see the root .env.example) and default to 5000, so they agree
 // without each having its own copy.
@@ -219,7 +239,7 @@ const API_PORT = Number(process.env.API_PORT) || 5000;
 const FRONTEND_PORT = Number(process.env.PORT) || 5173;
 
 export default defineConfig({
-  plugins: [react(), publishSecurityPage(), precompressAssets()],
+  plugins: [react(), markdownEntitiesWithoutInnerHtml(), publishSecurityPage(), precompressAssets()],
   base: "/",
   resolve: {
     alias: {
