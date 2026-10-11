@@ -227,7 +227,7 @@ So turning on SSO, fully or partly, without setting `LOCAL_LOGIN_MODE=enabled` s
 Each step changes production or the owner's accounts and waits for the owner's go, in this order. Run the local steps from a checkout of the `main` commit being deployed.
 
 1. Apply the operator rule: `node scripts/railway-apply-sql.mjs lib/db/sql/0020_operator_receipts.sql` (dry run), then with `--apply`. Afterwards check the definition in the database: `pg_get_functiondef('public.append_evidence_receipt(text)'::regprocedure)` must contain the `operator` rule, and the function must still be owned by the migration role and executable by `truenote_app`.
-2. Deploy web and worker from the same commit through the "Deploy production" workflow (`gh workflow run deploy-production.yml --repo ryanportfolio/Truenote --ref main -f message="<what ships>" -f service=both`). If phase 2's deploy (step 3 there) has not run yet, this one deploy ships both.
+2. Deploy web and worker from the same commit through the "Deploy production" workflow (`gh workflow run deploy-production.yml --repo ryanportfolio/Truenote --ref main -f message="<what ships>" -f service=both`).
 3. Confirm that `EVIDENCE_ALERT_EMAIL`, or else `SECURITY_ALERT_EMAIL`, is set on `worker`. The attestation reminders and the monthly summary go there; with neither set they stay pending.
 4. Create the private repository `ryanportfolio/truenote-evidence` with a ruleset on its default branch that blocks force-push and deletion, and clone it to the owner's machine, outside the Truenote checkout.
 5. Each month: open the SSH tunnel to `pgvector` on port 5434 (`docs/security/backup-restore-runbook.md`, section 4.4, step 5) and run the operator script as `postgres` in Windows PowerShell, from the Truenote checkout. Set the connection once for the session:
@@ -246,6 +246,8 @@ Each step changes production or the owner's accounts and waits for the owner's g
 
    The export run repeats the verifier and the negative tests as a dry run and appends no second receipt. It commits only the three files it writes in the clone. Close the PowerShell window afterwards, or run `Remove-Item Env:DATABASE_URL`, so later commands in that window do not reach the database.
 6. Upload the first attestations, one request per check: `POST /api/admin/evidence/attestations/:checkId` as a super_user, with the files and the statement ("Attestations and monthly summary (phase 3)").
+
+Done on 2026-10-11 up to step 5: 0020 applied, `3e40f84f` deployed, the evidence repository created with its ruleset, operator receipt 53, and the export of 2026-09 (no receipts; it records the chain head) pushed as `15818a3`. The first export failed on production's 53 receipts because the script ordered sequences as text; #249 fixed it. Step 6 waits for the owner's files.
 
 ## Status
 
