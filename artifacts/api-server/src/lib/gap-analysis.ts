@@ -92,10 +92,10 @@ export function buildGapAnalysisPrompt(
   const system = [
     "You review questions that a customer-service knowledge assistant could not answer from its knowledge base.",
     "Group the questions into at most " + MAX_THEMES + " themes a manager can act on. A theme is a topic the knowledge base is missing or covers poorly.",
-    "Use only the question ids you are given. Put each id in at most one theme. Leave out ids that fit no theme.",
-    "For each theme give: a short title (under 8 words), a one-sentence summary of what callers are asking and what the knowledge base lacks, and a short title for the source document that would answer it.",
+    "Each question line starts with its id (q1, q2, ...). Refer to questions by id only, never by their text. Put each id in at most one theme. Leave out ids that fit no theme.",
+    "For each theme give: a short title (under 8 words), a one-sentence summary of what callers are asking and what the knowledge base lacks, the ids of its questions, and a short title for the source document that would answer it.",
     "Do not invent policies, fees, dates or numbers. Describe what is missing, not what the answer is.",
-    'Reply with JSON only, no prose and no code fence: {"themes":[{"title":"...","summary":"...","questions":["q1","q2"],"suggestedSource":"..."}]}'
+    'Reply with JSON only, no prose and no code fence: {"themes":[{"title":"...","summary":"...","questionIds":["q1","q2"],"suggestedSource":"..."}]}'
   ].join("\n");
   const lines = groups.map((group) => {
     const probe = probes.get(group.id);
@@ -107,42 +107,98 @@ export function buildGapAnalysisPrompt(
 
 /**
  * Parse the model's reply into themes. Tolerates a code fence or prose around
- * the JSON object (structured output is not enforced on ZDR providers).
- * Returns null when no usable JSON object is present, so the caller can try
- * the next route.
+ * the JSON (structured output is not enforced on ZDR providers), a bare array
+ * of themes, and the key spellings models drift to (questions, question_ids,
+ * ids; name for title). Question references are kept raw; assembleGapThemes
+ * resolves them to ids. Returns null when no themes array is present, so the
+ * caller can try the next route.
  */
 export function parseModelThemes(text: string): ModelTheme[] | null {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-  const themes = (parsed as { themes?: unknown } | null)?.themes;
+  const parsed = parseJsonLoosely(text);
+  const record = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : null;
+  const themes = Array.isArray(parsed)
+    ? parsed
+    : record
+      ? (pick(record, ["themes", "Themes", "groups"]) ?? soleArray(record))
+      : undefined;
   if (!Array.isArray(themes)) return null;
   const out: ModelTheme[] = [];
   for (const raw of themes) {
     if (!raw || typeof raw !== "object") continue;
     const item = raw as Record<string, unknown>;
-    const ids = Array.isArray(item["questions"])
-      ? item["questions"].filter((id): id is string => typeof id === "string")
-      : [];
+    const title = pick(item, ["title", "name", "theme"]);
+    const summary = pick(item, ["summary", "description"]);
+    const suggested = pick(item, ["suggestedSource", "suggested_source", "source"]);
     out.push({
-      title: typeof item["title"] === "string" ? item["title"] : "",
-      summary: typeof item["summary"] === "string" ? item["summary"] : "",
-      questionIds: ids,
-      suggestedSource:
-        typeof item["suggestedSource"] === "string" ? item["suggestedSource"] : null
+      title: typeof title === "string" ? title : "",
+      summary: typeof summary === "string" ? summary : "",
+      questionIds: questionRefs(pick(item, ["questionIds", "question_ids", "questions", "ids"])),
+      suggestedSource: typeof suggested === "string" ? suggested : null
     });
   }
   return out;
 }
 
+/** The whole reply, else its outermost {...}, else its outermost [...]. */
+function parseJsonLoosely(text: string): unknown {
+  const candidates = [text.trim()];
+  for (const [open, close] of [["{", "}"], ["[", "]"]] as const) {
+    const start = text.indexOf(open);
+    const end = text.lastIndexOf(close);
+    if (start !== -1 && end > start) candidates.push(text.slice(start, end + 1));
+  }
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return null;
+}
+
+function pick(record: Record<string, unknown>, keys: readonly string[]): unknown {
+  for (const key of keys) {
+    if (record[key] !== undefined) return record[key];
+  }
+  return undefined;
+}
+
+/** The object's only array value, for a reply that renamed the themes key. */
+function soleArray(record: Record<string, unknown>): unknown[] | undefined {
+  const arrays = Object.values(record).filter(Array.isArray);
+  return arrays.length === 1 ? arrays[0] : undefined;
+}
+
+function questionRefs(value: unknown): string[] {
+  const items: unknown[] = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+  return items
+    .map((item) => (typeof item === "number" ? String(item) : item))
+    .filter((item): item is string => typeof item === "string" && item.trim() !== "");
+}
+
 /**
- * Turn model themes into checked themes: unknown ids dropped, each id used
+ * Resolve one question reference from the model to a group id: "q7", "Q07",
+ * "q7: question text" or a bare 7 by number, else the question's exact text.
+ */
+function resolveQuestionRef(
+  ref: string,
+  byText: ReadonlyMap<string, string>
+): string | null {
+  const normalized = oneLine(ref).toLowerCase();
+  const numbered = /^q0*(\d+)\b/.exec(normalized) ?? /^0*(\d+)$/.exec(normalized);
+  if (numbered) return `q${numbered[1]}`;
+  return byText.get(normalized.replace(/^["'`]+|["'`]+$/g, "")) ?? null;
+}
+
+/**
+ * Turn model themes into checked themes: unknown references dropped, each id used
  * once (first theme wins), empty or untitled themes dropped, counts and
  * samples from the server's groups, kind and source from retrieval. Sorted by
  * refused asks, most first.
@@ -153,16 +209,17 @@ export function assembleGapThemes(
   probes: ReadonlyMap<string, GapProbe>
 ): { themes: GapTheme[]; ungroupedQuestions: number } {
   const byId = new Map(groups.map((group) => [group.id, group]));
+  const byText = new Map(groups.map((group) => [oneLine(group.question).toLowerCase(), group.id]));
   const used = new Set<string>();
   const themes: GapTheme[] = [];
 
   for (const theme of modelThemes) {
     if (themes.length >= MAX_THEMES) break;
     const members: GapQuestionGroup[] = [];
-    for (const rawId of theme.questionIds) {
-      const id = rawId.trim().toLowerCase();
-      const group = byId.get(id);
-      if (!group || used.has(id)) continue;
+    for (const ref of theme.questionIds) {
+      const id = resolveQuestionRef(ref, byText);
+      const group = id ? byId.get(id) : undefined;
+      if (!id || !group || used.has(id)) continue;
       used.add(id);
       members.push(group);
     }
@@ -248,6 +305,33 @@ export function classifyTheme(
   }
   // An update or covered bucket always holds at least one document; guard anyway.
   return top ? { kind, source: top } : { kind: "new", source: null };
+}
+
+/**
+ * Shape of a reply that yielded no usable themes, for the error log: counts
+ * and the first few raw question references, never the summaries.
+ */
+export function describeGapReply(
+  text: string | null,
+  modelThemes: readonly ModelTheme[] | null,
+  groups: readonly GapQuestionGroup[]
+): Record<string, unknown> {
+  const refs = modelThemes?.flatMap((theme) => theme.questionIds) ?? [];
+  const byText = new Map(groups.map((group) => [oneLine(group.question).toLowerCase(), group.id]));
+  const ids = new Set(groups.map((group) => group.id));
+  return {
+    replyChars: text?.length ?? 0,
+    replyStart: text ? oneLine(text).slice(0, 120) : null,
+    questionsSent: groups.length,
+    themesParsed: modelThemes?.length ?? null,
+    themesTitled: modelThemes?.filter((theme) => clean(theme.title, MAX_TITLE_CHARS)).length ?? null,
+    refsReturned: refs.length,
+    refsMatched: refs.filter((ref) => {
+      const id = resolveQuestionRef(ref, byText);
+      return id !== null && ids.has(id);
+    }).length,
+    sampleRefs: refs.slice(0, 5).map((ref) => oneLine(ref).slice(0, 60))
+  };
 }
 
 /** Label for the route that produced the analysis. */
