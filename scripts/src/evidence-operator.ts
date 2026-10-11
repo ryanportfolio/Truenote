@@ -401,6 +401,9 @@ interface ReceiptRow {
   receipt_hash: string;
 }
 
+// The text alias "sequence" shadows the bigint column in ORDER BY: Postgres binds
+// a bare ORDER BY name to the output column first, which sorts 1, 10, 11, ..., 2.
+// Queries that select these columns order by evidence_receipts.sequence instead.
 const RECEIPT_COLUMNS =
   "sequence::text AS sequence, id::text AS id, recorded_at_text, check_id, check_kind, result, payload, " +
   "payload_sha256, previous_hash, receipt_hash";
@@ -602,12 +605,12 @@ async function exportMonth(client: Client, opts: Options, target: ExportTarget):
     toSequence = bounds.to_seq === null ? afterHead : Number(bounds.to_seq);
     prior = (
       await client.query<ReceiptRow>(
-        `SELECT ${RECEIPT_COLUMNS} FROM evidence_receipts WHERE sequence < $1::bigint ORDER BY sequence DESC LIMIT 1`,
+        `SELECT ${RECEIPT_COLUMNS} FROM evidence_receipts WHERE sequence < $1::bigint ORDER BY evidence_receipts.sequence DESC LIMIT 1`,
         [fromSequence]
       )
     ).rows[0];
     rest = (
-      await client.query<ReceiptRow>(`SELECT ${RECEIPT_COLUMNS} FROM evidence_receipts WHERE sequence >= $1::bigint ORDER BY sequence`, [
+      await client.query<ReceiptRow>(`SELECT ${RECEIPT_COLUMNS} FROM evidence_receipts WHERE sequence >= $1::bigint ORDER BY evidence_receipts.sequence`, [
         fromSequence
       ])
     ).rows;
