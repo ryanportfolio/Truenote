@@ -28,15 +28,16 @@ if [ "$(id -u)" = "0" ]; then
   fi
   mkdir -p "$db_dir" || exit 1
   # Seed an empty directory (a new volume) from the image's bundled database,
-  # so the first freshclam run fetches only the difference.
+  # so the first freshclam run fetches only the difference. --update=none never
+  # replaces a file already there, which may be newer than the bundled copy.
   if [ ! -e "$db_dir/daily.cvd" ] && [ ! -e "$db_dir/daily.cld" ]; then
     echo "[scanner] seeding $db_dir from the bundled signature database" >&2
     find "$bundled" -maxdepth 1 -type f \( -name '*.cvd' -o -name '*.cld' -o -name '*.cud' \) \
-      -exec cp -p {} "$db_dir"/ \; || exit 1
+      -exec cp -p --update=none {} "$db_dir"/ \; || exit 1
   fi
   chown -R clamav:clamav "$db_dir" || exit 1
   export SCANNER_ROOT_DROPPED=1
-  exec setpriv --reuid="$(id -u clamav)" --regid="$(id -g clamav)" --clear-groups -- "$0" "$@"
+  exec setpriv --reuid="$(id -u clamav)" --regid="$(id -g clamav)" --clear-groups --no-new-privs -- "$0" "$@"
 fi
 
 mkdir -p "$db_dir" 2>/dev/null

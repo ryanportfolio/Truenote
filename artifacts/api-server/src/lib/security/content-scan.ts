@@ -270,6 +270,10 @@ const SCANNER_MAX_ATTEMPTS = 3;
 const SCANNER_HEALTH_TIMEOUT_MS = 5_000;
 const SCANNER_HEALTH_INTERVAL_MS = 2_000;
 const DEFAULT_SCANNER_WAKE_TIMEOUT_MS = 300_000;
+// 3 requests at 60 s plus a 10-minute wait stay inside the ingestion job's
+// 15-minute pg-boss expiry (ingestion/queue.ts), so the job is not redelivered
+// mid-scan.
+const MAX_SCANNER_WAKE_TIMEOUT_MS = 600_000;
 // Answers a sleeping or still-loading scanner gives: Railway's proxy returns
 // 502 while it wakes a Serverless service, and the wrapper returns 503 until
 // clamd has loaded its signatures.
@@ -293,12 +297,15 @@ function scannerError(message: string): MalwareScanResult {
   };
 }
 
-/** How long to wait for a waking scanner; invalid values fall back to 5 minutes. */
+/**
+ * How long to wait for a waking scanner; invalid values fall back to 5 minutes
+ * and larger values are clamped to 10 minutes.
+ */
 function scannerWakeTimeoutMs(): number {
   const raw = process.env.MALWARE_SCANNER_WAKE_TIMEOUT_MS?.trim();
   if (raw && /^\d+$/.test(raw)) {
     const value = Number(raw);
-    if (Number.isSafeInteger(value) && value > 0) return value;
+    if (value > 0) return Math.min(value, MAX_SCANNER_WAKE_TIMEOUT_MS);
   }
   return DEFAULT_SCANNER_WAKE_TIMEOUT_MS;
 }
