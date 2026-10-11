@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "../db-client.js";
+import {
+  ApprovedModelRouteIdSchema,
+  ReasoningEffortSchema
+} from "../generation/model-routing.js";
 import type {
   EvalQuestionDefinition,
   EvalReport,
@@ -9,8 +14,30 @@ import type {
 
 export type EvalRunStatus = "queued" | "running" | "completed" | "failed";
 
+/**
+ * Trial-run overrides: one pinned approved route (no fallback chain) and
+ * optional retrieval settings. Stored on eval_runs.configuration as
+ * `trialOverrides` when the run is queued; the worker rewrites it with the
+ * effort it resolved, so a completed run records exactly what it sent.
+ */
+export const EvalTrialOverridesSchema = z.object({
+  routeId: ApprovedModelRouteIdSchema,
+  reasoningEffort: ReasoningEffortSchema.optional(),
+  threshold: z.number().min(0).max(1).optional(),
+  topK: z.number().int().min(1).max(20).optional()
+});
+
+export type EvalTrialOverrides = z.infer<typeof EvalTrialOverridesSchema>;
+
 export interface EvalRunConfiguration {
   judge: boolean;
+  /**
+   * True for a trial run (pinned route, optional retrieval overrides).
+   * Stored configurations from before trials existed read as false.
+   */
+  trial: boolean;
+  /** The overrides a trial run applied; absent on non-trial runs. */
+  trialOverrides?: EvalTrialOverrides;
   /** Hash of the exact question + expectation definitions in the completed report. */
   questionSetHash: string | null;
   generation: {
@@ -71,6 +98,12 @@ export interface WorkerEvalRun {
   questionId: string | null;
   judge: boolean;
   questionSnapshot: EvalQuestionDefinition[];
+  /**
+   * Raw `trialOverrides` JSON stored when the run was queued; null for a
+   * normal run. The worker validates it inside its failure handling so an
+   * unreadable request fails the run instead of stranding the claimed row.
+   */
+  trialOverrides: unknown;
   leaseToken: string;
 }
 
@@ -125,9 +158,12 @@ function iso(value: Date | string | null): string | null {
 function configurationFrom(value: unknown): EvalRunConfiguration | null {
   if (typeof value !== "object" || value === null) return null;
   const candidate = value as Partial<EvalRunConfiguration>;
-  if (!candidate.generation || !candidate.retrieval || !candidate.fallback) return null;
+  // `fallback` is a legacy field (absent on ZDR-only runs), so it is not
+  // required here; requiring it hid every current run's configuration.
+  if (!candidate.generation || !candidate.retrieval) return null;
   return {
     ...(candidate as EvalRunConfiguration),
+    trial: candidate.trial === true,
     questionSetHash:
       typeof candidate.questionSetHash === "string" ? candidate.questionSetHash : null
   };
@@ -219,6 +255,7 @@ export async function createEvalRun(input: {
   judge: boolean;
   questionCount: number;
   questionSnapshot: EvalQuestionDefinition[];
+  trialOverrides?: EvalTrialOverrides | null;
 }): Promise<EvalRunListItem> {
   const result = await db.execute(sql`
     INSERT INTO eval_runs (
@@ -242,7 +279,8 @@ export async function createEvalRun(input: {
       ${JSON.stringify({
         judge: input.judge,
         questionId: input.questionId,
-        questionSnapshot: input.questionSnapshot
+        questionSnapshot: input.questionSnapshot,
+        ...(input.trialOverrides ? { trialOverrides: input.trialOverrides } : {})
       })}::jsonb
     )
     RETURNING ${RUN_LIST_COLUMNS}
@@ -334,7 +372,8 @@ export async function claimEvalRun(
       program_id,
       COALESCE(question_id::text, configuration ->> 'questionId') AS effective_question_id,
       judge,
-      configuration -> 'questionSnapshot' AS question_snapshot
+      configuration -> 'questionSnapshot' AS question_snapshot,
+      configuration -> 'trialOverrides' AS trial_overrides
   `);
   const row = result.rows[0] as
     | {
@@ -343,6 +382,7 @@ export async function claimEvalRun(
         effective_question_id: string | null;
         judge: boolean;
         question_snapshot: unknown;
+        trial_overrides: unknown;
       }
     | undefined;
   return row
@@ -354,6 +394,7 @@ export async function claimEvalRun(
         questionSnapshot: Array.isArray(row.question_snapshot)
           ? (row.question_snapshot as EvalQuestionDefinition[])
           : [],
+        trialOverrides: row.trial_overrides ?? null,
         leaseToken
       }
     : null;

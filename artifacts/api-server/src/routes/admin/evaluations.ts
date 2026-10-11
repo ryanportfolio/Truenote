@@ -16,6 +16,7 @@ import {
   reconcileQueuedEvalRuns
 } from "../../lib/eval/queue.js";
 import { loadEvalQuestions } from "../../lib/eval/runner.js";
+import { findApprovedModelRoute } from "../../lib/generation/model-routing.js";
 import {
   QuestionDraftUnavailableError,
   draftQuestionsWithChain,
@@ -26,6 +27,7 @@ import { evalQuestionDraftLimit } from "../../lib/security/route-rate-limit.js";
 import {
   cancelEvalRun,
   createEvalRun,
+  EvalTrialOverridesSchema,
   failStaleEvalRuns,
   getEvalRunDetail,
   isEvalPersistenceReady,
@@ -98,8 +100,21 @@ const DraftBody = z.object({
 
 const RunBody = z.object({
   judge: z.boolean().default(false),
-  questionId: Uuid.optional()
+  questionId: Uuid.optional(),
+  /** Trial run: one pinned approved route, optional effort and retrieval overrides. */
+  trial: EvalTrialOverridesSchema.optional()
 });
+
+function runBodyError(error: z.ZodError): string {
+  const path = (issue: z.ZodIssue) => issue.path.join(".");
+  if (error.issues.some((issue) => path(issue) === "trial.routeId")) {
+    return "Pick an approved model";
+  }
+  if (error.issues.some((issue) => path(issue) === "trial.reasoningEffort")) {
+    return "Pick an effort level that model supports";
+  }
+  return "Invalid evaluation run request";
+}
 
 const RunListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20)
@@ -275,11 +290,16 @@ async function loadQuestionExtras(
   return out;
 }
 
+/** The database or an open transaction; extras are written with the row. */
+type QuestionWriter = Pick<typeof db, "execute">;
+
 /**
  * Write expected_answer (always, when the column exists) and is_protected
- * (only when given and the column exists) for one question.
+ * (only when given and the column exists) for one question. Callers pass the
+ * transaction that wrote the row, so a failed UPDATE rolls the row back too.
  */
 async function writeQuestionExtras(
+  executor: QuestionWriter,
   programId: string,
   id: string,
   values: { expectedAnswer: string | null; isProtected: boolean | undefined },
@@ -293,7 +313,7 @@ async function writeQuestionExtras(
     sets.push(sql`is_protected = ${values.isProtected}`);
   }
   if (sets.length === 0) return;
-  await db.execute(sql`
+  await executor.execute(sql`
     UPDATE eval_questions
     SET ${sql.join(sets, sql`, `)}
     WHERE id = ${id}::uuid AND program_id = ${programId}::uuid
@@ -340,17 +360,29 @@ async function createQuestion(
       error: "Expected document must belong to the selected program"
     };
   }
-  const inserted = await db
-    .insert(evalQuestions)
-    .values({
+  const isProtected = data.isProtected ?? false;
+  const row = await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(evalQuestions)
+      .values({
+        programId,
+        question: data.question,
+        expectedDocId: expectations.expectedDocId,
+        expectedAnswerContains: expectations.expectedAnswerContains,
+        notes: data.notes || null
+      })
+      .returning();
+    const created = inserted[0];
+    if (!created) return null;
+    await writeQuestionExtras(
+      tx,
       programId,
-      question: data.question,
-      expectedDocId: expectations.expectedDocId,
-      expectedAnswerContains: expectations.expectedAnswerContains,
-      notes: data.notes || null
-    })
-    .returning();
-  const row = inserted[0];
+      created.id,
+      { expectedAnswer: expectations.expectedAnswer, isProtected },
+      columns
+    );
+    return created;
+  });
   if (!row) {
     return {
       ok: false,
@@ -358,13 +390,6 @@ async function createQuestion(
       error: "Failed to create evaluation question"
     };
   }
-  const isProtected = data.isProtected ?? false;
-  await writeQuestionExtras(
-    programId,
-    row.id,
-    { expectedAnswer: expectations.expectedAnswer, isProtected },
-    columns
-  );
   return {
     ok: true,
     item: mapQuestion(
@@ -420,7 +445,7 @@ evaluationsRouter.get("/questions", async (req, res, next) => {
   try {
     const programId = await effectiveProgram(req);
     if (programId === null) {
-      res.json({ items: [], noProgramSelected: true });
+      res.json({ items: [], noProgramSelected: true, expectedAnswerReady: false });
       return;
     }
     const rows = await db
@@ -613,35 +638,40 @@ evaluationsRouter.put("/questions/:id", async (req, res, next) => {
       });
       return;
     }
-    const updated = await db
-      .update(evalQuestions)
-      .set({
-        question: parsed.data.question,
-        expectedDocId: expectations.expectedDocId,
-        expectedAnswerContains: expectations.expectedAnswerContains,
-        notes: parsed.data.notes || null
-      })
-      .where(
-        and(
-          eq(evalQuestions.id, params.data.id),
-          eq(evalQuestions.programId, programId)
+    const row = await db.transaction(async (tx) => {
+      const updated = await tx
+        .update(evalQuestions)
+        .set({
+          question: parsed.data.question,
+          expectedDocId: expectations.expectedDocId,
+          expectedAnswerContains: expectations.expectedAnswerContains,
+          notes: parsed.data.notes || null
+        })
+        .where(
+          and(
+            eq(evalQuestions.id, params.data.id),
+            eq(evalQuestions.programId, programId)
+          )
         )
-      )
-      .returning();
-    const row = updated[0];
+        .returning();
+      const saved = updated[0];
+      if (!saved) return null;
+      await writeQuestionExtras(
+        tx,
+        programId,
+        saved.id,
+        {
+          expectedAnswer: expectations.expectedAnswer,
+          isProtected: parsed.data.isProtected
+        },
+        columns
+      );
+      return saved;
+    });
     if (!row) {
       res.status(404).json({ error: "Evaluation question not found" });
       return;
     }
-    await writeQuestionExtras(
-      programId,
-      row.id,
-      {
-        expectedAnswer: expectations.expectedAnswer,
-        isProtected: parsed.data.isProtected
-      },
-      columns
-    );
     const extras = await loadQuestionExtras(programId, [row.id]);
     res.json({
       item: mapQuestion(
@@ -731,8 +761,20 @@ evaluationsRouter.post("/runs", workloadRateLimitMiddleware("evaluation_run"), a
   try {
     const parsed = RunBody.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: "Invalid evaluation run request" });
+      res.status(400).json({ error: runBodyError(parsed.error) });
       return;
+    }
+    const trial = parsed.data.trial ?? null;
+    if (trial?.reasoningEffort !== undefined) {
+      const route = findApprovedModelRoute(trial.routeId);
+      if (!route) {
+        res.status(400).json({ error: "Pick an approved model" });
+        return;
+      }
+      if (!route.supportedEfforts.includes(trial.reasoningEffort)) {
+        res.status(400).json({ error: "Pick an effort level that model supports" });
+        return;
+      }
     }
     const programId = await effectiveProgram(req);
     if (!requireSelectedProgram(programId, res)) return;
@@ -766,7 +808,8 @@ evaluationsRouter.post("/runs", workloadRateLimitMiddleware("evaluation_run"), a
         questionId: parsed.data.questionId ?? null,
         judge: parsed.data.judge,
         questionCount,
-        questionSnapshot
+        questionSnapshot,
+        trialOverrides: trial
       });
     } catch (error) {
       if (isMissingEvalRunsTable(error)) {

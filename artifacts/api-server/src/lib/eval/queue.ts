@@ -1,19 +1,25 @@
-import { getModelRoutingState } from "../generation/model-routing.js";
+import {
+  findApprovedModelRoute,
+  getModelRoutingState,
+  type ApprovedModelRoute
+} from "../generation/model-routing.js";
 import { ensureQueue, getBoss } from "../jobs/boss.js";
 import { getRerankModel } from "../retrieval/rerank.js";
 import { getRetrievalRuntimeConfig } from "../retrieval/query.js";
 import {
   claimEvalRun,
   completeEvalRun,
+  EvalTrialOverridesSchema,
   failEvalRun,
   isMissingEvalRunsTable,
   listQueuedEvalRunIds,
   setEvalRunConfiguration,
   updateEvalRunProgress,
-  type EvalRunConfiguration
+  type EvalRunConfiguration,
+  type EvalTrialOverrides
 } from "./persistence.js";
 import { recordAppError } from "../observability/error-log.js";
-import { evalQuestionSetHash, runEval } from "./runner.js";
+import { evalQuestionSetHash, runEval, type EvalTrialSettings } from "./runner.js";
 
 export const RUN_EVALUATION_QUEUE = "run-evaluation";
 const EVAL_OUTBOX_RECONCILE_MS = 60_000;
@@ -32,19 +38,83 @@ export const EVAL_QUEUE_POLICY = {
   expireInSeconds: 4 * 60 * 60
 } as const;
 
-async function captureConfiguration(judge: boolean) {
+/** Validate the raw trial request stored on the run; null for a normal run. */
+function parseTrialRequest(raw: unknown): EvalTrialOverrides | null {
+  if (raw === null || raw === undefined) return null;
+  const parsed = EvalTrialOverridesSchema.safeParse(raw);
+  if (!parsed.success) {
+    // Never fall back to a normal run: the requester asked for a trial.
+    throw new Error("Trial run settings are no longer valid");
+  }
+  return parsed.data;
+}
+
+/**
+ * The pinned route for a trial: the approved route with the requested effort,
+ * or the effort model routing currently sends for that route.
+ */
+function resolveTrialRoute(
+  request: EvalTrialOverrides,
+  configuredRoutes: readonly ApprovedModelRoute[]
+): ApprovedModelRoute {
+  const route =
+    configuredRoutes.find((candidate) => candidate.id === request.routeId) ??
+    findApprovedModelRoute(request.routeId);
+  if (!route) throw new Error("Trial model is no longer approved");
+  const reasoningEffort = request.reasoningEffort ?? route.reasoningEffort;
+  if (!route.supportedEfforts.includes(reasoningEffort)) {
+    throw new Error("Trial effort level is not supported by that model");
+  }
+  return { ...route, reasoningEffort };
+}
+
+/** @internal Exported for trial-configuration tests. */
+export async function captureConfiguration(
+  judge: boolean,
+  trialRequest: EvalTrialOverrides | null = null
+): Promise<{
+  routeChain: ApprovedModelRoute[];
+  trial: EvalTrialSettings | undefined;
+  configuration: EvalRunConfiguration;
+}> {
   const [modelState, retrieval] = await Promise.all([
     getModelRoutingState(),
     Promise.resolve(getRetrievalRuntimeConfig())
   ]);
-  const primaryRoute = modelState.routes[0];
+  const routeChain = trialRequest
+    ? [resolveTrialRoute(trialRequest, modelState.routes)]
+    : modelState.routes;
+  const primaryRoute = routeChain[0];
   if (!primaryRoute) {
     throw new Error("No approved generation route is configured");
   }
+  const trial: EvalTrialSettings | undefined = trialRequest
+    ? {
+        route: primaryRoute,
+        ...(trialRequest.threshold !== undefined
+          ? { threshold: trialRequest.threshold }
+          : {}),
+        ...(trialRequest.topK !== undefined ? { topK: trialRequest.topK } : {})
+      }
+    : undefined;
   return {
-    routeChain: modelState.routes,
+    routeChain,
+    trial,
     configuration: {
       judge,
+      trial: trialRequest !== null,
+      ...(trialRequest
+        ? {
+            trialOverrides: {
+              routeId: primaryRoute.id,
+              reasoningEffort: primaryRoute.reasoningEffort,
+              ...(trialRequest.threshold !== undefined
+                ? { threshold: trialRequest.threshold }
+                : {}),
+              ...(trialRequest.topK !== undefined ? { topK: trialRequest.topK } : {})
+            }
+          }
+        : {}),
       questionSetHash: null,
       generation: {
         id: primaryRoute.id,
@@ -53,7 +123,7 @@ async function captureConfiguration(judge: boolean) {
         providerLabel: primaryRoute.providerLabel,
         reasoningEffort: primaryRoute.reasoningEffort
       },
-      routeChain: modelState.routes.map((route) => ({
+      routeChain: routeChain.map((route) => ({
         id: route.id,
         label: route.label,
         model: route.model,
@@ -61,13 +131,13 @@ async function captureConfiguration(judge: boolean) {
         reasoningEffort: route.reasoningEffort
       })),
       retrieval: {
-        topK: retrieval.topK,
+        topK: trial?.topK ?? retrieval.topK,
         candidateK: retrieval.candidateK,
-        threshold: retrieval.threshold,
+        threshold: trial?.threshold ?? retrieval.threshold,
         neighborAnchors: retrieval.neighborAnchors,
         rerankModel: getRerankModel()
       }
-    } satisfies EvalRunConfiguration
+    }
   };
 }
 
@@ -146,7 +216,10 @@ export async function executeEvalRun(
   if (!run) return;
 
   try {
-    const { configuration, routeChain } = await captureConfiguration(run.judge);
+    const { configuration, routeChain, trial } = await captureConfiguration(
+      run.judge,
+      parseTrialRequest(run.trialOverrides)
+    );
     if (!(await setEvalRunConfiguration(run.id, run.leaseToken, configuration))) {
       throw new Error("Evaluation run lease was replaced before execution");
     }
@@ -171,7 +244,8 @@ export async function executeEvalRun(
             throw new Error("Evaluation run lease was replaced during execution");
           }
         },
-        routeChain
+        routeChain,
+        ...(trial ? { trial } : {})
       }
     );
     if (report.summary.totalQuestions === 0) {
@@ -229,7 +303,7 @@ export async function executeEvalRun(
   }
 }
 
-/** Register one sequential consumer; runEval itself processes questions serially. */
+/** Register one sequential consumer; runEval runs a small fixed pool of questions per run. */
 export async function startEvaluationWorker(): Promise<() => void> {
   const boss = await getBoss();
   await ensureQueue(boss, RUN_EVALUATION_QUEUE, EVAL_QUEUE_POLICY);
