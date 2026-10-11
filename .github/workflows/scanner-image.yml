@@ -7,17 +7,25 @@ name: Scanner image
 # starts as root with an empty database volume, as the production service
 # does, and must pass the same smoke test with clamd, freshclam and node
 # running as clamav and the signatures on the volume. Also runs the wrapper's
-# contract tests against a fake clamd and a report-only Grype scan of the image. Every action is pinned to a full commit SHA.
+# contract tests against a fake clamd and a Grype scan of the image: results go
+# to the Security tab as SARIF and to a 90-day artifact; pull requests and
+# pushes fail on a High or Critical finding that has a fix. The weekly
+# scheduled run rebuilds the image, so the scanner's findings stay current
+# between changes, reports only, and opens an issue when the job fails.
+# Every action is pinned to a full commit SHA.
 on:
   pull_request:
     paths:
       - services/scanner/**
       - .github/workflows/scanner-image.yml
+      - .github/workflows/scheduled-failure-issue.yml
   push:
     branches: [main]
     paths:
       - services/scanner/**
       - .github/workflows/scanner-image.yml
+  schedule:
+    - cron: "41 4 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -88,17 +96,28 @@ jobs:
         run: node services/scanner/test/smoke.mjs http://127.0.0.1:8081
       - name: Check clamd, freshclam and node in the root-started container are not uid 0
         run: |
-          # Name and the four Uid values (real, effective, saved, filesystem)
-          # of every process, read from /proc because ps may be absent.
+          # Program name and the four Uid values (real, effective, saved,
+          # filesystem) of every process, read from /proc because ps may be
+          # absent. The name is the base name of argv[0]: Node 24 renames its
+          # main thread to MainThread, so the Name line no longer says node.
+          # Node processes also carry their script (node:server.mjs), because
+          # Docker runs the image's HEALTHCHECK (node -e ...) as the container
+          # user, root here; Railway does not run that health check.
           procs=$(docker exec scanner-root sh -c '
-            for f in /proc/[0-9]*/status; do
-              name=$(sed -n "s/^Name:[[:space:]]*//p" "$f" 2>/dev/null)
-              uids=$(sed -n "s/^Uid:[[:space:]]*//p" "$f" 2>/dev/null)
+            for d in /proc/[0-9]*; do
+              args=$(tr "\000" "\n" < "$d/cmdline" 2>/dev/null)
+              name=$(printf "%s\n" "$args" | head -n 1)
+              name=${name##*/}
+              if [ "$name" = node ]; then
+                script=$(printf "%s\n" "$args" | sed -n 2p)
+                name="node:${script##*/}"
+              fi
+              uids=$(sed -n "s/^Uid:[[:space:]]*//p" "$d/status" 2>/dev/null)
               if [ -n "$name" ]; then echo "$name" $uids; fi
             done
             true')
           echo "$procs"
-          for name in clamd freshclam node; do
+          for name in clamd freshclam node:server.mjs; do
             lines=$(printf '%s\n' "$procs" | grep -E "^${name} " || true)
             if [ -z "$lines" ]; then
               echo "no ${name} process found"
@@ -139,3 +158,28 @@ jobs:
         with:
           sarif_file: ${{ steps.report.outputs.sarif }}
           category: /container/scanner
+      - name: Retain SARIF evidence
+        if: always() && steps.report.outputs.sarif != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: grype-scanner-image-sarif
+          path: ${{ steps.report.outputs.sarif }}
+          retention-days: 90
+      - name: Fail on fixable High or Critical findings
+        if: github.event_name != 'schedule'
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: truenote-scanner:${{ github.sha }}
+          fail-build: true
+          only-fixed: true
+          severity-cutoff: high
+          output-format: table
+
+  notify-failure:
+    name: Report a failed scheduled run
+    needs: [scanner]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/scheduled-failure-issue.yml
