@@ -133,7 +133,7 @@ const TEXT_RULES: PatternRule[] = [
     category: "pii",
     ruleId: "pii.us_ssn",
     severity: "high",
-    pattern: /\b(?!000|666|9\d\d)\d{3}[- ](?!00)\d{2}[- ](?!0000)\d{4}\b/g,
+    pattern: /\b(?!000|666|9\d\d)\d{3}[- ./\u2010-\u2015\u2212](?!00)\d{2}[- ./\u2010-\u2015\u2212](?!0000)\d{4}\b/g,
     message: "US Social Security number pattern detected.",
     blocking: true
   },
@@ -185,8 +185,122 @@ function looksLikePaymentCard(candidate: string): boolean {
   return sum % 10 === 0;
 }
 
-/** Redacts detected secret/PII values without returning the matched text. */
+/**
+ * A run of digit groups joined by card separators. Only spaces and tabs count
+ * as whitespace, so numbers on separate lines (or in separate fields joined
+ * by newlines) never join. The scan also reads the NFKC form, which turns
+ * no-break and other wide spaces into a space and fullwidth digits into ASCII
+ * digits.
+ */
+const CARD_SEPARATOR = String.raw`(?:(?:[ \t]*[./_\-\u2010-\u2015\u2212])+[ \t]*|[ \t]+)`;
+const CARD_SPAN_PATTERN = new RegExp(String.raw`\b\d+(?:${CARD_SEPARATOR}\d+)*\b`, "g");
+const CARD_DIGIT_GROUP = /\d+/g;
+/** Separators that may sit between any digits; others need card-shaped groups. */
+const LOOSE_CARD_SEPARATOR = /^[ \t\-\u2010-\u2015\u2212]+$/;
+
+/** 4-4-4-1..7 (most brands) or 4-6-4..5 (15-digit cards). */
+function isCardShaped(groupLengths: readonly number[]): boolean {
+  const [a, b, c, d] = groupLengths;
+  if (groupLengths.length === 4) return a === 4 && b === 4 && c === 4 && d! >= 1 && d! <= 7;
+  if (groupLengths.length === 3) return a === 4 && b === 6 && (c === 4 || c === 5);
+  return false;
+}
+
+/**
+ * Character ranges of payment-card numbers. Every window of whole digit
+ * groups holding 13 to 19 digits is a candidate, longest first from each
+ * start, so a number next to a card (`Row 1234<tab>4111 1111 1111 1111`)
+ * cannot hide it by joining it into a longer candidate that fails the Luhn
+ * check. Spaces, tabs and dashes may separate any digits; dots, slashes and
+ * underscores count only between card-shaped groups, so lists of IP
+ * addresses or version numbers do not read as one long number.
+ *
+ * Each window is checked from its last group backwards with a running Luhn
+ * sum, so every group costs at most 19 digit steps and the scan stays linear
+ * in the text.
+ */
+function findPaymentCards(text: string): { start: number; end: number }[] {
+  const found: { start: number; end: number }[] = [];
+  for (const span of text.matchAll(CARD_SPAN_PATTERN)) {
+    const offset = span.index ?? 0;
+    const starts: number[] = [];
+    const ends: number[] = [];
+    const digits: string[] = [];
+    // strictBefore[k]: separators up to group k that are not spaces, tabs or dashes.
+    const strictBefore: number[] = [];
+    let strictCount = 0;
+    for (const group of span[0].matchAll(CARD_DIGIT_GROUP)) {
+      const start = offset + (group.index ?? 0);
+      if (ends.length > 0 && !LOOSE_CARD_SEPARATOR.test(text.slice(ends[ends.length - 1], start))) {
+        strictCount += 1;
+      }
+      starts.push(start);
+      ends.push(start + group[0].length);
+      digits.push(group[0]);
+      strictBefore.push(strictCount);
+    }
+
+    // longestEnd[k]: last group of the longest valid window starting at group k.
+    const longestEnd = new Int32Array(digits.length).fill(-1);
+    for (let j = 0; j < digits.length; j += 1) {
+      let sum = 0;
+      let count = 0;
+      for (let k = j; k >= 0; k -= 1) {
+        const group = digits[k]!;
+        if (count + group.length > 19) break;
+        for (let p = group.length - 1; p >= 0; p -= 1) {
+          let value = group.charCodeAt(p) - 48;
+          if (count % 2 === 1) {
+            value *= 2;
+            if (value > 9) value -= 9;
+          }
+          sum += value;
+          count += 1;
+        }
+        if (count < 13 || sum % 10 !== 0 || j <= longestEnd[k]!) continue;
+        const looseOnly = strictBefore[j] === strictBefore[k];
+        if (looseOnly || isCardShaped(digits.slice(k, j + 1).map((g) => g.length))) {
+          longestEnd[k] = j;
+        }
+      }
+    }
+
+    for (let i = 0; i < digits.length; ) {
+      const end = longestEnd[i]!;
+      if (end < 0) {
+        i += 1;
+        continue;
+      }
+      found.push({ start: starts[i]!, end: ends[end]! });
+      i = end + 1;
+    }
+  }
+  return found;
+}
+
+function redactPaymentCards(text: string): string {
+  let redacted = text;
+  for (const card of findPaymentCards(text).reverse()) {
+    redacted = `${redacted.slice(0, card.start)}[REDACTED_PII_PAYMENT_CARD]${redacted.slice(card.end)}`;
+  }
+  return redacted;
+}
+
+/**
+ * Redacts detected secret/PII values without returning the matched text.
+ * Text comes back unchanged apart from the redactions, unless a value is
+ * only visible after NFKC normalization (fullwidth digits, no-break spaces);
+ * then the normalized text comes back with that value redacted.
+ */
 export function redactSensitiveText(text: string): string {
+  const redacted = redactExactText(text);
+  const normalized = redacted.normalize("NFKC");
+  if (normalized === redacted) return redacted;
+  const normalizedRedacted = redactExactText(normalized);
+  return normalizedRedacted === normalized ? redacted : normalizedRedacted;
+}
+
+function redactExactText(text: string): string {
   let redacted = text.replace(
     /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|$)/g,
     "[REDACTED_SECRET_PRIVATE_KEY]"
@@ -199,16 +313,20 @@ export function redactSensitiveText(text: string): string {
       `[REDACTED_${label}]`
     );
   }
-  return redacted.replace(/\b(?:\d[ -]*?){13,19}\b/g, (candidate) =>
-    looksLikePaymentCard(candidate) ? "[REDACTED_PII_PAYMENT_CARD]" : candidate
-  );
+  return redactPaymentCards(redacted);
 }
 
-/** Findings contain rule/count only, never matching sensitive text. */
-export function scanTextForSensitiveContent(text: string): SecurityFinding[] {
+/**
+ * Findings contain rule/count only, never matching sensitive text. Each rule
+ * reads both the text as given and its NFKC form and keeps the larger count:
+ * NFKC exposes fullwidth digits and no-break spaces, but it can also hide a
+ * value, for example by turning a trailing superscript into one more digit.
+ */
+export function scanTextForSensitiveContent(rawText: string): SecurityFinding[] {
+  const normalized = rawText.normalize("NFKC");
   const findings: SecurityFinding[] = [];
   for (const rule of TEXT_RULES) {
-    const count = countMatches(text, rule.pattern);
+    const count = Math.max(countMatches(rawText, rule.pattern), countMatches(normalized, rule.pattern));
     if (count === 0) continue;
     findings.push({
       category: rule.category,
@@ -219,8 +337,10 @@ export function scanTextForSensitiveContent(text: string): SecurityFinding[] {
       blocking: rule.blocking
     });
   }
-  const cardCandidates = text.match(/\b(?:\d[ -]*?){13,19}\b/g) ?? [];
-  const paymentCards = cardCandidates.filter(looksLikePaymentCard).length;
+  const paymentCards = Math.max(
+    findPaymentCards(rawText).length,
+    findPaymentCards(normalized).length
+  );
   if (paymentCards > 0) {
     findings.push({
       category: "pii",

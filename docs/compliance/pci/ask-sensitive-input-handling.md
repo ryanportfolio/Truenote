@@ -42,6 +42,14 @@ The ask policy currently blocks:
 - United States Social Security number patterns; and
 - payment-card candidates that pass the Luhn check.
 
+The scan reads both the text as given and its NFKC form, so fullwidth digits and no-break or
+other wide spaces are read as ASCII digits and spaces. Card digits may be
+separated by spaces, tabs, hyphens or Unicode dashes anywhere, and by dots,
+slashes or underscores between card-shaped groups (4-4-4-1..7, or 4-6-4..5 for
+15-digit cards). SSN groups may be separated by a space, hyphen, Unicode dash,
+dot or slash. The same function screens model output, document ingestion and
+provider-bound text, so these formats apply there too.
+
 The same policy scans the current question plus every question and answer in the
 client-supplied history. This matters because history can otherwise reach the
 follow-up rewrite provider even though it is not supplied to answer generation.
