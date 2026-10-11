@@ -133,7 +133,7 @@ const TEXT_RULES: PatternRule[] = [
     category: "pii",
     ruleId: "pii.us_ssn",
     severity: "high",
-    pattern: /\b(?!000|666|9\d\d)\d{3}[- ](?!00)\d{2}[- ](?!0000)\d{4}\b/g,
+    pattern: /\b(?!000|666|9\d\d)\d{3}[- ./\u2010-\u2015\u2212](?!00)\d{2}[- ./\u2010-\u2015\u2212](?!0000)\d{4}\b/g,
     message: "US Social Security number pattern detected.",
     blocking: true
   },
@@ -185,8 +185,48 @@ function looksLikePaymentCard(candidate: string): boolean {
   return sum % 10 === 0;
 }
 
-/** Redacts detected secret/PII values without returning the matched text. */
+/**
+ * Payment-card candidates. Spaces, tabs and dashes may separate any digits.
+ * Dots, slashes and underscores count only between card-shaped groups
+ * (4-4-4-1..7 or 4-6-4..5), so lists of IP addresses or version numbers do
+ * not read as one long number. Callers pass NFKC text, which turns no-break
+ * and other wide spaces into a space and fullwidth digits into ASCII digits.
+ */
+const CARD_GROUP_SEPARATOR = String.raw`(?:\s*[./_\-\u2010-\u2015\u2212]\s*|\s+)`;
+const CARD_CANDIDATE_PATTERNS: readonly RegExp[] = [
+  /\b(?:\d[ \t\-\u2010-\u2015\u2212]*?){13,19}\b/g,
+  new RegExp(
+    String.raw`\b\d{4}(?:${CARD_GROUP_SEPARATOR}\d{4}){2}${CARD_GROUP_SEPARATOR}\d{1,7}\b`,
+    "g"
+  ),
+  new RegExp(String.raw`\b\d{4}${CARD_GROUP_SEPARATOR}\d{6}${CARD_GROUP_SEPARATOR}\d{4,5}\b`, "g")
+];
+
+function redactPaymentCards(text: string): string {
+  let redacted = text;
+  for (const pattern of CARD_CANDIDATE_PATTERNS) {
+    redacted = redacted.replace(new RegExp(pattern.source, pattern.flags), (candidate) =>
+      looksLikePaymentCard(candidate) ? "[REDACTED_PII_PAYMENT_CARD]" : candidate
+    );
+  }
+  return redacted;
+}
+
+/**
+ * Redacts detected secret/PII values without returning the matched text.
+ * Text comes back unchanged apart from the redactions, unless a value is
+ * only visible after NFKC normalization (fullwidth digits, no-break spaces);
+ * then the normalized text comes back with that value redacted.
+ */
 export function redactSensitiveText(text: string): string {
+  const redacted = redactExactText(text);
+  const normalized = redacted.normalize("NFKC");
+  if (normalized === redacted) return redacted;
+  const normalizedRedacted = redactExactText(normalized);
+  return normalizedRedacted === normalized ? redacted : normalizedRedacted;
+}
+
+function redactExactText(text: string): string {
   let redacted = text.replace(
     /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|$)/g,
     "[REDACTED_SECRET_PRIVATE_KEY]"
@@ -199,13 +239,16 @@ export function redactSensitiveText(text: string): string {
       `[REDACTED_${label}]`
     );
   }
-  return redacted.replace(/\b(?:\d[ -]*?){13,19}\b/g, (candidate) =>
-    looksLikePaymentCard(candidate) ? "[REDACTED_PII_PAYMENT_CARD]" : candidate
-  );
+  return redactPaymentCards(redacted);
 }
 
-/** Findings contain rule/count only, never matching sensitive text. */
-export function scanTextForSensitiveContent(text: string): SecurityFinding[] {
+/**
+ * Findings contain rule/count only, never matching sensitive text. The scan
+ * reads the NFKC form, so fullwidth digits and no-break spaces cannot hide a
+ * card number or SSN.
+ */
+export function scanTextForSensitiveContent(rawText: string): SecurityFinding[] {
+  const text = rawText.normalize("NFKC");
   const findings: SecurityFinding[] = [];
   for (const rule of TEXT_RULES) {
     const count = countMatches(text, rule.pattern);
@@ -219,8 +262,17 @@ export function scanTextForSensitiveContent(text: string): SecurityFinding[] {
       blocking: rule.blocking
     });
   }
-  const cardCandidates = text.match(/\b(?:\d[ -]*?){13,19}\b/g) ?? [];
-  const paymentCards = cardCandidates.filter(looksLikePaymentCard).length;
+  // Count each card once: a later pattern sees only text the earlier ones
+  // did not match as a card.
+  let remaining = text;
+  let paymentCards = 0;
+  for (const pattern of CARD_CANDIDATE_PATTERNS) {
+    remaining = remaining.replace(new RegExp(pattern.source, pattern.flags), (candidate) => {
+      if (!looksLikePaymentCard(candidate)) return candidate;
+      paymentCards += 1;
+      return " ";
+    });
+  }
   if (paymentCards > 0) {
     findings.push({
       category: "pii",
