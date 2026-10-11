@@ -96,12 +96,15 @@ jobs:
         run: node services/scanner/test/smoke.mjs http://127.0.0.1:8081
       - name: Check clamd, freshclam and node in the root-started container are not uid 0
         run: |
-          # Name and the four Uid values (real, effective, saved, filesystem)
-          # of every process, read from /proc because ps may be absent.
+          # Program name and the four Uid values (real, effective, saved,
+          # filesystem) of every process, read from /proc because ps may be
+          # absent. The name is the base name of argv[0]: Node 24 renames its
+          # main thread to MainThread, so the Name line no longer says node.
           procs=$(docker exec scanner-root sh -c '
-            for f in /proc/[0-9]*/status; do
-              name=$(sed -n "s/^Name:[[:space:]]*//p" "$f" 2>/dev/null)
-              uids=$(sed -n "s/^Uid:[[:space:]]*//p" "$f" 2>/dev/null)
+            for d in /proc/[0-9]*; do
+              name=$(tr "\000" "\n" < "$d/cmdline" 2>/dev/null | head -n 1)
+              name=${name##*/}
+              uids=$(sed -n "s/^Uid:[[:space:]]*//p" "$d/status" 2>/dev/null)
               if [ -n "$name" ]; then echo "$name" $uids; fi
             done
             true')
