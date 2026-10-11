@@ -18,9 +18,14 @@ RUN apt-get update \
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY services/scanner/clamd.conf services/scanner/freshclam.conf services/scanner/entrypoint.sh services/scanner/server.mjs /opt/scanner/
 # The database directory is the clamav user's home (uid 1000) in the base image.
+# setpriv (util-linux) lets the entrypoint drop from root to clamav when the
+# service starts the container as root to prepare a volume.
 RUN chmod 0755 /opt/scanner/entrypoint.sh \
  && chown -R clamav:clamav /var/lib/clamav \
- && node --version
+ && node --version \
+ && setpriv --version
+# Default user. A service with a volume starts as root (RAILWAY_RUN_UID=0) and
+# entrypoint.sh drops to clamav before starting anything.
 USER clamav
 ENV TZ=Etc/UTC \
     PORT=8080

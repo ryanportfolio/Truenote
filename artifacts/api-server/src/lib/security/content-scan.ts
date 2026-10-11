@@ -265,10 +265,99 @@ export function isScannerTransportAllowed(
   );
 }
 
+const SCANNER_REQUEST_TIMEOUT_MS = 60_000;
+const SCANNER_MAX_ATTEMPTS = 3;
+const SCANNER_HEALTH_TIMEOUT_MS = 5_000;
+const SCANNER_HEALTH_INTERVAL_MS = 2_000;
+const DEFAULT_SCANNER_WAKE_TIMEOUT_MS = 300_000;
+// 3 requests at 60 s plus a 10-minute wait stay inside the ingestion job's
+// 15-minute pg-boss expiry (ingestion/queue.ts), so the job is not redelivered
+// mid-scan.
+const MAX_SCANNER_WAKE_TIMEOUT_MS = 600_000;
+// Answers a sleeping or still-loading scanner gives: Railway's proxy returns
+// 502 while it wakes a Serverless service, and the wrapper returns 503 until
+// clamd has loaded its signatures.
+const SCANNER_WAKING_STATUSES = new Set([502, 503, 504]);
+
+function scannerError(message: string): MalwareScanResult {
+  return {
+    status: "error",
+    engine: null,
+    scanId: null,
+    findings: [
+      {
+        category: "malware",
+        ruleId: "malware.scanner_error",
+        severity: "critical",
+        count: 1,
+        message,
+        blocking: true
+      }
+    ]
+  };
+}
+
+/**
+ * How long to wait for a waking scanner; invalid values fall back to 5 minutes
+ * and larger values are clamped to 10 minutes.
+ */
+function scannerWakeTimeoutMs(): number {
+  const raw = process.env.MALWARE_SCANNER_WAKE_TIMEOUT_MS?.trim();
+  if (raw && /^\d+$/.test(raw)) {
+    const value = Number(raw);
+    if (value > 0) return Math.min(value, MAX_SCANNER_WAKE_TIMEOUT_MS);
+  }
+  return DEFAULT_SCANNER_WAKE_TIMEOUT_MS;
+}
+
+/** One scan POST. Resolves null when no HTTP answer arrived (network error or timeout). */
+async function postToScanner(
+  url: string,
+  headers: Record<string, string>,
+  body: Buffer
+): Promise<Response | null> {
+  try {
+    return await fetch(url, {
+      method: "POST",
+      headers,
+      body,
+      signal: AbortSignal.timeout(SCANNER_REQUEST_TIMEOUT_MS)
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Polls the scanner's unauthenticated /health until it answers 200 or the deadline passes. */
+async function waitForScannerReady(healthUrl: string, deadline: number): Promise<boolean> {
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(healthUrl, {
+        method: "GET",
+        signal: AbortSignal.timeout(
+          Math.max(1, Math.min(SCANNER_HEALTH_TIMEOUT_MS, deadline - Date.now()))
+        )
+      });
+      await response.body?.cancel();
+      if (response.status === 200) return true;
+    } catch {
+      // Not reachable yet; poll again.
+    }
+    const pause = Math.min(SCANNER_HEALTH_INTERVAL_MS, deadline - Date.now());
+    if (pause > 0) await new Promise((resolve) => setTimeout(resolve, pause));
+  }
+  return false;
+}
+
 /**
  * Adapter contract for an organization-approved scanner. Raw bytes are sent
  * only to an endpoint that passes isScannerTransportAllowed. Production uses
- * the self-hosted `scanner` Railway service (services/scanner/).
+ * the self-hosted `scanner` Railway service (services/scanner/), which runs
+ * with Railway Serverless: when the POST gets no answer or a 502, 503 or 504,
+ * the scanner is treated as waking. The scan then polls its /health until it
+ * answers 200 or MALWARE_SCANNER_WAKE_TIMEOUT_MS passes, and resends the same
+ * request (at most SCANNER_MAX_ATTEMPTS POSTs). Every other failure is an
+ * immediate error.
  */
 export async function scanForMalware(input: {
   buffer: Buffer;
@@ -328,13 +417,43 @@ export async function scanForMalware(input: {
       .digest("hex")}`;
   }
 
+  const wakeTimeoutMs = scannerWakeTimeoutMs();
+  let waitStartedAt: number | null = null;
+  const endWait = (outcome: string) => {
+    if (waitStartedAt === null) return;
+    console.log(
+      `[malware-scan] stopped waiting for the scanner after ${Date.now() - waitStartedAt} ms: ${outcome}.`
+    );
+    waitStartedAt = null;
+  };
+
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: input.buffer,
-      signal: AbortSignal.timeout(60_000)
-    });
+    let response: Response | null = null;
+    for (let attempt = 1; ; attempt += 1) {
+      response = await postToScanner(url, headers, input.buffer);
+      if (response && !SCANNER_WAKING_STATUSES.has(response.status)) break;
+      const answer = response ? `HTTP ${response.status}` : "no response";
+      await response?.body?.cancel();
+      if (attempt >= SCANNER_MAX_ATTEMPTS) {
+        endWait(`scanner still unavailable (${answer}) after ${attempt} attempts`);
+        return scannerError("Approved malware scanner did not become ready in time.");
+      }
+      if (waitStartedAt === null) {
+        waitStartedAt = Date.now();
+        console.warn(
+          `[malware-scan] scanner unavailable (${answer}); waiting up to ${wakeTimeoutMs} ms for it to wake.`
+        );
+      }
+      const ready = await waitForScannerReady(
+        `${new URL(url).origin}/health`,
+        waitStartedAt + wakeTimeoutMs
+      );
+      if (!ready) {
+        endWait("scanner did not report healthy before the deadline");
+        return scannerError("Approved malware scanner did not become ready in time.");
+      }
+    }
+    endWait(`scanner answered HTTP ${response.status}`);
     if (!response.ok) throw new Error(`scanner returned HTTP ${response.status}`);
     const body = (await response.json()) as {
       verdict?: unknown;
@@ -368,21 +487,8 @@ export async function scanForMalware(input: {
       };
     }
     throw new Error("scanner response has no recognized verdict");
-  } catch (error) {
-    return {
-      status: "error",
-      engine: null,
-      scanId: null,
-      findings: [
-        {
-          category: "malware",
-          ruleId: "malware.scanner_error",
-          severity: "critical",
-          count: 1,
-          message: "Approved malware scanner failed or returned an invalid response.",
-          blocking: true
-        }
-      ]
-    };
+  } catch {
+    endWait("scan failed");
+    return scannerError("Approved malware scanner failed or returned an invalid response.");
   }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTheme, type Theme } from "@/lib/theme";
 import {
   createGovernor,
   DEFAULT_TIER,
@@ -56,14 +57,51 @@ void main() {
 `;
 
 /**
- * Ink palette (sRGB 0..1), from DESIGN.md tokens:
- *   cream   #E8E6DE (--background)
- *   paper   #FDFDFC (--card, used for the bright "dry paper" ridges)
- *   blue    #0040AB (--primary)
- *   vivid   #005DE5 (--accent)
- *   green   #39594D (--success)
- *   amber   #F59F0A (--warning, homeopathic dose)
+ * Ink palette per theme (sRGB hex of the DESIGN.md tokens; the shader
+ * gets them as uniforms):
+ *   cream   --background
+ *   paper   --card, for the bright "dry paper" ridges (dark: a step
+ *           lighter than the card, so ridges still read as raised)
+ *   blue    --primary (dark: a deep brand blue that glows on the ground)
+ *   vivid   --accent
+ *   green   --success (warm: a lighter olive, so pools stay clean)
+ *   amber   --warning, homeopathic dose
  */
+type Ink = "cream" | "paper" | "blue" | "vivid" | "green" | "amber";
+
+const PALETTES: Record<Theme, Record<Ink, string>> = {
+  light: {
+    cream: "#E8E6DE",
+    paper: "#FDFDFC",
+    blue: "#0040AB",
+    vivid: "#005DE5",
+    green: "#39594D",
+    amber: "#F59F0A"
+  },
+  dark: {
+    cream: "#14171D",
+    paper: "#232833",
+    blue: "#2F5FB0",
+    vivid: "#5899F3",
+    green: "#336A54",
+    amber: "#F2AF48"
+  },
+  warm: {
+    cream: "#E9D8A6",
+    paper: "#F3E8C1",
+    blue: "#6E3108",
+    vivid: "#984500",
+    green: "#6B8451",
+    amber: "#E99B2A"
+  }
+};
+
+const INKS: Ink[] = ["cream", "paper", "blue", "vivid", "green", "amber"];
+
+function rgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
 const FRAG = `
 precision highp float;
 
@@ -73,12 +111,12 @@ uniform vec2 u_pointer;
 uniform float u_lens;
 uniform float u_octaves;
 
-const vec3 CREAM = vec3(0.9098, 0.9020, 0.8706);
-const vec3 PAPER = vec3(0.9922, 0.9922, 0.9882);
-const vec3 BLUE  = vec3(0.0,    0.2510, 0.6706);
-const vec3 VIVID = vec3(0.0,    0.3647, 0.8980);
-const vec3 GREEN = vec3(0.2235, 0.3490, 0.3020);
-const vec3 AMBER = vec3(0.9608, 0.6235, 0.0392);
+uniform vec3 u_cream;
+uniform vec3 u_paper;
+uniform vec3 u_blue;
+uniform vec3 u_vivid;
+uniform vec3 u_green;
+uniform vec3 u_amber;
 
 float hash(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
@@ -146,14 +184,14 @@ void main() {
   float wBlue  = smoothstep(1.0, 0.15, distance(uv, vec2(0.88, 0.9))) * calm;
   float wGreen = smoothstep(0.9, 0.1,  distance(uv, vec2(0.08, 0.05))) * calm;
 
-  vec3 col = CREAM;
+  vec3 col = u_cream;
 
   // Thresholds are tuned to this fbm's actual distribution (median
   // ~0.45, p90 ~0.58, max ~0.78 — measured, not eyeballed).
 
   // Dry-paper ridges: where the field runs high, the paper brightens a
   // touch before the ink arrives — gives the wash its watercolor edge.
-  col = mix(col, PAPER, smoothstep(0.5, 0.72, f) * 0.35);
+  col = mix(col, u_paper, smoothstep(0.5, 0.72, f) * 0.35);
 
   // Anchor assist: the field drifts with time, so a fixed threshold can
   // leave a corner nearly dry at unlucky phases (seen in production —
@@ -162,20 +200,20 @@ void main() {
   // is always present; f still textures its shape and motion.
   float coreB = smoothstep(0.6, 0.12, distance(uv, vec2(0.88, 0.9)));
   float blueInk = smoothstep(0.42 - 0.24 * coreB, 0.68 - 0.24 * coreB, f);
-  col = mix(col, BLUE,  blueInk * wBlue * 0.32);
-  col = mix(col, VIVID, smoothstep(0.56, 0.75, f) * wBlue * 0.18);
+  col = mix(col, u_blue,  blueInk * wBlue * 0.32);
+  col = mix(col, u_vivid, smoothstep(0.56, 0.75, f) * wBlue * 0.18);
 
   float g = fbm(p * 1.35 + 1.7 * q + vec2(3.1, 7.7));
   float coreG = smoothstep(0.55, 0.1, distance(uv, vec2(0.08, 0.05)));
   float greenInk = smoothstep(0.4 - 0.2 * coreG, 0.66 - 0.2 * coreG, g);
-  col = mix(col, GREEN, greenInk * wGreen * 0.3);
+  col = mix(col, u_green, greenInk * wGreen * 0.3);
 
   // One thin amber filament tracing an isocontour of the field, gated
   // to where ink has actually pooled — the warm accent at homeopathic
   // dose, like a gold vein in marbled paper.
   float inkAmt = blueInk * wBlue + greenInk * wGreen;
   float thread = smoothstep(0.016, 0.0, abs(f - 0.52)) * smoothstep(0.12, 0.35, inkAmt);
-  col = mix(col, AMBER, thread * 0.14);
+  col = mix(col, u_amber, thread * 0.14);
 
   // Film grain / dither: kills gradient banding on the big soft washes.
   float grain = hash(gl_FragCoord.xy + fract(u_time) * 61.7) - 0.5;
@@ -249,7 +287,17 @@ function StaticBlobs(): JSX.Element {
  * component should fall back to the CSS blobs (onFallback has already
  * been called in that case — it may also fire later on context loss).
  */
-function initField(canvas: HTMLCanvasElement, onFallback: () => void): (() => void) | null {
+interface Field {
+  dispose: () => void;
+  /** Recolor in place on a theme change: new uniforms, one redraw. */
+  setPalette: (palette: Record<Ink, string>) => void;
+}
+
+function initField(
+  canvas: HTMLCanvasElement,
+  palette: Record<Ink, string>,
+  onFallback: () => void
+): Field | null {
   const gl = canvas.getContext("webgl", {
     alpha: false,
     antialias: false,
@@ -295,6 +343,11 @@ function initField(canvas: HTMLCanvasElement, onFallback: () => void): (() => vo
   const uPointer = gl.getUniformLocation(program, "u_pointer");
   const uLens = gl.getUniformLocation(program, "u_lens");
   const uOctaves = gl.getUniformLocation(program, "u_octaves");
+  const uInks = INKS.map((ink) => gl.getUniformLocation(program, `u_${ink}`));
+  function applyPalette(next: Record<Ink, string>): void {
+    INKS.forEach((ink, i) => gl?.uniform3fv(uInks[i] ?? null, rgb(next[ink])));
+  }
+  applyPalette(palette);
 
   // No usable GPU: even a governed loop taxes the CPU the whole page
   // runs on. Hold one curated static frame instead, and flag the page
@@ -340,8 +393,11 @@ function initField(canvas: HTMLCanvasElement, onFallback: () => void): (() => vo
     }
   }
 
+  let lastTime = 0;
+
   function draw(timeSeconds: number): void {
     if (!gl) return;
+    lastTime = timeSeconds;
     resize();
     gl.uniform2f(uRes, canvas.width, canvas.height);
     gl.uniform1f(uTime, timeSeconds);
@@ -454,7 +510,14 @@ function initField(canvas: HTMLCanvasElement, onFallback: () => void): (() => vo
   }
   reveal();
 
-  return () => {
+  function setPalette(next: Record<Ink, string>): void {
+    applyPalette(next);
+    // A running loop picks the colors up on its next frame; static,
+    // frozen and hidden fields redraw their last frame now.
+    if (!running) draw(lastTime);
+  }
+
+  const dispose = (): void => {
     stopLoop();
     ro.disconnect();
     window.removeEventListener("pointermove", onPointerMove);
@@ -471,21 +534,26 @@ function initField(canvas: HTMLCanvasElement, onFallback: () => void): (() => vo
     gl.deleteShader(frag);
     gl.deleteBuffer(buf);
   };
+
+  return { dispose, setPalette };
 }
 
 export function BrandField(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fallback, setFallback] = useState(false);
+  const theme = useTheme();
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
+  const fieldRef = useRef<Field | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    let dispose: (() => void) | null = null;
     let cancelled = false;
     const boot = (): void => {
       if (cancelled) return;
-      dispose = initField(canvas, () => setFallback(true));
+      fieldRef.current = initField(canvas, PALETTES[themeRef.current], () => setFallback(true));
     };
 
     // Boot at idle: the shader compile can take 100ms+ under a software
@@ -502,9 +570,14 @@ export function BrandField(): JSX.Element {
       cancelled = true;
       if (hasIdle) window.cancelIdleCallback(handle);
       else window.clearTimeout(handle);
-      dispose?.();
+      fieldRef.current?.dispose();
+      fieldRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    fieldRef.current?.setPalette(PALETTES[theme]);
+  }, [theme]);
 
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">

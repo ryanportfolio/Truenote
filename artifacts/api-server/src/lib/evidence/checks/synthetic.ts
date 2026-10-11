@@ -289,6 +289,21 @@ interface AskObservation {
   refused: boolean | null;
   /** Response fields that held the foreign canary, by name ("sources[0].excerpt", "answer"). Only for probes. */
   leakedIn?: string[];
+  /** Whether the answer text was searched for the foreign token: false when the question named it. Only for probes. */
+  answerChecked?: boolean;
+}
+
+/**
+ * The question of the positive controls. It names no token: retrieval finds
+ * the asker's canaries by meaning, and the production answer model answers it
+ * with the code and a citation. It refused the earlier phrasing ("what does
+ * the knowledge base say about <token>") even with the canary retrieved.
+ */
+const CANARY_QUESTION = "What is the synthetic canary code?";
+
+/** A question naming `token`, so keyword retrieval of the exact token is exercised. The answer repeats the token. */
+function namedCanaryQuestion(token: string): string {
+  return `What is the synthetic canary code ${token} used for?`;
 }
 
 function sameId(a: string, b: string): boolean {
@@ -302,9 +317,10 @@ function holdsToken(value: unknown, token: string): boolean {
 /**
  * Where a response shows a canary: a source with its doc_id, a source whose
  * excerpt or doc_title holds its token (doc_id is nullable, lib/citations.ts),
- * or an answer text holding its token. Returns field names, never the token.
+ * or, when `checkAnswer` is set, an answer text holding its token. Returns
+ * field names, never the token.
  */
-function leakFields(body: { answer?: unknown; sources?: unknown }, foreign: CanaryDoc): string[] {
+function leakFields(body: { answer?: unknown; sources?: unknown }, foreign: CanaryDoc, checkAnswer: boolean): string[] {
   const fields: string[] = [];
   const sources = Array.isArray(body.sources) ? (body.sources as unknown[]) : [];
   sources.forEach((source, i) => {
@@ -314,33 +330,39 @@ function leakFields(body: { answer?: unknown; sources?: unknown }, foreign: Cana
     if (holdsToken(s.excerpt, foreign.token)) fields.push(`sources[${i}].excerpt`);
     if (holdsToken(s.doc_title, foreign.token)) fields.push(`sources[${i}].doc_title`);
   });
-  if (holdsToken(body.answer, foreign.token)) fields.push("answer");
+  if (checkAnswer && holdsToken(body.answer, foreign.token)) fields.push("answer");
   return fields;
 }
 
-/** Ask with `canary`'s token. With `foreign` set, the observation lists every field that shows that canary. */
+/**
+ * Ask `question`. With `foreign` set, the observation lists every field that
+ * shows that canary. The answer text counts only when the question did not
+ * name the foreign token: the model repeats a token the question names, so
+ * that repetition is no evidence of a leak. The source rules apply always.
+ */
 async function ask(
   cfg: SyntheticConfig,
   cookie: string,
-  canary: CanaryDoc,
+  question: string,
   signal: AbortSignal | undefined,
   foreign?: CanaryDoc
 ): Promise<AskObservation & { ok: boolean }> {
   const response = await call(cfg, "POST", "/api/ask", {
     cookie,
-    json: { question: `Synthetic access check: what does the knowledge base say about ${canary.token}?` },
+    json: { question },
     timeoutMs: ASK_TIMEOUT_MS,
     signal
   });
   const body = (response.body ?? {}) as { sessionId?: unknown; sources?: unknown; refused?: unknown; answer?: unknown };
   const sources = Array.isArray(body.sources) ? (body.sources as Array<{ doc_id?: unknown } | null>) : null;
+  const checkAnswer = foreign ? !holdsToken(question, foreign.token) : false;
   return {
     ok: response.status === 200 && sources !== null,
     status: statusText(response),
     sessionId: typeof body.sessionId === "string" ? body.sessionId : null,
     sourceDocIds: [...new Set((sources ?? []).map((s) => (typeof s?.doc_id === "string" ? s.doc_id : null)).filter((id): id is string => id !== null))],
     refused: typeof body.refused === "boolean" ? body.refused : null,
-    ...(foreign ? { leakedIn: leakFields(body, foreign) } : {})
+    ...(foreign ? { leakedIn: leakFields(body, foreign, checkAnswer), answerChecked: checkAnswer } : {})
   };
 }
 
@@ -465,7 +487,7 @@ export async function checkProgramIsolation(cfg: SyntheticConfig, deps: Syntheti
     if (loginB.status !== 200 || !loginB.cookie) {
       f.errors.push(`csr-b login answered ${statusText(loginB)}`);
     } else {
-      const askB = await ask(cfg, loginB.cookie, b, signal);
+      const askB = await ask(cfg, loginB.cookie, CANARY_QUESTION, signal);
       const { ok, ...observed } = askB;
       f.outputs.csrBAskB = observed;
       if (!ok || !askB.sessionId) f.errors.push(`csr-b ask answered ${askB.status} without a session id and sources`);
@@ -485,10 +507,16 @@ export async function checkProgramIsolation(cfg: SyntheticConfig, deps: Syntheti
     }
     const cookieA = loginA.cookie;
 
-    // Positive controls for csr-a: own canary by ask and by id.
-    const askA = await ask(cfg, cookieA, a, signal);
+    // Positive controls for csr-a: own canary by ask and by id. The ask names
+    // no token, so it is also the cross probe whose answer text counts: an
+    // answer stating canary b's token here came from somewhere csr-a may not see.
+    const askA = await ask(cfg, cookieA, CANARY_QUESTION, signal, b);
     const { ok: askAOk, ...askAObserved } = askA;
     f.outputs.csrAAskA = askAObserved;
+    const unnamedLeaks = askA.leakedIn ?? [];
+    if (unnamedLeaks.length > 0) {
+      f.failures.push(`csr-a's ask without a token showed canary b from program B in: ${unnamedLeaks.join(", ")}`);
+    }
     if (!askAOk) f.errors.push(`positive control: csr-a ask for canary a answered ${askA.status}`);
     else if (!askA.sourceDocIds.some((id) => sameId(id, a.documentId))) {
       f.errors.push("positive control: csr-a did not retrieve canary a");
@@ -497,13 +525,14 @@ export async function checkProgramIsolation(cfg: SyntheticConfig, deps: Syntheti
     f.outputs.csrAGetDocA = statusText(docA);
     if (docA.status !== 200) f.errors.push(`positive control: csr-a GET document a answered ${statusText(docA)}, expected 200`);
 
-    // Probes across the program boundary.
-    const askCross = await ask(cfg, cookieA, b, signal, b);
+    // Probes across the program boundary. The ask names canary b's token, so
+    // only its sources count; the answer repeats the token from the question.
+    const askCross = await ask(cfg, cookieA, namedCanaryQuestion(b.token), signal, b);
     const { ok: askCrossOk, ...askCrossObserved } = askCross;
     f.outputs.csrAAskB = askCrossObserved;
     const crossLeaks = askCross.leakedIn ?? [];
     if (crossLeaks.length > 0) {
-      f.failures.push(`csr-a's ask showed canary b from program B in: ${crossLeaks.join(", ")}`);
+      f.failures.push(`csr-a's ask naming canary b's token showed canary b from program B in: ${crossLeaks.join(", ")}`);
     } else if (!askCrossOk) {
       f.errors.push(`csr-a ask for canary b answered ${askCross.status}`);
     }
@@ -572,9 +601,16 @@ export async function checkClassificationCeiling(cfg: SyntheticConfig, deps: Syn
     }
     const cookieA = loginA.cookie;
 
-    const askA = await ask(cfg, cookieA, a, signal);
+    // Positive control, and the probe whose answer text counts (no token named).
+    const askA = await ask(cfg, cookieA, CANARY_QUESTION, signal, c);
     const { ok: askAOk, ...askAObserved } = askA;
     f.outputs.csrAAskA = askAObserved;
+    const unnamedLeaks = askA.leakedIn ?? [];
+    if (unnamedLeaks.length > 0) {
+      f.failures.push(
+        `csr-a (clearance ${clearance}) was shown the ${factsC!.classification} canary by an ask without a token in: ${unnamedLeaks.join(", ")}`
+      );
+    }
     if (!askAOk) f.errors.push(`positive control: csr-a ask for canary a answered ${askA.status}`);
     else if (!askA.sourceDocIds.some((id) => sameId(id, a.documentId))) {
       f.errors.push("positive control: csr-a did not retrieve canary a");
@@ -583,13 +619,14 @@ export async function checkClassificationCeiling(cfg: SyntheticConfig, deps: Syn
     f.outputs.csrAGetDocA = statusText(docA);
     if (docA.status !== 200) f.errors.push(`positive control: csr-a GET document a answered ${statusText(docA)}, expected 200`);
 
-    const askC = await ask(cfg, cookieA, c, signal, c);
+    // Names aConfidential's token: only the sources count, since the answer repeats it.
+    const askC = await ask(cfg, cookieA, namedCanaryQuestion(c.token), signal, c);
     const { ok: askCOk, ...askCObserved } = askC;
     f.outputs.csrAAskAConfidential = askCObserved;
     const ceilingLeaks = askC.leakedIn ?? [];
     if (ceilingLeaks.length > 0) {
       f.failures.push(
-        `csr-a (clearance ${clearance}) was shown the ${factsC!.classification} canary by ask in: ${ceilingLeaks.join(", ")}`
+        `csr-a (clearance ${clearance}) was shown the ${factsC!.classification} canary by an ask naming its token in: ${ceilingLeaks.join(", ")}`
       );
     } else if (!askCOk) {
       f.errors.push(`csr-a ask for canary aConfidential answered ${askC.status}`);

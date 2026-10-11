@@ -42,7 +42,7 @@ function RecentGlyph(): JSX.Element {
 
 const SHORTCUT_SOURCE = {
   team: { label: "Recommended", detail: "Recommended for you by your manager or supervisor.", Glyph: TeamGlyph, tone: "bg-primary/10 text-primary" },
-  mine: { label: "Added by you", detail: "You added this to your shortcuts.", Glyph: MineGlyph, tone: "bg-amber-100 text-amber-700" },
+  mine: { label: "Added by you", detail: "You added this to your shortcuts.", Glyph: MineGlyph, tone: "bg-warning/20 text-foreground" },
   recent: { label: "Recently opened", detail: "You opened this lately.", Glyph: RecentGlyph, tone: "bg-muted text-muted-foreground" }
 } as const;
 
