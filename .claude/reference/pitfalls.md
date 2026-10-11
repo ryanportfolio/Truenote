@@ -4,7 +4,7 @@
 
 ## 2026-10-11: Node 24 processes are named `MainThread` in `/proc`
 
-Node 24 renames its main thread, so the `Name:` line of `/proc/<pid>/status` (and `comm`) reads `MainThread` instead of `node`. Moving the scanner image's Node stage from 22 to 24 failed `scanner-image.yml`'s root-start check with `no node process found`, though the smoke tests passed. Identify processes by argv[0] from `/proc/<pid>/cmdline` (or by `/proc/<pid>/exe` where readable). Cost: one failed CI run on #265.
+Node 24 renames its main thread, so the `Name:` line of `/proc/<pid>/status` (and `comm`) reads `MainThread` instead of `node`. Moving the scanner image's Node stage from 22 to 24 failed `scanner-image.yml`'s root-start check with `no node process found`, though the smoke tests passed. Identify processes by argv[0] from `/proc/<pid>/cmdline` (or by `/proc/<pid>/exe` where readable). Matching every `node` then caught Docker's `HEALTHCHECK` (`node -e ...`), which Docker runs as the container user, root in the `--user 0` test, so the check also needs the script name (`node:server.mjs`). Cost: two failed CI runs on #265.
 
 ## 2026-10-11: A deploy ships every commit since the live one, including SQL it needs
 

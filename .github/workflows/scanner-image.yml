@@ -100,16 +100,24 @@ jobs:
           # filesystem) of every process, read from /proc because ps may be
           # absent. The name is the base name of argv[0]: Node 24 renames its
           # main thread to MainThread, so the Name line no longer says node.
+          # Node processes also carry their script (node:server.mjs), because
+          # Docker runs the image's HEALTHCHECK (node -e ...) as the container
+          # user, root here; Railway does not run that health check.
           procs=$(docker exec scanner-root sh -c '
             for d in /proc/[0-9]*; do
-              name=$(tr "\000" "\n" < "$d/cmdline" 2>/dev/null | head -n 1)
+              args=$(tr "\000" "\n" < "$d/cmdline" 2>/dev/null)
+              name=$(printf "%s\n" "$args" | head -n 1)
               name=${name##*/}
+              if [ "$name" = node ]; then
+                script=$(printf "%s\n" "$args" | sed -n 2p)
+                name="node:${script##*/}"
+              fi
               uids=$(sed -n "s/^Uid:[[:space:]]*//p" "$d/status" 2>/dev/null)
               if [ -n "$name" ]; then echo "$name" $uids; fi
             done
             true')
           echo "$procs"
-          for name in clamd freshclam node; do
+          for name in clamd freshclam node:server.mjs; do
             lines=$(printf '%s\n' "$procs" | grep -E "^${name} " || true)
             if [ -z "$lines" ]; then
               echo "no ${name} process found"
