@@ -2,6 +2,7 @@
 *
 !Dockerfile.railway
 !Dockerfile.backup
+!Dockerfile.pgvector
 !package.json
 !pnpm-lock.yaml
 !pnpm-workspace.yaml
