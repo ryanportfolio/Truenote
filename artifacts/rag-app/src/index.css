@@ -1506,6 +1506,124 @@
     }
   }
 
+  /* Gaps page analysis loader (components/admin/GapAnalysis.tsx): the
+   * demo-portal art on its own, playing the selection sequence on a loop
+   * while the analysis runs. Nothing to hover or click: the rings align,
+   * flecks gather into the core, it flashes and sends out the shockwaves,
+   * the beam reads out toward the status text, then the rings spin away
+   * and the cycle starts again. Reduced motion holds the aligned frame. */
+  .gap-portal {
+    --k: 0;
+    --beam: 1;
+    --art: 9.5rem;
+    --align: 0deg;
+    --pencil: 0deg;
+    --reg: 180deg;
+    --cycle: 5.6s;
+    --pp-light: var(--card);
+    position: relative;
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: calc(var(--art) * 1.25);
+    height: calc(var(--art) * 1.25);
+  }
+
+  :root[data-theme="dark"] .gap-portal {
+    --pp-light: var(--foreground);
+  }
+
+  .gap-portal .pp-art {
+    position: relative;
+    top: auto;
+    right: auto;
+    opacity: 1;
+  }
+
+  .gap-portal .pp-halo {
+    opacity: 1;
+  }
+
+  .gap-portal .pp-pencil {
+    stroke-dashoffset: 0;
+  }
+
+  /* Theme kind on a Gaps analysis card: a coloured dot, the words carry it. */
+  .gap-theme-kind {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: oklch(var(--muted-foreground));
+  }
+
+  .gap-theme-kind::before {
+    content: "";
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+    background: oklch(var(--archive-coral));
+  }
+
+  .gap-theme-kind-update::before {
+    background: oklch(var(--primary));
+  }
+
+  .gap-theme-kind-covered::before {
+    background: oklch(var(--success));
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .gap-portal .pp-spin {
+      transition: none;
+      animation: gp-ring var(--cycle) cubic-bezier(0.65, 0, 0.35, 1) var(--delay) infinite;
+    }
+
+    .gap-portal .pp-spin-register {
+      animation-name: gp-ring-register;
+    }
+
+    .gap-portal .pp-fleck {
+      animation: gp-gather var(--cycle) cubic-bezier(0.25, 1, 0.5, 1) calc(var(--i) * 40ms) infinite;
+    }
+
+    .gap-portal .pp-burst .pp-flash {
+      animation: gp-flash var(--cycle) cubic-bezier(0.25, 1, 0.5, 1) infinite;
+    }
+
+    .gap-portal .pp-wave {
+      animation: gp-wave var(--cycle) cubic-bezier(0.25, 1, 0.5, 1) infinite;
+    }
+
+    .gap-portal .pp-wave-late {
+      animation-delay: 160ms;
+    }
+
+    .gap-portal .pp-beam {
+      transition: none;
+      animation: gp-beam var(--cycle) cubic-bezier(0.25, 1, 0.5, 1) infinite;
+    }
+
+    .gap-portal .pp-halo {
+      animation: gp-halo var(--cycle) ease-in-out infinite;
+    }
+
+    .gap-portal .pp-core {
+      animation: gp-core var(--cycle) cubic-bezier(0.25, 1, 0.5, 1) infinite;
+    }
+
+    .gap-portal .pp-orbits {
+      animation: pp-orbit 16s linear infinite;
+    }
+
+    :root[data-perf="low"] .gap-portal .pp-orbits {
+      animation: none;
+    }
+  }
+
   /* High contrast: the selection keeps a visible frame and label colour. */
   @media (forced-colors: active) {
     .auth-demo-role-active:not(:focus-visible) {
@@ -2250,6 +2368,132 @@
   100% {
     opacity: 0;
     transform: translateX(330%) rotate(18deg);
+  }
+}
+
+/* Gaps loader cycle. Rings: scattered, aligned from 34% to 66%, then a
+ * full turn (--turn sets each ring's direction) back to scattered, so the
+ * loop's last and first frames match. */
+@keyframes gp-ring {
+  0% {
+    transform: rotate(calc(var(--align) + var(--off)));
+  }
+  34%,
+  66% {
+    transform: rotate(var(--align));
+  }
+  100% {
+    transform: rotate(calc(var(--align) + var(--off) + var(--turn)));
+  }
+}
+
+@keyframes gp-ring-register {
+  0% {
+    transform: rotate(calc(var(--reg) + var(--off)));
+  }
+  34%,
+  66% {
+    transform: rotate(var(--reg));
+  }
+  100% {
+    transform: rotate(calc(var(--reg) + var(--off) + var(--turn)));
+  }
+}
+
+@keyframes gp-gather {
+  0% {
+    opacity: 0;
+    transform: translate(100px, 100px) rotate(calc(var(--a) - 40deg)) translateX(var(--r0))
+      rotate(70deg) scale(1.4);
+  }
+  5%,
+  25% {
+    opacity: 1;
+  }
+  31%,
+  100% {
+    opacity: 0;
+    transform: translate(100px, 100px) rotate(var(--a)) translateX(22px) rotate(0deg) scale(0.5);
+  }
+}
+
+@keyframes gp-flash {
+  0%,
+  31% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  37% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  50%,
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+@keyframes gp-wave {
+  0%,
+  36% {
+    opacity: 0;
+    transform: scale(1);
+  }
+  37% {
+    opacity: 0.95;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+  }
+  62%,
+  100% {
+    opacity: 0;
+    transform: scale(3.6);
+  }
+}
+
+@keyframes gp-beam {
+  0%,
+  38% {
+    transform: scaleX(0);
+  }
+  47%,
+  64% {
+    transform: scaleX(1);
+  }
+  74%,
+  100% {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes gp-halo {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  40%,
+  64% {
+    opacity: 1;
+  }
+}
+
+@keyframes gp-core {
+  0%,
+  22% {
+    transform: scale(1);
+  }
+  31% {
+    transform: scale(0.9);
+  }
+  37% {
+    transform: scale(1.06);
+  }
+  50%,
+  100% {
+    transform: scale(1);
   }
 }
 

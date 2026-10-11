@@ -98,7 +98,17 @@ function currentRouteId(id: string): string {
   return RETIRED_ROUTE_ID_REPLACEMENTS.get(id) ?? id;
 }
 
-const SETTING_KEY = "primary_generation_route";
+/**
+ * Each purpose keeps its own ordered chain over the same allowlist: answers
+ * (CSR answer generation) and gaps (the Gaps page's refusal analysis). Both
+ * rows live in app_settings, so a second purpose needs no DDL.
+ */
+export type ModelRoutingPurpose = "answers" | "gaps";
+
+const SETTING_KEYS: Record<ModelRoutingPurpose, string> = {
+  answers: "primary_generation_route",
+  gaps: "gaps_analysis_route"
+};
 const CACHE_TTL_MS = 30_000;
 
 /** Current stored shape: an ordered chain of approved route ids. Index 0 is
@@ -172,7 +182,7 @@ interface SettingRow {
   value: unknown;
 }
 
-let cached: { state: ModelRoutingState; expiresAt: number } | null = null;
+const cached = new Map<ModelRoutingPurpose, { state: ModelRoutingState; expiresAt: number }>();
 
 export function findApprovedModelRoute(id: string): ApprovedModelRoute | undefined {
   return APPROVED_MODEL_ROUTES.find((route) => route.id === id);
@@ -205,19 +215,22 @@ export function isMissingModelSettingsTable(error: unknown): boolean {
 }
 
 /**
- * Read the global primary route. Missing DDL never breaks answer generation:
+ * Read one purpose's route chain. Missing DDL never breaks answer generation:
  * the approved Nemotron 3 Super default remains active until storage lands.
  */
-export async function getModelRoutingState(): Promise<ModelRoutingState> {
+export async function getModelRoutingState(
+  purpose: ModelRoutingPurpose = "answers"
+): Promise<ModelRoutingState> {
   const now = Date.now();
-  if (cached && cached.expiresAt > now) return cached.state;
+  const hit = cached.get(purpose);
+  if (hit && hit.expiresAt > now) return hit.state;
 
   let state: ModelRoutingState;
   try {
     const result = await db.execute(sql`
       SELECT value
       FROM app_settings
-      WHERE key = ${SETTING_KEY}
+      WHERE key = ${SETTING_KEYS[purpose]}
       LIMIT 1
     `);
     const row = result.rows[0] as unknown as SettingRow | undefined;
@@ -244,17 +257,20 @@ export async function getModelRoutingState(): Promise<ModelRoutingState> {
     };
   }
 
-  cached = { state, expiresAt: now + CACHE_TTL_MS };
+  cached.set(purpose, { state, expiresAt: now + CACHE_TTL_MS });
   return state;
 }
 
-export async function getActiveModelChain(): Promise<ApprovedModelRoute[]> {
-  return (await getModelRoutingState()).routes;
+export async function getActiveModelChain(
+  purpose: ModelRoutingPurpose = "answers"
+): Promise<ApprovedModelRoute[]> {
+  return (await getModelRoutingState(purpose)).routes;
 }
 
 export async function saveModelRouteOrder(
   ids: readonly ApprovedModelRouteId[],
-  updatedBy: string
+  updatedBy: string,
+  purpose: ModelRoutingPurpose = "answers"
 ): Promise<ModelRoutingState> {
   // Normalize through the same resolver the read path uses, so the stored
   // order is always a full, deduped permutation of the allowlist.
@@ -262,14 +278,14 @@ export async function saveModelRouteOrder(
   const value = JSON.stringify({ order: routes.map((route) => route.id) });
   await db.execute(sql`
     INSERT INTO app_settings (key, value, updated_by, updated_at)
-    VALUES (${SETTING_KEY}, ${value}::jsonb, ${updatedBy}::uuid, now())
+    VALUES (${SETTING_KEYS[purpose]}, ${value}::jsonb, ${updatedBy}::uuid, now())
     ON CONFLICT (key) DO UPDATE SET
       value = EXCLUDED.value,
       updated_by = EXCLUDED.updated_by,
       updated_at = now()
   `);
   const state = { routes, persistenceReady: true };
-  cached = { state, expiresAt: Date.now() + CACHE_TTL_MS };
+  cached.set(purpose, { state, expiresAt: Date.now() + CACHE_TTL_MS });
   return state;
 }
 

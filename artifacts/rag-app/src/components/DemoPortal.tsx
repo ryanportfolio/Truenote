@@ -34,7 +34,8 @@ import type { DemoAccount } from "@/types/api";
  * not guessed from the label's length.
  */
 
-type Role = DemoAccount["role"];
+export type PortalRole = DemoAccount["role"];
+type Role = PortalRole;
 
 interface RoleArt {
   /** Rest offsets in degrees, per ring, from the aligned angle (register: from --reg). */
@@ -269,11 +270,7 @@ export const DemoPortal = memo(function DemoPortal({
     observer.observe(el);
     return () => observer.disconnect();
   }, [account.label]);
-  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
-  const id = (name: string): string => `pp${uid}${name}`;
   const role: Role = account.role in ROLE_ART ? account.role : "csr";
-  const art = ROLE_ART[role];
-  const { inner, mineral, outer, outlines } = GEOMETRY[role];
 
   function lightTargets(el: HTMLButtonElement) {
     targets.current ??= {
@@ -316,24 +313,6 @@ export const DemoPortal = memo(function DemoPortal({
     for (const { el: layer } of lightTargets(el).layers) layer.style.translate = "";
   }
 
-  function paperSectors(
-    parts: Array<[number, number]>,
-    r0: number,
-    r1: number,
-    tabs: number[] = []
-  ): JSX.Element[] {
-    return parts.map(([a0, a1], i) => (
-      <path
-        key={i}
-        d={sector(r0, tabs.includes(i) ? R.tab : r1, a0, a1)}
-        fill={`url(#${id(i % 2 ? "paperB" : "paperA")})`}
-      />
-    ));
-  }
-
-  const spin = (offset: number, delay: number) =>
-    ({ "--off": `${offset}deg`, "--delay": `${delay}ms` }) as CSSProperties;
-
   return (
     <button
       ref={ref}
@@ -356,208 +335,7 @@ export const DemoPortal = memo(function DemoPortal({
     >
       <span className="pp-rim" aria-hidden />
       <span className="pp-sheen" aria-hidden />
-      <svg className="pp-art" viewBox="0 0 200 200" aria-hidden focusable="false">
-        <defs>
-          <linearGradient id={id("paperA")} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" className="pp-stop-card" />
-            <stop offset="1" className="pp-stop-paper" />
-          </linearGradient>
-          <linearGradient id={id("paperB")} x1="1" y1="0" x2="0" y2="1">
-            <stop offset="0" className="pp-stop-paper" />
-            <stop offset="1" className="pp-stop-paper-deep" />
-          </linearGradient>
-          <radialGradient id={id("mineral")} cx="0.38" cy="0.32" r="0.8">
-            <stop offset="0" className="pp-stop-mineral-light" />
-            <stop offset="0.55" className="pp-stop-mineral" />
-            <stop offset="1" className="pp-stop-mineral-deep" />
-          </radialGradient>
-          <radialGradient id={id("mottle")} cx="0.5" cy="0.5" r="0.5">
-            <stop offset="0" className="pp-stop-mottle" />
-            <stop offset="1" className="pp-stop-mottle-clear" />
-          </radialGradient>
-          <radialGradient id={id("bezel")} cx="0.5" cy="0.5" r="0.5">
-            <stop offset="0.74" className="pp-stop-paper-deep" />
-            <stop offset="0.86" className="pp-stop-card" />
-            <stop offset="1" className="pp-stop-paper" />
-          </radialGradient>
-          <radialGradient id={id("glass")} cx="0.46" cy="0.44" r="0.58" fx="0.4" fy="0.36">
-            <stop offset="0" className="pp-stop-glass-hot" />
-            <stop offset="0.38" className="pp-stop-glass" />
-            <stop offset="0.8" className="pp-stop-glass-deep" />
-            <stop offset="1" className="pp-stop-glass-edge" />
-          </radialGradient>
-          <radialGradient id={id("flash")} cx="0.5" cy="0.5" r="0.5">
-            <stop offset="0" className="pp-stop-flash" />
-            <stop offset="0.45" className="pp-stop-flash-mid" />
-            <stop offset="1" className="pp-stop-flash-clear" />
-          </radialGradient>
-          <linearGradient id={id("streak")} x1="0" y1="1" x2="1" y2="0">
-            <stop offset="0.2" className="pp-stop-streak-clear" />
-            <stop offset="0.5" className="pp-stop-streak" />
-            <stop offset="0.8" className="pp-stop-streak-clear" />
-          </linearGradient>
-          <linearGradient id={id("beam")} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" className="pp-stop-beam" />
-            <stop offset="0.55" className="pp-stop-beam-mid" />
-            <stop offset="1" className="pp-stop-beam-clear" />
-          </linearGradient>
-          <radialGradient id={id("halo")} cx="0.5" cy="0.5" r="0.5">
-            <stop offset="0.5" className="pp-stop-halo" />
-            <stop offset="1" className="pp-stop-halo-clear" />
-          </radialGradient>
-          <clipPath id={id("glassClip")}>
-            <circle cx={C} cy={C} r={R.core} />
-          </clipPath>
-          <clipPath id={id("mineralClip")}>
-            {mineral.parts.map(([a0, a1], i) => (
-              <path key={i} d={sector(R.mineral[0], R.mineral[1], a0, a1)} />
-            ))}
-          </clipPath>
-        </defs>
-
-        {/* Pencil construction: drafting arcs, crosshair and ticks, open
-          * toward the label (local 0deg is --align). */}
-        <g className="pp-layer" data-depth="1.5">
-          <g className="pp-pencil-axis">
-            <path className="pp-pencil" d={arc(112, 48, 312)} pathLength={1} />
-            <path className="pp-pencil" d={arc(138, 52, 308)} pathLength={1} />
-            <path className="pp-pencil" d={`M${polar(150, 45)}L${polar(150, 225)}`} pathLength={1} />
-            <path className="pp-pencil" d={`M${polar(150, 315)}L${polar(150, 135)}`} pathLength={1} />
-            {/* Ticks run only along the part of the inner arc drawn at rest. */}
-            <path
-              className="pp-ticks"
-              d={Array.from({ length: 9 }, (_, i) => 50 + i * 14)
-                .map((a, i) => `M${polar(108, a)}L${polar(i % 2 ? 112 : 116, a)}`)
-                .join("")}
-            />
-          </g>
-        </g>
-
-        {/* Persimmon register bars. */}
-        <g className="pp-layer" data-depth="7.5">
-          <g className="pp-spin pp-spin-register" style={spin(art.offsets.register, 150)}>
-            {R.bars.slice(0, art.bars).map(([r0, r1], i) => (
-              <path key={i} className="pp-bar" d={sector(r0, r1, -13 + i * 2, 11 - i * 3)} />
-            ))}
-          </g>
-        </g>
-
-        {/* Outer grid-paper ring, with pulled-out tabs. */}
-        <g className="pp-layer" data-depth="6">
-          <g className="pp-shadow-offset">
-            <g className="pp-spin" style={spin(art.offsets.outer, 100)}>
-              <path className="pp-shadow" d={outlines.outer} />
-            </g>
-          </g>
-          <g className="pp-spin" style={spin(art.offsets.outer, 100)}>
-            {paperSectors(outer.parts, R.outer[0], R.outer[1], art.tabs)}
-            <path className="pp-grid" d={outer.grid} />
-            <path className="pp-edge" d={outlines.outer} />
-          </g>
-        </g>
-
-        {/* Mineral band: watercolor tone with soft mottling. */}
-        <g className="pp-layer" data-depth="4.5">
-          <g className="pp-shadow-offset">
-            <g className="pp-spin" style={spin(art.offsets.mineral, 50)}>
-              <path className="pp-shadow" d={outlines.mineral} />
-            </g>
-          </g>
-          <g className="pp-spin" style={spin(art.offsets.mineral, 50)}>
-            {mineral.parts.map(([a0, a1], i) => (
-              <path key={i} d={sector(R.mineral[0], R.mineral[1], a0, a1)} fill={`url(#${id("mineral")})`} />
-            ))}
-            <g clipPath={`url(#${id("mineralClip")})`}>
-              <circle cx="62" cy="80" r="16" fill={`url(#${id("mottle")})`} />
-              <circle cx="138" cy="128" r="20" fill={`url(#${id("mottle")})`} />
-              <circle cx="120" cy="52" r="12" fill={`url(#${id("mottle")})`} />
-              <circle cx="70" cy="140" r="14" fill={`url(#${id("mottle")})`} />
-            </g>
-            <path className="pp-grid pp-grid-mineral" d={mineral.grid} />
-            <path className="pp-edge" d={outlines.mineral} />
-          </g>
-        </g>
-
-        {/* Inner grid-paper ring. */}
-        <g className="pp-layer" data-depth="3">
-          <g className="pp-shadow-offset">
-            <g className="pp-spin" style={spin(art.offsets.inner, 0)}>
-              <path className="pp-shadow" d={outlines.inner} />
-            </g>
-          </g>
-          <g className="pp-spin" style={spin(art.offsets.inner, 0)}>
-            {paperSectors(inner.parts, R.inner[0], R.inner[1])}
-            <path className="pp-grid" d={inner.grid} />
-            <path className="pp-edge" d={outlines.inner} />
-          </g>
-        </g>
-
-        {/* Reading beam: runs out of the core through the aligned gaps. */}
-        <g className="pp-layer" data-depth="3">
-          <g className="pp-beam-axis">
-            <g className="pp-beam">
-              <path d="M100 98.4L190 95.2V104.8L100 101.6Z" fill={`url(#${id("beam")})`} />
-              <path className="pp-beam-line" d="M122 100H168" />
-            </g>
-          </g>
-        </g>
-
-        {/* Recessed cobalt core in its paper bezel. */}
-        <g className="pp-layer" data-depth="-2.5">
-          <circle cx={C} cy={C} r="44" fill={`url(#${id("halo")})`} className="pp-halo" />
-          <circle cx={C} cy={C} r={R.bezel} fill={`url(#${id("bezel")})`} className="pp-bezel" />
-          <path className="pp-bezel-light" d={arc(24.2, 196, 292)} />
-          <g className="pp-core">
-            <circle cx={C} cy={C} r={R.core} fill={`url(#${id("glass")})`} />
-            <g clipPath={`url(#${id("glassClip")})`}>
-              <rect x="70" y="70" width="60" height="60" fill={`url(#${id("streak")})`} className="pp-streak" />
-              <path className="pp-orbits" d={LENS} />
-              {STARS.map(([x, y, o], i) => (
-                <circle key={i} cx={C + x} cy={C + y} r={o} className="pp-star" />
-              ))}
-            </g>
-            <circle cx={C} cy={C} r={R.core - 0.6} className="pp-recess" />
-            <g className="pp-spec">
-              <path d={arc(18.6, 4, 116)} className="pp-crescent-glow" />
-              <path
-                d={`M${polar(20, 14)}A20 20 0 0 1 ${polar(20, 106)}A34 34 0 0 0 ${polar(20, 14)}Z`}
-                className="pp-crescent"
-              />
-              <circle cx={C + 19 * Math.cos(0.96)} cy={C + 19 * Math.sin(0.96)} r="1.3" className="pp-glint" />
-              <path
-                className="pp-flare"
-                d={`M${C + 19 * Math.cos(0.96) - 4} ${C + 19 * Math.sin(0.96)}h8M${C + 19 * Math.cos(0.96)} ${C + 19 * Math.sin(0.96) - 4}v8`}
-              />
-            </g>
-          </g>
-        </g>
-
-        {/* Selection: flecks gather into the core, then a shockwave leaves it. */}
-        {burst > 0 ? (
-          <g key={burst} className="pp-burst">
-            {FLECKS.map((a, i) => (
-              <rect
-                key={a}
-                x="-3.6"
-                y="-2.2"
-                width="7.2"
-                height="4.4"
-                rx="0.6"
-                className={cn(
-                  "pp-fleck",
-                  i % 4 === 1 && "pp-fleck-coral",
-                  i % 4 === 3 && "pp-fleck-green",
-                  i % 6 === 4 && "pp-fleck-cobalt"
-                )}
-                style={{ "--a": `${a}deg`, "--i": i, "--r0": `${84 + (i % 3) * 9}px` } as CSSProperties}
-              />
-            ))}
-            <circle cx={C} cy={C} r="30" className="pp-flash" fill={`url(#${id("flash")})`} />
-            <circle cx={C} cy={C} r="24" className="pp-wave" />
-            <circle cx={C} cy={C} r="24" className="pp-wave pp-wave-late" />
-          </g>
-        ) : null}
-      </svg>
+      <PortalArt role={role} burst={burst} />
       <span className="auth-demo-role-name">{account.label}</span>
       <span className="auth-demo-role-measure" aria-hidden>
         {account.label}
@@ -565,3 +343,246 @@ export const DemoPortal = memo(function DemoPortal({
     </button>
   );
 });
+
+interface PortalArtProps {
+  role: Role;
+  /** Each new value replays the flecks, flash and shockwaves; 0 renders none. */
+  burst: number;
+  className?: string;
+}
+
+/**
+ * The portal miniature itself, shared by the login demo cards and the Gaps
+ * page's analysis loader. Its motion is all CSS: the wrapper's class sets
+ * the layout vars and decides how the rings, beam and burst move.
+ */
+export function PortalArt({ role, burst, className }: PortalArtProps): JSX.Element {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const id = (name: string): string => `pp${uid}${name}`;
+  const art = ROLE_ART[role];
+  const { inner, mineral, outer, outlines } = GEOMETRY[role];
+
+  function paperSectors(
+    parts: Array<[number, number]>,
+    r0: number,
+    r1: number,
+    tabs: number[] = []
+  ): JSX.Element[] {
+    return parts.map(([a0, a1], i) => (
+      <path
+        key={i}
+        d={sector(r0, tabs.includes(i) ? R.tab : r1, a0, a1)}
+        fill={`url(#${id(i % 2 ? "paperB" : "paperA")})`}
+      />
+    ));
+  }
+
+  // --turn is the ring's direction for a full turn (the Gaps loader uses it).
+  const spin = (offset: number, delay: number, turn: 1 | -1) =>
+    ({ "--off": `${offset}deg`, "--delay": `${delay}ms`, "--turn": `${turn * 360}deg` }) as CSSProperties;
+
+  return (
+    <svg className={cn("pp-art", className)} viewBox="0 0 200 200" aria-hidden focusable="false">
+      <defs>
+        <linearGradient id={id("paperA")} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" className="pp-stop-card" />
+          <stop offset="1" className="pp-stop-paper" />
+        </linearGradient>
+        <linearGradient id={id("paperB")} x1="1" y1="0" x2="0" y2="1">
+          <stop offset="0" className="pp-stop-paper" />
+          <stop offset="1" className="pp-stop-paper-deep" />
+        </linearGradient>
+        <radialGradient id={id("mineral")} cx="0.38" cy="0.32" r="0.8">
+          <stop offset="0" className="pp-stop-mineral-light" />
+          <stop offset="0.55" className="pp-stop-mineral" />
+          <stop offset="1" className="pp-stop-mineral-deep" />
+        </radialGradient>
+        <radialGradient id={id("mottle")} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" className="pp-stop-mottle" />
+          <stop offset="1" className="pp-stop-mottle-clear" />
+        </radialGradient>
+        <radialGradient id={id("bezel")} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0.74" className="pp-stop-paper-deep" />
+          <stop offset="0.86" className="pp-stop-card" />
+          <stop offset="1" className="pp-stop-paper" />
+        </radialGradient>
+        <radialGradient id={id("glass")} cx="0.46" cy="0.44" r="0.58" fx="0.4" fy="0.36">
+          <stop offset="0" className="pp-stop-glass-hot" />
+          <stop offset="0.38" className="pp-stop-glass" />
+          <stop offset="0.8" className="pp-stop-glass-deep" />
+          <stop offset="1" className="pp-stop-glass-edge" />
+        </radialGradient>
+        <radialGradient id={id("flash")} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" className="pp-stop-flash" />
+          <stop offset="0.45" className="pp-stop-flash-mid" />
+          <stop offset="1" className="pp-stop-flash-clear" />
+        </radialGradient>
+        <linearGradient id={id("streak")} x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0.2" className="pp-stop-streak-clear" />
+          <stop offset="0.5" className="pp-stop-streak" />
+          <stop offset="0.8" className="pp-stop-streak-clear" />
+        </linearGradient>
+        <linearGradient id={id("beam")} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" className="pp-stop-beam" />
+          <stop offset="0.55" className="pp-stop-beam-mid" />
+          <stop offset="1" className="pp-stop-beam-clear" />
+        </linearGradient>
+        <radialGradient id={id("halo")} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0.5" className="pp-stop-halo" />
+          <stop offset="1" className="pp-stop-halo-clear" />
+        </radialGradient>
+        <clipPath id={id("glassClip")}>
+          <circle cx={C} cy={C} r={R.core} />
+        </clipPath>
+        <clipPath id={id("mineralClip")}>
+          {mineral.parts.map(([a0, a1], i) => (
+            <path key={i} d={sector(R.mineral[0], R.mineral[1], a0, a1)} />
+          ))}
+        </clipPath>
+      </defs>
+
+      {/* Pencil construction: drafting arcs, crosshair and ticks, open
+        * toward the label (local 0deg is --align). */}
+      <g className="pp-layer" data-depth="1.5">
+        <g className="pp-pencil-axis">
+          <path className="pp-pencil" d={arc(112, 48, 312)} pathLength={1} />
+          <path className="pp-pencil" d={arc(138, 52, 308)} pathLength={1} />
+          <path className="pp-pencil" d={`M${polar(150, 45)}L${polar(150, 225)}`} pathLength={1} />
+          <path className="pp-pencil" d={`M${polar(150, 315)}L${polar(150, 135)}`} pathLength={1} />
+          {/* Ticks run only along the part of the inner arc drawn at rest. */}
+          <path
+            className="pp-ticks"
+            d={Array.from({ length: 9 }, (_, i) => 50 + i * 14)
+              .map((a, i) => `M${polar(108, a)}L${polar(i % 2 ? 112 : 116, a)}`)
+              .join("")}
+          />
+        </g>
+      </g>
+
+      {/* Persimmon register bars. */}
+      <g className="pp-layer" data-depth="7.5">
+        <g className="pp-spin pp-spin-register" style={spin(art.offsets.register, 150, -1)}>
+          {R.bars.slice(0, art.bars).map(([r0, r1], i) => (
+            <path key={i} className="pp-bar" d={sector(r0, r1, -13 + i * 2, 11 - i * 3)} />
+          ))}
+        </g>
+      </g>
+
+      {/* Outer grid-paper ring, with pulled-out tabs. */}
+      <g className="pp-layer" data-depth="6">
+        <g className="pp-shadow-offset">
+          <g className="pp-spin" style={spin(art.offsets.outer, 100, 1)}>
+            <path className="pp-shadow" d={outlines.outer} />
+          </g>
+        </g>
+        <g className="pp-spin" style={spin(art.offsets.outer, 100, 1)}>
+          {paperSectors(outer.parts, R.outer[0], R.outer[1], art.tabs)}
+          <path className="pp-grid" d={outer.grid} />
+          <path className="pp-edge" d={outlines.outer} />
+        </g>
+      </g>
+
+      {/* Mineral band: watercolor tone with soft mottling. */}
+      <g className="pp-layer" data-depth="4.5">
+        <g className="pp-shadow-offset">
+          <g className="pp-spin" style={spin(art.offsets.mineral, 50, -1)}>
+            <path className="pp-shadow" d={outlines.mineral} />
+          </g>
+        </g>
+        <g className="pp-spin" style={spin(art.offsets.mineral, 50, -1)}>
+          {mineral.parts.map(([a0, a1], i) => (
+            <path key={i} d={sector(R.mineral[0], R.mineral[1], a0, a1)} fill={`url(#${id("mineral")})`} />
+          ))}
+          <g clipPath={`url(#${id("mineralClip")})`}>
+            <circle cx="62" cy="80" r="16" fill={`url(#${id("mottle")})`} />
+            <circle cx="138" cy="128" r="20" fill={`url(#${id("mottle")})`} />
+            <circle cx="120" cy="52" r="12" fill={`url(#${id("mottle")})`} />
+            <circle cx="70" cy="140" r="14" fill={`url(#${id("mottle")})`} />
+          </g>
+          <path className="pp-grid pp-grid-mineral" d={mineral.grid} />
+          <path className="pp-edge" d={outlines.mineral} />
+        </g>
+      </g>
+
+      {/* Inner grid-paper ring. */}
+      <g className="pp-layer" data-depth="3">
+        <g className="pp-shadow-offset">
+          <g className="pp-spin" style={spin(art.offsets.inner, 0, 1)}>
+            <path className="pp-shadow" d={outlines.inner} />
+          </g>
+        </g>
+        <g className="pp-spin" style={spin(art.offsets.inner, 0, 1)}>
+          {paperSectors(inner.parts, R.inner[0], R.inner[1])}
+          <path className="pp-grid" d={inner.grid} />
+          <path className="pp-edge" d={outlines.inner} />
+        </g>
+      </g>
+
+      {/* Reading beam: runs out of the core through the aligned gaps. */}
+      <g className="pp-layer" data-depth="3">
+        <g className="pp-beam-axis">
+          <g className="pp-beam">
+            <path d="M100 98.4L190 95.2V104.8L100 101.6Z" fill={`url(#${id("beam")})`} />
+            <path className="pp-beam-line" d="M122 100H168" />
+          </g>
+        </g>
+      </g>
+
+      {/* Recessed cobalt core in its paper bezel. */}
+      <g className="pp-layer" data-depth="-2.5">
+        <circle cx={C} cy={C} r="44" fill={`url(#${id("halo")})`} className="pp-halo" />
+        <circle cx={C} cy={C} r={R.bezel} fill={`url(#${id("bezel")})`} className="pp-bezel" />
+        <path className="pp-bezel-light" d={arc(24.2, 196, 292)} />
+        <g className="pp-core">
+          <circle cx={C} cy={C} r={R.core} fill={`url(#${id("glass")})`} />
+          <g clipPath={`url(#${id("glassClip")})`}>
+            <rect x="70" y="70" width="60" height="60" fill={`url(#${id("streak")})`} className="pp-streak" />
+            <path className="pp-orbits" d={LENS} />
+            {STARS.map(([x, y, o], i) => (
+              <circle key={i} cx={C + x} cy={C + y} r={o} className="pp-star" />
+            ))}
+          </g>
+          <circle cx={C} cy={C} r={R.core - 0.6} className="pp-recess" />
+          <g className="pp-spec">
+            <path d={arc(18.6, 4, 116)} className="pp-crescent-glow" />
+            <path
+              d={`M${polar(20, 14)}A20 20 0 0 1 ${polar(20, 106)}A34 34 0 0 0 ${polar(20, 14)}Z`}
+              className="pp-crescent"
+            />
+            <circle cx={C + 19 * Math.cos(0.96)} cy={C + 19 * Math.sin(0.96)} r="1.3" className="pp-glint" />
+            <path
+              className="pp-flare"
+              d={`M${C + 19 * Math.cos(0.96) - 4} ${C + 19 * Math.sin(0.96)}h8M${C + 19 * Math.cos(0.96)} ${C + 19 * Math.sin(0.96) - 4}v8`}
+            />
+          </g>
+        </g>
+      </g>
+
+      {/* Selection: flecks gather into the core, then a shockwave leaves it. */}
+      {burst > 0 ? (
+        <g key={burst} className="pp-burst">
+          {FLECKS.map((a, i) => (
+            <rect
+              key={a}
+              x="-3.6"
+              y="-2.2"
+              width="7.2"
+              height="4.4"
+              rx="0.6"
+              className={cn(
+                "pp-fleck",
+                i % 4 === 1 && "pp-fleck-coral",
+                i % 4 === 3 && "pp-fleck-green",
+                i % 6 === 4 && "pp-fleck-cobalt"
+              )}
+              style={{ "--a": `${a}deg`, "--i": i, "--r0": `${84 + (i % 3) * 9}px` } as CSSProperties}
+            />
+          ))}
+          <circle cx={C} cy={C} r="30" className="pp-flash" fill={`url(#${id("flash")})`} />
+          <circle cx={C} cy={C} r="24" className="pp-wave" />
+          <circle cx={C} cy={C} r="24" className="pp-wave pp-wave-late" />
+        </g>
+      ) : null}
+    </svg>
+  );
+}

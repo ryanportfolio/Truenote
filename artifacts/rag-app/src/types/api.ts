@@ -271,6 +271,37 @@ export interface KbGapItem {
   lastAskedAt: string;
 }
 
+/** Gaps page analysis. Mirrors /api/admin/insights/gap-analysis. */
+export type GapThemeKind = "update" | "new" | "covered";
+
+export interface GapTheme {
+  title: string;
+  summary: string;
+  kind: GapThemeKind;
+  refusedCount: number;
+  flaggedCount: number;
+  questionCount: number;
+  sampleQuestions: string[];
+  source: { documentId: string; title: string } | null;
+  suggestedTitle: string | null;
+  lastAskedAt: string;
+}
+
+export type GapAnalysisResponse =
+  | { status: "no_program" }
+  | {
+      status: "ready" | "empty";
+      windowDays: number;
+      analyzedAt: string;
+      refusedAsks: number;
+      distinctQuestions: number;
+      analyzedQuestions: number;
+      ungroupedQuestions: number;
+      themes: GapTheme[];
+      model: { label: string; providerLabel: string } | null;
+      cached: boolean;
+    };
+
 export interface KbGapsResponse {
   items: KbGapItem[];
   windowDays: number;
@@ -636,8 +667,13 @@ export interface ModelRoutingConfig {
   order: string[];
   /** The same routes as objects, in fallback order (index 0 = primary). */
   routes: ModelRoutingOption[];
+  /** The Gaps page analysis chain over the same allowlist. */
+  gapsOrder: string[];
+  gapsRoutes: ModelRoutingOption[];
   persistenceReady: boolean;
 }
+
+export type ModelRoutingPurpose = "answers" | "gaps";
 
 /** Super-user evaluation-center shapes. Mirrors /api/admin/evaluations. */
 export type EvalQuestionKind = "in-kb" | "out-of-kb";

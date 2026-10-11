@@ -39,7 +39,15 @@ import {
   type SourceUsageSuggestion,
   type UsageMatrix
 } from "../../lib/source-usage.js";
-import { adminReadLimit, sourceUsageReadLimit } from "../../lib/security/route-rate-limit.js";
+import {
+  adminReadLimit,
+  gapAnalysisLimit,
+  sourceUsageReadLimit
+} from "../../lib/security/route-rate-limit.js";
+import {
+  GapAnalysisUnavailableError,
+  getGapAnalysis
+} from "../../lib/gap-analysis-run.js";
 
 export const insightsRouter = Router();
 
@@ -203,6 +211,48 @@ insightsRouter.get("/kb-gaps", adminReadLimit, async (req, res, next) => {
     };
     res.json(payload);
   } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Gap analysis: refused questions rolled up into themes with a reason and a
+ * source recommendation (lib/gap-analysis.ts). Same program and team scope
+ * as /kb-gaps; retrieval probes run at the asker's own clearance, so a
+ * recommended source is one they could already see. Cached per scope until a
+ * new refusal lands; ?refresh=1 forces a new run.
+ */
+insightsRouter.get("/gap-analysis", gapAnalysisLimit, async (req, res, next) => {
+  try {
+    const user = authedUser(req);
+    const programId = await resolveEffectiveProgramId(user, req);
+    if (programId === null) {
+      res.json({ status: "no_program" });
+      return;
+    }
+    if (!canAccessProgram(user, programId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    const rawDays = Number.parseInt(String(req.query["days"] ?? ""), 10);
+    const windowDays = Number.isFinite(rawDays)
+      ? Math.min(Math.max(rawDays, 1), MAX_WINDOW_DAYS)
+      : DEFAULT_WINDOW_DAYS;
+    const result = await getGapAnalysis(
+      {
+        programId,
+        team: await teamScope(user),
+        clearance: await getUserMaxClassification(user.id),
+        windowDays
+      },
+      req.query["refresh"] === "1"
+    );
+    res.json(result);
+  } catch (err) {
+    if (err instanceof GapAnalysisUnavailableError) {
+      res.status(503).json({ error: err.message });
+      return;
+    }
     next(err);
   }
 });

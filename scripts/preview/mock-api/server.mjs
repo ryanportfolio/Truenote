@@ -2343,6 +2343,111 @@ route("PUT", /^\/api\/ask-examples$/, ({ user, req, body }) => setAskExamples(us
 route("GET", /^\/api\/admin\/teams$/, ({ user, req }) => teamsList(user, req));
 route("PUT", /^\/api\/admin\/teams\/assignments$/, ({ user, req, body }) => assignTeam(user, req, body));
 
+// Model routing: the approved allowlist in two chains (answers, gaps).
+const MODEL_ROUTES = [
+  { id: "nemotron-3-super-deepinfra-nitro", label: "Nemotron 3 Super", model: "nvidia/nemotron-3-super-120b-a12b:nitro", provider: "deepinfra", providerLabel: "DeepInfra", reasoningEffort: "medium", description: "Default ZDR route for grounded answers." },
+  { id: "gpt-5.4-nano-azure-nitro", label: "GPT-5.4 Nano", model: "openai/gpt-5.4-nano:nitro", provider: "azure", providerLabel: "Azure", reasoningEffort: "medium", description: "Fast, economical route for grounded answers." },
+  { id: "nemotron-3-ultra-baseten-nitro", label: "Nemotron 3 Ultra", model: "nvidia/nemotron-3-ultra-550b-a55b:nitro", provider: "baseten", providerLabel: "BaseTen", reasoningEffort: "medium", description: "Larger open model for harder multi-step questions." },
+  { id: "mercury-2.5-inception", label: "Mercury 2.5", model: "inception/mercury-2.5", provider: "inception", providerLabel: "Inception", reasoningEffort: "low", description: "Ultra-fast diffusion model for low-latency grounded answers." },
+  { id: "granite-4.2-8b-coreweave", label: "Granite 4.2 8B", model: "ibm-granite/granite-4.2-8b", provider: "coreweave", providerLabel: "CoreWeave", reasoningEffort: "low", description: "Compact IBM reasoning model on CoreWeave's ZDR endpoint." }
+];
+const modelOrders = { answers: MODEL_ROUTES.map((r) => r.id), gaps: MODEL_ROUTES.map((r) => r.id) };
+function modelRoutingConfig() {
+  const routesFor = (order) => order.map((id) => MODEL_ROUTES.find((r) => r.id === id));
+  return {
+    order: modelOrders.answers,
+    routes: routesFor(modelOrders.answers),
+    gapsOrder: modelOrders.gaps,
+    gapsRoutes: routesFor(modelOrders.gaps),
+    persistenceReady: true
+  };
+}
+route("GET", /^\/api\/admin\/model-routing$/, ({ user }) => {
+  requireRole(user, "super_user");
+  return modelRoutingConfig();
+});
+route("PUT", /^\/api\/admin\/model-routing$/, ({ user, body }) => {
+  requireRole(user, "super_user");
+  const purpose = body?.purpose === "gaps" ? "gaps" : "answers";
+  const order = Array.isArray(body?.order) ? body.order.filter((id) => MODEL_ROUTES.some((r) => r.id === id)) : [];
+  if (order.length === 0) throw badRequest("Provide an ordered list of approved model routes");
+  modelOrders[purpose] = [...new Set([...order, ...MODEL_ROUTES.map((r) => r.id)])];
+  return modelRoutingConfig();
+});
+
+// Gap analysis fixture: fixed themes over the seed's refused questions, a
+// 4.5 s "model" delay on fresh runs, cached per scope until refusals change.
+const GAP_THEMES = [
+  { title: "Fee waivers and regional fees", summary: "Callers ask whether activation and paper-statement fees can be waived or differ by province; the fee sources cover late payments only.", match: ["activation fee", "paper statements"], kind: "update", doc: "Late payment fee waivers" },
+  { title: "Trade-in values and price matching", summary: "Callers ask what damaged phones are worth and whether competitor promotions are matched; nothing in the knowledge base covers trade-ins.", match: ["trade-in", "price-match"], kind: "new", suggestedTitle: "Trade-in values and price-match policy" },
+  { title: "Account setup edge cases", summary: "Callers ask about lines for minors without ID and splitting one bill across two cards; identity and autopay sources come close but do not say.", match: ["minor without", "split one bill"], kind: "update", doc: "Caller identity verification (3-point check)" }
+];
+const gapCache = new Map();
+async function gapAnalysis(user, req, url) {
+  requireRole(user, "supervisor");
+  const programId = effectiveProgramId(user, req);
+  if (!programId) return { status: "no_program" };
+  const days = windowDays(url);
+  const scope = teamScope(user);
+  const rows = windowRows(programId, days, null, scope).filter((r) => r.refused);
+  const key = `${programId}|${scope ? scope.join(",") : "all"}|${days}`;
+  const fingerprint = `${rows.length}|${rows.reduce((m, r) => (r.createdAt > m ? r.createdAt : m), "")}`;
+  const hit = gapCache.get(key);
+  if (url.searchParams.get("refresh") !== "1" && hit && hit.fingerprint === fingerprint) {
+    return { ...hit.result, cached: true };
+  }
+  await new Promise((resolve) => setTimeout(resolve, 4500));
+  const groups = new Map();
+  for (const row of rows) {
+    const k = normalizeQuestion(row.question);
+    const g = groups.get(k) ?? { question: row.question, count: 0, flagged: 0, lastAskedAt: row.createdAt };
+    g.count += 1;
+    if (row.flaggedMissing) g.flagged += 1;
+    if (g.lastAskedAt < row.createdAt) g.lastAskedAt = row.createdAt;
+    groups.set(k, g);
+  }
+  const docs = visibleDocs(user, programId);
+  const themes = [];
+  let grouped = 0;
+  for (const t of GAP_THEMES) {
+    const members = [...groups.values()]
+      .filter((g) => t.match.some((m) => g.question.toLowerCase().includes(m)))
+      .sort((a, b) => b.count - a.count);
+    if (members.length === 0) continue;
+    grouped += members.length;
+    const doc = t.doc ? docs.find((d) => d.title === t.doc) : null;
+    const kind = t.kind === "update" && !doc ? "new" : t.kind;
+    themes.push({
+      title: t.title,
+      summary: t.summary,
+      kind,
+      refusedCount: members.reduce((s, m) => s + m.count, 0),
+      flaggedCount: members.reduce((s, m) => s + m.flagged, 0),
+      questionCount: members.length,
+      sampleQuestions: members.slice(0, 3).map((m) => m.question),
+      source: kind === "new" || !doc ? null : { documentId: doc.id, title: doc.title },
+      suggestedTitle: kind === "new" ? t.suggestedTitle ?? t.title : null,
+      lastAskedAt: members.reduce((l, m) => (m.lastAskedAt > l ? m.lastAskedAt : l), members[0].lastAskedAt)
+    });
+  }
+  themes.sort((a, b) => b.refusedCount - a.refusedCount);
+  const result = {
+    status: rows.length === 0 ? "empty" : "ready",
+    windowDays: days,
+    analyzedAt: new Date().toISOString(),
+    refusedAsks: rows.length,
+    distinctQuestions: groups.size,
+    analyzedQuestions: groups.size,
+    ungroupedQuestions: groups.size - grouped,
+    themes,
+    model: rows.length === 0 ? null : { label: MODEL_ROUTES.find((r) => r.id === modelOrders.gaps[0]).label, providerLabel: MODEL_ROUTES.find((r) => r.id === modelOrders.gaps[0]).providerLabel },
+    cached: false
+  };
+  gapCache.set(key, { fingerprint, result });
+  return result;
+}
+route("GET", /^\/api\/admin\/insights\/gap-analysis$/, ({ user, req, url }) => gapAnalysis(user, req, url));
+
 route("GET", /^\/api\/admin\/insights\/kb-gaps$/, ({ user, req, url }) => kbGaps(user, req, url));
 route("GET", /^\/api\/admin\/insights\/source-usage$/, ({ user, req, url }) => sourceUsage(user, req, url));
 route("GET", /^\/api\/admin\/insights\/source-usage\/questions$/, ({ user, req, url }) =>
