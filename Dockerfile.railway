@@ -12,7 +12,8 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm -r run check \
  && pnpm --filter @workspace/rag-app run build
 # Reinstall without dev dependencies once the SPA is built, so build and test
-# tooling (vite, vitest, esbuild 0.21, postcss) stays out of the runtime image.
+# tooling (vite, vitest, rolldown, lightningcss, postcss) stays out of the
+# runtime image.
 # `pnpm install --prod` over a full install only unlinks dev packages and
 # leaves their files in node_modules/.pnpm, so every node_modules goes first.
 # tsx is a production dependency of api-server and scripts: the runtime runs
