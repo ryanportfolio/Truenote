@@ -267,10 +267,10 @@ function RunHistory({
           <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="px-3 py-2 font-medium">Started / queued</th>
-              <th className="px-3 py-2 font-medium">Status</th>
+              <th className="hidden px-3 py-2 font-medium sm:table-cell">Status</th>
               <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Pass</th>
               <th className="hidden px-3 py-2 text-right font-medium lg:table-cell">Citation</th>
-              <th className="hidden px-3 py-2 text-right font-medium lg:table-cell">Progress</th>
+              <th className="hidden px-3 py-2 text-right font-medium xl:table-cell">Progress</th>
               <th className="px-3 py-2">
                 <span className="sr-only">Actions</span>
               </th>
@@ -287,44 +287,60 @@ function RunHistory({
                     selectedRunId === run.id && "bg-primary/5"
                   )}
                 >
-                  <td className="whitespace-nowrap px-3 py-2">
-                    <button
-                      type="button"
-                      onClick={() => onSelect(run.id)}
-                      aria-pressed={selectedRunId === run.id}
-                      className="rounded text-left underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <RelativeTime iso={run.startedAt ?? run.createdAt} />
-                    </button>
-                    {!run.startedAt ? (
-                      <span className="ml-1 text-xs text-muted-foreground">queued</span>
-                    ) : null}
-                    {trial ? (
-                      <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                        Trial
+                  <td className="px-3 py-2">
+                    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <button
+                        type="button"
+                        onClick={() => onSelect(run.id)}
+                        aria-pressed={selectedRunId === run.id}
+                        className="rounded text-left underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <RelativeTime iso={run.startedAt ?? run.createdAt} />
+                      </button>
+                      {!run.startedAt ? (
+                        <span className="text-xs text-muted-foreground">queued</span>
+                      ) : null}
+                      {trial ? (
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                          Trial
+                        </span>
+                      ) : null}
+                      {run.questionId ? (
+                        <span className="text-xs text-muted-foreground">single</span>
+                      ) : null}
+                    </span>
+                    <span className="mt-1 block sm:hidden">
+                      <RunStatus run={run} compact />
+                    </span>
+                    <span className="mt-1 block text-xs tabular-nums text-muted-foreground xl:hidden">
+                      <span className="lg:hidden">
+                        Citation {formatPct(run.summary?.citationAccuracyPct ?? null)} ·{" "}
                       </span>
-                    ) : null}
-                    {run.questionId ? (
-                      <span className="ml-2 text-xs text-muted-foreground">single</span>
-                    ) : null}
-                    <span className="mt-1 block text-xs tabular-nums text-muted-foreground lg:hidden">
-                      Citation {formatPct(run.summary?.citationAccuracyPct ?? null)} ·{" "}
                       {run.completedQuestions}/{run.questionCount} answered
                     </span>
                     <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground sm:hidden">
                       Pass {formatPass(run)}
                     </span>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="hidden px-3 py-2 sm:table-cell">
                     <RunStatus run={run} compact />
                   </td>
                   <td className="hidden whitespace-nowrap px-3 py-2 text-right tabular-nums sm:table-cell">
-                    {formatPass(run)}
+                    {run.summary && run.summary.totalQuestions > 0 ? (
+                      <>
+                        {run.summary.passed}/{run.summary.totalQuestions}
+                        <span className="block text-xs text-muted-foreground">
+                          {formatPct(evalPassRate(run.summary))}
+                        </span>
+                      </>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className="hidden px-3 py-2 text-right tabular-nums lg:table-cell">
                     {formatPct(run.summary?.citationAccuracyPct ?? null)}
                   </td>
-                  <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground lg:table-cell">
+                  <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground xl:table-cell">
                     {run.completedQuestions}/{run.questionCount}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right">

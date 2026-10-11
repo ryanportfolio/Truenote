@@ -233,7 +233,7 @@ function TrialForm({
           {routesError}
         </p>
       ) : null}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <label className="flex flex-col gap-1 text-sm" htmlFor={`${ids}-model`}>
           <span className="font-medium">Model</span>
           {routes === null && !routesError ? (
