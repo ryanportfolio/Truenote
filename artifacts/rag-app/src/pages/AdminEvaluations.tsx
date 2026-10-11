@@ -4,40 +4,33 @@ import {
   useMemo,
   useRef,
   useState,
-  type FormEvent,
   type ReactNode
 } from "react";
-import { FlaskConical, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import {
   cancelEvalRun,
-  createEvalQuestion,
-  deleteEvalQuestion,
   getEvalRun,
   getModelRouting,
   listDocuments,
   listEvalQuestions,
   listEvalRuns,
   setEvalBaseline,
-  startEvalRun,
-  updateEvalQuestion
+  startEvalRun
 } from "@/lib/api";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
 import { cn } from "@/lib/utils";
-import { EmptyState } from "@/components/EmptyState";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { QuestionsPanel } from "@/components/admin/evaluations/QuestionsPanel";
 import { RunLauncher } from "@/components/admin/evaluations/RunLauncher";
 import { RunsPanel } from "@/components/admin/evaluations/RunsPanel";
 import type {
   CurrentUser,
   DocumentListItem,
   EvalQuestionItem,
-  EvalQuestionKind,
   EvalRunDetailResponse,
   EvalRunListItem,
   EvalRunListResponse,
   EvalTrialSettings,
-  ModelRoutingOption,
-  SaveEvalQuestionRequest
+  ModelRoutingOption
 } from "@/types/api";
 
 interface AdminEvaluationsPageProps {
@@ -67,6 +60,7 @@ function EvaluationCenter(): JSX.Element {
   const [tab, setTab] = useState<CenterTab>("results");
   const [runsState, setRunsState] = useState<EvalRunListResponse | null>(null);
   const [questions, setQuestions] = useState<EvalQuestionItem[]>([]);
+  const [expectedAnswerReady, setExpectedAnswerReady] = useState(true);
   const [documents, setDocuments] = useState<DocumentListItem[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [detail, setDetail] = useState<EvalRunDetailResponse | null>(null);
@@ -78,8 +72,9 @@ function EvaluationCenter(): JSX.Element {
   const [judge, setJudge] = useState(false);
   const [starting, setStarting] = useState(false);
   const [cancelingRunId, setCancelingRunId] = useState<string | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<EvalQuestionItem | null>(null);
+  // Bumped on a program switch; remounts the Questions side so open forms,
+  // drafts and imports never carry over to another program.
+  const [programEpoch, setProgramEpoch] = useState(0);
   const [routes, setRoutes] = useState<ModelRoutingOption[] | null>(null);
   const [routesError, setRoutesError] = useState<string | null>(null);
   const requestGenerationRef = useRef(0);
@@ -106,6 +101,7 @@ function EvaluationCenter(): JSX.Element {
     if (runsResult.status === "fulfilled") applyRuns(runsResult.value);
     if (questionsResult.status === "fulfilled") {
       setQuestions(questionsResult.value.items);
+      setExpectedAnswerReady(questionsResult.value.expectedAnswerReady !== false);
     }
     if (documentsResult.status === "fulfilled") {
       setDocuments(documentsResult.value.items);
@@ -169,8 +165,7 @@ function EvaluationCenter(): JSX.Element {
       setSelectedRunId(null);
       setDetail(null);
       setDetailError(null);
-      setFormOpen(false);
-      setEditing(null);
+      setProgramEpoch((current) => current + 1);
       setStarting(false);
       setCancelingRunId(null);
       void refresh();
@@ -330,16 +325,6 @@ function EvaluationCenter(): JSX.Element {
     }
   }
 
-  function openCreate(): void {
-    setEditing(null);
-    setFormOpen(true);
-  }
-
-  function openEdit(item: EvalQuestionItem): void {
-    setEditing(item);
-    setFormOpen(true);
-  }
-
   const noProgramSelected = runsState?.noProgramSelected === true;
   const persistenceReady = runsState?.persistenceReady ?? false;
   const selectedRun =
@@ -433,8 +418,9 @@ function EvaluationCenter(): JSX.Element {
 
           <div
             role="tabpanel"
-            id={`evaluation-${tab}-panel`}
-            aria-labelledby={`evaluation-${tab}-tab`}
+            id="evaluation-results-panel"
+            aria-labelledby="evaluation-results-tab"
+            hidden={tab !== "results"}
           >
             {tab === "results" ? (
               <RunsPanel
@@ -452,42 +438,46 @@ function EvaluationCenter(): JSX.Element {
                 onBaseline={makeBaseline}
                 onCancel={cancelRun}
               />
-            ) : (
-              <QuestionsPanel
-                items={questions}
-                documents={documents}
-                loading={loading}
-                formOpen={formOpen}
-                editing={editing}
-                scopeGeneration={programGenerationRef.current}
-                runDisabled={starting || Boolean(activeRun) || !persistenceReady}
-                onCreate={openCreate}
-                onEdit={openEdit}
-                onCancelForm={() => {
-                  setFormOpen(false);
-                  setEditing(null);
-                }}
-                onSaved={(item, scopeGeneration) => {
-                  if (scopeGeneration !== programGenerationRef.current) return;
-                  setQuestions((current) => {
-                    const exists = current.some((question) => question.id === item.id);
-                    return exists
-                      ? current.map((question) => (question.id === item.id ? item : question))
-                      : [item, ...current];
-                  });
-                  setFormOpen(false);
-                  setEditing(null);
-                }}
-                onDeleted={(id, scopeGeneration) => {
-                  if (scopeGeneration !== programGenerationRef.current) return;
-                  setQuestions((current) => current.filter((question) => question.id !== id));
-                }}
-                onRun={(id) => void beginRun({ questionId: id })}
-                onError={(message, scopeGeneration) => {
-                  if (scopeGeneration === programGenerationRef.current) setError(message);
-                }}
-              />
-            )}
+            ) : null}
+          </div>
+          {/* Stays mounted on the Runs tab so drafts and imports survive a
+              single-question run, which switches to Runs. */}
+          <div
+            role="tabpanel"
+            id="evaluation-questions-panel"
+            aria-labelledby="evaluation-questions-tab"
+            hidden={tab !== "questions"}
+          >
+            <QuestionsPanel
+              key={programEpoch}
+              items={questions}
+              documents={documents}
+              loading={loading}
+              expectedAnswerReady={expectedAnswerReady}
+              scopeGeneration={programGenerationRef.current}
+              runDisabled={starting || Boolean(activeRun) || !persistenceReady}
+              onSaved={(item, scopeGeneration) => {
+                if (scopeGeneration !== programGenerationRef.current) return;
+                setQuestions((current) => {
+                  const exists = current.some((question) => question.id === item.id);
+                  return exists
+                    ? current.map((question) => (question.id === item.id ? item : question))
+                    : [item, ...current];
+                });
+              }}
+              onCreatedMany={(items, scopeGeneration) => {
+                if (scopeGeneration !== programGenerationRef.current) return;
+                setQuestions((current) => [...items, ...current]);
+              }}
+              onDeleted={(id, scopeGeneration) => {
+                if (scopeGeneration !== programGenerationRef.current) return;
+                setQuestions((current) => current.filter((question) => question.id !== id));
+              }}
+              onRun={(id) => void beginRun({ questionId: id })}
+              onError={(message, scopeGeneration) => {
+                if (scopeGeneration === programGenerationRef.current) setError(message);
+              }}
+            />
           </div>
         </>
       ) : null}
@@ -533,213 +523,3 @@ function TabButton({
     </button>
   );
 }
-
-function QuestionsPanel({
-  items,
-  documents,
-  loading,
-  formOpen,
-  editing,
-  scopeGeneration,
-  runDisabled,
-  onCreate,
-  onEdit,
-  onCancelForm,
-  onSaved,
-  onDeleted,
-  onRun,
-  onError
-}: {
-  items: EvalQuestionItem[];
-  documents: DocumentListItem[];
-  loading: boolean;
-  formOpen: boolean;
-  editing: EvalQuestionItem | null;
-  scopeGeneration: number;
-  runDisabled: boolean;
-  onCreate: () => void;
-  onEdit: (item: EvalQuestionItem) => void;
-  onCancelForm: () => void;
-  onSaved: (item: EvalQuestionItem, scopeGeneration: number) => void;
-  onDeleted: (id: string, scopeGeneration: number) => void;
-  onRun: (id: string) => void;
-  onError: (message: string | null, scopeGeneration: number) => void;
-}): JSX.Element {
-  async function remove(item: EvalQuestionItem): Promise<void> {
-    if (!window.confirm(`Delete this evaluation question?\n\n${item.question}`)) return;
-    onError(null, scopeGeneration);
-    try {
-      await deleteEvalQuestion(item.id);
-      onDeleted(item.id, scopeGeneration);
-    } catch (reason) {
-      onError(
-        reason instanceof Error ? reason.message : "Question could not be deleted",
-        scopeGeneration
-      );
-    }
-  }
-
-  return (
-    <section className="flex flex-col gap-4" aria-labelledby="eval-questions-heading">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 id="eval-questions-heading" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Question set</h2>
-          <p className="mt-1 text-sm text-muted-foreground">In-KB questions verify answers and sources. Refusal questions verify the assistant stays inside the documents.</p>
-        </div>
-        {!formOpen ? (
-          <button type="button" className="btn-whisper gap-1.5 px-3 py-1.5 text-sm" onClick={onCreate}>
-            <Plus className="h-4 w-4" aria-hidden /> Add question
-          </button>
-        ) : null}
-      </div>
-
-      {formOpen ? (
-        <QuestionForm
-          key={editing?.id ?? "new"}
-          item={editing}
-          documents={documents}
-          scopeGeneration={scopeGeneration}
-          onCancel={onCancelForm}
-          onSaved={onSaved}
-        />
-      ) : null}
-
-      {loading ? (
-        <div role="status" className="skeleton h-40 rounded-lg"><span className="sr-only">Loading evaluation questions…</span></div>
-      ) : items.length === 0 ? (
-        <EmptyState icon={FlaskConical} title="No evaluation questions" hint="Add one answerable question and one expected refusal to start a useful suite." />
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 font-medium">Question</th>
-                <th className="hidden px-3 py-2 font-medium sm:table-cell">Expected</th>
-                <th className="hidden px-3 py-2 font-medium md:table-cell">Source</th>
-                <th className="px-3 py-2"><span className="sr-only">Actions</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="border-t border-border align-top hover:bg-muted/30">
-                  <td className="max-w-lg px-3 py-2">
-                    <span className="font-medium">{item.question}</span>
-                    {item.notes ? <span className="mt-1 block line-clamp-1 text-xs text-muted-foreground">{item.notes}</span> : null}
-                    <span className={cn("mt-1 inline-flex w-fit rounded-full px-2 py-0.5 text-xs font-medium sm:hidden", item.kind === "in-kb" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground")}>
-                      {item.kind === "in-kb" ? "Answer" : "Refuse"}
-                    </span>
-                    <span className="mt-1 block line-clamp-1 text-xs text-muted-foreground md:hidden">
-                      {item.expectedDocTitle ?? (item.expectedAnswerContains.length > 0 ? `${item.expectedAnswerContains.length} expected phrase${item.expectedAnswerContains.length === 1 ? "" : "s"}` : "No source constraint")}
-                    </span>
-                  </td>
-                  <td className="hidden whitespace-nowrap px-3 py-2 sm:table-cell">
-                    <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", item.kind === "in-kb" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground")}>{item.kind === "in-kb" ? "Answer" : "Refuse"}</span>
-                  </td>
-                  <td className="hidden max-w-xs px-3 py-2 text-muted-foreground md:table-cell">
-                    {item.expectedDocTitle ?? (item.expectedAnswerContains.length > 0 ? `${item.expectedAnswerContains.length} phrase${item.expectedAnswerContains.length === 1 ? "" : "s"}` : "—")}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right">
-                    <div className="flex justify-end gap-1">
-                      <button type="button" className="btn-icon" aria-label={`Run: ${item.question}`} title="Run this question" disabled={runDisabled} onClick={() => onRun(item.id)}><Play className="h-4 w-4" aria-hidden /></button>
-                      <button type="button" className="btn-icon" aria-label={`Edit: ${item.question}`} onClick={() => onEdit(item)}><Pencil className="h-4 w-4" aria-hidden /></button>
-                      <button type="button" className="btn-icon text-destructive" aria-label={`Delete: ${item.question}`} onClick={() => void remove(item)}><Trash2 className="h-4 w-4" aria-hidden /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function QuestionForm({ item, documents, scopeGeneration, onCancel, onSaved }: { item: EvalQuestionItem | null; documents: DocumentListItem[]; scopeGeneration: number; onCancel: () => void; onSaved: (item: EvalQuestionItem, scopeGeneration: number) => void }): JSX.Element {
-  const [kind, setKind] = useState<EvalQuestionKind>(item?.kind ?? "in-kb");
-  const [question, setQuestion] = useState(item?.question ?? "");
-  const [expectedDocId, setExpectedDocId] = useState(item?.expectedDocId ?? "");
-  const [phrases, setPhrases] = useState(item?.expectedAnswerContains.join("\n") ?? "");
-  const [notes, setNotes] = useState(item?.notes ?? "");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function save(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const expectedAnswerContains = Array.from(new Set(phrases.split("\n").map((value) => value.trim()).filter(Boolean)));
-    // This form does not edit expected answers yet; keep an existing one so
-    // saving here never erases it (the server replaces it on every PUT).
-    const expectedAnswer = item?.expectedAnswer ?? null;
-    if (kind === "in-kb" && !expectedDocId && expectedAnswerContains.length === 0 && !expectedAnswer) {
-      setError("Choose an expected document or add at least one expected phrase.");
-      return;
-    }
-    const payload: SaveEvalQuestionRequest = {
-      kind,
-      question: question.trim(),
-      expectedDocId: kind === "in-kb" ? expectedDocId || null : null,
-      expectedAnswerContains: kind === "in-kb" ? expectedAnswerContains : [],
-      expectedAnswer: kind === "in-kb" ? expectedAnswer : null,
-      notes: notes.trim() || null
-    };
-    setSaving(true);
-    setError(null);
-    try {
-      onSaved(
-        item ? await updateEvalQuestion(item.id, payload) : await createEvalQuestion(payload),
-        scopeGeneration
-      );
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Question could not be saved");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <form onSubmit={(event) => void save(event)} className="rounded-lg border border-border bg-card p-5 shadow-card">
-      <div className="grid gap-4 lg:grid-cols-2">
-        <fieldset className="flex gap-2 lg:col-span-2">
-          <legend className="mb-1 block w-full text-sm font-medium">Expected behavior</legend>
-          {(["in-kb", "out-of-kb"] as const).map((value) => (
-            <label key={value} className={cn("flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm", kind === value ? "border-primary/50 bg-primary/5" : "border-input")}>
-              <input type="radio" name="kind" value={value} checked={kind === value} onChange={() => setKind(value)} disabled={saving} className="accent-primary" />
-              {value === "in-kb" ? "Answer from KB" : "Refuse safely"}
-            </label>
-          ))}
-        </fieldset>
-        <label className="flex flex-col gap-1 text-sm lg:col-span-2">
-          <span className="font-medium">Question</span>
-          <textarea value={question} onChange={(event) => setQuestion(event.target.value)} required maxLength={2000} rows={3} disabled={saving} className="resize-y rounded-md border border-input bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ring" placeholder="What should the assistant answer or refuse?" />
-        </label>
-        {kind === "in-kb" ? (
-          <>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Expected source <span className="font-normal text-muted-foreground">(optional)</span></span>
-              <select value={expectedDocId} onChange={(event) => setExpectedDocId(event.target.value)} disabled={saving} className="rounded-md border border-input bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ring">
-                <option value="">Any source</option>
-                {documents.map((document) => <option key={document.documentId} value={document.documentId}>{document.title}</option>)}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Expected phrases <span className="font-normal text-muted-foreground">(one per line)</span></span>
-              <textarea value={phrases} onChange={(event) => setPhrases(event.target.value)} rows={3} disabled={saving} className="resize-y rounded-md border border-input bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ring" placeholder={"$25 fee\nwithin 30 days"} />
-            </label>
-          </>
-        ) : (
-          <p className="rounded-md bg-muted/45 px-3 py-2 text-sm text-muted-foreground lg:col-span-2">A passing result must refuse without citing a source.</p>
-        )}
-        <label className="flex flex-col gap-1 text-sm lg:col-span-2">
-          <span className="font-medium">Notes <span className="font-normal text-muted-foreground">(optional)</span></span>
-          <input value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} disabled={saving} className="rounded-md border border-input bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Why this question matters or how to review it" />
-        </label>
-      </div>
-      {error ? <p role="alert" className="mt-3 text-sm text-destructive">{error}</p> : null}
-      <div className="mt-4 flex justify-end gap-2">
-        <button type="button" className="btn-whisper px-4 py-2 text-sm" onClick={onCancel} disabled={saving}>Cancel</button>
-        <button type="submit" className="btn-primary px-5 py-2 text-sm" disabled={saving || question.trim().length === 0}>{saving ? "Saving…" : item ? "Save question" : "Add question"}</button>
-      </div>
-    </form>
-  );
-}
-
