@@ -4,8 +4,11 @@
 # packages stay held at the base image's versions, so the server version, the
 # compiled vector extension and the data directory format do not change; only
 # OS packages are upgraded. Entrypoint, command and volume path are inherited.
+# No setuid or setgid files (mount, su, passwd and the like): the entrypoint
+# starts as root and drops to postgres with gosu, which needs neither.
 FROM pgvector/pgvector@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
 RUN apt-mark hold $(dpkg-query -W -f '${db:Status-Abbrev} ${Package}\n' 'postgresql*' 'libpq*' | awk '$1 == "ii" { print $2 }') \
  && apt-get update \
  && apt-get upgrade -y --no-install-recommends \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && find / -xdev -perm /6000 -type f -exec chmod ug-s {} +
