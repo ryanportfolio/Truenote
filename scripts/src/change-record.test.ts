@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   CHANGE_RECORD_FIELDS,
   CHANGE_RECORD_HEADINGS,
+  isAutomatedDependencyUpdate,
   verifyChangeRecord,
   verifyChangeRecordTemplate
 } from "./change-record.js";
@@ -146,5 +147,37 @@ describe("PCI change-record gate", () => {
     assert.ok(verifyChangeRecordTemplate(template.replace("- Change ID:", "- Removed ID:")).includes(
       "change-record template is missing field: Change ID"
     ));
+  });
+});
+
+describe("automated dependency updates", () => {
+  it("exempts a Dependabot pull request that touches only dependency files", () => {
+    for (const files of [
+      ["pnpm-workspace.yaml", "pnpm-lock.yaml"],
+      ["artifacts/api-server/package.json", "pnpm-lock.yaml"],
+      ["Dockerfile.railway"],
+      ["services/scanner/Dockerfile"],
+      [".github/workflows/security.yml", ".github/workflows/evidence-watch.yml"]
+    ]) {
+      assert.equal(isAutomatedDependencyUpdate("dependabot[bot]", files), true, files.join(", "));
+    }
+  });
+
+  it("requires the change record from any other author", () => {
+    assert.equal(isAutomatedDependencyUpdate("ryanportfolio", ["pnpm-lock.yaml"]), false);
+    assert.equal(isAutomatedDependencyUpdate("dependabot", ["pnpm-lock.yaml"]), false);
+  });
+
+  it("requires the change record when a Dependabot pull request touches anything else or nothing", () => {
+    assert.equal(isAutomatedDependencyUpdate("dependabot[bot]", []), false);
+    for (const file of [
+      "scripts/src/change-record.ts",
+      ".github/dependabot.yml",
+      ".github/workflows/nested/x.yml",
+      "docs/package.json.md",
+      "package.json.bak"
+    ]) {
+      assert.equal(isAutomatedDependencyUpdate("dependabot[bot]", ["pnpm-lock.yaml", file]), false, file);
+    }
   });
 });

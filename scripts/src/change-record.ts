@@ -237,6 +237,32 @@ export function verifyChangeRecord(
   };
 }
 
+/** GitHub sets this login on pull requests Dependabot opens; another account cannot use it. */
+export const DEPENDABOT_LOGIN = "dependabot[bot]";
+
+const DEPENDENCY_FILE_PATTERNS = [
+  /^(?:[^/]+\/)*package\.json$/,
+  /^pnpm-lock\.yaml$/,
+  /^pnpm-workspace\.yaml$/,
+  /^(?:[^/]+\/)*Dockerfile(?:\.[A-Za-z0-9-]+)?$/,
+  /^\.github\/workflows\/[^/]+\.ya?ml$/
+];
+
+/**
+ * An automated dependency update (configuration management procedure,
+ * section 6.1): a pull request opened by Dependabot that touches only
+ * dependency manifests, the lockfile, Dockerfiles and workflow files. Its
+ * record is the pull request itself (diff, release notes, CI results) and the
+ * merge is the approval, so it needs no change-record section.
+ */
+export function isAutomatedDependencyUpdate(author: string, changedFiles: readonly string[]): boolean {
+  return (
+    author === DEPENDABOT_LOGIN &&
+    changedFiles.length > 0 &&
+    changedFiles.every((file) => DEPENDENCY_FILE_PATTERNS.some((pattern) => pattern.test(file)))
+  );
+}
+
 export function verifyChangeRecordTemplate(markdown: string): string[] {
   const issues: string[] = [];
   for (const heading of CHANGE_RECORD_HEADINGS) {

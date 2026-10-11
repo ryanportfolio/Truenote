@@ -16,3 +16,7 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Odd-numbered Node releases never become LTS; the image tracks LTS lines.
+    ignore:
+      - dependency-name: node
+        versions: ["25.x", "27.x", "29.x"]
