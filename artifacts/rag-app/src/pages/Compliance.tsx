@@ -47,12 +47,6 @@ function formatDate(isoDate: string): string {
       });
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function SensitiveNotice(): JSX.Element {
   return (
     <p
@@ -147,7 +141,6 @@ function ComplianceList(): JSX.Element {
                 <th className="px-4 py-2 font-medium">Version</th>
                 <th className="hidden px-4 py-2 font-medium sm:table-cell">Date</th>
                 <th className="hidden px-4 py-2 font-medium md:table-cell">SHA-256</th>
-                <th className="hidden px-4 py-2 text-right font-medium md:table-cell">Size</th>
               </tr>
             </thead>
             <tbody>
@@ -175,9 +168,6 @@ function ComplianceList(): JSX.Element {
                     <code className="font-mono text-[13px] text-muted-foreground" title={doc.sha256}>
                       {doc.sha256.slice(0, 12)}
                     </code>
-                  </td>
-                  <td className="hidden px-4 py-3 text-right text-muted-foreground md:table-cell">
-                    {formatSize(doc.size)}
                   </td>
                 </tr>
               ))}
