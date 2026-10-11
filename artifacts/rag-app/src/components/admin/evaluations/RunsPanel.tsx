@@ -269,8 +269,8 @@ function RunHistory({
               <th className="px-3 py-2 font-medium">Started / queued</th>
               <th className="px-3 py-2 font-medium">Status</th>
               <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Pass</th>
-              <th className="hidden px-3 py-2 text-right font-medium md:table-cell">Citation</th>
-              <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Progress</th>
+              <th className="hidden px-3 py-2 text-right font-medium lg:table-cell">Citation</th>
+              <th className="hidden px-3 py-2 text-right font-medium lg:table-cell">Progress</th>
               <th className="px-3 py-2">
                 <span className="sr-only">Actions</span>
               </th>
@@ -307,11 +307,12 @@ function RunHistory({
                     {run.questionId ? (
                       <span className="ml-2 text-xs text-muted-foreground">single</span>
                     ) : null}
-                    <span className="mt-1 block text-xs text-muted-foreground md:hidden">
-                      Citation {formatPct(run.summary?.citationAccuracyPct ?? null)}
+                    <span className="mt-1 block text-xs tabular-nums text-muted-foreground lg:hidden">
+                      Citation {formatPct(run.summary?.citationAccuracyPct ?? null)} ·{" "}
+                      {run.completedQuestions}/{run.questionCount} answered
                     </span>
                     <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground sm:hidden">
-                      Pass {formatPass(run)} · {run.completedQuestions}/{run.questionCount}
+                      Pass {formatPass(run)}
                     </span>
                   </td>
                   <td className="px-3 py-2">
@@ -320,28 +321,29 @@ function RunHistory({
                   <td className="hidden whitespace-nowrap px-3 py-2 text-right tabular-nums sm:table-cell">
                     {formatPass(run)}
                   </td>
-                  <td className="hidden px-3 py-2 text-right tabular-nums md:table-cell">
+                  <td className="hidden px-3 py-2 text-right tabular-nums lg:table-cell">
                     {formatPct(run.summary?.citationAccuracyPct ?? null)}
                   </td>
-                  <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground sm:table-cell">
+                  <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground lg:table-cell">
                     {run.completedQuestions}/{run.questionCount}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right">
                     {run.isBaseline ? (
                       <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
                         <Star className="h-3.5 w-3.5" aria-hidden />
-                        <span className="hidden sm:inline">Baseline</span>
-                        <span className="sr-only sm:hidden">Baseline</span>
+                        <span className="hidden lg:inline">Baseline</span>
+                        <span className="sr-only lg:hidden">Baseline</span>
                       </span>
                     ) : run.status === "completed" ? (
                       <button
                         type="button"
                         className="btn-whisper gap-1.5 px-2.5 py-1 text-xs"
                         aria-label="Set as baseline"
+                        title="Set as baseline"
                         onClick={() => void onBaseline(run)}
                       >
                         <Star className="h-3.5 w-3.5" aria-hidden />
-                        <span className="hidden sm:inline">Set baseline</span>
+                        <span className="hidden lg:inline">Set baseline</span>
                       </button>
                     ) : null}
                   </td>

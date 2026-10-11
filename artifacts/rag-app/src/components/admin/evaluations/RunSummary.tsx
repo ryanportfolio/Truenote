@@ -173,12 +173,12 @@ function Metric({
         {help.button}
       </dt>
       <dd className="mt-1">
-        <span className="flex items-baseline gap-2">
+        <span className="flex flex-wrap items-baseline gap-x-2">
           <span className="text-xl font-semibold tabular-nums">{value}</span>
           {delta ? (
             <span
               className={cn(
-                "text-xs tabular-nums",
+                "whitespace-nowrap text-xs tabular-nums",
                 delta.tone === "better"
                   ? "text-success"
                   : delta.tone === "worse"
