@@ -1414,9 +1414,21 @@ function kbGaps(user, req, url) {
     if (entry.lastAskedAt < row.createdAt) entry.lastAskedAt = row.createdAt;
     groups.set(key, entry);
   }
-  const items = [...groups.values()].sort(
-    (a, b) => b.askCount - a.askCount || b.lastAskedAt.localeCompare(a.lastAskedAt)
-  );
+  // Same order as the server: the chosen key first, then flagged, asked, newest.
+  const sortKeys = ["askCount", "refusedCount", "flaggedCount", "negativeCount", "lastAskedAt"];
+  const sortKey = sortKeys.includes(url.searchParams.get("sort")) ? url.searchParams.get("sort") : "flaggedCount";
+  const sign = url.searchParams.get("dir") === "asc" ? 1 : -1;
+  const compare = (a, b, key) =>
+    key === "lastAskedAt" ? a.lastAskedAt.localeCompare(b.lastAskedAt) : a[key] - b[key];
+  const items = [...groups.values()]
+    .sort(
+      (a, b) =>
+        sign * compare(a, b, sortKey) ||
+        b.flaggedCount - a.flaggedCount ||
+        b.askCount - a.askCount ||
+        b.lastAskedAt.localeCompare(a.lastAskedAt)
+    )
+    .slice(0, 50);
   return { items, windowDays: days, totals };
 }
 
@@ -2492,8 +2504,15 @@ async function gapAnalysis(user, req, url) {
   }
   await new Promise((resolve) => setTimeout(resolve, 4500));
   const groups = new Map();
+  // Stand-in for the server's prompt-injection rules: such questions are held out.
+  const readsAsInstructions = (q) => /\b(ignore|disregard) (all |any )?(previous|prior|above) instructions\b|\bsystem prompt\b/i.test(q);
+  const heldOutKeys = new Set();
   for (const row of rows) {
     const k = normalizeQuestion(row.question);
+    if (readsAsInstructions(row.question)) {
+      heldOutKeys.add(k);
+      continue;
+    }
     const g = groups.get(k) ?? { question: row.question, count: 0, flagged: 0, lastAskedAt: row.createdAt };
     g.count += 1;
     if (row.flaggedMissing) g.flagged += 1;
@@ -2530,8 +2549,9 @@ async function gapAnalysis(user, req, url) {
     windowDays: days,
     analyzedAt: new Date().toISOString(),
     refusedAsks: rows.length,
-    distinctQuestions: groups.size,
+    distinctQuestions: groups.size + heldOutKeys.size,
     analyzedQuestions: groups.size,
+    heldOutQuestions: heldOutKeys.size,
     ungroupedQuestions: groups.size - grouped,
     themes,
     model: rows.length === 0 ? null : { label: MODEL_ROUTES.find((r) => r.id === modelOrders.gaps[0]).label, providerLabel: MODEL_ROUTES.find((r) => r.id === modelOrders.gaps[0]).providerLabel },

@@ -106,6 +106,27 @@ const DEFAULT_WINDOW_DAYS = 30;
 const MAX_WINDOW_DAYS = 365;
 const MAX_ITEMS = 50;
 
+/**
+ * Top gaps order, applied before the MAX_ITEMS cut so "newest" or "most
+ * refused" ranks every gap in the window, not just the default top rows.
+ * Fixed SQL per key: the query string only picks one.
+ */
+const GAP_SORT_SQL = {
+  askCount: sql`count(*)`,
+  refusedCount: sql`count(*) FILTER (WHERE refused)`,
+  flaggedCount: sql`count(*) FILTER (WHERE flagged_missing)`,
+  negativeCount: sql`count(*) FILTER (WHERE feedback = -1)`,
+  lastAskedAt: sql`max(created_at)`
+} as const;
+type GapSortKey = keyof typeof GAP_SORT_SQL;
+const DEFAULT_GAP_SORT: GapSortKey = "flaggedCount";
+
+function gapSortKey(raw: unknown): GapSortKey {
+  return typeof raw === "string" && Object.hasOwn(GAP_SORT_SQL, raw)
+    ? (raw as GapSortKey)
+    : DEFAULT_GAP_SORT;
+}
+
 interface GapRow {
   question: string;
   ask_count: number;
@@ -150,6 +171,9 @@ insightsRouter.get("/kb-gaps", adminReadLimit, async (req, res, next) => {
       ? Math.min(Math.max(rawDays, 1), MAX_WINDOW_DAYS)
       : DEFAULT_WINDOW_DAYS;
 
+    const sortKey = gapSortKey(req.query["sort"]);
+    const direction = req.query["dir"] === "asc" ? sql`ASC` : sql`DESC`;
+
     // Group by normalized question text: CSRs retype the same question with
     // different casing/whitespace mid-call; each variant is the same gap.
     const gapResult = await db.execute(sql`
@@ -167,6 +191,7 @@ insightsRouter.get("/kb-gaps", adminReadLimit, async (req, res, next) => {
         AND (refused = true OR flagged_missing = true OR feedback = -1)
       GROUP BY lower(btrim(question))
       ORDER BY
+        ${GAP_SORT_SQL[sortKey]} ${direction},
         count(*) FILTER (WHERE flagged_missing) DESC,
         count(*) DESC,
         max(created_at) DESC
