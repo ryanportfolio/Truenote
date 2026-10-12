@@ -231,7 +231,8 @@ const TEXT_RULES: PatternRule[] = [
   }
 ];
 
-const NEGATION = /\b(?:never|not|no|avoid|prohibited|forbidden)\b|n't\b/gi;
+// NFKC keeps the typographic apostrophe, so "don’t" needs U+2019 here.
+const NEGATION = /\b(?:never|not|no|cannot|avoid|prohibited|forbidden)\b|n['’]t\b/gi;
 const CLAUSE_BREAK = /[.!?;:,\n]/g;
 
 /** Start offsets of every match of a global pattern, in order. */
