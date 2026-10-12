@@ -102,9 +102,13 @@ complianceRouter.get("/documents/:slug", complianceReadLimit, async (req, res, n
   }
 });
 
-/** Download name: the title and version, reduced to characters every OS accepts. */
+/**
+ * Download name: the title and version, reduced to characters every OS accepts.
+ * Most titles already start with "Truenote"; the prefix is added only when missing.
+ */
 function pdfFileName(title: string, version: string): string {
-  const base = `Truenote ${title} v${version}`
+  const named = /^truenote\b/i.test(title) ? title : `Truenote ${title}`;
+  const base = `${named} v${version}`
     .replace(/[^A-Za-z0-9 .()+-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()

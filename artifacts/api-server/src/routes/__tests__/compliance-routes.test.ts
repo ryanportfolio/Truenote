@@ -293,6 +293,17 @@ describe("/api/compliance/documents/:slug/pdf", () => {
     ]);
   });
 
+  it("does not double the Truenote prefix in the file name", async () => {
+    await seedPdf();
+    const manifest = JSON.parse((await storage.get(COMPLIANCE_MANIFEST_KEY)).toString("utf8"));
+    manifest.documents[0].title = "Truenote plan of action: milestones/dates";
+    await storage.put(COMPLIANCE_MANIFEST_KEY, Buffer.from(JSON.stringify(manifest)));
+    const response = await fetch(`${baseUrl}/api/compliance/documents/plan-of-action/pdf`);
+    expect(response.headers.get("content-disposition")).toBe(
+      'attachment; filename="Truenote plan of action milestones dates v0.1.pdf"'
+    );
+  });
+
   it("lists the PDF size beside the document", async () => {
     await seedPdf();
     const result = await get("/api/compliance/documents");
