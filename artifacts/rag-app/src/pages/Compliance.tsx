@@ -5,7 +5,8 @@ import remarkGfm from "remark-gfm";
 import { ArrowLeft, FileDown, FileLock2, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import {
-  complianceDocumentPdfUrl,
+  UnauthorizedError,
+  downloadComplianceDocumentPdf,
   getComplianceDocument,
   getComplianceDocuments
 } from "@/lib/api";
@@ -69,23 +70,61 @@ function formatPdfSize(bytes: number): string {
     : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-/** Whisper pill that downloads a document's PDF (the API sends it as an attachment). */
-function PdfDownload({ slug, title, pdfSize, label = "PDF" }: {
+interface PdfDownloads {
+  pendingSlug: string | null;
+  error: string | null;
+  start: (slug: string) => void;
+}
+
+/**
+ * One download at a time per screen. An expired session goes to the sign-in
+ * flow through the API client; other failures show in the screen's alert.
+ */
+function usePdfDownloads(): PdfDownloads {
+  const [pendingSlug, setPendingSlug] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const start = (slug: string): void => {
+    if (pendingSlug) return;
+    setPendingSlug(slug);
+    setError(null);
+    downloadComplianceDocumentPdf(slug)
+      .catch((reason: unknown) => {
+        if (reason instanceof UnauthorizedError) return;
+        setError(reason instanceof Error ? reason.message : "The PDF could not download");
+      })
+      .finally(() => setPendingSlug(null));
+  };
+  return { pendingSlug, error, start };
+}
+
+function DownloadError({ error }: { error: string | null }): JSX.Element | null {
+  return error ? (
+    <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      {error}
+    </p>
+  ) : null;
+}
+
+/** Whisper pill that downloads a document's PDF. */
+function PdfDownload({ slug, title, pdfSize, downloads, label = "PDF" }: {
   slug: string;
   title: string;
   pdfSize: number;
+  downloads: PdfDownloads;
   label?: string;
 }): JSX.Element {
+  const pending = downloads.pendingSlug === slug;
   return (
-    <a
-      href={complianceDocumentPdfUrl(slug)}
-      download
+    <button
+      type="button"
+      onClick={() => downloads.start(slug)}
+      disabled={downloads.pendingSlug !== null}
       aria-label={`Download ${title} as PDF, ${formatPdfSize(pdfSize)}`}
       className="btn-whisper inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1 text-xs"
     >
-      <FileDown className="h-3.5 w-3.5" aria-hidden />
-      {label}
-    </a>
+      <FileDown className={cn("h-3.5 w-3.5", pending && "motion-safe:animate-pulse")} aria-hidden />
+      {pending ? "Downloading…" : label}
+    </button>
   );
 }
 
@@ -104,7 +143,10 @@ const REQUESTED_DOCUMENTS: ReadonlyArray<{ slug: string; request: string }> = [
   { slug: "pci-saq-d-service-provider-readiness", request: "PCI self-assessment questionnaire" }
 ];
 
-function RequestedDocuments({ documents }: { documents: ComplianceDocumentSummary[] }): JSX.Element | null {
+function RequestedDocuments({ documents, downloads }: {
+  documents: ComplianceDocumentSummary[];
+  downloads: PdfDownloads;
+}): JSX.Element | null {
   const cards = REQUESTED_DOCUMENTS.flatMap(({ slug, request }) => {
     const doc = documents.find((candidate) => candidate.slug === slug);
     return doc && doc.pdfSize !== null ? [{ doc, pdfSize: doc.pdfSize, request }] : [];
@@ -123,20 +165,24 @@ function RequestedDocuments({ documents }: { documents: ComplianceDocumentSummar
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map(({ doc, pdfSize, request }) => (
           <li key={doc.slug}>
-            <a
-              href={complianceDocumentPdfUrl(doc.slug)}
-              download
-              className="group flex h-full flex-col gap-3 rounded-lg border border-border bg-card p-5 shadow-card transition-colors duration-100 ease-out hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            <button
+              type="button"
+              onClick={() => downloads.start(doc.slug)}
+              disabled={downloads.pendingSlug !== null}
+              className="flex h-full w-full cursor-pointer flex-col gap-3 rounded-lg border border-border bg-card p-5 text-left shadow-card transition-colors duration-100 ease-out hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:hover:border-border"
             >
               <span className="text-sm font-medium leading-snug">{request}</span>
               <span className="text-xs leading-relaxed text-muted-foreground">
                 {doc.title}, version {doc.version}, {formatDate(doc.date)}
               </span>
               <span className="btn-whisper mt-auto inline-flex items-center gap-1.5 self-start px-3 py-1 text-xs">
-                <FileDown className="h-3.5 w-3.5" aria-hidden />
-                PDF, {formatPdfSize(pdfSize)}
+                <FileDown
+                  className={cn("h-3.5 w-3.5", downloads.pendingSlug === doc.slug && "motion-safe:animate-pulse")}
+                  aria-hidden
+                />
+                {downloads.pendingSlug === doc.slug ? "Downloading…" : `PDF, ${formatPdfSize(pdfSize)}`}
               </span>
-            </a>
+            </button>
           </li>
         ))}
       </ul>
@@ -166,6 +212,7 @@ export function CompliancePage({ user }: CompliancePageProps): JSX.Element {
 
 function ComplianceList(): JSX.Element {
   const [documents, setDocuments] = useState<ComplianceDocumentSummary[] | null>(null);
+  const downloads = usePdfDownloads();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -204,6 +251,7 @@ function ComplianceList(): JSX.Element {
       </header>
 
       <SensitiveNotice />
+      <DownloadError error={downloads.error} />
 
       {error ? (
         <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -219,7 +267,7 @@ function ComplianceList(): JSX.Element {
         />
       ) : (
         <>
-          <RequestedDocuments documents={documents} />
+          <RequestedDocuments documents={documents} downloads={downloads} />
           <section aria-labelledby="all-documents" className="flex flex-col gap-3">
             <h2 id="all-documents" className="text-xl font-semibold tracking-tight">
               All documents
@@ -254,7 +302,7 @@ function ComplianceList(): JSX.Element {
                             </span>
                           </div>
                           {doc.pdfSize !== null && (
-                            <PdfDownload slug={doc.slug} title={doc.title} pdfSize={doc.pdfSize} />
+                            <PdfDownload slug={doc.slug} title={doc.title} pdfSize={doc.pdfSize} downloads={downloads} />
                           )}
                         </div>
                       </td>
@@ -306,6 +354,7 @@ function BackLink(): JSX.Element {
 
 function ComplianceDocumentView({ slug }: { slug: string }): JSX.Element {
   const [state, setState] = useState<DocumentState>({ status: "loading" });
+  const downloads = usePdfDownloads();
 
   useEffect(() => {
     let cancelled = false;
@@ -386,6 +435,7 @@ function ComplianceDocumentView({ slug }: { slug: string }): JSX.Element {
                     slug={state.document.slug}
                     title={state.document.title}
                     pdfSize={state.document.pdfSize}
+                    downloads={downloads}
                     label={`Download PDF (${formatPdfSize(state.document.pdfSize)})`}
                   />
                 </div>
@@ -393,6 +443,7 @@ function ComplianceDocumentView({ slug }: { slug: string }): JSX.Element {
             </dl>
           </header>
           <SensitiveNotice />
+          <DownloadError error={downloads.error} />
           <article className="min-w-0 rounded-lg border border-border bg-card p-5 text-sm leading-relaxed shadow-card">
             <ComplianceMarkdown markdown={state.document.markdown} />
           </article>

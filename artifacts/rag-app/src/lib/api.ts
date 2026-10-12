@@ -1465,9 +1465,40 @@ export async function getComplianceDocuments(): Promise<ComplianceDocumentListRe
   return asJson<ComplianceDocumentListResponse>(response);
 }
 
-/** Download URL for a document's PDF (GET /api/compliance/documents/:slug/pdf). */
-export function complianceDocumentPdfUrl(slug: string): string {
-  return `/api/compliance/documents/${encodeURIComponent(slug)}/pdf`;
+/**
+ * Download a document's PDF (GET /api/compliance/documents/:slug/pdf) and hand
+ * it to the browser as a file. Fetched rather than linked so an expired session
+ * reaches the sign-in flow and other failures can be shown on the page.
+ */
+export async function downloadComplianceDocumentPdf(slug: string): Promise<void> {
+  const response = await fetch(
+    `/api/compliance/documents/${encodeURIComponent(slug)}/pdf`,
+    withDefaults()
+  );
+  if (!response.ok) {
+    if (response.status === 401) {
+      notifySessionExpired();
+      throw new UnauthorizedError();
+    }
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `The PDF could not download (HTTP ${response.status})`);
+  }
+  const blob = await response.blob();
+  const name =
+    /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") ?? "")?.[1] ??
+    `${slug}.pdf`;
+  const url = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+  } finally {
+    // Revoke after the click has handed the blob to the download manager.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
 }
 
 /** Null when the document does not exist (404) or the id is malformed (400). */
