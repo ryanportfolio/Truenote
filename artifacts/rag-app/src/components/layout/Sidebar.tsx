@@ -19,6 +19,8 @@ const NAV: ReadonlyArray<{
   label: string;
   icon: typeof FileText;
   minRole: UserRole;
+  /** Shown only below lg; from lg up the top bar carries it. */
+  railOnly?: boolean;
 }> = [
   { href: "/chat", label: "Ask", icon: MessageSquare, minRole: "csr" },
   { href: "/kb", label: "Sources", icon: BookOpen, minRole: "csr" },
@@ -31,7 +33,7 @@ const NAV: ReadonlyArray<{
   { href: "/admin/observability", label: "Timing", icon: Activity, minRole: "super_user" },
   { href: "/admin/errors", label: "Errors", icon: Bug, minRole: "super_user" },
   { href: "/admin/security", label: "Security", icon: ShieldCheck, minRole: "super_user" },
-  { href: "/compliance", label: "Compliance", icon: FileLock2, minRole: "super_user" },
+  { href: "/compliance", label: "Compliance", icon: FileLock2, minRole: "super_user", railOnly: true },
   { href: "/admin/model-routing", label: "Models", icon: Cpu, minRole: "super_user" },
   { href: "/admin/evaluations", label: "Evaluations", icon: FlaskConical, minRole: "super_user" }
 ];
@@ -45,10 +47,10 @@ export function Sidebar({ user, onNavigateIntent }: SidebarProps): JSX.Element {
     // the hover tooltip icon-only links need.
     <nav className="sidebar-shell flex w-16 flex-col p-2 md:w-60 md:p-3">
       <ul className="flex flex-col gap-1">
-        {items.map(({ href, label, icon: Icon }) => {
+        {items.map(({ href, label, icon: Icon, railOnly }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
-            <li key={href}>
+            <li key={href} className={railOnly ? "lg:hidden" : undefined}>
               <Link
                 href={href}
                 title={label}

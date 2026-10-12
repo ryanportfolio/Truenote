@@ -1,5 +1,7 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { FileLock2 } from "lucide-react";
 import { logout } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { hasAtLeastRole } from "@/types/api";
 import type { CurrentUser, UserRole } from "@/types/api";
 import { ProgramSelector } from "./ProgramSelector";
@@ -44,27 +46,51 @@ export function TopBar({
   // Logo is a home link: managers live in the admin area, CSRs live in
   // chat. Role-aware target instead of a one-size-fits-all "/".
   const homeHref = hasAtLeastRole(user, "manager") ? "/admin/documents" : "/chat";
+  const [pathname] = useLocation();
+  // Super users only; the API enforces the same role on every document.
+  // From lg up; below lg the sidebar carries the link, since
+  // the bar has no room left at narrower widths.
+  const showCompliance = hasAtLeastRole(user, "super_user");
+  const complianceActive = pathname === "/compliance" || pathname.startsWith("/compliance/");
 
   return (
     <header className="topbar-shell">
-      <Link
-        href={homeHref}
-        onPointerEnter={() => onNavigateIntent(homeHref)}
-        onFocus={() => onNavigateIntent(homeHref)}
-        className="brand-home-link"
-      >
-        <BrandMark className="h-8 w-8" />
-        {/* Below 360px the mark alone shows, so the theme switch and Sign
-          * out fit on one line; the wordmark stays as the link's name. */}
-        <span className="sr-only flex-col min-[360px]:not-sr-only min-[360px]:flex">
-          <span className="font-display text-lg font-semibold leading-none tracking-tight">
-            Truenote
+      <div className="flex min-w-0 items-center gap-3 sm:gap-6">
+        <Link
+          href={homeHref}
+          onPointerEnter={() => onNavigateIntent(homeHref)}
+          onFocus={() => onNavigateIntent(homeHref)}
+          className="brand-home-link"
+        >
+          <BrandMark className="h-8 w-8" />
+          {/* Below 360px the mark alone shows, so the theme switch and Sign
+            * out fit on one line; the wordmark stays as the link's name. */}
+          <span className="sr-only flex-col min-[360px]:not-sr-only min-[360px]:flex">
+            <span className="font-display text-lg font-semibold leading-none tracking-tight">
+              Truenote
+            </span>
+            <span className="mt-1 text-[9px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+              Answers with receipts
+            </span>
           </span>
-          <span className="mt-1 text-[9px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
-            Answers with receipts
-          </span>
-        </span>
-      </Link>
+        </Link>
+        {showCompliance && (
+          <Link
+            href="/compliance"
+            title="Compliance"
+            onPointerEnter={() => onNavigateIntent("/compliance")}
+            onFocus={() => onNavigateIntent("/compliance")}
+            aria-current={complianceActive ? "page" : undefined}
+            className={cn(
+              "btn-whisper hidden items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm lg:inline-flex",
+              complianceActive && "font-semibold text-primary"
+            )}
+          >
+            <FileLock2 className="h-4 w-4 shrink-0" aria-hidden />
+            Compliance
+          </Link>
+        )}
+      </div>
       <div className="flex min-w-0 items-center gap-2 sm:gap-4">
         <ProgramSelector user={user} />
         <div className="flex min-w-0 items-center gap-1.5 text-sm sm:gap-2">
