@@ -2,9 +2,14 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowLeft, FileLock2, ShieldAlert } from "lucide-react";
+import { ArrowLeft, FileDown, FileLock2, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
-import { getComplianceDocument, getComplianceDocuments } from "@/lib/api";
+import {
+  UnauthorizedError,
+  downloadComplianceDocumentPdf,
+  getComplianceDocument,
+  getComplianceDocuments
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type {
   ComplianceDocumentResponse,
@@ -59,6 +64,132 @@ function SensitiveNotice(): JSX.Element {
   );
 }
 
+function formatPdfSize(bytes: number): string {
+  return bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+interface PdfDownloads {
+  pendingSlug: string | null;
+  error: string | null;
+  start: (slug: string) => void;
+}
+
+/**
+ * One download at a time per screen. An expired session goes to the sign-in
+ * flow through the API client; other failures show in the screen's alert.
+ */
+function usePdfDownloads(): PdfDownloads {
+  const [pendingSlug, setPendingSlug] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const start = (slug: string): void => {
+    if (pendingSlug) return;
+    setPendingSlug(slug);
+    setError(null);
+    downloadComplianceDocumentPdf(slug)
+      .catch((reason: unknown) => {
+        if (reason instanceof UnauthorizedError) return;
+        setError(reason instanceof Error ? reason.message : "The PDF could not download");
+      })
+      .finally(() => setPendingSlug(null));
+  };
+  return { pendingSlug, error, start };
+}
+
+function DownloadError({ error }: { error: string | null }): JSX.Element | null {
+  return error ? (
+    <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      {error}
+    </p>
+  ) : null;
+}
+
+/** Whisper pill that downloads a document's PDF. */
+function PdfDownload({ slug, title, pdfSize, downloads, label = "PDF" }: {
+  slug: string;
+  title: string;
+  pdfSize: number;
+  downloads: PdfDownloads;
+  label?: string;
+}): JSX.Element {
+  const pending = downloads.pendingSlug === slug;
+  return (
+    <button
+      type="button"
+      onClick={() => downloads.start(slug)}
+      disabled={downloads.pendingSlug !== null}
+      aria-label={`Download ${title} as PDF, ${formatPdfSize(pdfSize)}`}
+      className="btn-whisper inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1 text-xs"
+    >
+      <FileDown className={cn("h-3.5 w-3.5", pending && "motion-safe:animate-pulse")} aria-hidden />
+      {pending ? "Downloading…" : label}
+    </button>
+  );
+}
+
+/**
+ * The documents the employer's security review asked for, in the order of
+ * that request. A card shows only when its document and PDF are uploaded.
+ */
+const REQUESTED_DOCUMENTS: ReadonlyArray<{ slug: string; request: string }> = [
+  { slug: "system-security-plan", request: "System security plan and NIST SP 800-53 Rev. 5 Moderate mapping" },
+  { slug: "plan-of-action-and-milestones", request: "Plan of action and milestones" },
+  { slug: "security-assessment-800-53a", request: "Assessment using SP 800-53A, 800-53B and 800-37" },
+  { slug: "policies-and-procedures", request: "Policies and procedures" },
+  { slug: "vulnerability-management-program", request: "Recurring scan program, scan data and remediation timelines" },
+  { slug: "secure-development-pipeline", request: "Code scans and pipeline security summary" },
+  { slug: "pci-scope-analysis", request: "PCI security-impacting analysis" },
+  { slug: "pci-saq-d-service-provider-readiness", request: "PCI self-assessment questionnaire" }
+];
+
+function RequestedDocuments({ documents, downloads }: {
+  documents: ComplianceDocumentSummary[];
+  downloads: PdfDownloads;
+}): JSX.Element | null {
+  const cards = REQUESTED_DOCUMENTS.flatMap(({ slug, request }) => {
+    const doc = documents.find((candidate) => candidate.slug === slug);
+    return doc && doc.pdfSize !== null ? [{ doc, pdfSize: doc.pdfSize, request }] : [];
+  });
+  if (cards.length === 0) return null;
+  return (
+    <section aria-labelledby="requested-documents" className="flex flex-col gap-3">
+      <div>
+        <h2 id="requested-documents" className="text-xl font-semibold tracking-tight">
+          Requested documents
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          What the security review asked for, as PDFs. Each download is recorded in the security log.
+        </p>
+      </div>
+      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {cards.map(({ doc, pdfSize, request }) => (
+          <li key={doc.slug}>
+            <button
+              type="button"
+              onClick={() => downloads.start(doc.slug)}
+              disabled={downloads.pendingSlug !== null}
+              className="flex h-full w-full cursor-pointer flex-col gap-3 rounded-lg border border-border bg-card p-5 text-left shadow-card transition-colors duration-100 ease-out hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:hover:border-border"
+            >
+              <span className="text-sm font-medium leading-snug">{request}</span>
+              <span className="text-xs leading-relaxed text-muted-foreground">
+                {doc.title}, version {doc.version}, {formatDate(doc.date)}
+              </span>
+              <span className="btn-whisper mt-auto inline-flex items-center gap-1.5 self-start px-3 py-1 text-xs">
+                <FileDown
+                  className={cn("h-3.5 w-3.5", downloads.pendingSlug === doc.slug && "motion-safe:animate-pulse")}
+                  aria-hidden
+                />
+                {downloads.pendingSlug === doc.slug ? "Downloading…" : `PDF, ${formatPdfSize(pdfSize)}`}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function ListSkeleton(): JSX.Element {
   return (
     <div role="status" className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
@@ -81,6 +212,7 @@ export function CompliancePage({ user }: CompliancePageProps): JSX.Element {
 
 function ComplianceList(): JSX.Element {
   const [documents, setDocuments] = useState<ComplianceDocumentSummary[] | null>(null);
+  const downloads = usePdfDownloads();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -119,6 +251,7 @@ function ComplianceList(): JSX.Element {
       </header>
 
       <SensitiveNotice />
+      <DownloadError error={downloads.error} />
 
       {error ? (
         <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -133,47 +266,62 @@ function ComplianceList(): JSX.Element {
           hint="Documents appear here after the owner uploads them to storage with the compliance upload script."
         />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
-          <table className="w-full text-sm tabular-nums">
-            <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 font-medium">Document</th>
-                <th className="px-4 py-2 font-medium">Version</th>
-                <th className="hidden px-4 py-2 font-medium sm:table-cell">Date</th>
-                <th className="hidden px-4 py-2 font-medium md:table-cell">SHA-256</th>
-              </tr>
-            </thead>
-            <tbody>
-              {documents.map((doc) => (
-                <tr
-                  key={doc.slug}
-                  className="border-t border-border transition-colors duration-100 ease-out hover:bg-muted/40"
-                >
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/compliance/${doc.slug}`}
-                      className="font-medium text-primary underline-offset-2 hover:underline"
+        <>
+          <RequestedDocuments documents={documents} downloads={downloads} />
+          <section aria-labelledby="all-documents" className="flex flex-col gap-3">
+            <h2 id="all-documents" className="text-xl font-semibold tracking-tight">
+              All documents
+            </h2>
+            <div className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
+              <table className="w-full text-sm tabular-nums">
+                <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-2 font-medium">Document</th>
+                    <th className="px-4 py-2 font-medium">Version</th>
+                    <th className="hidden px-4 py-2 font-medium sm:table-cell">Date</th>
+                    <th className="hidden px-4 py-2 font-medium md:table-cell">SHA-256</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {documents.map((doc) => (
+                    <tr
+                      key={doc.slug}
+                      className="border-t border-border transition-colors duration-100 ease-out hover:bg-muted/40"
                     >
-                      {doc.title}
-                    </Link>
-                    <span className="mt-1 block text-xs text-muted-foreground sm:hidden">
-                      {formatDate(doc.date)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">{doc.version}</td>
-                  <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-                    {formatDate(doc.date)}
-                  </td>
-                  <td className="hidden px-4 py-3 md:table-cell">
-                    <code className="font-mono text-[13px] text-muted-foreground" title={doc.sha256}>
-                      {doc.sha256.slice(0, 12)}
-                    </code>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
+                          <div className="min-w-0">
+                            <Link
+                              href={`/compliance/${doc.slug}`}
+                              className="font-medium text-primary underline-offset-2 hover:underline"
+                            >
+                              {doc.title}
+                            </Link>
+                            <span className="mt-1 block text-xs text-muted-foreground sm:hidden">
+                              {formatDate(doc.date)}
+                            </span>
+                          </div>
+                          {doc.pdfSize !== null && (
+                            <PdfDownload slug={doc.slug} title={doc.title} pdfSize={doc.pdfSize} downloads={downloads} />
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">{doc.version}</td>
+                      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
+                        {formatDate(doc.date)}
+                      </td>
+                      <td className="hidden px-4 py-3 md:table-cell">
+                        <code className="font-mono text-[13px] text-muted-foreground" title={doc.sha256}>
+                          {doc.sha256.slice(0, 12)}
+                        </code>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
       )}
     </div>
   );
@@ -206,6 +354,7 @@ function BackLink(): JSX.Element {
 
 function ComplianceDocumentView({ slug }: { slug: string }): JSX.Element {
   const [state, setState] = useState<DocumentState>({ status: "loading" });
+  const downloads = usePdfDownloads();
 
   useEffect(() => {
     let cancelled = false;
@@ -280,9 +429,21 @@ function ComplianceDocumentView({ slug }: { slug: string }): JSX.Element {
                   </code>
                 </dd>
               </div>
+              {state.document.pdfSize !== null && (
+                <div className="self-end">
+                  <PdfDownload
+                    slug={state.document.slug}
+                    title={state.document.title}
+                    pdfSize={state.document.pdfSize}
+                    downloads={downloads}
+                    label={`Download PDF (${formatPdfSize(state.document.pdfSize)})`}
+                  />
+                </div>
+              )}
             </dl>
           </header>
           <SensitiveNotice />
+          <DownloadError error={downloads.error} />
           <article className="min-w-0 rounded-lg border border-border bg-card p-5 text-sm leading-relaxed shadow-card">
             <ComplianceMarkdown markdown={state.document.markdown} />
           </article>

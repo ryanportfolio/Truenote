@@ -14,6 +14,7 @@ import {
 import {
   COMPLIANCE_MANIFEST_KEY,
   complianceDocumentKey,
+  complianceDocumentPdfKey,
   sha256Hex
 } from "../../lib/compliance/documents.js";
 import {
@@ -167,7 +168,8 @@ describe("/api/compliance/documents", () => {
           version: "0.1",
           date: "2026-10-10",
           sha256: PLAN_SHA,
-          size: Buffer.byteLength(PLAN)
+          size: Buffer.byteLength(PLAN),
+          pdfSize: null
         }
       ]
     });
@@ -199,6 +201,7 @@ describe("/api/compliance/documents/:slug", () => {
       version: "0.1",
       date: "2026-10-10",
       sha256: PLAN_SHA,
+      pdfSize: null,
       markdown: PLAN
     });
     expect(audit.events).toHaveLength(1);
@@ -252,6 +255,99 @@ describe("/api/compliance/documents/:slug", () => {
     const result = await get("/api/compliance/documents/plan-of-action");
     expect(result.status).toBe(500);
     expect(JSON.stringify(result.body)).not.toContain("Fixture weakness");
+  });
+});
+
+describe("/api/compliance/documents/:slug/pdf", () => {
+  const PDF = Buffer.from("%PDF-1.7\nFixture weakness\n", "latin1");
+  const PDF_SHA = sha256Hex(PDF);
+
+  async function seedPdf(body = PDF, manifestSha = PDF_SHA): Promise<void> {
+    await seed();
+    const manifest = JSON.parse((await storage.get(COMPLIANCE_MANIFEST_KEY)).toString("utf8"));
+    manifest.documents[0].pdf = { sha256: manifestSha, size: body.length };
+    await storage.put(COMPLIANCE_MANIFEST_KEY, Buffer.from(JSON.stringify(manifest)));
+    await storage.put(
+      complianceDocumentPdfKey({ slug: "plan-of-action", pdf: { sha256: manifestSha } }),
+      body
+    );
+  }
+
+  it("downloads the PDF and records the read with its format", async () => {
+    await seedPdf();
+    const response = await fetch(`${baseUrl}/api/compliance/documents/plan-of-action/pdf`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/pdf");
+    expect(response.headers.get("content-disposition")).toBe(
+      'attachment; filename="Truenote Plan of action and milestones v0.1.pdf"'
+    );
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(Buffer.from(await response.arrayBuffer()).equals(PDF)).toBe(true);
+    expect(audit.events).toEqual([
+      expect.objectContaining({
+        action: "compliance.document_read",
+        outcome: "success",
+        resourceId: "plan-of-action",
+        details: { slug: "plan-of-action", format: "pdf", sha256: PDF_SHA, version: "0.1" }
+      })
+    ]);
+  });
+
+  it("lists the PDF size beside the document", async () => {
+    await seedPdf();
+    const result = await get("/api/compliance/documents");
+    expect(result.body.documents[0].pdfSize).toBe(PDF.length);
+  });
+
+  it("returns 404 when the document has no PDF", async () => {
+    await seed();
+    expect(await get("/api/compliance/documents/plan-of-action/pdf")).toEqual({
+      status: 404,
+      body: { error: "Not found" }
+    });
+    expect((await get("/api/compliance/documents")).body.documents[0].pdfSize).toBeNull();
+    expect(audit.events).toEqual([]);
+  });
+
+  it.each(["csr", "supervisor", "manager", "senior_manager"] as const)(
+    "returns 403 to a %s",
+    async (role) => {
+      await seedPdf();
+      actor = userWith(role);
+      const result = await get("/api/compliance/documents/plan-of-action/pdf");
+      expect(result.status).toBe(403);
+      expect(audit.events).toEqual([]);
+    }
+  );
+
+  it("returns 401 to a signed-out request", async () => {
+    await seedPdf();
+    actor = null;
+    expect((await get("/api/compliance/documents/plan-of-action/pdf")).status).toBe(401);
+  });
+
+  it("withholds a PDF whose bytes do not match the manifest hash", async () => {
+    await seedPdf(Buffer.from("%PDF-1.7\ntampered\n", "latin1"), PDF_SHA);
+    const result = await get("/api/compliance/documents/plan-of-action/pdf");
+    expect(result.status).toBe(500);
+    expect(audit.events).toEqual([
+      expect.objectContaining({ outcome: "failure", details: expect.objectContaining({ format: "pdf" }) })
+    ]);
+  });
+
+  it("withholds the PDF when its read cannot be recorded", async () => {
+    await seedPdf();
+    audit.fail = true;
+    const response = await fetch(`${baseUrl}/api/compliance/documents/plan-of-action/pdf`);
+    expect(response.status).toBe(500);
+    expect(Buffer.from(await response.arrayBuffer()).toString("latin1")).not.toContain("Fixture weakness");
+  });
+
+  it("rejects a malformed slug before reading storage", async () => {
+    await seedPdf();
+    const reads = vi.spyOn(storage, "get");
+    expect((await get("/api/compliance/documents/Plan_Of_Action/pdf")).status).toBe(400);
+    expect(reads).not.toHaveBeenCalled();
   });
 });
 

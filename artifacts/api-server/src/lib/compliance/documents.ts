@@ -8,6 +8,7 @@
  * Storage layout, all under the `compliance/` prefix:
  *   compliance/manifest.json                     the list of documents
  *   compliance/documents/<slug>/<sha256>.md      one object per version
+ *   compliance/documents/<slug>/<sha256>.pdf     its PDF rendering, if uploaded
  *
  * Content-addressed document keys let the upload script write every document
  * before it switches the manifest, so a reader never sees a manifest entry
@@ -44,7 +45,15 @@ const ManifestEntrySchema = z
     version: z.string().trim().min(1).max(40),
     date: z.string().regex(DATE_PATTERN),
     sha256: z.string().regex(SHA256_PATTERN),
-    size: z.number().int().nonnegative()
+    size: z.number().int().nonnegative(),
+    // A PDF rendering of the same Markdown, when the upload included one.
+    pdf: z
+      .object({
+        sha256: z.string().regex(SHA256_PATTERN),
+        size: z.number().int().nonnegative()
+      })
+      .strict()
+      .optional()
   })
   .strict();
 
@@ -105,6 +114,16 @@ export function complianceDocumentKey(
   return `${COMPLIANCE_KEY_PREFIX}documents/${entry.slug}/${entry.sha256}.md`;
 }
 
+/** Storage key for a document's PDF. Rejects anything but a validated entry. */
+export function complianceDocumentPdfKey(
+  entry: Pick<ComplianceManifestEntry, "slug"> & { pdf: { sha256: string } }
+): string {
+  if (!isComplianceSlug(entry.slug) || !SHA256_PATTERN.test(entry.pdf.sha256)) {
+    throw new ComplianceManifestError("Refusing to build a key from an invalid entry");
+  }
+  return `${COMPLIANCE_KEY_PREFIX}documents/${entry.slug}/${entry.pdf.sha256}.pdf`;
+}
+
 /** The manifest, or an empty list when nothing has been uploaded yet. */
 export async function readComplianceManifest(
   storage: ObjectStorage = getObjectStorage()
@@ -132,4 +151,16 @@ export async function readComplianceDocumentBody(
     throw new ComplianceIntegrityError(entry.slug);
   }
   return body.toString("utf8");
+}
+
+/** Read one document's PDF and check it against the manifest hash. */
+export async function readComplianceDocumentPdf(
+  entry: ComplianceManifestEntry & { pdf: { sha256: string } },
+  storage: ObjectStorage = getObjectStorage()
+): Promise<Buffer> {
+  const body = await storage.get(complianceDocumentPdfKey(entry));
+  if (sha256Hex(body) !== entry.pdf.sha256) {
+    throw new ComplianceIntegrityError(entry.slug);
+  }
+  return body;
 }
