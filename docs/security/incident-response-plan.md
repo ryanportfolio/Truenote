@@ -15,7 +15,7 @@ This plan covers security and data incidents in the Truenote application and the
 - the outside services Truenote sends data to: OpenRouter (answer generation), OpenAI (embeddings), Cohere (reranking), LandingAI (document parsing), Resend (email, including security alert emails), GitHub (the private `ryanportfolio/truenote-ops` repository holding the daily log copy and the uptime check), and, when configured, the organization's OIDC provider and a malware scanner;
 - the GitHub repository, its Actions workflows, and its security alerts.
 
-`truenote.org` and `www.truenote.org` point at Railway since the owner switched DNS on 2026-10-07 (deployment.md, "Cutover"). The old Replit deployment stays deployed only as the DNS rollback target. This plan covers the Railway deployment at `truenote.org` and at its Railway URL.
+`truenote.org` and `www.truenote.org` point at Railway since the owner switched DNS on 2026-10-07 (deployment.md, "Cutover"). The old Replit deployment was unpublished on 2026-10-12, so there is no DNS rollback target. This plan covers the Railway deployment at `truenote.org` and at its Railway URL.
 
 It does not cover the customer's own call-center systems, the customer's identity provider, or the providers' internal operations. When a provider reports a breach, this plan covers Truenote's response to that notice.
 
