@@ -62,6 +62,40 @@ export interface UtilityCompletionDeps {
   client?: OpenAI;
   /** Override the pinned route (tests / reproducible runs). */
   route?: ApprovedModelRoute;
+  /**
+   * Called with the exact request body just before it is sent, so a caller
+   * can log what a failed call sent. Must not change the body.
+   */
+  onRequest?: (body: Readonly<Record<string, unknown>>) => void;
+}
+
+export interface UtilityCompletionResult {
+  /** The reply text, or null when the model returns nothing. */
+  text: string | null;
+  finishReason: string | null;
+  /** OpenRouter's generation id (`gen-...`), for its activity log. */
+  generationId: string | null;
+  /**
+   * The model's reasoning text when the provider returns it: `reasoning`,
+   * else the text of `reasoning_details`.
+   */
+  reasoning: string | null;
+  /** The complete response body as returned, for diagnostics. */
+  raw: unknown;
+}
+
+/**
+ * The request fields besides the messages and provider pinning: temperature,
+ * the route's reasoning fields and JSON mode.
+ */
+function utilityRequestFields(route: ApprovedModelRoute, json: boolean): Record<string, unknown> {
+  return {
+    ...(route.reasoningEffort === "none" ? { temperature: 0 } : {}),
+    // OpenRouter-only shape (efforts "none" and "xhigh", or the reasoning
+    // switch), which the OpenAI SDK types lack.
+    ...reasoningRequestFields(route),
+    ...(json && route.jsonMode ? { response_format: { type: "json_object" } } : {})
+  };
 }
 
 /**
@@ -77,6 +111,14 @@ export async function runUtilityCompletion(
   input: UtilityCompletionInput,
   deps: UtilityCompletionDeps = {}
 ): Promise<string | null> {
+  return (await runUtilityCompletionDetailed(input, deps)).text;
+}
+
+/** runUtilityCompletion with the whole reply, for callers that log it. */
+export async function runUtilityCompletionDetailed(
+  input: UtilityCompletionInput,
+  deps: UtilityCompletionDeps = {}
+): Promise<UtilityCompletionResult> {
   const client = deps.client ?? getUtilityClient();
   const route = deps.route ?? UTILITY_MODEL_ROUTE;
   const protectedSystem = protectProviderText(input.system).text;
@@ -84,43 +126,73 @@ export async function runUtilityCompletion(
 
   const request = {
     model: route.model,
-    ...(route.reasoningEffort === "none" ? { temperature: 0 } : {}),
     messages: [
       { role: "system", content: protectedSystem },
       { role: "user", content: protectedUser }
     ]
   } satisfies OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
 
-  const completion = await client.chat.completions.create(
-    {
-      ...request,
-      // OpenRouter-only shape (efforts "none" and "xhigh", or the reasoning
-      // switch), which the OpenAI SDK types lack.
-      ...reasoningRequestFields(route),
-      ...(input.json && route.jsonMode ? { response_format: { type: "json_object" } } : {}),
-      provider: {
-        only: [route.provider],
-        zdr: true,
-        data_collection: "deny",
-        allow_fallbacks: false
-      }
-    } as typeof request & {
-      provider: {
-        only: string[];
-        zdr: boolean;
-        data_collection: "deny";
-        allow_fallbacks: boolean;
-      };
-    },
-    {
-      timeout: input.timeoutMs,
-      maxRetries: input.maxRetries,
-      signal: input.signal
+  const body = {
+    ...request,
+    ...utilityRequestFields(route, input.json === true),
+    provider: {
+      only: [route.provider],
+      zdr: true,
+      data_collection: "deny",
+      allow_fallbacks: false
     }
-  );
+  } as typeof request & {
+    provider: {
+      only: string[];
+      zdr: boolean;
+      data_collection: "deny";
+      allow_fallbacks: boolean;
+    };
+  };
+  deps.onRequest?.(body);
+  const completion = await client.chat.completions.create(body, {
+    timeout: input.timeoutMs,
+    maxRetries: input.maxRetries,
+    signal: input.signal
+  });
 
-  const text = completion.choices?.[0]?.message?.content?.trim();
-  return text ? text : null;
+  // Read loosely: OpenRouter adds `message.reasoning` and
+  // `reasoning_details`, which the SDK types lack.
+  const reply = completion as unknown as OpenRouterCompletion;
+  const choice = reply.choices?.[0];
+  const content = choice?.message?.content;
+  const text = typeof content === "string" ? content.trim() : "";
+  return {
+    text: text ? text : null,
+    finishReason: stringOrNull(choice?.finish_reason),
+    generationId: stringOrNull(reply.id),
+    reasoning: stringOrNull(choice?.message?.reasoning) ?? reasoningDetailsText(choice?.message?.reasoning_details),
+    raw: completion
+  };
+}
+
+interface OpenRouterCompletion {
+  id?: unknown;
+  choices?: Array<{
+    finish_reason?: unknown;
+    message?: { content?: unknown; reasoning?: unknown; reasoning_details?: unknown };
+  }>;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
+/** The text and summary parts of OpenRouter's `reasoning_details`, joined. */
+function reasoningDetailsText(details: unknown): string | null {
+  if (!Array.isArray(details)) return null;
+  const parts = details.flatMap((detail) => {
+    const record = detail as { text?: unknown; summary?: unknown } | null;
+    return [record?.text, record?.summary].filter(
+      (part): part is string => typeof part === "string" && part.trim() !== ""
+    );
+  });
+  return parts.length > 0 ? parts.join("\n") : null;
 }
 
 /**
