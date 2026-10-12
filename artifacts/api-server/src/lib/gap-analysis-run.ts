@@ -1,16 +1,24 @@
+import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "./db-client.js";
 import { teamUserFilterSql } from "./teams.js";
 import { retrieve } from "./retrieval/query.js";
 import { getActiveModelChain, type ApprovedModelRoute } from "./generation/model-routing.js";
-import { runUtilityCompletion } from "./generation/utility-model.js";
-import { recordAppError } from "./observability/error-log.js";
+import {
+  runUtilityCompletionDetailed,
+  utilityRequestFields,
+  type UtilityCompletionResult
+} from "./generation/utility-model.js";
+import { recordAppError, safeErrorMessage } from "./observability/error-log.js";
 import type { Classification } from "./security/classification.js";
 import {
   MAX_GAP_GROUPS,
+  MAX_LOGGED_REPLY_CHARS,
   assembleGapThemes,
   buildGapAnalysisPrompt,
+  describeGapInput,
   describeGapReply,
+  excerpt,
   parseModelThemes,
   type GapProbe,
   type GapQuestionGroup,
@@ -202,19 +210,26 @@ async function runAnalysis(
 
   const probes = await probeGroups(groups, scope);
   const prompt = buildGapAnalysisPrompt(groups, probes);
+  // Ties a run's error-log rows together (correlation id).
+  const runId = randomUUID();
+  const attempts: Record<string, unknown>[] = [];
 
   // Walk the gaps chain: a request error or a reply with no usable themes
   // advances to the next route, like answer generation.
   for (const route of await getActiveModelChain("gaps")) {
-    let context: Record<string, unknown> | undefined;
+    const call: GapCall = { sent: utilityRequestFields(route, true), jsonModeRejected: false };
+    const startedAt = Date.now();
+    let reply: UtilityCompletionResult | null = null;
+    let replyShape: Record<string, unknown> = {};
     try {
-      const text = await completeAsJson(route, prompt);
+      reply = await completeAsJson(route, prompt, runId, call);
+      const text = reply.text;
       const modelThemes = text ? parseModelThemes(text) : null;
       const { themes, ungroupedQuestions } = modelThemes
         ? assembleGapThemes(modelThemes, groups, probes)
         : { themes: [], ungroupedQuestions: groups.length };
       if (themes.length === 0) {
-        context = describeGapReply(text, modelThemes, groups);
+        replyShape = describeGapReply(text, modelThemes, groups);
         throw new Error(modelThemes ? "reply held no usable themes" : "reply held no themes JSON");
       }
       return {
@@ -226,6 +241,16 @@ async function runAnalysis(
         model: { label: route.label, providerLabel: route.providerLabel }
       };
     } catch (error) {
+      const latencyMs = Date.now() - startedAt;
+      const response = reply ? describeCompletion(reply) : null;
+      attempts.push({
+        routeId: route.id,
+        outcome: safeErrorMessage(error),
+        latencyMs,
+        finishReason: reply?.finishReason ?? null,
+        reply: reply?.text ? excerpt(reply.text, 300) : null,
+        reasoning: reply?.reasoning ? excerpt(reply.reasoning, 300) : null
+      });
       void recordAppError({
         severity: "warning",
         source: "generation",
@@ -234,12 +259,59 @@ async function runAnalysis(
         provider: route.provider,
         model: route.model,
         routeId: route.id,
+        correlationId: runId,
         programId: scope.programId,
-        context
+        context: {
+          request: {
+            ...call.sent,
+            jsonModeRejected: call.jsonModeRejected,
+            timeoutMs: MODEL_TIMEOUT_MS
+          },
+          latencyMs,
+          response,
+          ...replyShape
+        }
       });
     }
   }
+  // One row per failed run with what the model was given and how each route
+  // ended, so the error log alone explains the 503.
+  void recordAppError({
+    severity: "error",
+    source: "generation",
+    operation: "gap-analysis-exhausted",
+    error: new GapAnalysisUnavailableError(),
+    correlationId: runId,
+    programId: scope.programId,
+    context: {
+      windowDays: scope.windowDays,
+      teamScoped: scope.team !== null,
+      clearance: scope.clearance,
+      input: describeGapInput(groups, probes, prompt),
+      attempts
+    }
+  });
   throw new GapAnalysisUnavailableError();
+}
+
+/** The request fields a gaps call sent, updated when JSON mode is dropped. */
+interface GapCall {
+  sent: Record<string, unknown>;
+  jsonModeRejected: boolean;
+}
+
+/** Reply metadata for the error log, reasoning cut to an excerpt. */
+function describeCompletion(reply: UtilityCompletionResult): Record<string, unknown> {
+  return {
+    finishReason: reply.finishReason,
+    servedBy: reply.servedBy,
+    servedModel: reply.servedModel,
+    promptTokens: reply.promptTokens,
+    completionTokens: reply.completionTokens,
+    reasoningTokens: reply.reasoningTokens,
+    reasoningChars: reply.reasoning?.length ?? 0,
+    reasoning: reply.reasoning ? excerpt(reply.reasoning, MAX_LOGGED_REPLY_CHARS) : null
+  };
 }
 
 /**
@@ -249,12 +321,14 @@ async function runAnalysis(
  */
 async function completeAsJson(
   route: ApprovedModelRoute,
-  prompt: { system: string; user: string }
-): Promise<string | null> {
+  prompt: { system: string; user: string },
+  runId: string,
+  call: GapCall
+): Promise<UtilityCompletionResult> {
   const input = { ...prompt, timeoutMs: MODEL_TIMEOUT_MS, maxRetries: 0 };
-  if (!route.jsonMode) return runUtilityCompletion(input, { route });
+  if (!route.jsonMode) return runUtilityCompletionDetailed(input, { route });
   try {
-    return await runUtilityCompletion({ ...input, json: true }, { route });
+    return await runUtilityCompletionDetailed({ ...input, json: true }, { route });
   } catch (error) {
     if ((error as { status?: unknown } | null)?.status !== 400) throw error;
     void recordAppError({
@@ -264,9 +338,12 @@ async function completeAsJson(
       error,
       provider: route.provider,
       model: route.model,
-      routeId: route.id
+      routeId: route.id,
+      correlationId: runId
     });
-    return runUtilityCompletion(input, { route });
+    call.sent = utilityRequestFields(route, false);
+    call.jsonModeRejected = true;
+    return runUtilityCompletionDetailed(input, { route });
   }
 }
 

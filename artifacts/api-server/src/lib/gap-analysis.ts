@@ -1,4 +1,6 @@
 import type { ApprovedModelRoute } from "./generation/model-routing.js";
+import { scanTextForSensitiveContent } from "./security/content-scan.js";
+import { protectProviderText } from "./security/provider-input-firewall.js";
 
 /**
  * Gap analysis: the Gaps page's roll-up of refused questions into themes,
@@ -307,9 +309,14 @@ export function classifyTheme(
   return top ? { kind, source: top } : { kind: "new", source: null };
 }
 
+/** Longest reply and reasoning excerpts kept in the error log. */
+export const MAX_LOGGED_REPLY_CHARS = 1_500;
+const MAX_LOGGED_LINE_CHARS = 200;
+
 /**
- * Shape of a reply that yielded no usable themes, for the error log: counts
- * and the first few raw question references, never the summaries.
+ * Shape of a reply that yielded no usable themes, for the error log: the
+ * reply itself (head and tail past MAX_LOGGED_REPLY_CHARS), counts, and the
+ * first few raw question references.
  */
 export function describeGapReply(
   text: string | null,
@@ -321,7 +328,7 @@ export function describeGapReply(
   const ids = new Set(groups.map((group) => group.id));
   return {
     replyChars: text?.length ?? 0,
-    replyStart: text ? oneLine(text).slice(0, 120) : null,
+    reply: text ? excerpt(text, MAX_LOGGED_REPLY_CHARS) : null,
     questionsSent: groups.length,
     themesParsed: modelThemes?.length ?? null,
     themesTitled: modelThemes?.filter((theme) => clean(theme.title, MAX_TITLE_CHARS)).length ?? null,
@@ -332,6 +339,48 @@ export function describeGapReply(
     }).length,
     sampleRefs: refs.slice(0, 5).map((ref) => oneLine(ref).slice(0, 60))
   };
+}
+
+/**
+ * What the model was given, for the error log: question and prompt sizes, how
+ * many questions have a near source or read as instructions to a model
+ * (content-scan prompt-injection rules), and every question line as the
+ * provider received it (after the input firewall), truncated.
+ */
+export function describeGapInput(
+  groups: readonly GapQuestionGroup[],
+  probes: ReadonlyMap<string, GapProbe>,
+  prompt: { system: string; user: string }
+): Record<string, unknown> {
+  const instructionLike = groups.filter((group) =>
+    scanTextForSensitiveContent(group.question).some((item) => item.category === "prompt_injection")
+  );
+  let lines: string[] | string;
+  try {
+    lines = protectProviderText(prompt.user)
+      .text.split("\n")
+      .slice(1)
+      .map((line) => line.slice(0, MAX_LOGGED_LINE_CHARS));
+  } catch {
+    lines = "withheld: the provider input firewall refused the prompt";
+  }
+  return {
+    questionsSent: groups.length,
+    refusedAsksSent: groups.reduce((sum, group) => sum + group.count, 0),
+    promptChars: prompt.system.length + prompt.user.length,
+    questionsWithSource: groups.filter((group) => probes.get(group.id)?.best).length,
+    questionsWithoutProbe: groups.filter((group) => !probes.has(group.id)).length,
+    questionsReadingAsInstructions: instructionLike.length,
+    instructionLikeIds: instructionLike.map((group) => group.id),
+    questionLines: lines
+  };
+}
+
+/** The text whole when short, else its head and tail around an elision mark. */
+export function excerpt(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const head = Math.floor(max / 3);
+  return `${text.slice(0, head)} … [${text.length - max} chars] … ${text.slice(text.length - (max - head))}`;
 }
 
 /** Label for the route that produced the analysis. */

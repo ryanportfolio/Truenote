@@ -64,6 +64,38 @@ export interface UtilityCompletionDeps {
   route?: ApprovedModelRoute;
 }
 
+export interface UtilityCompletionResult {
+  /** The reply text, or null when the model returns nothing. */
+  text: string | null;
+  finishReason: string | null;
+  /** Provider and model OpenRouter reports for the reply. */
+  servedBy: string | null;
+  servedModel: string | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  reasoningTokens: number | null;
+  /** The model's reasoning text, when the provider returns it. */
+  reasoning: string | null;
+}
+
+/**
+ * The request fields besides the messages and provider pinning: temperature,
+ * the route's reasoning fields and JSON mode. Exported so diagnostics log the
+ * fields a call sends.
+ */
+export function utilityRequestFields(
+  route: ApprovedModelRoute,
+  json: boolean
+): Record<string, unknown> {
+  return {
+    ...(route.reasoningEffort === "none" ? { temperature: 0 } : {}),
+    // OpenRouter-only shape (efforts "none" and "xhigh", or the reasoning
+    // switch), which the OpenAI SDK types lack.
+    ...reasoningRequestFields(route),
+    ...(json && route.jsonMode ? { response_format: { type: "json_object" } } : {})
+  };
+}
+
 /**
  * Run a single pinned-ZDR-route chat completion and return the raw message
  * text (null when the model returns nothing). Mirrors the provider block in
@@ -77,6 +109,14 @@ export async function runUtilityCompletion(
   input: UtilityCompletionInput,
   deps: UtilityCompletionDeps = {}
 ): Promise<string | null> {
+  return (await runUtilityCompletionDetailed(input, deps)).text;
+}
+
+/** runUtilityCompletion with the reply's metadata, for callers that log it. */
+export async function runUtilityCompletionDetailed(
+  input: UtilityCompletionInput,
+  deps: UtilityCompletionDeps = {}
+): Promise<UtilityCompletionResult> {
   const client = deps.client ?? getUtilityClient();
   const route = deps.route ?? UTILITY_MODEL_ROUTE;
   const protectedSystem = protectProviderText(input.system).text;
@@ -84,7 +124,6 @@ export async function runUtilityCompletion(
 
   const request = {
     model: route.model,
-    ...(route.reasoningEffort === "none" ? { temperature: 0 } : {}),
     messages: [
       { role: "system", content: protectedSystem },
       { role: "user", content: protectedUser }
@@ -94,10 +133,7 @@ export async function runUtilityCompletion(
   const completion = await client.chat.completions.create(
     {
       ...request,
-      // OpenRouter-only shape (efforts "none" and "xhigh", or the reasoning
-      // switch), which the OpenAI SDK types lack.
-      ...reasoningRequestFields(route),
-      ...(input.json && route.jsonMode ? { response_format: { type: "json_object" } } : {}),
+      ...utilityRequestFields(route, input.json === true),
       provider: {
         only: [route.provider],
         zdr: true,
@@ -119,8 +155,45 @@ export async function runUtilityCompletion(
     }
   );
 
-  const text = completion.choices?.[0]?.message?.content?.trim();
-  return text ? text : null;
+  // Read loosely: OpenRouter adds `provider` and `message.reasoning`, which
+  // the SDK types lack.
+  const reply = completion as unknown as OpenRouterCompletion;
+  const choice = reply.choices?.[0];
+  const content = choice?.message?.content;
+  const text = typeof content === "string" ? content.trim() : "";
+  const usage = reply.usage;
+  return {
+    text: text ? text : null,
+    finishReason: stringOrNull(choice?.finish_reason),
+    servedBy: stringOrNull(reply.provider),
+    servedModel: stringOrNull(reply.model),
+    promptTokens: numberOrNull(usage?.prompt_tokens),
+    completionTokens: numberOrNull(usage?.completion_tokens),
+    reasoningTokens: numberOrNull(usage?.completion_tokens_details?.reasoning_tokens),
+    reasoning: stringOrNull(choice?.message?.reasoning)
+  };
+}
+
+interface OpenRouterCompletion {
+  model?: unknown;
+  provider?: unknown;
+  choices?: Array<{
+    finish_reason?: unknown;
+    message?: { content?: unknown; reasoning?: unknown };
+  }>;
+  usage?: {
+    prompt_tokens?: unknown;
+    completion_tokens?: unknown;
+    completion_tokens_details?: { reasoning_tokens?: unknown } | null;
+  } | null;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 /**
