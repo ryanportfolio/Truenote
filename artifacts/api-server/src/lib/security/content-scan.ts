@@ -115,7 +115,16 @@ const ASSISTANT = String.raw`(?:ai|assistants?|ai\s+assistants?|language\s+model
 /** Not a human role such as "assistant manager". */
 const NOT_A_HUMAN_ROLE = String.raw`(?!\s+(?:manager|supervisor|director|team|lead)s?\b)`;
 /** Card data a customer must never read out: the full number or the card security code. */
-const CARD_DATA = String.raw`(?:(?:full|entire|complete|whole|long)\s+(?:(?:credit|debit|payment|bank)\s+)?card\s+number|all\s+(?:15|16|fifteen|sixteen)\s+digits|cvv2?|cvc2?|card\s+(?:security|verification)\s+(?:code|value|number)|(?:3|three)[-\s]digit\s+(?:security\s+)?code|security\s+code\s+on\s+the\s+back)`;
+const CARD_DATA = String.raw`(?:(?:full|entire|complete|whole|long)\s+(?:(?:credit|debit|payment|bank)\s+)?card\s+number|all\s+(?:15|16|fifteen|sixteen)\s+digits|cvv2?|cvc2?|card\s+(?:security|verification)\s+(?:code|value|number)|(?:3|three)[-\s]digit\s+(?:(?:card\s+)?security\s+code|code\s+on\s+the\s+back)|security\s+code\s+on\s+the\s+back)`;
+/** Verbs that ask for, collect or read out card data. */
+const COLLECT_VERB = String.raw`(?:ask|request|collect|obtain|capture|record|read|say|recite|provide|share|spell|repeat|dictate|give)(?:s|ed|ing)?`;
+/**
+ * A comma inside a list of such verbs ("Do not request, collect, or record
+ * the CVV") does not end the clause, so the negation before the list still
+ * applies. A comma after any other word does.
+ */
+const VERB_LIST_COMMA_BEFORE = new RegExp(String.raw`\b${COLLECT_VERB}\s*$`, "i");
+const VERB_LIST_COMMA_AFTER = new RegExp(String.raw`^\s*(?:(?:and|or)\s+)?${COLLECT_VERB}\b`, "i");
 
 const TEXT_RULES: PatternRule[] = [
   {
@@ -204,7 +213,7 @@ const TEXT_RULES: PatternRule[] = [
     ruleId: "prompt.card_data_request",
     severity: "high",
     pattern: new RegExp(
-      String.raw`\b(?:ask|request|collect|obtain|capture|record|read|say|recite|provide|share|spell|repeat|dictate|give)(?:s|ed|ing)?\b[^.!?;:,\n]{0,60}?\b${CARD_DATA}\b`,
+      String.raw`\b${COLLECT_VERB}\b[^.!?;:,\n]{0,60}?\b${CARD_DATA}\b`,
       "gi"
     ),
     message: "Instruction to collect a full card number or card security code detected in source content.",
@@ -285,7 +294,20 @@ function countMatches(
     const { breaks, negations } = negationIndex(text, cache);
     const start = match.index ?? 0;
     const end = start + match[0].length;
-    const breakIndex = lowerBound(breaks, start) - 1;
+    let breakIndex = lowerBound(breaks, start) - 1;
+    // Step back over at most 20 verb-list commas; the slices are bounded,
+    // so this stays linear.
+    for (let steps = 0; breakIndex >= 0 && steps < 20; steps += 1) {
+      const at = breaks[breakIndex]!;
+      if (
+        text[at] !== "," ||
+        !VERB_LIST_COMMA_BEFORE.test(text.slice(Math.max(0, at - 24), at)) ||
+        !VERB_LIST_COMMA_AFTER.test(text.slice(at + 1, at + 40))
+      ) {
+        break;
+      }
+      breakIndex -= 1;
+    }
     const clauseStart = breakIndex >= 0 ? breaks[breakIndex]! + 1 : 0;
     const negation = negations[lowerBound(negations, clauseStart)];
     if (negation === undefined || negation >= end) count += 1;
