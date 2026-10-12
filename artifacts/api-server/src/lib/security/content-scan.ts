@@ -174,7 +174,7 @@ const TEXT_RULES: PatternRule[] = [
     ruleId: "prompt.assistant_directive",
     severity: "high",
     pattern: new RegExp(
-      String.raw`\b(?:(?:notes?|instructions?|directives?|requirements?|rules?|reminders?|messages?|guidance|commands?)\s+(?:to|for)\s+(?:the\s+|any\s+|all\s+|every\s+)?${ASSISTANT}${NOT_A_HUMAN_ROLE}|if\s+you\s+are\s+(?:an?\s+)?${ASSISTANT}${NOT_A_HUMAN_ROLE}|(?:attention|dear)\s*,?\s+${ASSISTANT}${NOT_A_HUMAN_ROLE}|${ASSISTANT}\s+(?:reading|processing|summari[sz]ing)\s+this)\b`,
+      String.raw`\b(?:(?:notes?|instructions?|directives?|requirements?|rules?|reminders?|messages?|guidance|commands?)\s+(?:to|for)\s+(?:the\s+|any\s+|all\s+|every\s+)?${ASSISTANT}${NOT_A_HUMAN_ROLE}|if\s+you\s+are\s+(?:an?\s+)?${ASSISTANT}${NOT_A_HUMAN_ROLE}|(?:attention|dear)(?:\s*,\s*|\s+)${ASSISTANT}${NOT_A_HUMAN_ROLE}|${ASSISTANT}\s+(?:reading|processing|summari[sz]ing)\s+this)\b`,
       "gi"
     ),
     message: "Instructions addressed to an AI assistant detected in source content.",
@@ -225,7 +225,10 @@ const TEXT_RULES: PatternRule[] = [
     category: "prompt_injection",
     ruleId: "prompt.role_impersonation",
     severity: "medium",
-    pattern: /(?:^|\n)\s*(?:system|assistant|developer)\s*:\s*/gi,
+    // Horizontal whitespace only after the line break: `\s*` there also
+    // matched later line breaks, so a long run of blank lines backtracked
+    // quadratically (80 KB took over 8 s).
+    pattern: /(?:^|\n)[^\S\n]*(?:system|assistant|developer)\s*:\s*/gi,
     message: "Model-role impersonation marker detected in source content.",
     blocking: false
   }
