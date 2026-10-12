@@ -251,15 +251,34 @@ function lowerBound(values: readonly number[], target: number): number {
   return low;
 }
 
-function countMatches(text: string, rule: Pick<PatternRule, "pattern" | "skipNegated">): number {
+/** Clause-break and negation offsets of one text, built on first use. */
+interface NegationIndex {
+  breaks: number[];
+  negations: number[];
+}
+
+function negationIndex(text: string, cache: Map<string, NegationIndex>): NegationIndex {
+  let index = cache.get(text);
+  if (!index) {
+    index = { breaks: matchStarts(text, CLAUSE_BREAK), negations: matchStarts(text, NEGATION) };
+    cache.set(text, index);
+  }
+  return index;
+}
+
+function countMatches(
+  text: string,
+  rule: Pick<PatternRule, "pattern" | "skipNegated">,
+  cache: Map<string, NegationIndex> = new Map()
+): number {
   const pattern = new RegExp(rule.pattern.source, rule.pattern.flags);
   if (!rule.skipNegated) return text.match(pattern)?.length ?? 0;
-  // Breaks and negations are located once, so long unbroken text stays
-  // near-linear however many matches it holds.
-  const breaks = matchStarts(text, CLAUSE_BREAK);
-  const negations = matchStarts(text, NEGATION);
+  // Breaks and negations are located once per text, and only when a
+  // negation-aware rule matches, so long text stays near-linear however
+  // many matches it holds and costs nothing extra when nothing matches.
   let count = 0;
   for (const match of text.matchAll(pattern)) {
+    const { breaks, negations } = negationIndex(text, cache);
     const start = match.index ?? 0;
     const end = start + match[0].length;
     const breakIndex = lowerBound(breaks, start) - 1;
@@ -427,8 +446,12 @@ function redactExactText(text: string): string {
 export function scanTextForSensitiveContent(rawText: string): SecurityFinding[] {
   const normalized = rawText.normalize("NFKC");
   const findings: SecurityFinding[] = [];
+  const negationCache = new Map<string, NegationIndex>();
   for (const rule of TEXT_RULES) {
-    const count = Math.max(countMatches(rawText, rule), countMatches(normalized, rule));
+    const count = Math.max(
+      countMatches(rawText, rule, negationCache),
+      countMatches(normalized, rule, negationCache)
+    );
     if (count === 0) continue;
     findings.push({
       category: rule.category,
