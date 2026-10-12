@@ -44,7 +44,8 @@ function getUtilityClient(): OpenAI {
 
 export interface UtilityCompletionInput {
   system: string;
-  user: string;
+  /** One user message, or several sent in order. */
+  user: string | readonly string[];
   /** Per-call bound; a slow provider hits this and the caller falls back. */
   timeoutMs: number;
   maxRetries: number;
@@ -75,6 +76,8 @@ export interface UtilityCompletionResult {
   finishReason: string | null;
   /** OpenRouter's generation id (`gen-...`), for its activity log. */
   generationId: string | null;
+  /** Prompt tokens the provider counted. */
+  promptTokens: number | null;
   /**
    * The model's reasoning text when the provider returns it: `reasoning`,
    * else the text of `reasoning_details`.
@@ -122,13 +125,16 @@ export async function runUtilityCompletionDetailed(
   const client = deps.client ?? getUtilityClient();
   const route = deps.route ?? UTILITY_MODEL_ROUTE;
   const protectedSystem = protectProviderText(input.system).text;
-  const protectedUser = protectProviderText(input.user).text;
+  const userMessages = typeof input.user === "string" ? [input.user] : input.user;
 
   const request = {
     model: route.model,
     messages: [
-      { role: "system", content: protectedSystem },
-      { role: "user", content: protectedUser }
+      { role: "system" as const, content: protectedSystem },
+      ...userMessages.map((message) => ({
+        role: "user" as const,
+        content: protectProviderText(message).text
+      }))
     ]
   } satisfies OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
 
@@ -166,6 +172,8 @@ export async function runUtilityCompletionDetailed(
     text: text ? text : null,
     finishReason: stringOrNull(choice?.finish_reason),
     generationId: stringOrNull(reply.id),
+    promptTokens:
+      typeof reply.usage?.prompt_tokens === "number" ? reply.usage.prompt_tokens : null,
     reasoning: stringOrNull(choice?.message?.reasoning) ?? reasoningDetailsText(choice?.message?.reasoning_details),
     raw: completion
   };
@@ -173,6 +181,7 @@ export async function runUtilityCompletionDetailed(
 
 interface OpenRouterCompletion {
   id?: unknown;
+  usage?: { prompt_tokens?: unknown } | null;
   choices?: Array<{
     finish_reason?: unknown;
     message?: { content?: unknown; reasoning?: unknown; reasoning_details?: unknown };

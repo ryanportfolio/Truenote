@@ -37,6 +37,7 @@ import type {
   SaveEvalQuestionRequest,
   KbDocumentListResponse,
   KbDocumentResponse,
+  KbGapSort,
   KbGapsResponse,
   KbHighlight,
   KbHighlightColor,
@@ -680,11 +681,16 @@ export async function deleteKbHighlight(highlightId: string): Promise<void> {
   await asJson<{ ok: true }>(response);
 }
 
-export async function fetchKbGaps(windowDays: number): Promise<KbGapsResponse> {
-  const response = await fetch(
-    `/api/admin/insights/kb-gaps?days=${encodeURIComponent(windowDays)}`,
-    withDefaults()
-  );
+export async function fetchKbGaps(
+  windowDays: number,
+  sort?: KbGapSort
+): Promise<KbGapsResponse> {
+  const params = new URLSearchParams({ days: String(windowDays) });
+  if (sort) {
+    params.set("sort", sort.key);
+    params.set("dir", sort.direction);
+  }
+  const response = await fetch(`/api/admin/insights/kb-gaps?${params.toString()}`, withDefaults());
   return asJson<KbGapsResponse>(response);
 }
 

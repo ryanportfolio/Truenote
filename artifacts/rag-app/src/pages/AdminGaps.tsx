@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Flag, ThumbsDown, ThumbsUp } from "lucide-react";
 import { fetchKbGaps, listQueryLog } from "@/lib/api";
 import { EmptyState } from "@/components/EmptyState";
 import { GapAnalysis } from "@/components/admin/GapAnalysis";
+import { SortHeader } from "@/components/admin/source-usage/shared";
 import { RelativeTime } from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 import { SELECTED_PROGRAM_CHANGED_EVENT } from "@/lib/selectedProgram";
-import { TEAM_SCOPE_NOTE, usageScope } from "@/lib/sourceUsage";
+import { TEAM_SCOPE_NOTE, nextSort, usageScope } from "@/lib/sourceUsage";
 import {
   hasAtLeastRole,
   type CurrentUser,
+  type KbGapSort,
   type KbGapsResponse,
   type QueryLogFilter,
   type QueryLogItem
@@ -62,6 +64,9 @@ function Forbidden(): JSX.Element {
 
 const WINDOW_OPTIONS = [7, 30, 90] as const;
 
+/** The server's default order: flagged, then asked, then most recent. */
+const DEFAULT_GAP_SORT: KbGapSort = { key: "flaggedCount", direction: "desc" };
+
 const FILTERS: ReadonlyArray<{ value: QueryLogFilter; label: string }> = [
   { value: "flagged", label: "Flagged by CSRs" },
   { value: "refused", label: "All refusals" },
@@ -101,6 +106,13 @@ function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
   const [gaps, setGaps] = useState<KbGapsResponse | null>(null);
   const [gapsLoading, setGapsLoading] = useState(true);
   const [gapsError, setGapsError] = useState<string | null>(null);
+  // Sorted on the server, which ranks every gap before its 50-row cut.
+  const [gapSort, setGapSort] = useState<KbGapSort>(DEFAULT_GAP_SORT);
+  const [gapsSorting, setGapsSorting] = useState(false);
+  // A sort change keeps the current rows on screen until the new order lands.
+  const sortChanged = useRef(false);
+  // Only the newest request may write state, so fast clicks cannot land out of order.
+  const gapsRequest = useRef(0);
 
   // Review queue (row-level) section state.
   const [filter, setFilter] = useState<QueryLogFilter>("flagged");
@@ -109,15 +121,28 @@ function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
   const [error, setError] = useState<string | null>(null);
 
   const refreshGaps = useCallback(async (): Promise<void> => {
+    const request = ++gapsRequest.current;
     setGapsError(null);
     try {
-      setGaps(await fetchKbGaps(windowDays));
+      const result = await fetchKbGaps(windowDays, gapSort);
+      if (request === gapsRequest.current) setGaps(result);
     } catch (err) {
-      setGapsError(err instanceof Error ? err.message : "Failed to load top gaps");
+      if (request === gapsRequest.current) {
+        setGapsError(err instanceof Error ? err.message : "Failed to load top gaps");
+      }
     } finally {
-      setGapsLoading(false);
+      if (request === gapsRequest.current) {
+        setGapsLoading(false);
+        setGapsSorting(false);
+      }
     }
-  }, [windowDays]);
+  }, [windowDays, gapSort]);
+
+  const onGapSort = (key: KbGapSort["key"]): void => {
+    sortChanged.current = true;
+    setGapsSorting(true);
+    setGapSort((current) => nextSort(current, key, []));
+  };
 
   const refresh = useCallback(async (activeFilter: QueryLogFilter): Promise<void> => {
     setError(null);
@@ -132,7 +157,8 @@ function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
   }, []);
 
   useEffect(() => {
-    setGapsLoading(true);
+    if (!sortChanged.current) setGapsLoading(true);
+    sortChanged.current = false;
     void refreshGaps();
   }, [refreshGaps]);
 
@@ -263,17 +289,58 @@ function AdminGapsInner({ user }: AdminGapsPageProps): JSX.Element {
                     {canReviewQueue ? " The queue below has each query." : null}
                   </p>
                 ) : (
-                  <div data-gaps-table className="overflow-clip rounded-lg border border-border bg-card shadow-card">
+                  <div
+                    data-gaps-table
+                    aria-busy={gapsSorting}
+                    className="overflow-clip rounded-lg border border-border bg-card shadow-card"
+                  >
                     <table className="w-full text-sm">
+                      <caption className="sr-only">
+                        Questions the knowledge base did not answer well in the last {gaps.windowDays} days.
+                        Select a column heading to sort.
+                      </caption>
                       {/* Stays in view while the list scrolls. overflow-clip (not hidden) on the card keeps the page as the sticky scroller. */}
                       <thead className="sticky top-0 z-10 bg-card text-left text-xs uppercase tracking-wide text-muted-foreground shadow-[0_1px_0_oklch(var(--border))]">
                         <tr>
-                          <th className="px-3 py-2 font-medium">Question</th>
-                          <th className="px-3 py-2 text-right font-medium">Asked</th>
-                          <th className="hidden px-3 py-2 text-right font-medium md:table-cell">Refused</th>
-                          <th className="px-3 py-2 text-right font-medium">Flagged</th>
-                          <th className="hidden px-3 py-2 text-right font-medium md:table-cell">Thumbs down</th>
-                          <th className="hidden px-3 py-2 font-medium sm:table-cell">Last asked</th>
+                          <th scope="col" className="px-3 py-2 font-medium">Question</th>
+                          <SortHeader
+                            label="Asked"
+                            sortKey="askCount"
+                            sort={gapSort}
+                            onSort={onGapSort}
+                            align="right"
+                          />
+                          <SortHeader
+                            label="Refused"
+                            sortKey="refusedCount"
+                            sort={gapSort}
+                            onSort={onGapSort}
+                            align="right"
+                            className="hidden md:table-cell"
+                          />
+                          <SortHeader
+                            label="Flagged"
+                            title="Asks a CSR flagged as missing content"
+                            sortKey="flaggedCount"
+                            sort={gapSort}
+                            onSort={onGapSort}
+                            align="right"
+                          />
+                          <SortHeader
+                            label="Thumbs down"
+                            sortKey="negativeCount"
+                            sort={gapSort}
+                            onSort={onGapSort}
+                            align="right"
+                            className="hidden md:table-cell"
+                          />
+                          <SortHeader
+                            label="Last asked"
+                            sortKey="lastAskedAt"
+                            sort={gapSort}
+                            onSort={onGapSort}
+                            className="hidden sm:table-cell"
+                          />
                         </tr>
                       </thead>
                       <tbody>

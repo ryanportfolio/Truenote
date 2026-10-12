@@ -273,6 +273,12 @@ export interface KbGapItem {
   lastAskedAt: string;
 }
 
+/** Top gaps order; the server ranks every gap in the window before its 50-row cut. */
+export interface KbGapSort {
+  key: "askCount" | "refusedCount" | "flaggedCount" | "negativeCount" | "lastAskedAt";
+  direction: "asc" | "desc";
+}
+
 /** Gaps page analysis. Mirrors /api/admin/insights/gap-analysis. */
 export type GapThemeKind = "update" | "new" | "covered";
 
@@ -298,6 +304,8 @@ export type GapAnalysisResponse =
       refusedAsks: number;
       distinctQuestions: number;
       analyzedQuestions: number;
+      /** Left out because they read as instructions to an AI (security tests). */
+      heldOutQuestions: number;
       ungroupedQuestions: number;
       themes: GapTheme[];
       model: { label: string; providerLabel: string } | null;

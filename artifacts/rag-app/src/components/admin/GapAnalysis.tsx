@@ -147,14 +147,29 @@ function GapResults({
   data: Ready;
   canAddSources: boolean;
 }): JSX.Element {
-  const partial = data.analyzedQuestions < data.distinctQuestions;
+  const checked = data.analyzedQuestions + data.heldOutQuestions;
+  const partial = checked < data.distinctQuestions;
+  const heldOut =
+    data.heldOutQuestions === 1
+      ? " 1 question was left out because it reads as instructions to an AI, such as a security test."
+      : data.heldOutQuestions > 1
+        ? ` ${data.heldOutQuestions} questions were left out because they read as instructions to an AI, such as security tests.`
+        : "";
+  if (data.analyzedQuestions === 0) {
+    return (
+      <p className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+        Every refused question in the last {data.windowDays} days reads as instructions to an AI,
+        such as a security test, so there is nothing to group.
+      </p>
+    );
+  }
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
         {data.refusedAsks} refused {data.refusedAsks === 1 ? "ask" : "asks"} across{" "}
         {data.distinctQuestions} {data.distinctQuestions === 1 ? "question" : "questions"} in the
         last {data.windowDays} days
-        {partial ? `; the ${data.analyzedQuestions} most-asked were analyzed` : ""}. Updated{" "}
+        {partial ? `; the ${checked} most-asked were analyzed` : ""}. Updated{" "}
         <RelativeTime iso={data.analyzedAt} />
         {data.model ? ` by ${data.model.label} (${data.model.providerLabel})` : ""}.
       </p>
@@ -171,6 +186,7 @@ function GapResults({
         {data.ungroupedQuestions > 0
           ? ` ${data.ungroupedQuestions} ${data.ungroupedQuestions === 1 ? "question fits" : "questions fit"} no theme; Top gaps below lists every question.`
           : ""}
+        {heldOut}
       </p>
     </div>
   );

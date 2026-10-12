@@ -19,6 +19,9 @@ import {
   describeGapReply,
   excerpt,
   parseModelThemes,
+  promptChars,
+  promptLooksReplaced,
+  questionReadsAsInstructions,
   type GapProbe,
   type GapThemeTrace,
   type GapQuestionGroup,
@@ -58,6 +61,11 @@ export interface GapAnalysisResult {
   distinctQuestions: number;
   /** Distinct questions sent for analysis (most-asked first, capped). */
   analyzedQuestions: number;
+  /**
+   * Distinct questions left out because they read as instructions to an AI
+   * (content-scan prompt-injection rules), such as security-test asks.
+   */
+  heldOutQuestions: number;
   ungroupedQuestions: number;
   themes: GapTheme[];
   model: { label: string; providerLabel: string } | null;
@@ -222,6 +230,24 @@ async function runAnalysis(
       ...base,
       status: "empty",
       analyzedQuestions: 0,
+      heldOutQuestions: 0,
+      ungroupedQuestions: 0,
+      themes: [],
+      model: null
+    };
+  }
+  // Attacks are not content gaps, and one in the prompt gets the message
+  // holding it replaced by OpenRouter's prompt-injection guardrail.
+  const heldOut = new Set(
+    groups.filter((group) => questionReadsAsInstructions(group.question)).map((group) => group.id)
+  );
+  const sent = groups.filter((group) => !heldOut.has(group.id));
+  if (sent.length === 0) {
+    return {
+      ...base,
+      status: "ready",
+      analyzedQuestions: 0,
+      heldOutQuestions: heldOut.size,
       ungroupedQuestions: 0,
       themes: [],
       model: null
@@ -230,9 +256,10 @@ async function runAnalysis(
 
   const probeErrors = new Map<string, string>();
   const probesStartedAt = Date.now();
-  const probes = await probeGroups(groups, scope, runId, probeErrors);
+  const probes = await probeGroups(sent, scope, runId, probeErrors);
   const probesMs = Date.now() - probesStartedAt;
-  const prompt = buildGapAnalysisPrompt(groups, probes);
+  const prompt = buildGapAnalysisPrompt(sent, probes);
+  const charsSent = promptChars(prompt);
   const chain = await getActiveModelChain("gaps");
   const attempts: Record<string, unknown>[] = [];
   let sentMessages: unknown = null;
@@ -254,16 +281,22 @@ async function runAnalysis(
       const modelThemes = text ? parseModelThemes(text) : null;
       const trace: GapThemeTrace[] = [];
       const { themes, ungroupedQuestions } = modelThemes
-        ? assembleGapThemes(modelThemes, groups, probes, trace)
-        : { themes: [], ungroupedQuestions: groups.length };
+        ? assembleGapThemes(modelThemes, sent, probes, trace)
+        : { themes: [], ungroupedQuestions: sent.length };
       if (themes.length === 0) {
         parse = describeGapReply(text, modelThemes, trace);
-        throw new Error(modelThemes ? "reply held no usable themes" : "reply held no themes JSON");
+        const reason = modelThemes ? "reply held no usable themes" : "reply held no themes JSON";
+        throw new Error(
+          promptLooksReplaced(charsSent, reply.promptTokens)
+            ? `${reason}; the provider counted ${reply.promptTokens} prompt tokens for ${charsSent} characters sent, so a filter likely replaced the questions`
+            : reason
+        );
       }
       return {
         ...base,
         status: "ready",
-        analyzedQuestions: groups.length,
+        analyzedQuestions: sent.length,
+        heldOutQuestions: heldOut.size,
         ungroupedQuestions,
         themes,
         model: { label: route.label, providerLabel: route.providerLabel }
@@ -275,6 +308,7 @@ async function runAnalysis(
         outcome: safeErrorMessage(error),
         latencyMs,
         jsonModeRejected: requests.length > 1,
+        promptTokens: reply?.promptTokens ?? null,
         finishReason: reply?.finishReason ?? null,
         generationId: reply?.generationId ?? null,
         replyChars: reply?.text?.length ?? 0,
@@ -299,6 +333,11 @@ async function runAnalysis(
           requests: requests.map(withoutMessages),
           jsonModeRejected: requests.length > 1,
           latencyMs,
+          promptCheck: {
+            charsSent,
+            promptTokens: reply?.promptTokens ?? null,
+            likelyReplaced: promptLooksReplaced(charsSent, reply?.promptTokens ?? null)
+          },
           reasoning: reply?.reasoning ?? null,
           response: reply?.raw ?? null,
           parse
@@ -342,7 +381,7 @@ async function runAnalysis(
         questionLimit: MAX_GAP_GROUPS
       },
       chain: chain.map(routeSettings),
-      input: describeGapInput(groups, probes, probeErrors, prompt),
+      input: describeGapInput(groups, heldOut, probes, probeErrors, prompt),
       prompt: sentMessages === null ? "not sent: no request left the server" : messageLines(sentMessages),
       attempts
     }
@@ -394,7 +433,7 @@ function messageLines(messages: unknown): unknown {
  */
 async function completeAsJson(
   route: ApprovedModelRoute,
-  prompt: { system: string; user: string },
+  prompt: { system: string; user: readonly string[] },
   runId: string,
   onRequest: UtilityCompletionDeps["onRequest"]
 ): Promise<UtilityCompletionResult> {
