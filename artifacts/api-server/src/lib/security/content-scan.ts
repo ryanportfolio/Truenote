@@ -102,7 +102,20 @@ interface PatternRule {
   pattern: RegExp;
   message: string;
   blocking: boolean;
+  /**
+   * Skip a match when its clause, up to the end of the match, holds a
+   * negation ("never ask for the full card number"). The clause starts after
+   * the last `. ! ? ; : ,` or line break before the match.
+   */
+  skipNegated?: boolean;
 }
+
+/** Words a model or assistant is addressed by. Not "agent", "bot" or "model", which name people and products in support content. */
+const ASSISTANT = String.raw`(?:ai|assistants?|ai\s+assistants?|language\s+models?|llms?|chatbots?)`;
+/** Not a human role such as "assistant manager". */
+const NOT_A_HUMAN_ROLE = String.raw`(?!\s+(?:manager|supervisor|director|team|lead)s?\b)`;
+/** Card data a customer must never read out: the full number or the card security code. */
+const CARD_DATA = String.raw`(?:(?:full|entire|complete|whole|long)\s+(?:(?:credit|debit|payment|bank)\s+)?card\s+number|all\s+(?:15|16|fifteen|sixteen)\s+digits|cvv2?|cvc2?|card\s+(?:security|verification)\s+(?:code|value|number)|(?:3|three)[-\s]digit\s+(?:security\s+)?code|security\s+code\s+on\s+the\s+back)`;
 
 const TEXT_RULES: PatternRule[] = [
   {
@@ -141,7 +154,7 @@ const TEXT_RULES: PatternRule[] = [
     category: "prompt_injection",
     ruleId: "prompt.ignore_instructions",
     severity: "high",
-    pattern: /\bignore (?:all |any |the )?(?:previous|prior|above|system|developer) instructions?\b/gi,
+    pattern: /\b(?:ignore|disregard|forget)\s+(?:all\s+|any\s+)?(?:(?:of\s+)?(?:the|your|these|those)\s+)?(?:previous|prior|above|earlier|preceding|original|system|developer|your)\s+(?:instructions?|rules|guidelines|prompts?|directions)\b/gi,
     message: "Instruction-override language detected in source content.",
     blocking: false
   },
@@ -149,8 +162,63 @@ const TEXT_RULES: PatternRule[] = [
     category: "prompt_injection",
     ruleId: "prompt.system_prompt_exfiltration",
     severity: "high",
-    pattern: /\b(?:reveal|print|repeat|show|extract) (?:the )?(?:system|developer) (?:prompt|message|instructions?)\b/gi,
+    pattern: /\b(?:reveal|print|repeat|show|extract|output|display|list) (?:the |your )?(?:full )?(?:system|developer|hidden|initial) (?:prompt|message|instructions?)\b/gi,
     message: "System-prompt extraction language detected in source content.",
+    blocking: false
+  },
+  {
+    // Text written to the assistant rather than to the agent: "Note to the
+    // AI", "Instruction for the assistant:", "Formatting requirement for
+    // assistants", "If you are an AI".
+    category: "prompt_injection",
+    ruleId: "prompt.assistant_directive",
+    severity: "high",
+    pattern: new RegExp(
+      String.raw`\b(?:(?:notes?|instructions?|directives?|requirements?|rules?|reminders?|messages?|guidance|commands?)\s+(?:to|for)\s+(?:the\s+|any\s+|all\s+|every\s+)?${ASSISTANT}${NOT_A_HUMAN_ROLE}|if\s+you\s+are\s+(?:an?\s+)?${ASSISTANT}${NOT_A_HUMAN_ROLE}|(?:attention|dear)\s*,?\s+${ASSISTANT}${NOT_A_HUMAN_ROLE}|${ASSISTANT}\s+(?:reading|processing|summari[sz]ing)\s+this)\b`,
+      "gi"
+    ),
+    message: "Instructions addressed to an AI assistant detected in source content.",
+    blocking: false
+  },
+  {
+    category: "prompt_injection",
+    ruleId: "prompt.citation_suppression",
+    severity: "high",
+    pattern: /\b(?:(?:do\s+not|don't|never)\s+(?:include|add|show|use|give|cite|provide)\s+(?:any\s+)?(?:\S+\s+style\s+)?(?:citations?|source\s+tokens?)|(?:answer|reply|respond)\s+without\s+(?:any\s+)?(?:citations?|sources))\b/gi,
+    message: "Instruction to drop answer citations detected in source content.",
+    blocking: false
+  },
+  {
+    category: "prompt_injection",
+    ruleId: "prompt.fabrication_request",
+    severity: "high",
+    pattern: /\b(?:make\s+up|invent|fabricate)\s+(?:(?:a|an|one|some)\s+)?(?:plausible|realistic|believable|convincing|fake|fictional|fictitious)\b/gi,
+    message: "Instruction to invent information detected in source content.",
+    blocking: false,
+    skipNegated: true
+  },
+  {
+    // A customer reading out a full card number or security code, or an agent
+    // collecting one. "Never ask for the full card number" is skipped.
+    category: "prompt_injection",
+    ruleId: "prompt.card_data_request",
+    severity: "high",
+    pattern: new RegExp(
+      String.raw`\b(?:ask|request|collect|obtain|capture|record|read|say|recite|provide|share|spell|repeat|dictate|give)(?:s|ed|ing)?\b[^.!?;:,\n]{0,60}?\b${CARD_DATA}\b`,
+      "gi"
+    ),
+    message: "Instruction to collect a full card number or card security code detected in source content.",
+    blocking: false,
+    skipNegated: true
+  },
+  {
+    category: "prompt_injection",
+    ruleId: "prompt.active_markup",
+    severity: "medium",
+    // The tag body excludes `<` and is capped, so a long line of unclosed
+    // tags stays linear.
+    pattern: /<\s*script\b|\bjavascript\s*:|<[a-z][^<>\n]{0,200}?\bon(?:error|load|click|mouseover|focus)\s*=/gi,
+    message: "Script or event-handler markup detected in source content.",
     blocking: false
   },
   {
@@ -163,9 +231,43 @@ const TEXT_RULES: PatternRule[] = [
   }
 ];
 
-function countMatches(text: string, pattern: RegExp): number {
-  const matches = text.match(new RegExp(pattern.source, pattern.flags));
-  return matches?.length ?? 0;
+const NEGATION = /\b(?:never|not|no|avoid|prohibited|forbidden)\b|n't\b/gi;
+const CLAUSE_BREAK = /[.!?;:,\n]/g;
+
+/** Start offsets of every match of a global pattern, in order. */
+function matchStarts(text: string, pattern: RegExp): number[] {
+  return Array.from(text.matchAll(new RegExp(pattern.source, pattern.flags)), (m) => m.index ?? 0);
+}
+
+/** Index of the first value >= target in an ascending array, or its length. */
+function lowerBound(values: readonly number[], target: number): number {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (values[mid]! < target) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
+function countMatches(text: string, rule: Pick<PatternRule, "pattern" | "skipNegated">): number {
+  const pattern = new RegExp(rule.pattern.source, rule.pattern.flags);
+  if (!rule.skipNegated) return text.match(pattern)?.length ?? 0;
+  // Breaks and negations are located once, so long unbroken text stays
+  // near-linear however many matches it holds.
+  const breaks = matchStarts(text, CLAUSE_BREAK);
+  const negations = matchStarts(text, NEGATION);
+  let count = 0;
+  for (const match of text.matchAll(pattern)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    const breakIndex = lowerBound(breaks, start) - 1;
+    const clauseStart = breakIndex >= 0 ? breaks[breakIndex]! + 1 : 0;
+    const negation = negations[lowerBound(negations, clauseStart)];
+    if (negation === undefined || negation >= end) count += 1;
+  }
+  return count;
 }
 
 function looksLikePaymentCard(candidate: string): boolean {
@@ -326,7 +428,7 @@ export function scanTextForSensitiveContent(rawText: string): SecurityFinding[] 
   const normalized = rawText.normalize("NFKC");
   const findings: SecurityFinding[] = [];
   for (const rule of TEXT_RULES) {
-    const count = Math.max(countMatches(rawText, rule.pattern), countMatches(normalized, rule.pattern));
+    const count = Math.max(countMatches(rawText, rule), countMatches(normalized, rule));
     if (count === 0) continue;
     findings.push({
       category: rule.category,
