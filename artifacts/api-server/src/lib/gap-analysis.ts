@@ -99,12 +99,13 @@ export function buildGapAnalysisPrompt(
     "Do not invent policies, fees, dates or numbers. Describe what is missing, not what the answer is.",
     'Reply with JSON only, no prose and no code fence: {"themes":[{"title":"...","summary":"...","questionIds":["q1","q2"],"suggestedSource":"..."}]}'
   ].join("\n");
-  const lines = groups.map((group) => {
-    const probe = probes.get(group.id);
-    const near = probe?.best ? ` | closest source: "${probe.best.title}"` : " | closest source: none";
-    return `${group.id} (asked ${group.count}x${near}): ${oneLine(group.question)}`;
-  });
+  const lines = groups.map((group) => questionLine(group, probes.get(group.id)));
   return { system, user: `Refused questions:\n${lines.join("\n")}` };
+}
+
+function questionLine(group: GapQuestionGroup, probe: GapProbe | undefined): string {
+  const near = probe?.best ? ` | closest source: "${probe.best.title}"` : " | closest source: none";
+  return `${group.id} (asked ${group.count}x${near}): ${oneLine(group.question)}`;
 }
 
 /**
@@ -311,7 +312,7 @@ export function classifyTheme(
 
 /** Longest reply and reasoning excerpts kept in the error log. */
 export const MAX_LOGGED_REPLY_CHARS = 1_500;
-const MAX_LOGGED_LINE_CHARS = 200;
+const MAX_LOGGED_LINE_CHARS = 300;
 
 /**
  * Shape of a reply that yielded no usable themes, for the error log: the
@@ -345,7 +346,8 @@ export function describeGapReply(
  * What the model was given, for the error log: question and prompt sizes, how
  * many questions have a near source or read as instructions to a model
  * (content-scan prompt-injection rules), and every question line as the
- * provider received it (after the input firewall), truncated.
+ * provider received it (after the input firewall), truncated, after the date
+ * it was last asked.
  */
 export function describeGapInput(
   groups: readonly GapQuestionGroup[],
@@ -355,15 +357,6 @@ export function describeGapInput(
   const instructionLike = groups.filter((group) =>
     scanTextForSensitiveContent(group.question).some((item) => item.category === "prompt_injection")
   );
-  let lines: string[] | string;
-  try {
-    lines = protectProviderText(prompt.user)
-      .text.split("\n")
-      .slice(1)
-      .map((line) => line.slice(0, MAX_LOGGED_LINE_CHARS));
-  } catch {
-    lines = "withheld: the provider input firewall refused the prompt";
-  }
   return {
     questionsSent: groups.length,
     refusedAsksSent: groups.reduce((sum, group) => sum + group.count, 0),
@@ -372,7 +365,15 @@ export function describeGapInput(
     questionsWithoutProbe: groups.filter((group) => !probes.has(group.id)).length,
     questionsReadingAsInstructions: instructionLike.length,
     instructionLikeIds: instructionLike.map((group) => group.id),
-    questionLines: lines
+    questionLines: groups.map((group) => {
+      let line: string;
+      try {
+        line = protectProviderText(questionLine(group, probes.get(group.id))).text;
+      } catch {
+        line = `${group.id}: withheld, the provider input firewall refused this line`;
+      }
+      return `[last asked ${group.lastAskedAt.slice(0, 10)}] ${line.slice(0, MAX_LOGGED_LINE_CHARS)}`;
+    })
   };
 }
 
