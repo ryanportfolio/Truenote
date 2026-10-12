@@ -46,7 +46,8 @@ import {
   actionableDocumentFindings,
   canApproveDocumentVersion,
   evaluateDocumentApproval,
-  evaluateDocumentPurge
+  evaluateDocumentPurge,
+  isHeldForFindingsReview
 } from "../lib/security/document-policy.js";
 
 export const documentsRouter = Router();
@@ -264,6 +265,7 @@ documentsRouter.get("/", documentReadLimit, async (req, res, next) => {
             ? row["approved_by_name"]
             : null,
         findings,
+        heldForReview: isHeldForFindingsReview(lifecycleState, findings),
         canApprove: canApproveDocumentVersion(user.role, lifecycleState),
         canReject:
           reviewer && ["pending_review", "quarantined"].includes(lifecycleState),
@@ -659,6 +661,10 @@ documentsRouter.get("/:versionId/preview", documentReadLimit, async (req, res, n
       lifecycleState: row["lifecycle_state"],
       scanStatus: row["scan_status"],
       findings: actionableDocumentFindings(row["scan_findings"]),
+      heldForReview: isHeldForFindingsReview(
+        String(row["lifecycle_state"]),
+        row["scan_findings"],
+      ),
       classification: row["classification"],
       sourceName: row["source_name"],
       sourceOriginUri: row["source_origin_uri"],
@@ -717,6 +723,7 @@ interface ReviewRow {
   parse_status: string;
   scan_status: string;
   scan_findings: unknown;
+  uploaded_by: string | null;
   source_id: string | null;
   source_active: boolean | null;
   source_approved_at: Date | string | null;
@@ -760,6 +767,7 @@ documentsRouter.post(
             dv.parse_status,
             dv.scan_status,
             dv.scan_findings,
+            dv.uploaded_by,
             dv.source_id::text,
             source.is_active AS source_active,
             source.approved_at AS source_approved_at
@@ -810,6 +818,31 @@ documentsRouter.post(
         `);
         if (activated.rows.length !== 1) {
           throw new DocumentControlError(409, "Document review state changed. Refresh and try again.");
+        }
+        // The lifecycle trigger records the approver; this event adds which
+        // scanner findings the approver accepted and whether they approved
+        // their own upload, so a held version's release is reviewable.
+        const findings = actionableDocumentFindings(row.scan_findings);
+        if (findings.length > 0) {
+          await appendSecurityEvent(
+            {
+              action: "document.review.findings_accepted",
+              outcome: "success",
+              actor: user,
+              programId,
+              resourceType: "document_version",
+              resourceId: versionId,
+              requestId: requestIdOf(res),
+              sourceIp: clientIpFrom(req),
+              details: {
+                documentId: row.document_id,
+                findingRuleIds: findings.map((finding) => finding["ruleId"]),
+                approvedOwnUpload: row.uploaded_by === user.id,
+                notes: parsed.data.notes || null
+              }
+            },
+            tx as unknown as Parameters<typeof appendSecurityEvent>[1]
+          );
         }
         await tx.execute(sql`
           UPDATE documents

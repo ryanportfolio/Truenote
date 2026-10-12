@@ -14,13 +14,16 @@ interface DocumentListProps {
   onChanged?: () => void;
 }
 
-function StatusPill({ status }: { status: string }): JSX.Element {
-  const s = status;
+function StatusPill({ status, held }: { status: string; held: boolean }): JSX.Element {
+  // A flagged version waiting for review gets its own label: it stays out of
+  // search until a senior manager or super user approves it.
+  const s = held ? "held" : status;
   const map: Record<string, string> = {
     submitted: "bg-muted text-muted-foreground",
     scanning: "bg-warning/20 text-warning-foreground",
     parsing: "bg-warning/20 text-warning-foreground",
     pending_review: "bg-warning/20 text-warning-foreground",
+    held: "bg-warning/20 text-warning-foreground",
     active: "bg-success/15 text-success",
     retired: "bg-muted text-muted-foreground",
     quarantined: "bg-destructive/15 text-destructive",
@@ -33,6 +36,7 @@ function StatusPill({ status }: { status: string }): JSX.Element {
     scanning: "Scanning",
     parsing: "Parsing",
     pending_review: "Needs review",
+    held: "Held: review required",
     active: "Active",
     retired: "Retired",
     quarantined: "Quarantined",
@@ -153,7 +157,7 @@ export function DocumentList({ items, onChanged }: DocumentListProps): JSX.Eleme
                   <span className="mt-1 block text-xs">{item.sourceOwner ?? "Owner unavailable"}</span>
                 </td>
                 <td className="px-3 py-2">
-                  <StatusPill status={item.lifecycleState} />
+                  <StatusPill status={item.lifecycleState} held={item.heldForReview} />
                 </td>
                 <td className="px-3 py-2 text-right">
                   <div className="flex flex-wrap justify-end gap-2">

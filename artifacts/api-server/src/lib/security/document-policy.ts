@@ -38,8 +38,32 @@ export function canApproveDocumentVersion(
   );
 }
 
-export function shouldAutoActivateDocumentUpload(role: UserRole): boolean {
-  return role === "senior_manager" || role === "super_user";
+/**
+ * Privileged uploads go live without a review step only when the scanner
+ * raised nothing actionable. A version with any finding (prompt-injection
+ * markers are the non-blocking kind today) is held in `pending_review` until
+ * a senior manager or super user approves it and acknowledges the findings,
+ * whoever uploaded it (owner decision 2026-10-12, POAM-2026-054 F2/F3).
+ */
+export function shouldAutoActivateDocumentUpload(
+  role: UserRole,
+  findings: unknown,
+): boolean {
+  return (
+    (role === "senior_manager" || role === "super_user") &&
+    actionableDocumentFindings(findings).length === 0
+  );
+}
+
+/** A version waiting for review because the scanner flagged it. */
+export function isHeldForFindingsReview(
+  lifecycleState: string,
+  findings: unknown,
+): boolean {
+  return (
+    lifecycleState === "pending_review" &&
+    actionableDocumentFindings(findings).length > 0
+  );
 }
 
 /** Pure, fail-closed approval policy used by the route and negative tests. */

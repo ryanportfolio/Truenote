@@ -241,6 +241,8 @@ export interface DocumentListItem {
   uploadedByName: string | null;
   approvedByName: string | null;
   findings: SecurityFinding[];
+  /** Pending review because the scanner flagged it; kept out of search until approved. */
+  heldForReview: boolean;
   canApprove: boolean;
   canReject: boolean;
   canRevoke: boolean;
@@ -627,6 +629,7 @@ export interface PreviewResponse {
   lifecycleState: DocumentLifecycleState;
   scanStatus: string;
   findings: SecurityFinding[];
+  heldForReview: boolean;
   classification: Classification;
   sourceName: string | null;
   sourceOriginUri: string | null;
