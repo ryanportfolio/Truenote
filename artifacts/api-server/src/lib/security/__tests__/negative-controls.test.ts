@@ -10,6 +10,7 @@ import {
   canApproveDocumentVersion,
   evaluateDocumentApproval,
   evaluateDocumentPurge,
+  isHeldForFindingsReview,
   shouldAutoActivateDocumentUpload,
 } from "../document-policy.js";
 
@@ -88,11 +89,71 @@ describe("negative security controls", () => {
     expect(canApproveDocumentVersion("super_user", "active")).toBe(false);
   });
 
-  it("auto-activates only senior-manager and super-user uploads", () => {
-    expect(shouldAutoActivateDocumentUpload("senior_manager")).toBe(true);
-    expect(shouldAutoActivateDocumentUpload("super_user")).toBe(true);
-    expect(shouldAutoActivateDocumentUpload("manager")).toBe(false);
-    expect(shouldAutoActivateDocumentUpload("csr")).toBe(false);
+  it("auto-activates only unflagged senior-manager and super-user uploads", () => {
+    expect(shouldAutoActivateDocumentUpload("senior_manager", [])).toBe(true);
+    expect(shouldAutoActivateDocumentUpload("super_user", [])).toBe(true);
+    expect(shouldAutoActivateDocumentUpload("manager", [])).toBe(false);
+    expect(shouldAutoActivateDocumentUpload("csr", [])).toBe(false);
+  });
+
+  it("holds a flagged upload from every role until a reviewer approves it", () => {
+    const flagged = [
+      {
+        category: "prompt_injection",
+        ruleId: "prompt.ignore_instructions",
+        blocking: false,
+      },
+    ];
+    for (const role of [
+      "super_user",
+      "senior_manager",
+      "manager",
+      "supervisor",
+      "csr",
+    ] as const) {
+      expect(shouldAutoActivateDocumentUpload(role, flagged)).toBe(false);
+    }
+    expect(isHeldForFindingsReview("pending_review", flagged)).toBe(true);
+    expect(isHeldForFindingsReview("active", flagged)).toBe(false);
+    expect(isHeldForFindingsReview("pending_review", [])).toBe(false);
+    // A scanner-bypass record is not a review finding.
+    const bypassOnly = [{ ruleId: "malware.scanning_disabled", blocking: false }];
+    expect(shouldAutoActivateDocumentUpload("super_user", bypassOnly)).toBe(true);
+    expect(isHeldForFindingsReview("pending_review", bypassOnly)).toBe(false);
+  });
+
+  it("never activates a flagged version without an explicit acknowledgment", () => {
+    const flagged = {
+      lifecycleState: "pending_review",
+      parseStatus: "ready",
+      scanStatus: "clean",
+      sourceId: "source-1",
+      sourceActive: true,
+      sourceApprovedAt: new Date("2026-07-14T00:00:00Z"),
+      findings: [
+        {
+          category: "prompt_injection",
+          ruleId: "prompt.role_impersonation",
+          blocking: false,
+        },
+      ],
+      acknowledgeFindings: false,
+    };
+    // The ingestion worker's automatic path passes acknowledgeFindings: false.
+    expect(evaluateDocumentApproval(flagged)).toEqual({
+      allowed: false,
+      status: 400,
+      error: "Acknowledge the scan findings before approval.",
+    });
+    // A reviewer, the uploader included (owner decision 2026-10-12), can
+    // release it by acknowledging the findings.
+    expect(
+      evaluateDocumentApproval({ ...flagged, acknowledgeFindings: true }),
+    ).toEqual({ allowed: true });
+    // Approval is a senior-manager or super-user action only.
+    expect(canApproveDocumentVersion("manager", "pending_review")).toBe(false);
+    expect(canApproveDocumentVersion("supervisor", "pending_review")).toBe(false);
+    expect(canApproveDocumentVersion("csr", "pending_review")).toBe(false);
   });
 
   it("denies unsafe scans, blocking findings, and stale sources", () => {

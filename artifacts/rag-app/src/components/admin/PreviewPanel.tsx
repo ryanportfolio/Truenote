@@ -143,7 +143,11 @@ export function PreviewPanel({
             <dl className="grid gap-3 rounded-lg border border-border bg-secondary p-4 text-sm sm:grid-cols-2">
               <div>
                 <dt className="text-xs uppercase tracking-wide text-muted-foreground">Status</dt>
-                <dd className="mt-1 capitalize">{data.lifecycleState.replaceAll("_", " ")}</dd>
+                <dd className={data.heldForReview ? "mt-1" : "mt-1 capitalize"}>
+                  {data.heldForReview
+                    ? "Held: review required"
+                    : data.lifecycleState.replaceAll("_", " ")}
+                </dd>
               </div>
               <div>
                 <dt className="text-xs uppercase tracking-wide text-muted-foreground">Classification</dt>
@@ -164,6 +168,15 @@ export function PreviewPanel({
                 </dd>
               </div>
             </dl>
+
+            {data.heldForReview ? (
+              <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning-foreground">
+                The scanner flagged this version, so it is held out of search and answers.
+                {data.canApprove
+                  ? " Check each finding against the parsed text, then approve it or reject it."
+                  : " A senior manager or super user has to review the findings and approve it before CSRs can see it."}
+              </p>
+            ) : null}
 
             {data.findings.length > 0 ? (
               <section aria-labelledby="scan-findings-title">

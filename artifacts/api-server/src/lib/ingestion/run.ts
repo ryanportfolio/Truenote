@@ -73,8 +73,9 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
  *   7. chunk via the structural chunker (target 500 tokens)
  *   8. embed all chunks (batched 100/req)
  *   9. insert chunks rows with denormalized program_id
- *  10. activate senior-manager and super-user uploads immediately; leave
- *      uploads from other roles inactive in `pending_review`
+ *  10. activate senior-manager and super-user uploads immediately when the
+ *      scanner raised no findings; leave flagged uploads and uploads from
+ *      other roles inactive in `pending_review`
  *
  * On any error, parse_status is set to "failed" and the error rethrown.
  */
@@ -388,12 +389,24 @@ async function runClaimedIngestion(
       `);
 
       const uploaderRole = approvalRow.uploader_role;
-      const autoActivate =
+      const privilegedUploader =
         approvalRow.uploader_active === true &&
-        (uploaderRole === "senior_manager" || uploaderRole === "super_user") &&
-        shouldAutoActivateDocumentUpload(uploaderRole);
-      if (!autoActivate || !approvalRow.uploaded_by) return;
+        (uploaderRole === "senior_manager" || uploaderRole === "super_user");
+      if (!privilegedUploader || !approvalRow.uploaded_by) return;
+      if (!shouldAutoActivateDocumentUpload(uploaderRole, allFindings)) {
+        // Flagged versions stay out of retrieval until a reviewer approves
+        // them through POST /:versionId/approve, which requires an explicit
+        // acknowledgment of the findings.
+        console.warn(
+          `[ingestion] version ${versionId} held for review: ` +
+            `findings=${allFindings.map((finding) => finding.ruleId).join(",")}`
+        );
+        return;
+      }
 
+      // The automatic path never acknowledges findings on anyone's behalf,
+      // so the policy refuses here as well if a finding slipped past the
+      // check above.
       const approval = evaluateDocumentApproval({
         lifecycleState: "pending_review",
         parseStatus: "ready",
@@ -402,7 +415,7 @@ async function runClaimedIngestion(
         sourceActive: approvalRow.source_active,
         sourceApprovedAt: approvalRow.source_approved_at,
         findings: allFindings,
-        acknowledgeFindings: true
+        acknowledgeFindings: false
       });
       if (!approval.allowed) return;
 
