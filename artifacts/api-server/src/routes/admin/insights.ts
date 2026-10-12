@@ -245,7 +245,8 @@ insightsRouter.get("/gap-analysis", gapAnalysisLimit, async (req, res, next) => 
         clearance: await getUserMaxClassification(user.id),
         windowDays
       },
-      req.query["refresh"] === "1"
+      req.query["refresh"] === "1",
+      user.id
     );
     res.json(result);
   } catch (err) {

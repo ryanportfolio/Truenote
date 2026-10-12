@@ -6,14 +6,13 @@ import { retrieve } from "./retrieval/query.js";
 import { getActiveModelChain, type ApprovedModelRoute } from "./generation/model-routing.js";
 import {
   runUtilityCompletionDetailed,
-  utilityRequestFields,
+  type UtilityCompletionDeps,
   type UtilityCompletionResult
 } from "./generation/utility-model.js";
 import { recordAppError, safeErrorMessage } from "./observability/error-log.js";
 import type { Classification } from "./security/classification.js";
 import {
   MAX_GAP_GROUPS,
-  MAX_LOGGED_REPLY_CHARS,
   assembleGapThemes,
   buildGapAnalysisPrompt,
   describeGapInput,
@@ -21,6 +20,7 @@ import {
   excerpt,
   parseModelThemes,
   type GapProbe,
+  type GapThemeTrace,
   type GapQuestionGroup,
   type GapTheme
 } from "./gap-analysis.js";
@@ -90,12 +90,16 @@ interface GroupRow {
   ask_count: number;
   flagged_count: number;
   last_asked_at: Date | string;
+  first_asked_at: Date | string;
+  askers: number;
 }
 
 interface SummaryRow {
   refused: number;
   distinct_questions: number;
   latest: Date | string | null;
+  /** Distinct people with a refusal in scope, for the error log. */
+  askers: number;
 }
 
 async function readSummary(scope: GapAnalysisScope): Promise<SummaryRow> {
@@ -103,14 +107,15 @@ async function readSummary(scope: GapAnalysisScope): Promise<SummaryRow> {
     SELECT
       count(*)::int                             AS refused,
       count(DISTINCT lower(btrim(question)))::int AS distinct_questions,
-      max(created_at)                           AS latest
+      max(created_at)                           AS latest,
+      count(DISTINCT user_id)::int              AS askers
     FROM query_log
     WHERE program_id = ${scope.programId}::uuid
       AND refused = true
       AND created_at > now() - make_interval(days => ${scope.windowDays})
       ${teamUserFilterSql(scope.team, sql`query_log.user_id`)}
   `);
-  return (result.rows[0] ?? { refused: 0, distinct_questions: 0, latest: null }) as unknown as SummaryRow;
+  return (result.rows[0] ?? { refused: 0, distinct_questions: 0, latest: null, askers: 0 }) as unknown as SummaryRow;
 }
 
 async function readGroups(scope: GapAnalysisScope): Promise<GapQuestionGroup[]> {
@@ -119,7 +124,9 @@ async function readGroups(scope: GapAnalysisScope): Promise<GapQuestionGroup[]> 
       min(question)                                AS question,
       count(*)::int                                AS ask_count,
       count(*) FILTER (WHERE flagged_missing)::int AS flagged_count,
-      max(created_at)                              AS last_asked_at
+      max(created_at)                              AS last_asked_at,
+      min(created_at)                              AS first_asked_at,
+      count(DISTINCT user_id)::int                 AS askers
     FROM query_log
     WHERE program_id = ${scope.programId}::uuid
       AND refused = true
@@ -134,14 +141,18 @@ async function readGroups(scope: GapAnalysisScope): Promise<GapQuestionGroup[]> 
     question: row.question,
     count: row.ask_count,
     flagged: row.flagged_count,
-    lastAskedAt: new Date(row.last_asked_at).toISOString()
+    lastAskedAt: new Date(row.last_asked_at).toISOString(),
+    firstAskedAt: new Date(row.first_asked_at).toISOString(),
+    askers: row.askers
   }));
 }
 
 /** Best hit per question against today's knowledge base, in the asker's program and clearance. */
 async function probeGroups(
   groups: readonly GapQuestionGroup[],
-  scope: GapAnalysisScope
+  scope: GapAnalysisScope,
+  runId: string,
+  probeErrors: Map<string, string>
 ): Promise<Map<string, GapProbe>> {
   const probes = new Map<string, GapProbe>();
   let next = 0;
@@ -169,12 +180,15 @@ async function probeGroups(
       } catch (error) {
         // One failed probe leaves that question without a near miss; the
         // theme still forms from its other questions.
+        probeErrors.set(group.id, safeErrorMessage(error));
         void recordAppError({
           severity: "warning",
           source: "retrieval",
           operation: "gap-analysis-probe",
           error,
-          programId: scope.programId
+          correlationId: runId,
+          programId: scope.programId,
+          context: { questionId: group.id }
         });
       }
     }
@@ -187,16 +201,22 @@ async function probeGroups(
 
 async function runAnalysis(
   scope: GapAnalysisScope,
-  summary: SummaryRow
+  summary: SummaryRow,
+  refresh: boolean,
+  requestedBy: string | null
 ): Promise<GapAnalysisResult> {
+  const startedAt = Date.now();
+  // Ties a run's error-log rows together (correlation id).
+  const runId = randomUUID();
   const base = {
     windowDays: scope.windowDays,
-    analyzedAt: new Date().toISOString(),
+    analyzedAt: new Date(startedAt).toISOString(),
     refusedAsks: summary.refused,
     distinctQuestions: summary.distinct_questions,
     cached: false
   };
   const groups = await readGroups(scope);
+  const groupsMs = Date.now() - startedAt;
   if (groups.length === 0) {
     return {
       ...base,
@@ -208,28 +228,36 @@ async function runAnalysis(
     };
   }
 
-  const probes = await probeGroups(groups, scope);
+  const probeErrors = new Map<string, string>();
+  const probesStartedAt = Date.now();
+  const probes = await probeGroups(groups, scope, runId, probeErrors);
+  const probesMs = Date.now() - probesStartedAt;
   const prompt = buildGapAnalysisPrompt(groups, probes);
-  // Ties a run's error-log rows together (correlation id).
-  const runId = randomUUID();
+  const chain = await getActiveModelChain("gaps");
   const attempts: Record<string, unknown>[] = [];
+  let sentMessages: unknown = null;
 
   // Walk the gaps chain: a request error or a reply with no usable themes
   // advances to the next route, like answer generation.
-  for (const route of await getActiveModelChain("gaps")) {
-    const call: GapCall = { sent: utilityRequestFields(route, true), jsonModeRejected: false };
-    const startedAt = Date.now();
+  for (const route of chain) {
+    const requests: Readonly<Record<string, unknown>>[] = [];
+    const onRequest: UtilityCompletionDeps["onRequest"] = (body) => {
+      requests.push(body);
+      sentMessages ??= body.messages;
+    };
+    const callStartedAt = Date.now();
     let reply: UtilityCompletionResult | null = null;
-    let replyShape: Record<string, unknown> = {};
+    let parse: Record<string, unknown> | null = null;
     try {
-      reply = await completeAsJson(route, prompt, runId, call);
+      reply = await completeAsJson(route, prompt, runId, onRequest);
       const text = reply.text;
       const modelThemes = text ? parseModelThemes(text) : null;
+      const trace: GapThemeTrace[] = [];
       const { themes, ungroupedQuestions } = modelThemes
-        ? assembleGapThemes(modelThemes, groups, probes)
+        ? assembleGapThemes(modelThemes, groups, probes, trace)
         : { themes: [], ungroupedQuestions: groups.length };
       if (themes.length === 0) {
-        replyShape = describeGapReply(text, modelThemes, groups);
+        parse = describeGapReply(text, modelThemes, trace);
         throw new Error(modelThemes ? "reply held no usable themes" : "reply held no themes JSON");
       }
       return {
@@ -241,15 +269,17 @@ async function runAnalysis(
         model: { label: route.label, providerLabel: route.providerLabel }
       };
     } catch (error) {
-      const latencyMs = Date.now() - startedAt;
-      const response = reply ? describeCompletion(reply) : null;
+      const latencyMs = Date.now() - callStartedAt;
       attempts.push({
         routeId: route.id,
         outcome: safeErrorMessage(error),
         latencyMs,
+        jsonModeRejected: requests.length > 1,
         finishReason: reply?.finishReason ?? null,
-        reply: reply?.text ? excerpt(reply.text, 300) : null,
-        reasoning: reply?.reasoning ? excerpt(reply.reasoning, 300) : null
+        generationId: reply?.generationId ?? null,
+        replyChars: reply?.text?.length ?? 0,
+        reply: reply?.text ? excerpt(reply.text, ATTEMPT_EXCERPT_CHARS) : null,
+        reasoning: reply?.reasoning ? excerpt(reply.reasoning, ATTEMPT_EXCERPT_CHARS) : null
       });
       void recordAppError({
         severity: "warning",
@@ -260,21 +290,23 @@ async function runAnalysis(
         model: route.model,
         routeId: route.id,
         correlationId: runId,
+        userId: requestedBy,
         programId: scope.programId,
         context: {
-          request: {
-            ...call.sent,
-            jsonModeRejected: call.jsonModeRejected,
-            timeoutMs: MODEL_TIMEOUT_MS
-          },
+          route: routeSettings(route),
+          // Bodies as sent, the prompt text left to the run's
+          // gap-analysis-exhausted row; two bodies mean JSON mode got a 400.
+          requests: requests.map(withoutMessages),
+          jsonModeRejected: requests.length > 1,
           latencyMs,
-          response,
-          ...replyShape
+          reasoning: reply?.reasoning ?? null,
+          response: reply?.raw ?? null,
+          parse
         }
       });
     }
   }
-  // One row per failed run with what the model was given and how each route
+  // One row per failed run with everything the run used and how each route
   // ended, so the error log alone explains the 503.
   void recordAppError({
     severity: "error",
@@ -282,36 +314,77 @@ async function runAnalysis(
     operation: "gap-analysis-exhausted",
     error: new GapAnalysisUnavailableError(),
     correlationId: runId,
+    userId: requestedBy,
     programId: scope.programId,
     context: {
-      windowDays: scope.windowDays,
-      teamScoped: scope.team !== null,
-      clearance: scope.clearance,
-      input: describeGapInput(groups, probes, prompt),
+      app: {
+        commit: process.env.RAILWAY_GIT_COMMIT_SHA ?? null,
+        deploymentId: process.env.RAILWAY_DEPLOYMENT_ID ?? null,
+        service: process.env.RAILWAY_SERVICE_NAME ?? null
+      },
+      run: {
+        startedAt: base.analyzedAt,
+        refresh,
+        totalMs: Date.now() - startedAt,
+        groupsMs,
+        probesMs
+      },
+      scope: {
+        windowDays: scope.windowDays,
+        team: scope.team ?? "program-wide",
+        clearance: scope.clearance
+      },
+      window: {
+        refusedAsks: summary.refused,
+        distinctQuestions: summary.distinct_questions,
+        askers: summary.askers,
+        latestRefusal: summary.latest ? new Date(summary.latest).toISOString() : null,
+        questionLimit: MAX_GAP_GROUPS
+      },
+      chain: chain.map(routeSettings),
+      input: describeGapInput(groups, probes, probeErrors, prompt),
+      prompt: sentMessages === null ? "not sent: no request left the server" : messageLines(sentMessages),
       attempts
     }
   });
   throw new GapAnalysisUnavailableError();
 }
 
-/** The request fields a gaps call sent, updated when JSON mode is dropped. */
-interface GapCall {
-  sent: Record<string, unknown>;
-  jsonModeRejected: boolean;
+/** Characters of each reply and reasoning kept in the run summary. */
+const ATTEMPT_EXCERPT_CHARS = 300;
+
+/** A route's settings as this run used them. */
+function routeSettings(route: ApprovedModelRoute): Record<string, unknown> {
+  return {
+    id: route.id,
+    model: route.model,
+    provider: route.provider,
+    reasoningControl: route.reasoningControl,
+    reasoningEffort: route.reasoningEffort,
+    defaultReasoningEffort: route.defaultReasoningEffort,
+    jsonMode: route.jsonMode
+  };
 }
 
-/** Reply metadata for the error log, reasoning cut to an excerpt. */
-function describeCompletion(reply: UtilityCompletionResult): Record<string, unknown> {
+/** A request body with each message's text replaced by its length. */
+function withoutMessages(body: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const messages = Array.isArray(body.messages) ? (body.messages as Array<{ role?: unknown; content?: unknown }>) : [];
   return {
-    finishReason: reply.finishReason,
-    servedBy: reply.servedBy,
-    servedModel: reply.servedModel,
-    promptTokens: reply.promptTokens,
-    completionTokens: reply.completionTokens,
-    reasoningTokens: reply.reasoningTokens,
-    reasoningChars: reply.reasoning?.length ?? 0,
-    reasoning: reply.reasoning ? excerpt(reply.reasoning, MAX_LOGGED_REPLY_CHARS) : null
+    ...body,
+    messages: messages.map((message) => ({
+      role: message.role,
+      chars: typeof message.content === "string" ? message.content.length : null
+    }))
   };
+}
+
+/** Messages as sent, each split into lines so the error log page reads them. */
+function messageLines(messages: unknown): unknown {
+  if (!Array.isArray(messages)) return messages;
+  return (messages as Array<{ role?: unknown; content?: unknown }>).map((message) => ({
+    role: message.role,
+    lines: typeof message.content === "string" ? message.content.split("\n") : message.content
+  }));
 }
 
 /**
@@ -323,12 +396,12 @@ async function completeAsJson(
   route: ApprovedModelRoute,
   prompt: { system: string; user: string },
   runId: string,
-  call: GapCall
+  onRequest: UtilityCompletionDeps["onRequest"]
 ): Promise<UtilityCompletionResult> {
   const input = { ...prompt, timeoutMs: MODEL_TIMEOUT_MS, maxRetries: 0 };
-  if (!route.jsonMode) return runUtilityCompletionDetailed(input, { route });
+  if (!route.jsonMode) return runUtilityCompletionDetailed(input, { route, onRequest });
   try {
-    return await runUtilityCompletionDetailed({ ...input, json: true }, { route });
+    return await runUtilityCompletionDetailed({ ...input, json: true }, { route, onRequest });
   } catch (error) {
     if ((error as { status?: unknown } | null)?.status !== 400) throw error;
     void recordAppError({
@@ -341,9 +414,7 @@ async function completeAsJson(
       routeId: route.id,
       correlationId: runId
     });
-    call.sent = utilityRequestFields(route, false);
-    call.jsonModeRejected = true;
-    return runUtilityCompletionDetailed(input, { route });
+    return runUtilityCompletionDetailed(input, { route, onRequest });
   }
 }
 
@@ -354,7 +425,8 @@ async function completeAsJson(
  */
 export async function getGapAnalysis(
   scope: GapAnalysisScope,
-  refresh: boolean
+  refresh: boolean,
+  requestedBy: string | null = null
 ): Promise<GapAnalysisResult> {
   const key = cacheKey(scope);
   const summary = await readSummary(scope);
@@ -374,7 +446,7 @@ export async function getGapAnalysis(
   const running = inflight.get(key);
   if (running) return running;
 
-  const run = runAnalysis(scope, summary)
+  const run = runAnalysis(scope, summary, refresh, requestedBy)
     .then((result) => {
       cache.delete(key);
       cache.set(key, { fingerprint, storedAt: Date.now(), result });

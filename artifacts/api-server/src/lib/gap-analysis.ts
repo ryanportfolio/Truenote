@@ -41,6 +41,10 @@ export interface GapQuestionGroup {
   count: number;
   flagged: number;
   lastAskedAt: string;
+  /** First ask in the window, for the error log. */
+  firstAskedAt: string;
+  /** Distinct people who asked it in the window, for the error log. */
+  askers: number;
 }
 
 /** Best retrieval hit for one question against the current knowledge base. */
@@ -99,13 +103,12 @@ export function buildGapAnalysisPrompt(
     "Do not invent policies, fees, dates or numbers. Describe what is missing, not what the answer is.",
     'Reply with JSON only, no prose and no code fence: {"themes":[{"title":"...","summary":"...","questionIds":["q1","q2"],"suggestedSource":"..."}]}'
   ].join("\n");
-  const lines = groups.map((group) => questionLine(group, probes.get(group.id)));
+  const lines = groups.map((group) => {
+    const probe = probes.get(group.id);
+    const near = probe?.best ? ` | closest source: "${probe.best.title}"` : " | closest source: none";
+    return `${group.id} (asked ${group.count}x${near}): ${oneLine(group.question)}`;
+  });
   return { system, user: `Refused questions:\n${lines.join("\n")}` };
-}
-
-function questionLine(group: GapQuestionGroup, probe: GapProbe | undefined): string {
-  const near = probe?.best ? ` | closest source: "${probe.best.title}"` : " | closest source: none";
-  return `${group.id} (asked ${group.count}x${near}): ${oneLine(group.question)}`;
 }
 
 /**
@@ -117,7 +120,7 @@ function questionLine(group: GapQuestionGroup, probe: GapProbe | undefined): str
  * caller can try the next route.
  */
 export function parseModelThemes(text: string): ModelTheme[] | null {
-  const parsed = parseJsonLoosely(text);
+  const parsed = parseJsonLoosely(text).value;
   const record = parsed && typeof parsed === "object" && !Array.isArray(parsed)
     ? (parsed as Record<string, unknown>)
     : null;
@@ -144,22 +147,32 @@ export function parseModelThemes(text: string): ModelTheme[] | null {
   return out;
 }
 
+interface LooseJson {
+  value: unknown;
+  /** The candidate that parsed: the whole reply, its outermost {...} or [...]. */
+  source: "whole" | "object" | "array" | null;
+  /** JSON.parse errors of the candidates tried before one parsed. */
+  errors: string[];
+}
+
 /** The whole reply, else its outermost {...}, else its outermost [...]. */
-function parseJsonLoosely(text: string): unknown {
-  const candidates = [text.trim()];
-  for (const [open, close] of [["{", "}"], ["[", "]"]] as const) {
+function parseJsonLoosely(text: string): LooseJson {
+  const candidates: Array<[LooseJson["source"], string]> = [["whole", text.trim()]];
+  for (const [source, open, close] of [["object", "{", "}"], ["array", "[", "]"]] as const) {
     const start = text.indexOf(open);
     const end = text.lastIndexOf(close);
-    if (start !== -1 && end > start) candidates.push(text.slice(start, end + 1));
+    if (start !== -1 && end > start) candidates.push([source, text.slice(start, end + 1)]);
   }
-  for (const candidate of candidates) {
+  const errors: string[] = [];
+  for (const [source, candidate] of candidates) {
     try {
-      return JSON.parse(candidate);
-    } catch {
+      return { value: JSON.parse(candidate), source, errors };
+    } catch (error) {
       // Try the next candidate.
+      errors.push(`${source}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  return null;
+  return { value: null, source: null, errors };
 }
 
 function pick(record: Record<string, unknown>, keys: readonly string[]): unknown {
@@ -200,16 +213,27 @@ function resolveQuestionRef(
   return byText.get(normalized.replace(/^["'`]+|["'`]+$/g, "")) ?? null;
 }
 
+/** How assembleGapThemes treated one model theme, for the error log. */
+export interface GapThemeTrace {
+  title: string;
+  summary: string;
+  suggestedSource: string | null;
+  refs: Array<{ ref: string; id: string | null; outcome: "matched" | "unknown" | "already used" }>;
+  outcome: "kept" | "no known ids" | "no title" | "over theme limit";
+}
+
 /**
  * Turn model themes into checked themes: unknown references dropped, each id used
  * once (first theme wins), empty or untitled themes dropped, counts and
  * samples from the server's groups, kind and source from retrieval. Sorted by
- * refused asks, most first.
+ * refused asks, most first. `trace`, when given, receives one entry per model
+ * theme saying how it was treated.
  */
 export function assembleGapThemes(
   modelThemes: readonly ModelTheme[],
   groups: readonly GapQuestionGroup[],
-  probes: ReadonlyMap<string, GapProbe>
+  probes: ReadonlyMap<string, GapProbe>,
+  trace?: GapThemeTrace[]
 ): { themes: GapTheme[]; ungroupedQuestions: number } {
   const byId = new Map(groups.map((group) => [group.id, group]));
   const byText = new Map(groups.map((group) => [oneLine(group.question).toLowerCase(), group.id]));
@@ -217,17 +241,33 @@ export function assembleGapThemes(
   const themes: GapTheme[] = [];
 
   for (const theme of modelThemes) {
-    if (themes.length >= MAX_THEMES) break;
+    const entry: GapThemeTrace = {
+      title: theme.title,
+      summary: theme.summary,
+      suggestedSource: theme.suggestedSource,
+      refs: [],
+      outcome: "kept"
+    };
+    trace?.push(entry);
+    if (themes.length >= MAX_THEMES) {
+      entry.outcome = "over theme limit";
+      continue;
+    }
     const members: GapQuestionGroup[] = [];
     for (const ref of theme.questionIds) {
       const id = resolveQuestionRef(ref, byText);
       const group = id ? byId.get(id) : undefined;
-      if (!id || !group || used.has(id)) continue;
+      if (!id || !group || used.has(id)) {
+        entry.refs.push({ ref, id, outcome: id && group ? "already used" : "unknown" });
+        continue;
+      }
+      entry.refs.push({ ref, id, outcome: "matched" });
       used.add(id);
       members.push(group);
     }
     const title = clean(theme.title, MAX_TITLE_CHARS);
     if (members.length === 0 || !title) {
+      entry.outcome = members.length === 0 ? "no known ids" : "no title";
       for (const member of members) used.delete(member.id);
       continue;
     }
@@ -310,71 +350,99 @@ export function classifyTheme(
   return top ? { kind, source: top } : { kind: "new", source: null };
 }
 
-/** Longest reply and reasoning excerpts kept in the error log. */
-export const MAX_LOGGED_REPLY_CHARS = 1_500;
-const MAX_LOGGED_LINE_CHARS = 300;
-
 /**
- * Shape of a reply that yielded no usable themes, for the error log: the
- * reply itself (head and tail past MAX_LOGGED_REPLY_CHARS), counts, and the
- * first few raw question references.
+ * Why a reply yielded no usable themes, for the error log: how its JSON
+ * parsed (or each parse error), the top-level shape, and how every model
+ * theme and question reference was treated.
  */
 export function describeGapReply(
   text: string | null,
   modelThemes: readonly ModelTheme[] | null,
-  groups: readonly GapQuestionGroup[]
+  trace: readonly GapThemeTrace[]
 ): Record<string, unknown> {
-  const refs = modelThemes?.flatMap((theme) => theme.questionIds) ?? [];
-  const byText = new Map(groups.map((group) => [oneLine(group.question).toLowerCase(), group.id]));
-  const ids = new Set(groups.map((group) => group.id));
+  const json = text ? parseJsonLoosely(text) : null;
+  const refs = trace.flatMap((theme) => theme.refs);
   return {
     replyChars: text?.length ?? 0,
-    reply: text ? excerpt(text, MAX_LOGGED_REPLY_CHARS) : null,
-    questionsSent: groups.length,
+    jsonParsedFrom: json?.source ?? null,
+    jsonErrors: json?.errors ?? [],
+    jsonTopLevel: json?.source ? describeShape(json.value) : null,
     themesParsed: modelThemes?.length ?? null,
-    themesTitled: modelThemes?.filter((theme) => clean(theme.title, MAX_TITLE_CHARS)).length ?? null,
+    themesKept: trace.filter((theme) => theme.outcome === "kept").length,
     refsReturned: refs.length,
-    refsMatched: refs.filter((ref) => {
-      const id = resolveQuestionRef(ref, byText);
-      return id !== null && ids.has(id);
-    }).length,
-    sampleRefs: refs.slice(0, 5).map((ref) => oneLine(ref).slice(0, 60))
+    refsMatched: refs.filter((ref) => ref.outcome === "matched").length,
+    themes: trace
   };
 }
 
+function describeShape(value: unknown): string {
+  if (Array.isArray(value)) return `array of ${value.length}`;
+  if (value && typeof value === "object") {
+    return `object with keys: ${Object.keys(value).join(", ") || "(none)"}`;
+  }
+  return value === null ? "null" : typeof value;
+}
+
 /**
- * What the model was given, for the error log: question and prompt sizes, how
- * many questions have a near source or read as instructions to a model
- * (content-scan prompt-injection rules), and every question line as the
- * provider received it (after the input firewall), truncated, after the date
- * it was last asked.
+ * What the model was given, for the error log: sizes, what the provider input
+ * firewall found in each prompt part, and per question its ask counts and
+ * dates, retrieval probe (best source, score, threshold or error), and the
+ * content-scan rules it matches (prompt-injection rules, and the PII or
+ * secret rules the firewall redacted). The question text itself is in the
+ * logged prompt, by id.
  */
 export function describeGapInput(
   groups: readonly GapQuestionGroup[],
   probes: ReadonlyMap<string, GapProbe>,
+  probeErrors: ReadonlyMap<string, string>,
   prompt: { system: string; user: string }
 ): Record<string, unknown> {
-  const instructionLike = groups.filter((group) =>
-    scanTextForSensitiveContent(group.question).some((item) => item.category === "prompt_injection")
-  );
+  const questions = groups.map((group) => {
+    const probe = probes.get(group.id);
+    const findings = scanTextForSensitiveContent(group.question);
+    return {
+      id: group.id,
+      asked: group.count,
+      flagged: group.flagged,
+      askers: group.askers,
+      firstAskedAt: group.firstAskedAt,
+      lastAskedAt: group.lastAskedAt,
+      questionChars: group.question.length,
+      closestSource: probe?.best ?? null,
+      threshold: probe?.threshold ?? null,
+      probeError: probeErrors.get(group.id) ?? null,
+      instructionRules: findings
+        .filter((item) => item.category === "prompt_injection")
+        .map((item) => item.ruleId),
+      redactedRules: firewallRules(group.question)
+    };
+  });
   return {
     questionsSent: groups.length,
     refusedAsksSent: groups.reduce((sum, group) => sum + group.count, 0),
     promptChars: prompt.system.length + prompt.user.length,
-    questionsWithSource: groups.filter((group) => probes.get(group.id)?.best).length,
-    questionsWithoutProbe: groups.filter((group) => !probes.has(group.id)).length,
-    questionsReadingAsInstructions: instructionLike.length,
-    instructionLikeIds: instructionLike.map((group) => group.id),
-    questionLines: groups.map((group) => {
-      let line: string;
-      try {
-        line = protectProviderText(questionLine(group, probes.get(group.id))).text;
-      } catch {
-        line = `${group.id}: withheld, the provider input firewall refused this line`;
-      }
-      return `[last asked ${group.lastAskedAt.slice(0, 10)}] ${line.slice(0, MAX_LOGGED_LINE_CHARS)}`;
-    })
+    questionsWithSource: questions.filter((question) => question.closestSource).length,
+    questionsClearingThreshold: questions.filter(
+      (question) =>
+        question.closestSource !== null &&
+        question.threshold !== null &&
+        question.closestSource.score >= question.threshold
+    ).length,
+    questionsWithProbeError: probeErrors.size,
+    questionsReadingAsInstructions: questions.filter((question) => question.instructionRules.length > 0).length,
+    questionsRedacted: questions.filter((question) => question.redactedRules.length > 0).length,
+    firewall: { system: firewallRules(prompt.system), user: firewallRules(prompt.user) },
+    questions
   };
+}
+
+/** Rule ids (with counts) the provider input firewall acted on, or why it refused. */
+function firewallRules(text: string): string[] {
+  try {
+    return protectProviderText(text).findings.map((item) => `${item.ruleId} x${item.count}`);
+  } catch (error) {
+    return [`refused: ${error instanceof Error ? error.message : String(error)}`];
+  }
 }
 
 /** The text whole when short, else its head and tail around an elision mark. */

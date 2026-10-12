@@ -62,31 +62,33 @@ export interface UtilityCompletionDeps {
   client?: OpenAI;
   /** Override the pinned route (tests / reproducible runs). */
   route?: ApprovedModelRoute;
+  /**
+   * Called with the exact request body just before it is sent, so a caller
+   * can log what a failed call sent. Must not change the body.
+   */
+  onRequest?: (body: Readonly<Record<string, unknown>>) => void;
 }
 
 export interface UtilityCompletionResult {
   /** The reply text, or null when the model returns nothing. */
   text: string | null;
   finishReason: string | null;
-  /** Provider and model OpenRouter reports for the reply. */
-  servedBy: string | null;
-  servedModel: string | null;
-  promptTokens: number | null;
-  completionTokens: number | null;
-  reasoningTokens: number | null;
-  /** The model's reasoning text, when the provider returns it. */
+  /** OpenRouter's generation id (`gen-...`), for its activity log. */
+  generationId: string | null;
+  /**
+   * The model's reasoning text when the provider returns it: `reasoning`,
+   * else the text of `reasoning_details`.
+   */
   reasoning: string | null;
+  /** The complete response body as returned, for diagnostics. */
+  raw: unknown;
 }
 
 /**
  * The request fields besides the messages and provider pinning: temperature,
- * the route's reasoning fields and JSON mode. Exported so diagnostics log the
- * fields a call sends.
+ * the route's reasoning fields and JSON mode.
  */
-export function utilityRequestFields(
-  route: ApprovedModelRoute,
-  json: boolean
-): Record<string, unknown> {
+function utilityRequestFields(route: ApprovedModelRoute, json: boolean): Record<string, unknown> {
   return {
     ...(route.reasoningEffort === "none" ? { temperature: 0 } : {}),
     // OpenRouter-only shape (efforts "none" and "xhigh", or the reasoning
@@ -112,7 +114,7 @@ export async function runUtilityCompletion(
   return (await runUtilityCompletionDetailed(input, deps)).text;
 }
 
-/** runUtilityCompletion with the reply's metadata, for callers that log it. */
+/** runUtilityCompletion with the whole reply, for callers that log it. */
 export async function runUtilityCompletionDetailed(
   input: UtilityCompletionInput,
   deps: UtilityCompletionDeps = {}
@@ -130,70 +132,67 @@ export async function runUtilityCompletionDetailed(
     ]
   } satisfies OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
 
-  const completion = await client.chat.completions.create(
-    {
-      ...request,
-      ...utilityRequestFields(route, input.json === true),
-      provider: {
-        only: [route.provider],
-        zdr: true,
-        data_collection: "deny",
-        allow_fallbacks: false
-      }
-    } as typeof request & {
-      provider: {
-        only: string[];
-        zdr: boolean;
-        data_collection: "deny";
-        allow_fallbacks: boolean;
-      };
-    },
-    {
-      timeout: input.timeoutMs,
-      maxRetries: input.maxRetries,
-      signal: input.signal
+  const body = {
+    ...request,
+    ...utilityRequestFields(route, input.json === true),
+    provider: {
+      only: [route.provider],
+      zdr: true,
+      data_collection: "deny",
+      allow_fallbacks: false
     }
-  );
+  } as typeof request & {
+    provider: {
+      only: string[];
+      zdr: boolean;
+      data_collection: "deny";
+      allow_fallbacks: boolean;
+    };
+  };
+  deps.onRequest?.(body);
+  const completion = await client.chat.completions.create(body, {
+    timeout: input.timeoutMs,
+    maxRetries: input.maxRetries,
+    signal: input.signal
+  });
 
-  // Read loosely: OpenRouter adds `provider` and `message.reasoning`, which
-  // the SDK types lack.
+  // Read loosely: OpenRouter adds `message.reasoning` and
+  // `reasoning_details`, which the SDK types lack.
   const reply = completion as unknown as OpenRouterCompletion;
   const choice = reply.choices?.[0];
   const content = choice?.message?.content;
   const text = typeof content === "string" ? content.trim() : "";
-  const usage = reply.usage;
   return {
     text: text ? text : null,
     finishReason: stringOrNull(choice?.finish_reason),
-    servedBy: stringOrNull(reply.provider),
-    servedModel: stringOrNull(reply.model),
-    promptTokens: numberOrNull(usage?.prompt_tokens),
-    completionTokens: numberOrNull(usage?.completion_tokens),
-    reasoningTokens: numberOrNull(usage?.completion_tokens_details?.reasoning_tokens),
-    reasoning: stringOrNull(choice?.message?.reasoning)
+    generationId: stringOrNull(reply.id),
+    reasoning: stringOrNull(choice?.message?.reasoning) ?? reasoningDetailsText(choice?.message?.reasoning_details),
+    raw: completion
   };
 }
 
 interface OpenRouterCompletion {
-  model?: unknown;
-  provider?: unknown;
+  id?: unknown;
   choices?: Array<{
     finish_reason?: unknown;
-    message?: { content?: unknown; reasoning?: unknown };
+    message?: { content?: unknown; reasoning?: unknown; reasoning_details?: unknown };
   }>;
-  usage?: {
-    prompt_tokens?: unknown;
-    completion_tokens?: unknown;
-    completion_tokens_details?: { reasoning_tokens?: unknown } | null;
-  } | null;
 }
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
-function numberOrNull(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+/** The text and summary parts of OpenRouter's `reasoning_details`, joined. */
+function reasoningDetailsText(details: unknown): string | null {
+  if (!Array.isArray(details)) return null;
+  const parts = details.flatMap((detail) => {
+    const record = detail as { text?: unknown; summary?: unknown } | null;
+    return [record?.text, record?.summary].filter(
+      (part): part is string => typeof part === "string" && part.trim() !== ""
+    );
+  });
+  return parts.length > 0 ? parts.join("\n") : null;
 }
 
 /**
