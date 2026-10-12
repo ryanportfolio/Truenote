@@ -283,7 +283,7 @@ Railway asked for CNAMEs to `wh7hdrd8.up.railway.app` (apex) and `8v3dq8ce.up.ra
 
 Checked after issuance on `https://truenote.org`: `/health`, `/`, `/about`, `/security`, `/security/pci` and an SPA route return 200; `/api/me` returns 401 without a session; `https://www.truenote.org/<path>` answers 308 to `https://truenote.org/<path>` with the query kept; `http://` on both hosts answers 301 to `https`; responses carry `Server: railway-hikari` and `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`; the demo CSR login returns 200 with a `Secure`, `HttpOnly`, `SameSite` cookie; two questions returned cited answers; a POST with a foreign `Origin` returns 403; a fresh headless Chrome profile loads both hosts. Browsers that visited before issuance can keep showing certificate errors from cached state (`pitfalls.md`, 2026-10-07).
 
-Rollback: set the apex A record back to `34.111.179.208` and remove the `www` A record. Replit stays deployed and untouched until the owner retires it. Data written on Railway after the switch does not flow back to Replit; with demo data only, the owner accepted that.
+Rollback: none since 2026-10-12. The owner unpublished the Replit deployment that day, and `34.111.179.208` now answers 404, so pointing the apex back at it would take the site down. Until 2026-10-12 the rollback was to set the apex A record back to `34.111.179.208` and remove the `www` A record. The Replit project (its copy of the demo data, the bucket with the files that were not copied, and its secrets) stays until the owner deletes it.
 
 ## After cutover
 

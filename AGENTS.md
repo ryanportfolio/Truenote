@@ -12,10 +12,10 @@ hooks, and `.claude/skills/` exactly as before.
 - Production runs on Railway, not Replit (since 2026-10-07). Never route
   development, configuration, secrets, deployment, schema changes or storage
   through Replit. `truenote.org` and `www.truenote.org` resolve to Railway
-  since 2026-10-07. Until Replit is retired, the owner still edits
-  `truenote.org` DNS in Replit's DNS screen and the old Replit deployment is
-  the DNS rollback; see "Hosting" in `CLAUDE.md` and
-  `.claude/reference/deployment.md`.
+  since 2026-10-07. The old Replit deployment was unpublished on 2026-10-12,
+  so there is no DNS rollback target. Until the domain transfer to Namecheap
+  completes, the owner still edits `truenote.org` DNS in Replit's DNS screen;
+  see "Hosting" in `CLAUDE.md` and `.claude/reference/deployment.md`.
 - If `CLAUDE.md` still contains `FILL IN` markers, treat those facts as unknown.
   Inspect the repository or ask the user instead of guessing.
 - Read the relevant `.claude/reference/` file before non-trivial work in an
