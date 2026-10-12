@@ -93,9 +93,11 @@ and evidence sufficiency.
    [`verification-record-2026-10-07.md`](./verification-record-2026-10-07.md)
    pinned the Railway-era threat model.
    [`verification-record-2026-10-10.md`](./verification-record-2026-10-10.md)
+   pinned the threat model after the generation-excerpt firewall change and the
+   SIEM outbox retirement, and the catalog verifier after that retirement.
+   [`verification-record-2026-10-12.md`](./verification-record-2026-10-12.md)
    is the current record the evidence gate reads; it pins the threat model after
-   the generation-excerpt firewall change and the SIEM outbox retirement, and the
-   catalog verifier after that retirement.
+   the Replit deployment was unpublished.
 15. [`change-record-2026-07-16-security-readiness.md`](./change-record-2026-07-16-security-readiness.md)
    is the populated pre-release Requirement 6.5 record for this tranche; its
    unchecked approval, hosted-check, deployment, and runtime gates block closure.
