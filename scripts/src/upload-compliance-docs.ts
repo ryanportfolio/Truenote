@@ -17,6 +17,8 @@
  *     }
  *   }
  * Every .md file needs a metadata entry and every entry needs a file.
+ * An optional `<slug>.pdf` beside `<slug>.md` is uploaded as that document's
+ * PDF; a PDF without its .md file is refused.
  * Relative paths resolve from the directory the command was started in.
  *
  * Each document goes to compliance/documents/<slug>/<sha256>.md, then
@@ -35,6 +37,7 @@ import { fileURLToPath } from "node:url";
 import {
   COMPLIANCE_MANIFEST_KEY,
   complianceDocumentKey,
+  complianceDocumentPdfKey,
   isComplianceSlug,
   parseComplianceManifest,
   sha256Hex,
@@ -92,7 +95,9 @@ export async function planComplianceUpload(
     JSON.parse(await readFile(metadataPath, "utf8")),
     path.basename(metadataPath)
   );
-  const files = (await readdir(folder)).filter((name) => name.endsWith(".md")).sort();
+  const names = await readdir(folder);
+  const files = names.filter((name) => name.endsWith(".md")).sort();
+  const pdfs = names.filter((name) => name.endsWith(".pdf")).sort();
   if (files.length === 0) throw new Error("The folder has no .md files.");
 
   const objects: PlannedObject[] = [];
@@ -107,13 +112,20 @@ export async function planComplianceUpload(
     const meta = metadata.get(slug);
     if (!meta) throw new Error(`${fileName} has no entry in the metadata file.`);
     const body = await readFile(path.join(folder, fileName));
+    const pdfBody = pdfs.includes(`${slug}.pdf`)
+      ? await readFile(path.join(folder, `${slug}.pdf`))
+      : null;
+    if (pdfBody && pdfBody.subarray(0, 5).toString("latin1") !== "%PDF-") {
+      throw new Error(`${slug}.pdf is not a PDF file.`);
+    }
     const entry = {
       slug,
       title: meta.title,
       version: meta.version,
       date: meta.date,
       sha256: sha256Hex(body),
-      size: body.length
+      size: body.length,
+      ...(pdfBody ? { pdf: { sha256: sha256Hex(pdfBody), size: pdfBody.length } } : {})
     };
     documents.push(entry);
     objects.push({
@@ -121,10 +133,21 @@ export async function planComplianceUpload(
       body,
       contentType: "text/markdown; charset=utf-8"
     });
+    if (pdfBody && entry.pdf) {
+      objects.push({
+        key: complianceDocumentPdfKey({ slug, pdf: entry.pdf }),
+        body: pdfBody,
+        contentType: "application/pdf"
+      });
+    }
   }
   const unused = [...metadata.keys()].filter((slug) => !files.includes(`${slug}.md`));
   if (unused.length > 0) {
     throw new Error(`Metadata lists documents with no file: ${unused.join(", ")}`);
+  }
+  const strayPdfs = pdfs.filter((name) => !files.includes(name.replace(/\.pdf$/, ".md")));
+  if (strayPdfs.length > 0) {
+    throw new Error(`PDF files with no matching .md file: ${strayPdfs.join(", ")}`);
   }
 
   // The API server validates the same schema on every read.

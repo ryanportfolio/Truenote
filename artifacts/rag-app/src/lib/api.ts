@@ -1465,6 +1465,11 @@ export async function getComplianceDocuments(): Promise<ComplianceDocumentListRe
   return asJson<ComplianceDocumentListResponse>(response);
 }
 
+/** Download URL for a document's PDF (GET /api/compliance/documents/:slug/pdf). */
+export function complianceDocumentPdfUrl(slug: string): string {
+  return `/api/compliance/documents/${encodeURIComponent(slug)}/pdf`;
+}
+
 /** Null when the document does not exist (404) or the id is malformed (400). */
 export async function getComplianceDocument(
   slug: string

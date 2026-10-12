@@ -2027,7 +2027,8 @@ route("POST", /^\/api\/admin\/security\/malware-rescan$/, ({ user }) => {
 // documents live only in object storage.
 const COMPLIANCE_FIXTURES = [
   {
-    slug: "fixture-plan-of-action",
+    // Real slugs so the requested-documents cards render; titles say fixture.
+    slug: "plan-of-action-and-milestones",
     title: "Fixture plan of action and milestones",
     version: "0.1",
     date: "2026-10-10",
@@ -2051,7 +2052,7 @@ const COMPLIANCE_FIXTURES = [
     ].join("\n")
   },
   {
-    slug: "fixture-system-security-plan",
+    slug: "system-security-plan",
     title: "Fixture system security plan",
     version: "0.2",
     date: "2026-10-08",
@@ -2062,9 +2063,54 @@ const COMPLIANCE_FIXTURES = [
   return { ...doc, sha256: createHash("sha256").update(body).digest("hex"), size: body.length };
 });
 
+/** One-page PDF naming the fixture, so the download path is exercised end to end. */
+function fixturePdf(title) {
+  const text = `(${title.replace(/[()\\]/g, "")}) Tj`;
+  const stream = `BT /F1 18 Tf 72 720 Td ${text} ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = objects.map((object, index) => {
+    const offset = pdf.length;
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return offset;
+  });
+  const xref = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  pdf += offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(pdf, "latin1");
+}
+// The fixture SSP has no PDF, so the list shows both states.
+const COMPLIANCE_PDFS = new Map(
+  COMPLIANCE_FIXTURES.filter((doc) => doc.slug !== "system-security-plan").map((doc) => [doc.slug, fixturePdf(doc.title)])
+);
+for (const doc of COMPLIANCE_FIXTURES) doc.pdfSize = COMPLIANCE_PDFS.get(doc.slug)?.length ?? null;
+
 route("GET", /^\/api\/compliance\/documents$/, ({ user }) => {
   requireRole(user, "super_user");
   return { documents: COMPLIANCE_FIXTURES.map(({ markdown: _markdown, ...doc }) => doc) };
+});
+route("GET", /^\/api\/compliance\/documents\/([^/]+)\/pdf$/, ({ user, params, res }) => {
+  requireRole(user, "super_user");
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(params[0]) || params[0].length > 80) {
+    throw badRequest("Invalid document id");
+  }
+  const doc = COMPLIANCE_FIXTURES.find((candidate) => candidate.slug === params[0]);
+  const pdf = COMPLIANCE_PDFS.get(params[0]);
+  if (!doc || !pdf) throw notFound();
+  audit.push({ at: iso(Date.now()), action: "compliance.document_read", actor: user.email, slug: doc.slug, format: "pdf" });
+  res.writeHead(200, {
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `attachment; filename="Truenote ${doc.title} v${doc.version}.pdf"`,
+    "Cache-Control": "no-store"
+  });
+  res.end(pdf);
 });
 route("GET", /^\/api\/compliance\/documents\/([^/]+)$/, ({ user, params }) => {
   requireRole(user, "super_user");

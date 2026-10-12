@@ -1303,6 +1303,8 @@ export interface ComplianceDocumentSummary {
   date: string;
   sha256: string;
   size: number;
+  /** Bytes of the PDF rendering; null when the upload had no PDF. */
+  pdfSize: number | null;
 }
 
 export interface ComplianceDocumentListResponse {
@@ -1316,5 +1318,6 @@ export interface ComplianceDocumentResponse {
   version: string;
   date: string;
   sha256: string;
+  pdfSize: number | null;
   markdown: string;
 }
