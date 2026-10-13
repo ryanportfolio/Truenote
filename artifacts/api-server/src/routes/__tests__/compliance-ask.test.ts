@@ -26,6 +26,7 @@ const providers = vi.hoisted(() => ({
   scoreScale: 1,
   duringRerank: null as null | (() => Promise<void>)
 }));
+const chains = vi.hoisted(() => ({ purposes: [] as string[] }));
 const llm = vi.hoisted(() => ({ calls: 0, system: "", reply: "" as string | ((userPrompt: string) => string) }));
 
 vi.mock("../../lib/security/audit.js", () => ({
@@ -59,7 +60,13 @@ vi.mock("../../lib/db-client.js", () => ({
 
 vi.mock("../../lib/generation/model-routing.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/generation/model-routing.js")>();
-  return { ...actual, getActiveModelChain: async () => [actual.DEFAULT_MODEL_ROUTE] };
+  return {
+    ...actual,
+    getActiveModelChain: async (purpose: string) => {
+      chains.purposes.push(purpose);
+      return [actual.DEFAULT_MODEL_ROUTE];
+    }
+  };
 });
 
 vi.mock("openai", () => ({
@@ -243,6 +250,7 @@ beforeEach(async () => {
   providers.rerankFails = false;
   providers.scoreScale = 1;
   providers.duringRerank = null;
+  chains.purposes = [];
   llm.calls = 0;
   llm.reply = "";
   actor = userWith("super_user");
@@ -307,6 +315,9 @@ describe("POST /api/compliance/ask answers", () => {
     expect(source.excerpt).toContain("Quarterly access reviews");
     expect(result.body.answer).toContain(`[${source.chunk_id}]`);
     expect(llm.system).toContain("compliance documentation assistant for Truenote");
+    // Generation follows the Compliance column on the Models page.
+    expect(chains.purposes).toContain("compliance");
+    expect(chains.purposes).not.toContain("answers");
     expect(llm.system).not.toContain("customer service");
 
     expect(audit.events).toHaveLength(1);

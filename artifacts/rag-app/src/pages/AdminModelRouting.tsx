@@ -80,8 +80,22 @@ const CHAINS: ReadonlyArray<{
     title: "Gaps analysis",
     description:
       "Groups refused questions into themes on the Gaps page and suggests which sources to add or update."
+  },
+  {
+    purpose: "compliance",
+    title: "Compliance",
+    description:
+      "Answers questions about the compliance documents on the Compliance page. Follows the Answers order until you save this one."
   }
 ];
+
+function routesFor(config: ModelRoutingConfig, purpose: ModelRoutingPurpose): ModelRoutingOption[] {
+  return purpose === "gaps"
+    ? config.gapsRoutes
+    : purpose === "compliance"
+      ? config.complianceRoutes
+      : config.routes;
+}
 
 function ModelRoutingPanel(): JSX.Element {
   const [config, setConfig] = useState<ModelRoutingConfig | null>(null);
@@ -134,8 +148,8 @@ function ModelRoutingPanel(): JSX.Element {
       ) : null}
 
       {loading || !config ? (
-        <div role="status" className="grid gap-6 lg:grid-cols-2">
-          {[0, 1].map((column) => (
+        <div role="status" className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2].map((column) => (
             <div key={column} className="flex flex-col gap-2">
               {[0, 1, 2].map((index) => (
                 <div
@@ -158,14 +172,14 @@ function ModelRoutingPanel(): JSX.Element {
               cannot be saved until the reviewed DDL is applied.
             </p>
           ) : null}
-          <div className="grid items-start gap-6 lg:grid-cols-2">
+          <div className="grid items-start gap-6 lg:grid-cols-2 xl:grid-cols-3">
             {CHAINS.map((chain) => (
               <RouteChain
                 key={chain.purpose}
                 purpose={chain.purpose}
                 title={chain.title}
                 description={chain.description}
-                initial={chain.purpose === "gaps" ? config.gapsRoutes : config.routes}
+                initial={routesFor(config, chain.purpose)}
                 canSave={config.persistenceReady}
               />
             ))}
@@ -235,7 +249,7 @@ function RouteChain({
     setSaved(false);
     try {
       const next = await updateModelRouting(currentOrder, purpose, effortsOf(routes));
-      const stored = purpose === "gaps" ? next.gapsRoutes : next.routes;
+      const stored = routesFor(next, purpose);
       setRoutes(stored);
       setSavedOrder(stored.map((route) => route.id));
       setSavedEfforts(JSON.stringify(effortsOf(stored)));

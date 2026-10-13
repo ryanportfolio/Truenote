@@ -172,14 +172,25 @@ function currentRouteId(id: string): string {
 
 /**
  * Each purpose keeps its own ordered chain over the same allowlist: answers
- * (CSR answer generation) and gaps (the Gaps page's refusal analysis). Both
- * rows live in app_settings, so a second purpose needs no DDL.
+ * (CSR answer generation), gaps (the Gaps page's refusal analysis) and
+ * compliance (the Compliance page's question box). Every row lives in
+ * app_settings, so another purpose needs no DDL.
  */
-export type ModelRoutingPurpose = "answers" | "gaps";
+export type ModelRoutingPurpose = "answers" | "gaps" | "compliance";
 
 const SETTING_KEYS: Record<ModelRoutingPurpose, string> = {
   answers: "primary_generation_route",
-  gaps: "gaps_analysis_route"
+  gaps: "gaps_analysis_route",
+  compliance: "compliance_generation_route"
+};
+
+/**
+ * A purpose with no saved row of its own follows another purpose's chain.
+ * The compliance assistant used the answers chain until it got its own
+ * column (2026-10-13), so it keeps following it until a super user saves one.
+ */
+const INHERITS_FROM: Partial<Record<ModelRoutingPurpose, ModelRoutingPurpose>> = {
+  compliance: "answers"
 };
 const CACHE_TTL_MS = 30_000;
 
@@ -327,6 +338,12 @@ export async function getModelRoutingState(
       LIMIT 1
     `);
     const row = result.rows[0] as unknown as SettingRow | undefined;
+    const parent = INHERITS_FROM[purpose];
+    if (!row && parent) {
+      const inherited = await getModelRoutingState(parent);
+      cached.set(purpose, { state: inherited, expiresAt: now + CACHE_TTL_MS });
+      return inherited;
+    }
     const stored = readStored(row?.value);
     state = {
       routes: resolveModelRouteOrder(stored.order, stored.efforts),
@@ -385,6 +402,10 @@ export async function saveModelRouteOrder(
   `);
   const state = { routes, persistenceReady: true };
   cached.set(purpose, { state, expiresAt: Date.now() + CACHE_TTL_MS });
+  // A purpose still following this one picks up the new order at once.
+  for (const [child, parent] of Object.entries(INHERITS_FROM)) {
+    if (parent === purpose) cached.delete(child as ModelRoutingPurpose);
+  }
   return state;
 }
 
