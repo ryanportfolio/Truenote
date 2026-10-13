@@ -117,6 +117,7 @@ vi.mock("../../lib/compliance/providers.js", async (importOriginal) => {
 });
 
 const { complianceRouter } = await import("../compliance.js");
+const { resetDeadlineConfigForTests } = await import("../../lib/deadlines.js");
 const { __resetComplianceSearchIndexForTests } = await import("../../lib/compliance/search-index.js");
 
 // A fresh id per user keeps each test inside its own 10-a-minute ask budget.
@@ -439,6 +440,22 @@ describe("POST /api/compliance/ask follows uploads", () => {
       outcome: "failure",
       details: { reason: "manifest_changed", stage: "after_record" }
     });
+  });
+
+  it("does not deliver an answer once the deadline passed during the record", async () => {
+    llm.reply = citing("access reviews", "Access reviews are scheduled.");
+    await ask("warm the index with the default deadline");
+    process.env.ASK_DEADLINE_MS = "1000";
+    resetDeadlineConfigForTests();
+    try {
+      audit.during = () => new Promise((resolve) => setTimeout(resolve, 1_500));
+      const result = await ask("How often are access reviews performed?");
+      expect(result.status).toBe(503);
+      expect(result.text).not.toContain("scheduled");
+    } finally {
+      delete process.env.ASK_DEADLINE_MS;
+      resetDeadlineConfigForTests();
+    }
   });
 
   it("reuses cached passage vectors after a restart instead of embedding the documents again", async () => {

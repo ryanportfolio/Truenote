@@ -18,7 +18,8 @@ import {
 import { ComplianceProviderError } from "../lib/compliance/providers.js";
 import {
   complianceManifestHash,
-  getComplianceSearchIndex
+  getComplianceSearchIndex,
+  waitFor
 } from "../lib/compliance/search-index.js";
 import { recordAppError } from "../lib/observability/error-log.js";
 import {
@@ -242,7 +243,8 @@ complianceRouter.post("/ask", complianceAskLimit, async (req, res, next) => {
     // Answers never cite a superseded version: if an upload replaced the
     // manifest while this answer was prepared or recorded, ask again instead.
     const manifestChanged = async (): Promise<boolean> =>
-      complianceManifestHash(await readComplianceManifest()) !== index.manifestHash;
+      complianceManifestHash(await waitFor(readComplianceManifest(), controller.signal)) !==
+      index.manifestHash;
     const askAgain = (stage: string): void => {
       recordSecurityEventBestEffort({
         ...eventBase,
@@ -267,7 +269,9 @@ complianceRouter.post("/ask", complianceAskLimit, async (req, res, next) => {
         ])
       ).values()
     );
-    await recordSecurityEvent({
+    // Bounded by the deadline too. If it passes while the write is pending,
+    // the question ends as unavailable and a failure event follows.
+    await waitFor(recordSecurityEvent({
       ...eventBase,
       outcome: "success",
       details: {
@@ -278,13 +282,14 @@ complianceRouter.post("/ask", complianceAskLimit, async (req, res, next) => {
         manifestHash: index.manifestHash,
         generationPath: result.generationPath
       }
-    });
+    }), controller.signal);
     // Last check, after the record and before delivery. The recorded event
     // stays; the follow-up failure event says the answer was not delivered.
     if (await manifestChanged()) {
       askAgain("after_record");
       return;
     }
+    if (controller.signal.aborted) throw controller.signal.reason;
     if (res.destroyed) return;
     res.json({ answer: result.answer, refused: result.refused, sources: result.sources });
   } catch (error) {

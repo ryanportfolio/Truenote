@@ -16,7 +16,7 @@ import { createHash } from "node:crypto";
 import type { ComplianceManifestEntry } from "./documents.js";
 
 /** Bump when passage boundaries change: it is part of the vector cache key. */
-export const COMPLIANCE_CHUNKER_VERSION = 2;
+export const COMPLIANCE_CHUNKER_VERSION = 3;
 
 const MAX_PASSAGE_CHARS = 1_500;
 
@@ -124,14 +124,35 @@ interface Piece {
   repeatHeader: Line[] | null;
 }
 
-/** Split a block longer than the cap at line boundaries. */
+/**
+ * A line longer than the cap, cut at the last space before the cap (or at the
+ * cap when there is none). Each piece keeps its exact source offsets.
+ */
+function splitLongLine(line: Line): Line[] {
+  if (line.text.length <= MAX_PASSAGE_CHARS) return [line];
+  const out: Line[] = [];
+  let from = 0;
+  while (from < line.text.length) {
+    let to = Math.min(from + MAX_PASSAGE_CHARS, line.text.length);
+    if (to < line.text.length) {
+      const space = line.text.lastIndexOf(" ", to);
+      if (space > from) to = space;
+    }
+    out.push({ text: line.text.slice(from, to), start: line.start + from, end: line.start + to });
+    from = to;
+    while (line.text[from] === " ") from += 1;
+  }
+  return out;
+}
+
+/** Split a block longer than the cap at line boundaries, and long lines within it. */
 function piecesOf(block: Block): Piece[] {
   const size = (lines: Line[]): number =>
     lines.reduce((total, line) => total + line.text.length + 1, 0);
   if (size(block.lines) <= MAX_PASSAGE_CHARS) return [{ lines: block.lines, repeatHeader: null }];
   const pieces: Piece[] = [];
   let current: Line[] = [];
-  for (const line of block.lines) {
+  for (const line of block.lines.flatMap(splitLongLine)) {
     if (current.length > 0 && size(current) + line.text.length + 1 > MAX_PASSAGE_CHARS) {
       pieces.push({ lines: current, repeatHeader: pieces.length > 0 ? block.tableHeader : null });
       current = [];

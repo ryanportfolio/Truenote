@@ -179,13 +179,23 @@ export async function retrieveCompliance(
   return { passages, refused: false, topScore, threshold };
 }
 
-/** The passage as generation/answer.ts expects a retrieved chunk. */
+/**
+ * The passage as generation/answer.ts expects a retrieved chunk. The content
+ * leads with the document and section it came from: a passage deep in a
+ * section does not repeat its heading, and the figure-grounding gate reads only
+ * the content, so a control id named in the heading would otherwise count as
+ * ungrounded. The cited excerpt and its offsets stay the raw passage.
+ */
 export function passageAsChunk(item: ScoredPassage): RetrievalChunk {
   const { passage } = item;
   const section = passage.section ? `, section: ${passage.section}` : "";
+  const context = [
+    `Document: ${passage.title}, version ${passage.version}`,
+    ...(passage.section ? [`Section: ${passage.section}`] : [])
+  ].join("\n");
   return {
     id: passage.id,
-    content: passage.content,
+    content: `${context}\n\n${passage.content}`,
     documentVersionId: passage.sha256,
     documentId: passage.slug,
     versionNumber: 0,

@@ -221,7 +221,8 @@ export async function getComplianceSearchIndex(
   return waitFor(promise, options.signal);
 }
 
-function waitFor<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+/** The promise, or the signal's reason as soon as it aborts. The work itself carries on. */
+export function waitFor<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
   if (!signal) return promise;
   if (signal.aborted) return Promise.reject(signal.reason);
   return new Promise<T>((resolve, reject) => {

@@ -63,6 +63,21 @@ describe("chunkComplianceDocument", () => {
     for (let i = 1; i <= 80; i += 1) expect(all).toContain(`| POAM-${i} |`);
   });
 
+  it("splits a single line longer than the cap at spaces, keeping exact offsets", () => {
+    const line = Array.from({ length: 2_000 }, (_, i) => `word${i}`).join(" ");
+    const markdown = `## Long
+
+${line}
+`;
+    const passages = chunkComplianceDocument(ENTRY, markdown);
+    expect(passages.length).toBeGreaterThan(5);
+    for (const passage of passages) {
+      expect(passage.content.length).toBeLessThanOrEqual(1_500);
+      expect(markdown.slice(passage.sourceStart, passage.sourceEnd)).toBe(passage.content);
+    }
+    expect(passages.map((passage) => passage.content).join(" ")).toContain("word1999");
+  });
+
   it("skips a heading with nothing under it before a subheading", () => {
     const passages = chunkComplianceDocument(ENTRY, "# Title\n## Section\n\nBody.\n");
     expect(passages).toHaveLength(1);
