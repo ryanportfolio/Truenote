@@ -19,7 +19,8 @@ import { ComplianceProviderError } from "../lib/compliance/providers.js";
 import {
   complianceManifestHash,
   getComplianceSearchIndex,
-  waitFor
+  waitFor,
+  warmComplianceIndex
 } from "../lib/compliance/search-index.js";
 import { recordAppError } from "../lib/observability/error-log.js";
 import {
@@ -47,6 +48,8 @@ complianceRouter.use(requireAuth, requireFreshPassword, requireComplianceReader)
 complianceRouter.get("/documents", complianceReadLimit, async (_req, res, next) => {
   try {
     const manifest = await readComplianceManifest();
+    // Opening the page readies the index for the question box.
+    warmComplianceIndex(manifest);
     res.json({
       documents: manifest.documents.map(({ slug, title, version, date, sha256, size, pdf }) => ({
         slug,

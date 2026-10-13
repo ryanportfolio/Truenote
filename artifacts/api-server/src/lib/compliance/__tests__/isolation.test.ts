@@ -84,6 +84,8 @@ describe("compliance isolation", () => {
     );
     expect(found).toEqual({
       "artifacts/api-server/src/app.ts": ["public-pages"],
+      // Warms the compliance index at startup.
+      "artifacts/api-server/src/index.ts": ["search-index"],
       "artifacts/api-server/src/routes/compliance.ts": ["ask", "documents", "providers", "search-index"],
       // The owner's upload script writes documents and the manifest; it never reads the index.
       "scripts/src/upload-compliance-docs.ts": ["documents"]

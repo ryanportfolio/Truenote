@@ -4,6 +4,7 @@ import { bootstrapSuperUser } from "./lib/auth/bootstrap.js";
 import { bootstrapDemoAccounts } from "./lib/auth/bootstrap-demo.js";
 import { purgeExpiredSessions } from "./lib/auth/sessions.js";
 import { purgeExpiredResetTokens } from "./lib/auth/password-reset.js";
+import { warmComplianceIndex } from "./lib/compliance/search-index.js";
 import {
   installProcessErrorLogging,
   recordAppError,
@@ -66,6 +67,9 @@ async function main(): Promise<void> {
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`[api-server] listening on http://0.0.0.0:${PORT}`);
   });
+
+  // Compliance assistant: load or build its index now, not on the first question.
+  warmComplianceIndex();
 
   // Hourly hygiene: drop expired session rows AND expired password-
   // reset tokens. Both tables grow unbounded otherwise (their queries

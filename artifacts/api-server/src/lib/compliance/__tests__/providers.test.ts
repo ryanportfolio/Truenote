@@ -31,6 +31,27 @@ describe("compliance provider calls", () => {
     });
   });
 
+  it("embeds large inputs in parallel batches and keeps the input order", async () => {
+    const requests: number[] = [];
+    let inFlight = 0;
+    let peak = 0;
+    const fetch = (async (_url: string, init: RequestInit) => {
+      const input = JSON.parse(String(init.body)).input as string[];
+      requests.push(input.length);
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      inFlight -= 1;
+      const data = input.map((text, index) => ({ index, embedding: [Number(text)] }));
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const texts = Array.from({ length: 450 }, (_, i) => String(i));
+    const vectors = await embedComplianceTexts(texts, "document", {}, { fetch, apiKey: "k" });
+    expect(vectors.map((vector) => vector[0])).toEqual(texts.map(Number));
+    expect(requests).toHaveLength(5);
+    expect(peak).toBe(4);
+  });
+
   it("reranks through OpenRouter pinned to a ZDR endpoint and runs the question through the firewall", async () => {
     const { fetch, requests } = recordingFetch([
       { status: 200, body: { results: [{ index: 0, relevance_score: 0.2 }, { index: 1, relevance_score: 0.9 }] } }

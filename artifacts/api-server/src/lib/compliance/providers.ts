@@ -35,6 +35,8 @@ export const COMPLIANCE_RERANK_ROUTE = {
 } as const;
 
 const EMBED_BATCH_SIZE = 100;
+/** Batches in flight at once: a cold index build embeds every passage. */
+const EMBED_CONCURRENCY = 4;
 
 export class ComplianceProviderError extends Error {
   constructor(
@@ -124,7 +126,7 @@ export async function embedComplianceTexts(
     options.deadline ??
     (kind === "question" ? getDeadlineConfig().queryEmbedding : getDeadlineConfig().ingestionEmbedding);
   const out: number[][] = new Array(texts.length);
-  for (let offset = 0; offset < texts.length; offset += EMBED_BATCH_SIZE) {
+  const embedBatch = async (offset: number): Promise<void> => {
     const batch = texts.slice(offset, offset + EMBED_BATCH_SIZE).map((text) => protect(text, kind));
     const payload = (await postJson(
       "embedding",
@@ -154,7 +156,23 @@ export async function embedComplianceTexts(
     for (let i = offset; i < offset + batch.length; i += 1) {
       if (!out[i]) throw new ComplianceProviderError("embedding", null, "embedding response was incomplete");
     }
-  }
+  };
+  const offsets: number[] = [];
+  for (let offset = 0; offset < texts.length; offset += EMBED_BATCH_SIZE) offsets.push(offset);
+  let next = 0;
+  let failed = false;
+  const lane = async (): Promise<void> => {
+    while (!failed && next < offsets.length) {
+      const offset = offsets[next++]!;
+      try {
+        await embedBatch(offset);
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(EMBED_CONCURRENCY, offsets.length) }, lane));
   return out;
 }
 
