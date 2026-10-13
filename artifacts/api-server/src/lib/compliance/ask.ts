@@ -25,6 +25,7 @@ import {
   type GenerateAnswerDeps,
   type GenerateAnswerResult
 } from "../generation/answer.js";
+import { getActiveModelChain } from "../generation/model-routing.js";
 import type { RetrievalChunk } from "../retrieval/query.js";
 import type { CompliancePassage } from "./chunking.js";
 import {
@@ -32,7 +33,7 @@ import {
   rerankComplianceTexts,
   type ComplianceProviderDeps
 } from "./providers.js";
-import { passageSearchText, type ComplianceSearchIndex } from "./search-index.js";
+import { passageSearchText, waitFor, type ComplianceSearchIndex } from "./search-index.js";
 
 const DEFAULT_THRESHOLD = 0.5;
 const CANDIDATE_K = 40;
@@ -238,6 +239,12 @@ export async function answerComplianceQuestion(
 ): Promise<ComplianceAnswer> {
   const retrieval = await retrieveCompliance(question, index, deps);
   const chunks = retrieval.refused ? [] : retrieval.passages.map(passageAsChunk);
+  // The answer chain order is a settings read; resolve it here so the ask
+  // deadline bounds it like every other wait.
+  const routeChain =
+    retrieval.refused || deps.generation?.routeChain || deps.generation?.primaryRoute
+      ? deps.generation?.routeChain
+      : await waitFor(getActiveModelChain(), deps.signal);
   const result = await generateAnswer(
     {
       programName: "Truenote compliance documents",
@@ -248,7 +255,7 @@ export async function answerComplianceQuestion(
       signal: deps.signal,
       diagnostics: { ...deps.diagnostics, omitAnswerText: true }
     },
-    deps.generation
+    { ...deps.generation, ...(routeChain ? { routeChain } : {}) }
   );
   const byId = new Map(retrieval.passages.map((item) => [item.passage.id, item.passage]));
   const sources: ComplianceSource[] = result.payload.refused

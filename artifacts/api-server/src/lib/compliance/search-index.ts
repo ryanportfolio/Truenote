@@ -136,6 +136,8 @@ export interface ComplianceIndexDeps {
   providers?: ComplianceProviderDeps;
   /** Overrides embedding for tests. */
   embed?: (texts: string[]) => Promise<number[][]>;
+  /** Overrides the shared build timeout for tests. */
+  buildTimeoutMs?: number;
 }
 
 /**
@@ -148,12 +150,13 @@ const BUILD_TIMEOUT_MS = 120_000;
 async function buildIndex(
   manifest: ComplianceManifest,
   manifestHash: string,
-  deps: ComplianceIndexDeps
+  deps: ComplianceIndexDeps,
+  signal: AbortSignal
 ): Promise<ComplianceSearchIndex> {
-  const signal = AbortSignal.timeout(BUILD_TIMEOUT_MS);
   const storage = deps.storage ?? getObjectStorage();
   const passages: CompliancePassage[] = [];
   for (const entry of manifest.documents) {
+    signal.throwIfAborted();
     const markdown = await readComplianceDocumentBody(entry, storage);
     passages.push(...chunkComplianceDocument(entry, markdown));
   }
@@ -204,7 +207,10 @@ export async function getComplianceSearchIndex(
   const manifestHash = complianceManifestHash(manifest);
   if (current?.manifestHash === manifestHash) return current;
   if (building?.manifestHash === manifestHash) return waitFor(building.promise, options.signal);
-  const promise = buildIndex(manifest, manifestHash, deps).then(
+  // The timeout covers the whole build, storage reads included: a stalled
+  // read fails the build, which clears `building` so the next question retries.
+  const signal = AbortSignal.timeout(deps.buildTimeoutMs ?? BUILD_TIMEOUT_MS);
+  const promise = waitFor(buildIndex(manifest, manifestHash, deps, signal), signal).then(
     (index) => {
       if (building?.promise === promise) building = null;
       current = index;

@@ -233,7 +233,7 @@ complianceRouter.post("/ask", complianceAskLimit, async (req, res, next) => {
   );
 
   try {
-    const manifest = await readComplianceManifest();
+    const manifest = await waitFor(readComplianceManifest(), controller.signal);
     const index = await getComplianceSearchIndex(manifest, {}, { signal: controller.signal });
     const result = await answerComplianceQuestion(question, index, {
       signal: controller.signal,

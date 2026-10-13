@@ -8,7 +8,10 @@
  *   scripts) never import the compliance modules, so they cannot reach the
  *   compliance index or its documents;
  * - the compliance modules never import the database client or customer
- *   retrieval, so a compliance answer cannot read customer chunks;
+ *   retrieval directly, so a compliance answer cannot read customer chunks;
+ *   its only database read is the answer chain order in app_settings, through
+ *   generation/model-routing (compliance-ask.test.ts checks no query touches
+ *   chunks, documents, document_versions or query_log);
  * - a compliance passage handed to generation carries a scope that no
  *   program id can equal, so customer scope filtering drops it.
  */
@@ -87,7 +90,7 @@ describe("compliance isolation", () => {
     });
   });
 
-  it("compliance modules never load the database client or customer retrieval", () => {
+  it("compliance modules never import the database client or customer retrieval", () => {
     const forbidden = [
       path.join(apiSrc, "lib", "db-client"),
       path.join(apiSrc, "lib", "retrieval", "query"),

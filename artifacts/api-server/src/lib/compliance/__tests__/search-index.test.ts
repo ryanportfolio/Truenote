@@ -48,4 +48,18 @@ describe("getComplianceSearchIndex", () => {
     expect(index.passages).toHaveLength(1);
     expect(embeds).toBe(1);
   });
+
+  it("fails a build stalled on storage at its timeout so the next question retries", async () => {
+    const { storage, manifest } = await setup();
+    const realGet = storage.get.bind(storage);
+    let stall = true;
+    storage.get = (key: string) => (stall ? new Promise<Buffer>(() => undefined) : realGet(key));
+    const embed = async (texts: string[]): Promise<number[][]> => texts.map(() => [1, 0]);
+    await expect(
+      getComplianceSearchIndex(manifest, { storage, embed, buildTimeoutMs: 50 })
+    ).rejects.toThrow();
+    stall = false;
+    const index = await getComplianceSearchIndex(manifest, { storage, embed, buildTimeoutMs: 50 });
+    expect(index.passages).toHaveLength(1);
+  });
 });

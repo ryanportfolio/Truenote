@@ -458,6 +458,23 @@ describe("POST /api/compliance/ask follows uploads", () => {
     }
   });
 
+  it("answers 503 at the deadline when the manifest read stalls", async () => {
+    process.env.ASK_DEADLINE_MS = "1000";
+    resetDeadlineConfigForTests();
+    const realExists = storage.exists.bind(storage);
+    storage.exists = () => new Promise<boolean>(() => undefined);
+    try {
+      const started = Date.now();
+      const result = await ask("How often are access reviews performed?");
+      expect(result.status).toBe(503);
+      expect(Date.now() - started).toBeLessThan(5_000);
+    } finally {
+      storage.exists = realExists;
+      delete process.env.ASK_DEADLINE_MS;
+      resetDeadlineConfigForTests();
+    }
+  });
+
   it("reuses cached passage vectors after a restart instead of embedding the documents again", async () => {
     llm.reply = citing("access reviews", "Access reviews are scheduled.");
     await ask("How often are access reviews performed?");
