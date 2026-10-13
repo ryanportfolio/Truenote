@@ -85,7 +85,7 @@ const CHAINS: ReadonlyArray<{
     purpose: "compliance",
     title: "Compliance",
     description:
-      "Answers questions about the compliance documents on the Compliance page. Follows the Answers order until you save this one."
+      "Answers questions about the compliance documents on the Compliance page."
   }
 ];
 
@@ -101,6 +101,9 @@ function ModelRoutingPanel(): JSX.Element {
   const [config, setConfig] = useState<ModelRoutingConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // One save at a time: each response carries every chain, so overlapping
+  // saves could land out of order and show an older chain.
+  const [savingPurpose, setSavingPurpose] = useState<ModelRoutingPurpose | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -181,6 +184,9 @@ function ModelRoutingPanel(): JSX.Element {
                 description={chain.description}
                 initial={routesFor(config, chain.purpose)}
                 canSave={config.persistenceReady}
+                inherited={chain.purpose === "compliance" && config.complianceInherited}
+                blocked={savingPurpose !== null && savingPurpose !== chain.purpose}
+                onSavingChange={(saving) => setSavingPurpose(saving ? chain.purpose : null)}
                 onSaved={setConfig}
               />
             ))}
@@ -197,6 +203,11 @@ interface RouteChainProps {
   description: string;
   initial: ModelRoutingOption[];
   canSave: boolean;
+  /** No saved order of its own yet: it follows Answers, and Save keeps a copy. */
+  inherited: boolean;
+  /** Another column is saving. */
+  blocked: boolean;
+  onSavingChange: (saving: boolean) => void;
   /** Every save returns all chains; the page keeps them current. */
   onSaved: (config: ModelRoutingConfig) => void;
 }
@@ -208,6 +219,9 @@ function RouteChain({
   description,
   initial,
   canSave,
+  inherited,
+  blocked,
+  onSavingChange,
   onSaved
 }: RouteChainProps): JSX.Element {
   const [routes, setRoutes] = useState<ModelRoutingOption[]>(initial);
@@ -261,8 +275,9 @@ function RouteChain({
   }
 
   async function save(): Promise<void> {
-    if (!dirty) return;
+    if ((!dirty && !inherited) || blocked) return;
     setSaving(true);
+    onSavingChange(true);
     setError(null);
     setSaved(false);
     try {
@@ -279,6 +294,7 @@ function RouteChain({
       );
     } finally {
       setSaving(false);
+      onSavingChange(false);
     }
   }
 
@@ -289,6 +305,11 @@ function RouteChain({
           {title}
         </h2>
         <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
+        {inherited ? (
+          <p className="mt-1 text-sm text-muted-foreground">
+            Following the Answers order now. Save to keep this order for compliance answers only.
+          </p>
+        ) : null}
       </div>
 
       {error ? (
@@ -409,7 +430,7 @@ function RouteChain({
         <button
           type="button"
           onClick={() => void save()}
-          disabled={saving || !canSave || !dirty}
+          disabled={saving || blocked || !canSave || (!dirty && !inherited)}
           className="btn-primary px-5 py-2 text-base"
         >
           {saving ? "Saving…" : `Save ${title.toLowerCase()}`}

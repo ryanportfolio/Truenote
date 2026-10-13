@@ -50,6 +50,8 @@ function responseFor(
     gapsRoutes: gaps.routes,
     complianceOrder: compliance.routes.map((route) => route.id),
     complianceRoutes: compliance.routes,
+    // True until the Compliance column is saved once; it follows Answers meanwhile.
+    complianceInherited: compliance.inherited === true,
     persistenceReady:
       answers.persistenceReady && gaps.persistenceReady && compliance.persistenceReady
   };

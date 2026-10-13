@@ -692,6 +692,8 @@ export interface ModelRoutingConfig {
   /** The Compliance page question box chain; follows answers until saved. */
   complianceOrder: string[];
   complianceRoutes: ModelRoutingOption[];
+  /** True until the Compliance chain is saved once; it follows Answers meanwhile. */
+  complianceInherited: boolean;
   persistenceReady: boolean;
 }
 

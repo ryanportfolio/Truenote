@@ -2555,6 +2555,7 @@ function modelRoutingConfig() {
     complianceRoutes: modelOrders.compliance
       ? routesFor(modelOrders.compliance, "compliance")
       : routesFor(modelOrders.answers, "answers"),
+    complianceInherited: modelOrders.compliance === null,
     persistenceReady: true
   };
 }

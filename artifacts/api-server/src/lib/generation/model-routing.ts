@@ -280,6 +280,8 @@ export interface ModelRoutingState {
   /** Ordered fallback chain; index 0 is the primary route. Never empty. */
   routes: ApprovedModelRoute[];
   persistenceReady: boolean;
+  /** True while this purpose has no saved row and follows its parent's chain. */
+  inherited?: boolean;
 }
 
 interface SettingRow {
@@ -340,7 +342,7 @@ export async function getModelRoutingState(
     const row = result.rows[0] as unknown as SettingRow | undefined;
     const parent = INHERITS_FROM[purpose];
     if (!row && parent) {
-      const inherited = await getModelRoutingState(parent);
+      const inherited = { ...(await getModelRoutingState(parent)), inherited: true };
       cached.set(purpose, { state: inherited, expiresAt: now + CACHE_TTL_MS });
       return inherited;
     }

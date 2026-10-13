@@ -39,10 +39,13 @@ describe("compliance model chain", () => {
     store.rows.set("primary_generation_route", { order: reversed });
     const mod = await freshModule();
     expect((await mod.getActiveModelChain("compliance")).map((route) => route.id)).toEqual(reversed);
+    expect((await mod.getModelRoutingState("compliance")).inherited).toBe(true);
+    expect((await mod.getModelRoutingState("answers")).inherited).toBeUndefined();
 
     const own = [APPROVED_MODEL_ROUTES[2]!.id];
     await mod.saveModelRouteOrder(own, "00000000-0000-4000-8000-000000000001", "compliance");
     expect(store.rows.has("compliance_generation_route")).toBe(true);
+    expect((await mod.getModelRoutingState("compliance")).inherited).toBeUndefined();
     expect((await mod.getActiveModelChain("compliance"))[0]!.id).toBe(APPROVED_MODEL_ROUTES[2]!.id);
     // The answers chain is untouched.
     expect((await mod.getActiveModelChain("answers")).map((route) => route.id)).toEqual(reversed);
