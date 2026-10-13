@@ -689,10 +689,15 @@ export interface ModelRoutingConfig {
   /** The Gaps page analysis chain over the same allowlist. */
   gapsOrder: string[];
   gapsRoutes: ModelRoutingOption[];
+  /** The Compliance page question box chain; follows answers until saved. */
+  complianceOrder: string[];
+  complianceRoutes: ModelRoutingOption[];
+  /** True until the Compliance chain is saved once; it follows Answers meanwhile. */
+  complianceInherited: boolean;
   persistenceReady: boolean;
 }
 
-export type ModelRoutingPurpose = "answers" | "gaps";
+export type ModelRoutingPurpose = "answers" | "gaps" | "compliance";
 
 /** Super-user evaluation-center shapes. Mirrors /api/admin/evaluations. */
 export type EvalQuestionKind = "in-kb" | "out-of-kb";

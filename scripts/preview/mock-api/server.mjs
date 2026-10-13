@@ -2528,7 +2528,8 @@ route("PUT", /^\/api\/ask-examples$/, ({ user, req, body }) => setAskExamples(us
 route("GET", /^\/api\/admin\/teams$/, ({ user, req }) => teamsList(user, req));
 route("PUT", /^\/api\/admin\/teams\/assignments$/, ({ user, req, body }) => assignTeam(user, req, body));
 
-// Model routing: the approved allowlist in two chains (answers, gaps).
+// Model routing: the approved allowlist in three chains (answers, gaps,
+// compliance). Compliance follows answers until it is saved, like the server.
 const MODEL_ROUTES = [
   { id: "nemotron-3-super-deepinfra-nitro", label: "Nemotron 3 Super", model: "nvidia/nemotron-3-super-120b-a12b:nitro", provider: "deepinfra", providerLabel: "DeepInfra", reasoningEffort: "medium", defaultReasoningEffort: "medium", supportedEfforts: ["low", "medium"], reasoningControl: "effort", description: "Default ZDR route for grounded answers." },
   { id: "gpt-5.4-nano-azure-nitro", label: "GPT-5.4 Nano", model: "openai/gpt-5.4-nano:nitro", provider: "azure", providerLabel: "Azure", reasoningEffort: "medium", defaultReasoningEffort: "medium", supportedEfforts: ["none", "low", "medium", "high", "xhigh"], reasoningControl: "effort", description: "Fast, economical route for grounded answers." },
@@ -2537,8 +2538,8 @@ const MODEL_ROUTES = [
   { id: "granite-4.2-8b-coreweave", label: "Granite 4.2 8B", model: "ibm-granite/granite-4.2-8b", provider: "coreweave", providerLabel: "CoreWeave", reasoningEffort: "low", defaultReasoningEffort: "low", supportedEfforts: ["none", "low", "high"], reasoningControl: "effort", description: "Compact IBM reasoning model on CoreWeave's ZDR endpoint." },
   { id: "nemotron-3.5-lightning-coreweave", label: "Nemotron 3.5 Lightning", model: "nvidia/nemotron-3.5-lightning", provider: "coreweave", providerLabel: "CoreWeave", reasoningEffort: "medium", defaultReasoningEffort: "medium", supportedEfforts: ["none", "medium"], reasoningControl: "toggle", description: "Small, fast NVIDIA model (3B active) on CoreWeave's full-precision ZDR endpoint." }
 ];
-const modelOrders = { answers: MODEL_ROUTES.map((r) => r.id), gaps: MODEL_ROUTES.map((r) => r.id) };
-const modelEfforts = { answers: {}, gaps: {} };
+const modelOrders = { answers: MODEL_ROUTES.map((r) => r.id), gaps: MODEL_ROUTES.map((r) => r.id), compliance: null };
+const modelEfforts = { answers: {}, gaps: {}, compliance: {} };
 function modelRoutingConfig() {
   const routesFor = (order, purpose) =>
     order.map((id) => {
@@ -2550,6 +2551,11 @@ function modelRoutingConfig() {
     routes: routesFor(modelOrders.answers, "answers"),
     gapsOrder: modelOrders.gaps,
     gapsRoutes: routesFor(modelOrders.gaps, "gaps"),
+    complianceOrder: modelOrders.compliance ?? modelOrders.answers,
+    complianceRoutes: modelOrders.compliance
+      ? routesFor(modelOrders.compliance, "compliance")
+      : routesFor(modelOrders.answers, "answers"),
+    complianceInherited: modelOrders.compliance === null,
     persistenceReady: true
   };
 }
@@ -2559,7 +2565,7 @@ route("GET", /^\/api\/admin\/model-routing$/, ({ user }) => {
 });
 route("PUT", /^\/api\/admin\/model-routing$/, ({ user, body }) => {
   requireRole(user, "super_user");
-  const purpose = body?.purpose === "gaps" ? "gaps" : "answers";
+  const purpose = ["gaps", "compliance"].includes(body?.purpose) ? body.purpose : "answers";
   const order = Array.isArray(body?.order) ? body.order.filter((id) => MODEL_ROUTES.some((r) => r.id === id)) : [];
   if (order.length === 0) throw badRequest("Provide an ordered list of approved model routes");
   modelOrders[purpose] = [...new Set([...order, ...MODEL_ROUTES.map((r) => r.id)])];

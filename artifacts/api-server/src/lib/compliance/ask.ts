@@ -239,12 +239,12 @@ export async function answerComplianceQuestion(
 ): Promise<ComplianceAnswer> {
   const retrieval = await retrieveCompliance(question, index, deps);
   const chunks = retrieval.refused ? [] : retrieval.passages.map(passageAsChunk);
-  // The answer chain order is a settings read; resolve it here so the ask
-  // deadline bounds it like every other wait.
+  // The compliance chain (its own column on the Models page) is a settings
+  // read; resolve it here so the ask deadline bounds it like every other wait.
   const routeChain =
     retrieval.refused || deps.generation?.routeChain || deps.generation?.primaryRoute
       ? deps.generation?.routeChain
-      : await waitFor(getActiveModelChain(), deps.signal);
+      : await waitFor(getActiveModelChain("compliance"), deps.signal);
   const result = await generateAnswer(
     {
       programName: "Truenote compliance documents",

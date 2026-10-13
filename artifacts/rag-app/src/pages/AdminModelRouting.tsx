@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { getModelRouting, updateModelRouting } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -80,13 +80,30 @@ const CHAINS: ReadonlyArray<{
     title: "Gaps analysis",
     description:
       "Groups refused questions into themes on the Gaps page and suggests which sources to add or update."
+  },
+  {
+    purpose: "compliance",
+    title: "Compliance",
+    description:
+      "Answers questions about the compliance documents on the Compliance page."
   }
 ];
+
+function routesFor(config: ModelRoutingConfig, purpose: ModelRoutingPurpose): ModelRoutingOption[] {
+  return purpose === "gaps"
+    ? config.gapsRoutes
+    : purpose === "compliance"
+      ? config.complianceRoutes
+      : config.routes;
+}
 
 function ModelRoutingPanel(): JSX.Element {
   const [config, setConfig] = useState<ModelRoutingConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // One save at a time: each response carries every chain, so overlapping
+  // saves could land out of order and show an older chain.
+  const [savingPurpose, setSavingPurpose] = useState<ModelRoutingPurpose | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,8 +151,8 @@ function ModelRoutingPanel(): JSX.Element {
       ) : null}
 
       {loading || !config ? (
-        <div role="status" className="grid gap-6 lg:grid-cols-2">
-          {[0, 1].map((column) => (
+        <div role="status" className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2].map((column) => (
             <div key={column} className="flex flex-col gap-2">
               {[0, 1, 2].map((index) => (
                 <div
@@ -158,15 +175,19 @@ function ModelRoutingPanel(): JSX.Element {
               cannot be saved until the reviewed DDL is applied.
             </p>
           ) : null}
-          <div className="grid items-start gap-6 lg:grid-cols-2">
+          <div className="grid items-start gap-6 lg:grid-cols-2 xl:grid-cols-3">
             {CHAINS.map((chain) => (
               <RouteChain
                 key={chain.purpose}
                 purpose={chain.purpose}
                 title={chain.title}
                 description={chain.description}
-                initial={chain.purpose === "gaps" ? config.gapsRoutes : config.routes}
+                initial={routesFor(config, chain.purpose)}
                 canSave={config.persistenceReady}
+                inherited={chain.purpose === "compliance" && config.complianceInherited}
+                blocked={savingPurpose !== null && savingPurpose !== chain.purpose}
+                onSavingChange={(saving) => setSavingPurpose(saving ? chain.purpose : null)}
+                onSaved={setConfig}
               />
             ))}
           </div>
@@ -182,6 +203,13 @@ interface RouteChainProps {
   description: string;
   initial: ModelRoutingOption[];
   canSave: boolean;
+  /** No saved order of its own yet: it follows Answers, and Save keeps a copy. */
+  inherited: boolean;
+  /** Another column is saving. */
+  blocked: boolean;
+  onSavingChange: (saving: boolean) => void;
+  /** Every save returns all chains; the page keeps them current. */
+  onSaved: (config: ModelRoutingConfig) => void;
 }
 
 /** One drag/drop fallback chain with its own save. */
@@ -190,7 +218,11 @@ function RouteChain({
   title,
   description,
   initial,
-  canSave
+  canSave,
+  inherited,
+  blocked,
+  onSavingChange,
+  onSaved
 }: RouteChainProps): JSX.Element {
   const [routes, setRoutes] = useState<ModelRoutingOption[]>(initial);
   const [savedOrder, setSavedOrder] = useState<string[]>(() =>
@@ -207,6 +239,20 @@ function RouteChain({
   const dirty =
     currentOrder.join("\u0000") !== savedOrder.join("\u0000") ||
     JSON.stringify(effortsOf(routes)) !== savedEfforts;
+
+  // A save in another column can change this chain on the server: Compliance
+  // follows Answers until it is saved. Show the server's chain, keeping any
+  // unsaved edits here, and compare future edits against it.
+  const serverKey = JSON.stringify(initial.map((route) => [route.id, route.reasoningEffort]));
+  const lastServerKey = useRef(serverKey);
+  useEffect(() => {
+    if (serverKey === lastServerKey.current) return;
+    lastServerKey.current = serverKey;
+    if (!dirty) setRoutes(initial);
+    setSavedOrder(initial.map((route) => route.id));
+    setSavedEfforts(JSON.stringify(effortsOf(initial)));
+    // Runs only when the server's chain changes; dirty is read as of that render.
+  }, [serverKey]);
 
   function setEffort(id: string, effort: ReasoningEffort): void {
     setRoutes((prev) =>
@@ -229,13 +275,15 @@ function RouteChain({
   }
 
   async function save(): Promise<void> {
-    if (!dirty) return;
+    if ((!dirty && !inherited) || blocked) return;
     setSaving(true);
+    onSavingChange(true);
     setError(null);
     setSaved(false);
     try {
       const next = await updateModelRouting(currentOrder, purpose, effortsOf(routes));
-      const stored = purpose === "gaps" ? next.gapsRoutes : next.routes;
+      const stored = routesFor(next, purpose);
+      onSaved(next);
       setRoutes(stored);
       setSavedOrder(stored.map((route) => route.id));
       setSavedEfforts(JSON.stringify(effortsOf(stored)));
@@ -246,6 +294,7 @@ function RouteChain({
       );
     } finally {
       setSaving(false);
+      onSavingChange(false);
     }
   }
 
@@ -256,6 +305,11 @@ function RouteChain({
           {title}
         </h2>
         <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
+        {inherited ? (
+          <p className="mt-1 text-sm text-muted-foreground">
+            Following the Answers order now. Save to keep this order for compliance answers only.
+          </p>
+        ) : null}
       </div>
 
       {error ? (
@@ -376,7 +430,7 @@ function RouteChain({
         <button
           type="button"
           onClick={() => void save()}
-          disabled={saving || !canSave || !dirty}
+          disabled={saving || blocked || !canSave || (!dirty && !inherited)}
           className="btn-primary px-5 py-2 text-base"
         >
           {saving ? "Saving…" : `Save ${title.toLowerCase()}`}
