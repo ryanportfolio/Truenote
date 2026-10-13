@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { getModelRouting, updateModelRouting } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -181,6 +181,7 @@ function ModelRoutingPanel(): JSX.Element {
                 description={chain.description}
                 initial={routesFor(config, chain.purpose)}
                 canSave={config.persistenceReady}
+                onSaved={setConfig}
               />
             ))}
           </div>
@@ -196,6 +197,8 @@ interface RouteChainProps {
   description: string;
   initial: ModelRoutingOption[];
   canSave: boolean;
+  /** Every save returns all chains; the page keeps them current. */
+  onSaved: (config: ModelRoutingConfig) => void;
 }
 
 /** One drag/drop fallback chain with its own save. */
@@ -204,7 +207,8 @@ function RouteChain({
   title,
   description,
   initial,
-  canSave
+  canSave,
+  onSaved
 }: RouteChainProps): JSX.Element {
   const [routes, setRoutes] = useState<ModelRoutingOption[]>(initial);
   const [savedOrder, setSavedOrder] = useState<string[]>(() =>
@@ -221,6 +225,20 @@ function RouteChain({
   const dirty =
     currentOrder.join("\u0000") !== savedOrder.join("\u0000") ||
     JSON.stringify(effortsOf(routes)) !== savedEfforts;
+
+  // A save in another column can change this chain on the server: Compliance
+  // follows Answers until it is saved. Show the server's chain, keeping any
+  // unsaved edits here, and compare future edits against it.
+  const serverKey = JSON.stringify(initial.map((route) => [route.id, route.reasoningEffort]));
+  const lastServerKey = useRef(serverKey);
+  useEffect(() => {
+    if (serverKey === lastServerKey.current) return;
+    lastServerKey.current = serverKey;
+    if (!dirty) setRoutes(initial);
+    setSavedOrder(initial.map((route) => route.id));
+    setSavedEfforts(JSON.stringify(effortsOf(initial)));
+    // Runs only when the server's chain changes; dirty is read as of that render.
+  }, [serverKey]);
 
   function setEffort(id: string, effort: ReasoningEffort): void {
     setRoutes((prev) =>
@@ -250,6 +268,7 @@ function RouteChain({
     try {
       const next = await updateModelRouting(currentOrder, purpose, effortsOf(routes));
       const stored = routesFor(next, purpose);
+      onSaved(next);
       setRoutes(stored);
       setSavedOrder(stored.map((route) => route.id));
       setSavedEfforts(JSON.stringify(effortsOf(stored)));
