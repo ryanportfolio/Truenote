@@ -272,6 +272,11 @@ export function warmComplianceIndex(
     });
 }
 
+/** The built index for this manifest, or null without waiting for a build. */
+export function peekComplianceSearchIndex(manifest: ComplianceManifest): ComplianceSearchIndex | null {
+  return current?.manifestHash === complianceManifestHash(manifest) ? current : null;
+}
+
 export function __resetComplianceSearchIndexForTests(): void {
   current = null;
   building = null;

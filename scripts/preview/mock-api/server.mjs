@@ -2153,6 +2153,21 @@ const COMPLIANCE_PASSAGES = COMPLIANCE_FIXTURES.flatMap((doc) => {
 });
 const ASK_STOPWORDS = new Set("a an and are as at be by do does for from how in is it of on or the to what when where which who why with".split(" "));
 const askWords = (text) => new Set(text.toLowerCase().match(/[a-z0-9-]+/g)?.filter((word) => !ASK_STOPWORDS.has(word)) ?? []);
+// GET /api/compliance/suggestions: example questions the fixture answers
+// (each shares two or more words with a fixture passage).
+route("GET", /^\/api\/compliance\/suggestions$/, ({ user }) => {
+  requireRole(user, "super_user");
+  return {
+    status: "ready",
+    questions: [
+      "What is the status of the access control item?",
+      "When is the logging control item due?",
+      "Which backup control item is closed?",
+      "What does the fixture system security plan say?",
+      "Where would each row link to its evidence?"
+    ]
+  };
+});
 route("POST", /^\/api\/compliance\/ask$/, ({ user, body }) => {
   requireRole(user, "super_user");
   const question = typeof body?.question === "string" ? body.question.trim() : "";
