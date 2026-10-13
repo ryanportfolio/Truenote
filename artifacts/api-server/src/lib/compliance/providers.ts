@@ -126,7 +126,7 @@ export async function embedComplianceTexts(
     options.deadline ??
     (kind === "question" ? getDeadlineConfig().queryEmbedding : getDeadlineConfig().ingestionEmbedding);
   const out: number[][] = new Array(texts.length);
-  const embedBatch = async (offset: number): Promise<void> => {
+  const embedBatch = async (offset: number, signal: AbortSignal): Promise<void> => {
     const batch = texts.slice(offset, offset + EMBED_BATCH_SIZE).map((text) => protect(text, kind));
     const payload = (await postJson(
       "embedding",
@@ -137,7 +137,7 @@ export async function embedComplianceTexts(
         provider: zdrProvider(COMPLIANCE_EMBEDDING_ROUTE.provider)
       },
       deadline,
-      options.signal,
+      signal,
       deps
     )) as { data?: Array<{ index?: unknown; embedding?: unknown }> };
     const data = Array.isArray(payload.data) ? payload.data : [];
@@ -159,20 +159,29 @@ export async function embedComplianceTexts(
   };
   const offsets: number[] = [];
   for (let offset = 0; offset < texts.length; offset += EMBED_BATCH_SIZE) offsets.push(offset);
+  // The first failure cancels the batches still in flight, and the call
+  // returns only after every lane has stopped, so a failed build never leaves
+  // requests running behind a replacement build.
+  const lanes = new AbortController();
+  const signal = options.signal ? AbortSignal.any([options.signal, lanes.signal]) : lanes.signal;
   let next = 0;
-  let failed = false;
+  let failure: { error: unknown } | null = null;
   const lane = async (): Promise<void> => {
-    while (!failed && next < offsets.length) {
+    while (failure === null && next < offsets.length) {
       const offset = offsets[next++]!;
       try {
-        await embedBatch(offset);
+        await embedBatch(offset, signal);
       } catch (error) {
-        failed = true;
-        throw error;
+        if (failure === null) {
+          failure = { error };
+          lanes.abort(error);
+        }
+        return;
       }
     }
   };
   await Promise.all(Array.from({ length: Math.min(EMBED_CONCURRENCY, offsets.length) }, lane));
+  if (failure !== null) throw (failure as { error: unknown }).error;
   return out;
 }
 
