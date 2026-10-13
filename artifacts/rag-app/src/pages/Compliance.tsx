@@ -500,7 +500,7 @@ const CITED_CLASS =
   "scroll-mt-24 rounded-sm bg-primary/10 ring-1 ring-inset ring-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
- * Attributes for a block that overlaps the cited span: a tint, and a focus
+ * Attributes for a block or table row that overlaps the cited span: a tint, and a focus
  * target the page scrolls to. Offsets are react-markdown's source positions,
  * the same UTF-16 offsets the server reports for each passage.
  */
@@ -557,13 +557,16 @@ function ComplianceMarkdown({ markdown, citedSpan = null }: { markdown: string; 
           const { attributes, citedClass } = mark(node);
           return <li {...attributes} className={citedClass}>{children}</li>;
         },
-        table: ({ node, children }) => {
+        table: ({ children }) => (
+          <div className="my-3 overflow-x-auto first:mt-0 last:mb-0">
+            <table className="w-full border-collapse text-sm tabular-nums">{children}</table>
+          </div>
+        ),
+        // Rows, not the whole table: a long table is cited in pieces, and the
+        // page scrolls to the first cited row.
+        tr: ({ node, children }) => {
           const { attributes, citedClass } = mark(node);
-          return (
-            <div {...attributes} className={cn("my-3 overflow-x-auto first:mt-0 last:mb-0", citedClass)}>
-              <table className="w-full border-collapse text-sm tabular-nums">{children}</table>
-            </div>
-          );
+          return <tr {...attributes} className={citedClass}>{children}</tr>;
         },
         th: ({ children }) => (
           <th className="border-b border-border px-2 py-1.5 text-left font-medium">{children}</th>

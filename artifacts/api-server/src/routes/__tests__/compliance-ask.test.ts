@@ -15,7 +15,7 @@ import {
 } from "../../lib/compliance/documents.js";
 import { tokenize } from "../../lib/compliance/bm25.js";
 
-const audit = vi.hoisted(() => ({ events: [] as SecurityEventInput[], fail: false }));
+const audit = vi.hoisted(() => ({ events: [] as SecurityEventInput[], fail: false, during: null as null | (() => Promise<void>) }));
 const appErrors = vi.hoisted(() => ({ rows: [] as unknown[] }));
 const sqlSeen = vi.hoisted(() => ({ queries: [] as string[] }));
 const providers = vi.hoisted(() => ({
@@ -31,6 +31,7 @@ const llm = vi.hoisted(() => ({ calls: 0, system: "", reply: "" as string | ((us
 vi.mock("../../lib/security/audit.js", () => ({
   recordSecurityEvent: async (input: SecurityEventInput) => {
     if (audit.fail) throw new Error("audit store unavailable");
+    if (audit.during) await audit.during();
     audit.events.push(input);
     return { id: "evt" };
   },
@@ -233,6 +234,7 @@ beforeEach(async () => {
   __resetComplianceSearchIndexForTests();
   audit.events = [];
   audit.fail = false;
+  audit.during = null;
   appErrors.rows = [];
   sqlSeen.queries = [];
   providers.embedCalls = [];
@@ -348,6 +350,16 @@ describe("POST /api/compliance/ask answers", () => {
     expect(JSON.stringify(appErrors.rows)).toContain("missing_inline_citation");
   });
 
+  it("keeps prose from a malformed citation out of the error log", async () => {
+    llm.reply = "Access reviews are quarterly [S1: privileged accounts have no rotation].";
+    const result = await ask("How often are access reviews performed?");
+    expect(result.body.refused).toBe(true);
+    const logged = JSON.stringify(appErrors.rows);
+    expect(logged).toContain("unknown_citation_ids");
+    expect(logged).not.toContain("privileged accounts");
+    expect(logged).not.toContain("quarterly");
+  });
+
   it("refuses an answer whose figure is not in the cited excerpt", async () => {
     llm.reply = citing("Quarterly access reviews", "Access reviews happen every **90** days.");
     const result = await ask("How often are access reviews performed?");
@@ -412,6 +424,21 @@ describe("POST /api/compliance/ask follows uploads", () => {
     expect(audit.events).toEqual([
       expect.objectContaining({ outcome: "failure", details: expect.objectContaining({ reason: "manifest_changed" }) })
     ]);
+  });
+
+  it("asks again when an upload lands while the question is being recorded", async () => {
+    llm.reply = citing("access reviews", "Access reviews are scheduled.");
+    audit.during = async () => {
+      audit.during = null;
+      await upload([{ ...PLAN_DOC, version: "1.1", markdown: PLAN_V2 }, POLICY_DOC]);
+    };
+    const result = await ask("How often are access reviews performed?");
+    expect(result.status).toBe(409);
+    expect(result.text).not.toContain("scheduled");
+    expect(audit.events.at(-1)).toMatchObject({
+      outcome: "failure",
+      details: { reason: "manifest_changed", stage: "after_record" }
+    });
   });
 
   it("reuses cached passage vectors after a restart instead of embedding the documents again", async () => {

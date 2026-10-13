@@ -16,12 +16,12 @@ import { createHash } from "node:crypto";
 import type { ComplianceManifestEntry } from "./documents.js";
 
 /** Bump when passage boundaries change: it is part of the vector cache key. */
-export const COMPLIANCE_CHUNKER_VERSION = 1;
+export const COMPLIANCE_CHUNKER_VERSION = 2;
 
 const MAX_PASSAGE_CHARS = 1_500;
 
 export interface CompliancePassage {
-  /** UUID-shaped and stable for one document version and position. */
+  /** UUID-shaped and stable for one document (slug), version and position. */
   id: string;
   slug: string;
   title: string;
@@ -66,8 +66,9 @@ function headingText(raw: string): string {
   return raw.replace(/[*_`]/g, "").trim();
 }
 
-export function passageId(sha256: string, ordinal: number): string {
-  const hex = createHash("sha256").update(`${sha256}:${ordinal}`).digest("hex");
+/** Slug, content hash and position: two documents with identical text still get distinct ids. */
+export function passageId(slug: string, sha256: string, ordinal: number): string {
+  const hex = createHash("sha256").update(`${slug}:${sha256}:${ordinal}`).digest("hex");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
@@ -192,7 +193,7 @@ export function chunkComplianceDocument(
       if (content.trim() === "") return;
       const ordinal = passages.length;
       passages.push({
-        id: passageId(entry.sha256, ordinal),
+        id: passageId(entry.slug, entry.sha256, ordinal),
         slug: entry.slug,
         title: entry.title,
         version: entry.version,

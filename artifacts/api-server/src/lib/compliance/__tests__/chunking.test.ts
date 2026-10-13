@@ -34,7 +34,10 @@ describe("chunkComplianceDocument", () => {
     }
     expect(passages[1]!.content).toContain("Accounts are reviewed quarterly.");
     expect(passages.map((passage) => passage.ordinal)).toEqual([0, 1, 2]);
-    expect(passages[0]!.id).toBe(passageId(ENTRY.sha256, 0));
+    expect(passages[0]!.id).toBe(passageId(ENTRY.slug, ENTRY.sha256, 0));
+    // Identical text under another slug gets other ids.
+    const twin = chunkComplianceDocument({ ...ENTRY, slug: "ssp-copy" }, markdown);
+    expect(twin.map((passage) => passage.id)).not.toContain(passages[0]!.id);
   });
 
   it("does not read a heading inside a fenced code block", () => {

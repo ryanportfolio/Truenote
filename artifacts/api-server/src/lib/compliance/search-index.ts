@@ -138,11 +138,19 @@ export interface ComplianceIndexDeps {
   embed?: (texts: string[]) => Promise<number[][]>;
 }
 
+/**
+ * Upper bound on one shared build. A build serves every question waiting on
+ * the same manifest, so it is not tied to any one request; each request still
+ * stops waiting at its own deadline (getComplianceSearchIndex).
+ */
+const BUILD_TIMEOUT_MS = 120_000;
+
 async function buildIndex(
   manifest: ComplianceManifest,
   manifestHash: string,
   deps: ComplianceIndexDeps
 ): Promise<ComplianceSearchIndex> {
+  const signal = AbortSignal.timeout(BUILD_TIMEOUT_MS);
   const storage = deps.storage ?? getObjectStorage();
   const passages: CompliancePassage[] = [];
   for (const entry of manifest.documents) {
@@ -162,7 +170,7 @@ async function buildIndex(
         ? []
         : deps.embed
           ? await deps.embed(texts)
-          : await embedComplianceTexts(texts, "document", {}, deps.providers);
+          : await embedComplianceTexts(texts, "document", { signal }, deps.providers);
     vectors = embedded.map((vector) => Float32Array.from(vector));
     if (passages.length > 0) {
       await storage.put(cacheKey, encodeCache(passages, embedded), {
@@ -185,15 +193,17 @@ let building: { manifestHash: string; promise: Promise<ComplianceSearchIndex> } 
 /**
  * The index for this manifest: the cached one when the hash matches, else a
  * fresh build. Concurrent callers for the same manifest share one build. A
- * failed build is not cached, so the next question tries again.
+ * failed build is not cached, so the next question tries again. A caller's
+ * signal ends its wait, not the shared build.
  */
 export async function getComplianceSearchIndex(
   manifest: ComplianceManifest,
-  deps: ComplianceIndexDeps = {}
+  deps: ComplianceIndexDeps = {},
+  options: { signal?: AbortSignal } = {}
 ): Promise<ComplianceSearchIndex> {
   const manifestHash = complianceManifestHash(manifest);
   if (current?.manifestHash === manifestHash) return current;
-  if (building?.manifestHash === manifestHash) return building.promise;
+  if (building?.manifestHash === manifestHash) return waitFor(building.promise, options.signal);
   const promise = buildIndex(manifest, manifestHash, deps).then(
     (index) => {
       if (building?.promise === promise) building = null;
@@ -206,7 +216,28 @@ export async function getComplianceSearchIndex(
     }
   );
   building = { manifestHash, promise };
-  return promise;
+  // A build whose waiters all gave up still settles; its failure is not unhandled.
+  promise.catch(() => undefined);
+  return waitFor(promise, options.signal);
+}
+
+function waitFor<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      }
+    );
+  });
 }
 
 export function __resetComplianceSearchIndexForTests(): void {

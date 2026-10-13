@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link } from "wouter";
 import { BookOpen, X } from "lucide-react";
 import { AnswerMarkdown } from "@/components/chat/AnswerMarkdown";
@@ -11,6 +11,12 @@ import type { ComplianceAskResponse, ComplianceSource, Source } from "@/types/ap
  * cited to document sections, or as the refusal; nothing is kept between
  * visits. The server records each question (a hash, never the text).
  */
+
+/** The one open citation, and the chip that opened it (focus returns there). */
+interface OpenCitation {
+  source: ComplianceSource;
+  opener: HTMLElement | null;
+}
 
 interface Exchange {
   id: number;
@@ -44,6 +50,12 @@ export function ComplianceAsk(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const nextId = useRef(1);
   const abortRef = useRef<AbortController | null>(null);
+  // One citation panel for the whole section, whichever answer it came from.
+  const [openCitation, setOpenCitation] = useState<OpenCitation | null>(null);
+  const openSource = useCallback((source: ComplianceSource) => {
+    const active = document.activeElement;
+    setOpenCitation({ source, opener: active instanceof HTMLElement ? active : null });
+  }, []);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -148,7 +160,7 @@ export function ComplianceAsk(): JSX.Element {
                 <p>{exchange.question}</p>
               </div>
               {exchange.result ? (
-                <ComplianceAnswer result={exchange.result} />
+                <ComplianceAnswer result={exchange.result} onOpenSource={openSource} />
               ) : exchange.error ? (
                 <div role="alert" className="flex items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
                   <span>{exchange.error}</span>
@@ -170,12 +182,25 @@ export function ComplianceAsk(): JSX.Element {
           ))}
         </ol>
       ) : null}
+      {openCitation ? (
+        <ComplianceCitationPanel
+          key={openCitation.source.chunk_id}
+          source={openCitation.source}
+          opener={openCitation.opener}
+          onClose={() => setOpenCitation(null)}
+        />
+      ) : null}
     </section>
   );
 }
 
-function ComplianceAnswer({ result }: { result: ComplianceAskResponse }): JSX.Element {
-  const [openChunkId, setOpenChunkId] = useState<string | null>(null);
+function ComplianceAnswer({
+  result,
+  onOpenSource
+}: {
+  result: ComplianceAskResponse;
+  onOpenSource: (source: ComplianceSource) => void;
+}): JSX.Element {
   // Built once per answer: re-rendering AnswerMarkdown remounts its chips,
   // and the citation panel hands focus back to the chip that opened it.
   const body = useMemo(
@@ -183,10 +208,13 @@ function ComplianceAnswer({ result }: { result: ComplianceAskResponse }): JSX.El
       <AnswerMarkdown
         answer={result.answer}
         sources={asChipSources(result.sources)}
-        onChipClick={setOpenChunkId}
+        onChipClick={(chunkId) => {
+          const source = result.sources.find((candidate) => candidate.chunk_id === chunkId);
+          if (source) onOpenSource(source);
+        }}
       />
     ),
-    [result]
+    [result, onOpenSource]
   );
   // Cite or refuse: an answer without a source renders as a refusal.
   if (result.refused || result.sources.length === 0) {
@@ -202,49 +230,44 @@ function ComplianceAnswer({ result }: { result: ComplianceAskResponse }): JSX.El
       </article>
     );
   }
-  const openSource = openChunkId
-    ? result.sources.find((source) => source.chunk_id === openChunkId) ?? null
-    : null;
   const titles = Array.from(new Set(result.sources.map((source) => source.title)));
   return (
-    <>
-      <article className="answer-surface motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-240 motion-safe:ease-out-quart">
-        <div className="answer-kicker">
-          <span className="answer-signal" aria-hidden />
-          Answer
-        </div>
-        {body}
-        <div className="receipt-strip motion-safe:animate-receipt-in">
-          <span className="receipt-count">{result.sources.length}</span>
-          <p>
-            Source passage{result.sources.length === 1 ? "" : "s"} ·{" "}
-            {titles.slice(0, 2).join(", ")}
-            {titles.length > 2 ? ` and ${titles.length - 2} more` : ""}
-          </p>
-        </div>
-      </article>
-      {openSource ? (
-        <ComplianceCitationPanel source={openSource} onClose={() => setOpenChunkId(null)} />
-      ) : null}
-    </>
+    <article className="answer-surface motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-240 motion-safe:ease-out-quart">
+      <div className="answer-kicker">
+        <span className="answer-signal" aria-hidden />
+        Answer
+      </div>
+      {body}
+      <div className="receipt-strip motion-safe:animate-receipt-in">
+        <span className="receipt-count">{result.sources.length}</span>
+        <p>
+          Source passage{result.sources.length === 1 ? "" : "s"} ·{" "}
+          {titles.slice(0, 2).join(", ")}
+          {titles.length > 2 ? ` and ${titles.length - 2} more` : ""}
+        </p>
+      </div>
+    </article>
   );
 }
 
 function ComplianceCitationPanel({
   source,
+  opener,
   onClose
 }: {
   source: ComplianceSource;
+  opener: HTMLElement | null;
   onClose: () => void;
 }): JSX.Element {
   const closeRef = useRef<HTMLButtonElement>(null);
 
-  // Focus moves to Close on open and back to the chip on close.
+  // Focus moves to Close on open and back to the chip that opened it on close.
   useEffect(() => {
-    const restore = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeRef.current?.focus();
-    return () => restore?.focus();
-  }, []);
+    return () => {
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [opener]);
 
   return (
     <aside

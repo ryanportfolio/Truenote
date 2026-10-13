@@ -225,34 +225,39 @@ complianceRouter.post("/ask", complianceAskLimit, async (req, res, next) => {
     if (!res.writableEnded) controller.abort(new Error("client closed the request"));
   };
   res.on("close", abortOnClose);
-  let deadline: NodeJS.Timeout | undefined;
+  // One budget for the whole question, index build included.
+  const deadline = setTimeout(
+    () => controller.abort(new Error("compliance ask deadline exceeded")),
+    getDeadlineConfig().askDeadlineMs
+  );
 
   try {
     const manifest = await readComplianceManifest();
-    const index = await getComplianceSearchIndex(manifest);
-    deadline = setTimeout(
-      () => controller.abort(new Error("compliance ask deadline exceeded")),
-      getDeadlineConfig().askDeadlineMs
-    );
+    const index = await getComplianceSearchIndex(manifest, {}, { signal: controller.signal });
     const result = await answerComplianceQuestion(question, index, {
       signal: controller.signal,
       diagnostics: { correlationId, userId: user.id }
     });
 
     // Answers never cite a superseded version: if an upload replaced the
-    // manifest while this answer was prepared, ask again instead.
-    const after = complianceManifestHash(await readComplianceManifest());
-    if (after !== index.manifestHash) {
+    // manifest while this answer was prepared or recorded, ask again instead.
+    const manifestChanged = async (): Promise<boolean> =>
+      complianceManifestHash(await readComplianceManifest()) !== index.manifestHash;
+    const askAgain = (stage: string): void => {
       recordSecurityEventBestEffort({
         ...eventBase,
         outcome: "failure",
-        details: { ...questionDetails, reason: "manifest_changed", manifestHash: index.manifestHash }
+        details: { ...questionDetails, reason: "manifest_changed", stage, manifestHash: index.manifestHash }
       });
       res.status(409).json({
         error: "The compliance documents were updated while this answer was prepared. Ask again."
       });
+    };
+    if (await manifestChanged()) {
+      askAgain("before_record");
       return;
     }
+    if (controller.signal.aborted) throw controller.signal.reason;
 
     const cited = Array.from(
       new Map(
@@ -274,6 +279,13 @@ complianceRouter.post("/ask", complianceAskLimit, async (req, res, next) => {
         generationPath: result.generationPath
       }
     });
+    // Last check, after the record and before delivery. The recorded event
+    // stays; the follow-up failure event says the answer was not delivered.
+    if (await manifestChanged()) {
+      askAgain("after_record");
+      return;
+    }
+    if (res.destroyed) return;
     res.json({ answer: result.answer, refused: result.refused, sources: result.sources });
   } catch (error) {
     if (res.writableEnded || res.headersSent) return;
@@ -317,7 +329,7 @@ complianceRouter.post("/ask", complianceAskLimit, async (req, res, next) => {
     }
     next(error);
   } finally {
-    if (deadline) clearTimeout(deadline);
+    clearTimeout(deadline);
     res.off("close", abortOnClose);
   }
 });
