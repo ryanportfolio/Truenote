@@ -1321,3 +1321,25 @@ export interface ComplianceDocumentResponse {
   pdfSize: number | null;
   markdown: string;
 }
+
+/** One cited passage of a compliance answer (POST /api/compliance/ask). */
+export interface ComplianceSource {
+  chunk_id: string;
+  slug: string;
+  title: string;
+  version: string;
+  /** Content hash of the cited document version. */
+  sha256: string;
+  /** Heading path of the passage; empty before the first heading. */
+  section: string;
+  excerpt: string;
+  /** UTF-16 offsets into that version's Markdown. */
+  source_start: number;
+  source_end: number;
+}
+
+export interface ComplianceAskResponse {
+  answer: string;
+  refused: boolean;
+  sources: ComplianceSource[];
+}

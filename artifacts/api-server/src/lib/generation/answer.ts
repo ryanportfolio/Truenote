@@ -139,7 +139,19 @@ export interface GenerateAnswerInput {
     correlationId?: string;
     userId?: string;
     programId?: string;
+    /**
+     * Leave the model's rejected answer text out of the error log. The
+     * compliance assistant sets it: its answers quote internal security
+     * documents, which stay out of logs.
+     */
+    omitAnswerText?: boolean;
   };
+  /**
+   * Replaces the customer-service system prompt. Only the compliance
+   * assistant (lib/compliance/ask.ts) passes one; it keeps the same rules,
+   * citation tokens and REFUSAL_TEXT so validation is unchanged.
+   */
+  systemPrompt?: string;
 }
 
 export interface GenerateAnswerResult {
@@ -386,7 +398,9 @@ export async function generateAnswer(
   // question. Excerpts from approved documents get only the blocking classes
   // (secrets, SSNs, cards): redacting their contact emails or phone numbers
   // left the model unable to answer questions about them.
-  const systemPrompt = protectProviderText(buildSystemPrompt(input.programName)).text;
+  const systemPrompt = protectProviderText(
+    input.systemPrompt ?? buildSystemPrompt(input.programName)
+  ).text;
   const userPrompt = protectApprovedDocumentText(
     buildUserPrompt(protectProviderText(input.question).text, input.chunks)
   );
@@ -476,7 +490,13 @@ export async function generateAnswer(
           reasoningEffort: route.reasoningEffort,
           outcome,
           chunkCount: input.chunks.length,
-          ...(validationFailure ? { validation: validationFailure } : {})
+          ...(validationFailure
+            ? {
+                validation: input.diagnostics?.omitAnswerText
+                  ? { ...validationFailure, returnedText: "[omitted: compliance answer]" }
+                  : validationFailure
+              }
+            : {})
         }
       });
     } finally {

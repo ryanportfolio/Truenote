@@ -86,6 +86,12 @@ export const evidenceWriteLimit = perUserLimit(10, 60_000);
 /** Compliance document reads (list and documents): 60 a minute per user. */
 export const complianceReadLimit = perUserLimit(60, 60_000);
 
+/**
+ * Compliance questions: 10 a minute per user. Each one calls the embedding,
+ * rerank and generation providers, so the budget is tighter than reads.
+ */
+export const complianceAskLimit = perUserLimit(10, 60_000);
+
 /** Emergency sign-in card (passkeys, recovery codes, status): 30 a minute per user. */
 export const mfaManageLimit = perUserLimit(30, 60_000);
 

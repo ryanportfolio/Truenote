@@ -1,15 +1,17 @@
-import { useEffect, useState } from "react";
-import { Link } from "wouter";
+import { useEffect, useRef, useState } from "react";
+import { Link, useSearch } from "wouter";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArrowLeft, FileDown, FileLock2, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
+import { ComplianceAsk } from "@/components/compliance/ComplianceAsk";
 import {
   UnauthorizedError,
   downloadComplianceDocumentPdf,
   getComplianceDocument,
   getComplianceDocuments
 } from "@/lib/api";
+import { canReadCompliance, readComplianceCitation } from "@/lib/complianceAccess";
 import { cn } from "@/lib/utils";
 import type {
   ComplianceDocumentResponse,
@@ -206,7 +208,7 @@ function ListSkeleton(): JSX.Element {
 }
 
 export function CompliancePage({ user }: CompliancePageProps): JSX.Element {
-  if (user.role !== "super_user") return <Forbidden />;
+  if (!canReadCompliance(user)) return <Forbidden />;
   return <ComplianceList />;
 }
 
@@ -267,6 +269,7 @@ function ComplianceList(): JSX.Element {
         />
       ) : (
         <>
+          <ComplianceAsk />
           <RequestedDocuments documents={documents} downloads={downloads} />
           <section aria-labelledby="all-documents" className="flex flex-col gap-3">
             <h2 id="all-documents" className="text-xl font-semibold tracking-tight">
@@ -339,7 +342,7 @@ type DocumentState =
   | { status: "ready"; document: ComplianceDocumentResponse };
 
 export function ComplianceDocumentPage({ user, slug }: ComplianceDocumentPageProps): JSX.Element {
-  if (user.role !== "super_user") return <Forbidden />;
+  if (!canReadCompliance(user)) return <Forbidden />;
   return <ComplianceDocumentView slug={slug} />;
 }
 
@@ -355,6 +358,26 @@ function BackLink(): JSX.Element {
 function ComplianceDocumentView({ slug }: { slug: string }): JSX.Element {
   const [state, setState] = useState<DocumentState>({ status: "loading" });
   const downloads = usePdfDownloads();
+  const citation = readComplianceCitation(useSearch());
+  const articleRef = useRef<HTMLElement>(null);
+  // A citation marks the passage only on the version it was cited from.
+  const citedSpan =
+    citation && state.status === "ready" && citation.sha256 === state.document.sha256
+      ? { start: citation.start, end: citation.end }
+      : null;
+  const citedEarlierVersion =
+    citation !== null && state.status === "ready" && citation.sha256 !== state.document.sha256;
+
+  useEffect(() => {
+    if (!citedSpan) return;
+    const frame = requestAnimationFrame(() => {
+      const passage = articleRef.current?.querySelector<HTMLElement>("[data-citation-target]");
+      passage?.focus({ preventScroll: true });
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      passage?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [citedSpan?.start, citedSpan?.end, state]);
 
   useEffect(() => {
     let cancelled = false;
@@ -444,8 +467,22 @@ function ComplianceDocumentView({ slug }: { slug: string }): JSX.Element {
           </header>
           <SensitiveNotice />
           <DownloadError error={downloads.error} />
-          <article className="min-w-0 rounded-lg border border-border bg-card p-5 text-sm leading-relaxed shadow-card">
-            <ComplianceMarkdown markdown={state.document.markdown} />
+          {citedSpan ? (
+            <p role="note" className="text-sm text-muted-foreground">
+              The passage the answer cited is marked below.
+            </p>
+          ) : citedEarlierVersion ? (
+            <p role="note" className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
+              This document was updated after the answer cited it. The cited passage came from an
+              earlier version, so nothing is marked. Ask the question again for an answer from this
+              version.
+            </p>
+          ) : null}
+          <article
+            ref={articleRef}
+            className="min-w-0 rounded-lg border border-border bg-card p-5 text-sm leading-relaxed shadow-card"
+          >
+            <ComplianceMarkdown markdown={state.document.markdown} citedSpan={citedSpan} />
           </article>
         </>
       )}
@@ -453,32 +490,81 @@ function ComplianceDocumentView({ slug }: { slug: string }): JSX.Element {
   );
 }
 
-/** The knowledge base reader's Markdown recipe, without citation anchors. */
-function ComplianceMarkdown({ markdown }: { markdown: string }): JSX.Element {
+interface PositionedNode {
+  position?: { start?: { offset?: number }; end?: { offset?: number } };
+}
+
+type CitedSpan = { start: number; end: number } | null;
+
+const CITED_CLASS =
+  "scroll-mt-24 rounded-sm bg-primary/10 ring-1 ring-inset ring-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+/**
+ * Attributes for a block that overlaps the cited span: a tint, and a focus
+ * target the page scrolls to. Offsets are react-markdown's source positions,
+ * the same UTF-16 offsets the server reports for each passage.
+ */
+function citedAttributes(node: PositionedNode | undefined, span: CitedSpan) {
+  const start = node?.position?.start?.offset;
+  const end = node?.position?.end?.offset;
+  const cited = span !== null && start !== undefined && end !== undefined && start < span.end && end > span.start;
+  return cited
+    ? { "data-citation-target": "true" as const, tabIndex: -1, citedClass: CITED_CLASS }
+    : { citedClass: undefined };
+}
+
+/** The knowledge base reader's Markdown recipe, marking a cited passage when given one. */
+function ComplianceMarkdown({ markdown, citedSpan = null }: { markdown: string; citedSpan?: CitedSpan }): JSX.Element {
+  const mark = (node: PositionedNode | undefined) => {
+    const { citedClass, ...attributes } = citedAttributes(node, citedSpan);
+    return { attributes, citedClass };
+  };
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
-        h1: ({ children }) => (
-          <h2 className="mb-2 mt-5 font-display text-xl font-semibold tracking-tight first:mt-0">{children}</h2>
-        ),
-        h2: ({ id, className, children }) => (
-          <h3 id={id} className={cn("mb-2 mt-5 font-display text-lg font-semibold tracking-tight first:mt-0", className)}>{children}</h3>
-        ),
-        h3: ({ children }) => <h4 className="mb-2 mt-4 text-base font-semibold first:mt-0">{children}</h4>,
-        h4: ({ children }) => <h5 className="mb-1.5 mt-4 text-sm font-semibold first:mt-0">{children}</h5>,
-        h5: ({ children }) => <h6 className="mb-1.5 mt-4 text-sm font-semibold first:mt-0">{children}</h6>,
-        h6: ({ children }) => (
-          <h6 className="my-2 text-xs font-semibold uppercase tracking-wide first:mt-0">{children}</h6>
-        ),
-        p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
+        h1: ({ node, children }) => {
+          const { attributes, citedClass } = mark(node);
+          return <h2 {...attributes} className={cn("mb-2 mt-5 font-display text-xl font-semibold tracking-tight first:mt-0", citedClass)}>{children}</h2>;
+        },
+        h2: ({ node, id, className, children }) => {
+          const { attributes, citedClass } = mark(node);
+          return <h3 {...attributes} id={id} className={cn("mb-2 mt-5 font-display text-lg font-semibold tracking-tight first:mt-0", className, citedClass)}>{children}</h3>;
+        },
+        h3: ({ node, children }) => {
+          const { attributes, citedClass } = mark(node);
+          return <h4 {...attributes} className={cn("mb-2 mt-4 text-base font-semibold first:mt-0", citedClass)}>{children}</h4>;
+        },
+        h4: ({ node, children }) => {
+          const { attributes, citedClass } = mark(node);
+          return <h5 {...attributes} className={cn("mb-1.5 mt-4 text-sm font-semibold first:mt-0", citedClass)}>{children}</h5>;
+        },
+        h5: ({ node, children }) => {
+          const { attributes, citedClass } = mark(node);
+          return <h6 {...attributes} className={cn("mb-1.5 mt-4 text-sm font-semibold first:mt-0", citedClass)}>{children}</h6>;
+        },
+        h6: ({ node, children }) => {
+          const { attributes, citedClass } = mark(node);
+          return <h6 {...attributes} className={cn("my-2 text-xs font-semibold uppercase tracking-wide first:mt-0", citedClass)}>{children}</h6>;
+        },
+        p: ({ node, children }) => {
+          const { attributes, citedClass } = mark(node);
+          return <p {...attributes} className={cn("my-2 first:mt-0 last:mb-0", citedClass)}>{children}</p>;
+        },
         ol: ({ children }) => <ol className="my-2 ml-5 list-decimal space-y-1 first:mt-0 last:mb-0">{children}</ol>,
         ul: ({ children }) => <ul className="my-2 ml-5 list-disc space-y-1 first:mt-0 last:mb-0">{children}</ul>,
-        table: ({ children }) => (
-          <div className="my-3 overflow-x-auto first:mt-0 last:mb-0">
-            <table className="w-full border-collapse text-sm tabular-nums">{children}</table>
-          </div>
-        ),
+        li: ({ node, children }) => {
+          const { attributes, citedClass } = mark(node);
+          return <li {...attributes} className={citedClass}>{children}</li>;
+        },
+        table: ({ node, children }) => {
+          const { attributes, citedClass } = mark(node);
+          return (
+            <div {...attributes} className={cn("my-3 overflow-x-auto first:mt-0 last:mb-0", citedClass)}>
+              <table className="w-full border-collapse text-sm tabular-nums">{children}</table>
+            </div>
+          );
+        },
         th: ({ children }) => (
           <th className="border-b border-border px-2 py-1.5 text-left font-medium">{children}</th>
         ),
@@ -505,14 +591,18 @@ function ComplianceMarkdown({ markdown }: { markdown: string }): JSX.Element {
           </span>
         ),
         code: ({ children }) => <code className="rounded bg-muted px-1 font-mono text-[13px]">{children}</code>,
-        pre: ({ children }) => (
-          <pre className="my-2 overflow-x-auto rounded-md bg-muted/50 p-3 font-mono text-[13px] leading-relaxed">
-            {children}
-          </pre>
-        ),
-        blockquote: ({ children }) => (
-          <blockquote className="my-2 border-l border-border pl-3 text-muted-foreground">{children}</blockquote>
-        ),
+        pre: ({ node, children }) => {
+          const { attributes, citedClass } = mark(node);
+          return (
+            <pre {...attributes} className={cn("my-2 overflow-x-auto rounded-md bg-muted/50 p-3 font-mono text-[13px] leading-relaxed", citedClass)}>
+              {children}
+            </pre>
+          );
+        },
+        blockquote: ({ node, children }) => {
+          const { attributes, citedClass } = mark(node);
+          return <blockquote {...attributes} className={cn("my-2 border-l border-border pl-3 text-muted-foreground", citedClass)}>{children}</blockquote>;
+        },
         hr: () => <hr className="my-4 border-border" />
       }}
     >

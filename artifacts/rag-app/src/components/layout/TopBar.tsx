@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { FileLock2 } from "lucide-react";
 import { logout } from "@/lib/api";
+import { canReadCompliance } from "@/lib/complianceAccess";
 import { cn } from "@/lib/utils";
 import { hasAtLeastRole } from "@/types/api";
 import type { CurrentUser, UserRole } from "@/types/api";
@@ -47,10 +48,10 @@ export function TopBar({
   // chat. Role-aware target instead of a one-size-fits-all "/".
   const homeHref = hasAtLeastRole(user, "manager") ? "/admin/documents" : "/chat";
   const [pathname] = useLocation();
-  // Super users only; the API enforces the same role on every document.
-  // From lg up; below lg the sidebar carries the link, since
-  // the bar has no room left at narrower widths.
-  const showCompliance = hasAtLeastRole(user, "super_user");
+  // Compliance readers only (super users today); the API enforces the same
+  // role on every document and question. From lg up; below lg the sidebar
+  // carries the link, since the bar has no room left at narrower widths.
+  const showCompliance = canReadCompliance(user);
   const complianceActive = pathname === "/compliance" || pathname.startsWith("/compliance/");
 
   return (

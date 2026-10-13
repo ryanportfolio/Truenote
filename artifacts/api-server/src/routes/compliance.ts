@@ -1,6 +1,13 @@
+import { createHash, randomUUID } from "node:crypto";
 import { Router } from "express";
+import { z } from "zod";
 import { clientIpFrom } from "../lib/auth/rate-limit.js";
-import { complianceReadLimit } from "../lib/security/route-rate-limit.js";
+import { isAbortError, getDeadlineConfig } from "../lib/deadlines.js";
+import {
+  complianceAskLimit,
+  complianceReadLimit
+} from "../lib/security/route-rate-limit.js";
+import { answerComplianceQuestion } from "../lib/compliance/ask.js";
 import {
   ComplianceIntegrityError,
   isComplianceSlug,
@@ -8,25 +15,33 @@ import {
   readComplianceDocumentPdf,
   readComplianceManifest
 } from "../lib/compliance/documents.js";
+import { ComplianceProviderError } from "../lib/compliance/providers.js";
+import {
+  complianceManifestHash,
+  getComplianceSearchIndex
+} from "../lib/compliance/search-index.js";
+import { recordAppError } from "../lib/observability/error-log.js";
 import {
   recordSecurityEvent,
   recordSecurityEventBestEffort
 } from "../lib/security/audit.js";
+import { ProviderInputFirewallError } from "../lib/security/provider-input-firewall.js";
 import {
   authedUser,
   requireAuth,
-  requireFreshPassword,
-  requireSuperUser
+  requireComplianceReader,
+  requireFreshPassword
 } from "../middleware/current-user.js";
 
 /**
- * Detailed compliance documents for super users (lib/compliance/documents.ts).
- * Every route is GET, so the mutation audit middleware does not see these
- * reads; the document route records its own security event.
+ * Detailed compliance documents for super users (lib/compliance/documents.ts)
+ * and questions about them (lib/compliance/ask.ts). The mutation audit
+ * middleware does not cover /api/compliance; every document read and every
+ * question records its own security event.
  */
 export const complianceRouter = Router();
 
-complianceRouter.use(requireAuth, requireFreshPassword, requireSuperUser);
+complianceRouter.use(requireAuth, requireFreshPassword, requireComplianceReader);
 
 complianceRouter.get("/documents", complianceReadLimit, async (_req, res, next) => {
   try {
@@ -168,5 +183,141 @@ complianceRouter.get("/documents/:slug/pdf", complianceReadLimit, async (req, re
     res.send(body);
   } catch (error) {
     next(error);
+  }
+});
+
+const AskBodySchema = z
+  .object({ question: z.string().trim().min(1).max(1_000) })
+  .strict();
+
+const ASK_UNAVAILABLE = "The compliance assistant could not answer right now. Try again in a minute.";
+
+/**
+ * Ask a question about the compliance documents. The answer cites document
+ * sections or is the exact refusal. Owner decision, 2026-10-13: the security
+ * event records a SHA-256 and the length of the question, never its text,
+ * because questions can quote weaknesses. The answer goes out only after the
+ * event is on record.
+ */
+complianceRouter.post("/ask", complianceAskLimit, async (req, res, next) => {
+  const user = authedUser(req);
+  const parsed = AskBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Ask a question of 1 to 1000 characters." });
+    return;
+  }
+  const question = parsed.data.question;
+  const correlationId = randomUUID();
+  const eventBase = {
+    action: "compliance.question",
+    actor: user,
+    resourceType: "compliance_question",
+    resourceId: correlationId,
+    sourceIp: clientIpFrom(req)
+  } as const;
+  const questionDetails = {
+    questionSha256: createHash("sha256").update(question, "utf8").digest("hex"),
+    questionLength: question.length
+  };
+
+  const controller = new AbortController();
+  const abortOnClose = (): void => {
+    if (!res.writableEnded) controller.abort(new Error("client closed the request"));
+  };
+  res.on("close", abortOnClose);
+  let deadline: NodeJS.Timeout | undefined;
+
+  try {
+    const manifest = await readComplianceManifest();
+    const index = await getComplianceSearchIndex(manifest);
+    deadline = setTimeout(
+      () => controller.abort(new Error("compliance ask deadline exceeded")),
+      getDeadlineConfig().askDeadlineMs
+    );
+    const result = await answerComplianceQuestion(question, index, {
+      signal: controller.signal,
+      diagnostics: { correlationId, userId: user.id }
+    });
+
+    // Answers never cite a superseded version: if an upload replaced the
+    // manifest while this answer was prepared, ask again instead.
+    const after = complianceManifestHash(await readComplianceManifest());
+    if (after !== index.manifestHash) {
+      recordSecurityEventBestEffort({
+        ...eventBase,
+        outcome: "failure",
+        details: { ...questionDetails, reason: "manifest_changed", manifestHash: index.manifestHash }
+      });
+      res.status(409).json({
+        error: "The compliance documents were updated while this answer was prepared. Ask again."
+      });
+      return;
+    }
+
+    const cited = Array.from(
+      new Map(
+        result.sources.map((source) => [
+          source.slug,
+          { slug: source.slug, sha256: source.sha256, version: source.version }
+        ])
+      ).values()
+    );
+    await recordSecurityEvent({
+      ...eventBase,
+      outcome: "success",
+      details: {
+        ...questionDetails,
+        refused: result.refused,
+        cited,
+        passages: result.sources.length,
+        manifestHash: index.manifestHash,
+        generationPath: result.generationPath
+      }
+    });
+    res.json({ answer: result.answer, refused: result.refused, sources: result.sources });
+  } catch (error) {
+    if (res.writableEnded || res.headersSent) return;
+    if (error instanceof ComplianceIntegrityError) {
+      recordSecurityEventBestEffort({
+        ...eventBase,
+        outcome: "failure",
+        details: { ...questionDetails, reason: "hash_mismatch", slug: error.slug }
+      });
+      res.status(500).json({ error: "A compliance document failed its integrity check" });
+      return;
+    }
+    if (
+      error instanceof ComplianceProviderError ||
+      error instanceof ProviderInputFirewallError ||
+      isAbortError(error) ||
+      controller.signal.aborted
+    ) {
+      // Rerank or embedding down, or the deadline passed: no answer at all,
+      // never one from unranked passages.
+      void recordAppError({
+        severity: "warning",
+        source: "compliance",
+        operation: "compliance-ask",
+        error,
+        correlationId,
+        userId: user.id,
+        context: {
+          stage: error instanceof ComplianceProviderError ? error.stage : null,
+          status: error instanceof ComplianceProviderError ? error.status : null,
+          aborted: controller.signal.aborted
+        }
+      });
+      recordSecurityEventBestEffort({
+        ...eventBase,
+        outcome: "failure",
+        details: { ...questionDetails, reason: "unavailable" }
+      });
+      if (!res.destroyed) res.status(503).json({ error: ASK_UNAVAILABLE });
+      return;
+    }
+    next(error);
+  } finally {
+    if (deadline) clearTimeout(deadline);
+    res.off("close", abortOnClose);
   }
 });
