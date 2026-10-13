@@ -139,7 +139,19 @@ export interface GenerateAnswerInput {
     correlationId?: string;
     userId?: string;
     programId?: string;
+    /**
+     * Leave the model's rejected answer text out of the error log. The
+     * compliance assistant sets it: its answers quote internal security
+     * documents, which stay out of logs.
+     */
+    omitAnswerText?: boolean;
   };
+  /**
+   * Replaces the customer-service system prompt. Only the compliance
+   * assistant (lib/compliance/ask.ts) passes one; it keeps the same rules,
+   * citation tokens and REFUSAL_TEXT so validation is unchanged.
+   */
+  systemPrompt?: string;
 }
 
 export interface GenerateAnswerResult {
@@ -386,7 +398,9 @@ export async function generateAnswer(
   // question. Excerpts from approved documents get only the blocking classes
   // (secrets, SSNs, cards): redacting their contact emails or phone numbers
   // left the model unable to answer questions about them.
-  const systemPrompt = protectProviderText(buildSystemPrompt(input.programName)).text;
+  const systemPrompt = protectProviderText(
+    input.systemPrompt ?? buildSystemPrompt(input.programName)
+  ).text;
   const userPrompt = protectApprovedDocumentText(
     buildUserPrompt(protectProviderText(input.question).text, input.chunks)
   );
@@ -455,15 +469,21 @@ export async function generateAnswer(
       // whole chain so the caller can fail closed. The finally block below
       // still records this attempt's timing.
       if (isAbortError(err) || input.signal?.aborted) throw err;
+      const omitText = input.diagnostics?.omitAnswerText === true;
       console.warn(
         `[generation] route ${route.id} failed; trying next in chain:`,
-        err instanceof Error ? err.message : err
+        omitText
+          ? redactedAttemptError(route.id, outcome, err).message
+          : err instanceof Error
+            ? err.message
+            : err
       );
       void recordAppError({
         severity: "warning",
         source: "generation",
         operation: "openrouter-route-attempt",
-        error: err,
+        // Provider error messages can echo the prompt; keep only the status.
+        error: omitText ? redactedAttemptError(route.id, outcome, err) : err,
         provider: route.provider,
         model: route.model,
         routeId: route.id,
@@ -476,7 +496,9 @@ export async function generateAnswer(
           reasoningEffort: route.reasoningEffort,
           outcome,
           chunkCount: input.chunks.length,
-          ...(validationFailure ? { validation: validationFailure } : {})
+          ...(validationFailure
+            ? { validation: omitText ? textFreeValidation(validationFailure) : validationFailure }
+            : {})
         }
       });
     } finally {
@@ -502,6 +524,36 @@ export async function generateAnswer(
   }
 
   return { payload, llmCalled: true, generationPath, providerAttempts };
+}
+
+/**
+ * A validation failure without model-authored text. A malformed citation such
+ * as "[S1: accounts lack rotation]" lands in inlineCitationIds and
+ * unknownCitationIds verbatim, so only counts and server-issued ids remain.
+ */
+function textFreeValidation(failure: AnswerValidationFailure) {
+  return {
+    reason: failure.reason,
+    inlineCitationCount: failure.inlineCitationIds.length,
+    recognizedCitationIds: failure.recognizedCitationIds,
+    unknownCitationCount: failure.unknownCitationIds.length,
+    availableChunkIds: failure.availableChunkIds,
+    returnedText: "[omitted: compliance answer]"
+  };
+}
+
+function redactedAttemptError(
+  routeId: string,
+  outcome: ProviderAttemptOutcome,
+  err: unknown
+): Error {
+  const status =
+    typeof err === "object" && err !== null && typeof (err as { status?: unknown }).status === "number"
+      ? ` (HTTP ${(err as { status: number }).status})`
+      : "";
+  const error = new Error(`route ${routeId} attempt ${outcome}${status}`);
+  error.name = err instanceof Error ? err.name : "Error";
+  return error;
 }
 
 /** Build citation cards in first-appearance order from retrieved ground truth. */

@@ -123,6 +123,15 @@ export const requireManagerOrAbove = requireRole("manager");
 export const requireCsrOrAbove = requireRole("csr");
 
 /**
+ * Who may read the detailed compliance documents and ask questions about
+ * them (/api/compliance). Super users today. Widening access, for example to
+ * a read-only security reviewer, changes this line and its SPA counterpart
+ * (COMPLIANCE_MIN_ROLE in rag-app src/lib/complianceAccess.ts) together.
+ */
+export const COMPLIANCE_MIN_ROLE: UserRole = "super_user";
+export const requireComplianceReader = requireRole(COMPLIANCE_MIN_ROLE);
+
+/**
  * User-facing copy for every demo-write refusal. Kept as a single export
  * so the frontend can match on the exact string and the message never
  * drifts between routes.

@@ -5,6 +5,7 @@ import type {
   AskStage,
   BulkCreateUsersResponse,
   ChangePasswordResponse,
+  ComplianceAskResponse,
   ComplianceDocumentListResponse,
   ComplianceDocumentResponse,
   CreateUserRequest,
@@ -1499,6 +1500,23 @@ export async function downloadComplianceDocumentPdf(slug: string): Promise<void>
     // Revoke after the click has handed the blob to the download manager.
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
+}
+
+/** Ask a question about the compliance documents: a cited answer or the refusal. */
+export async function askCompliance(
+  question: string,
+  signal?: AbortSignal
+): Promise<ComplianceAskResponse> {
+  const response = await fetch(
+    "/api/compliance/ask",
+    withDefaults({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+      signal
+    })
+  );
+  return asJson<ComplianceAskResponse>(response);
 }
 
 /** Null when the document does not exist (404) or the id is malformed (400). */

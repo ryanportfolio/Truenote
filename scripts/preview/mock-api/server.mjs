@@ -2124,6 +2124,62 @@ route("GET", /^\/api\/compliance\/documents\/([^/]+)$/, ({ user, params }) => {
   return body;
 });
 
+// POST /api/compliance/ask: word overlap stands in for embeddings, rerank and
+// the model. Passages are the fixture's blank-line blocks with real offsets,
+// so citation links mark the right span in the document view.
+const COMPLIANCE_PASSAGES = COMPLIANCE_FIXTURES.flatMap((doc) => {
+  const passages = [];
+  let section = "";
+  const pattern = /[^\n]+(?:\n[^\n]+)*/g;
+  for (const match of doc.markdown.matchAll(pattern)) {
+    const heading = /^#{1,6}\s+(.+)$/.exec(match[0]);
+    if (heading && !match[0].includes("\n")) {
+      section = heading[1];
+      continue;
+    }
+    passages.push({
+      chunk_id: createHash("sha256").update(`${doc.sha256}:${match.index}`).digest("hex").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/, "$1-$2-$3-$4-$5"),
+      slug: doc.slug,
+      title: doc.title,
+      version: doc.version,
+      sha256: doc.sha256,
+      section,
+      excerpt: match[0],
+      source_start: match.index,
+      source_end: match.index + match[0].length
+    });
+  }
+  return passages;
+});
+const ASK_STOPWORDS = new Set("a an and are as at be by do does for from how in is it of on or the to what when where which who why with".split(" "));
+const askWords = (text) => new Set(text.toLowerCase().match(/[a-z0-9-]+/g)?.filter((word) => !ASK_STOPWORDS.has(word)) ?? []);
+route("POST", /^\/api\/compliance\/ask$/, ({ user, body }) => {
+  requireRole(user, "super_user");
+  const question = typeof body?.question === "string" ? body.question.trim() : "";
+  if (!question || question.length > 1000) throw badRequest("Ask a question of 1 to 1000 characters.");
+  const asked = askWords(question);
+  const scored = COMPLIANCE_PASSAGES.map((passage) => {
+    const words = askWords(passage.excerpt);
+    return { passage, shared: [...asked].filter((word) => words.has(word)).length };
+  })
+    .filter((item) => item.shared >= 2)
+    .sort((left, right) => right.shared - left.shared)
+    .slice(0, 2);
+  audit.push({ at: iso(Date.now()), action: "compliance.question", actor: user.email, questionLength: question.length, refused: scored.length === 0 });
+  if (scored.length === 0) {
+    return {
+      answer: "I couldn't find this in the knowledge base. Please escalate or check the source documents directly.",
+      refused: true,
+      sources: []
+    };
+  }
+  const sources = scored.map((item) => item.passage);
+  const answer = sources
+    .map((source) => `The fixture covers this under **${source.section || source.title}**. [${source.chunk_id}]`)
+    .join("\n\n");
+  return { answer, refused: false, sources };
+});
+
 route("GET", /^\/api\/me$/, ({ req }) => ({ user: publicUser(requireUser(req)) }));
 route("POST", /^\/api\/auth\/login$/, ({ body, res }) => {
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
