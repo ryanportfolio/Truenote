@@ -8,8 +8,11 @@ import type { ComplianceAskResponse, ComplianceSource, Source } from "@/types/ap
 import { useTypewriter } from "./useTypewriter";
 
 const FALLBACK_PLACEHOLDER = "Ask about the compliance documents";
+/** First wait while the server writes the questions; each wait grows to a minute. */
 const SUGGESTION_POLL_MS = 15_000;
-const SUGGESTION_POLLS = 8;
+const SUGGESTION_POLL_MAX_MS = 60_000;
+/** Longer than the server's 8-minute bound on one run, plus its 10-minute retry. */
+const SUGGESTION_POLL_FOR_MS = 20 * 60_000;
 
 /** Shuffled once per visit so the box does not open on the same question. */
 function shuffled(lines: readonly string[]): string[] {
@@ -23,21 +26,24 @@ function shuffled(lines: readonly string[]): string[] {
 
 /**
  * Example questions written from the current documents. The server answers
- * "pending" while it writes them, so this asks again a few times.
+ * "pending" while it writes them, so this asks again, waiting longer each
+ * time, until they arrive, the server gives up, or the page closes.
  */
 function useComplianceSuggestions(): string[] {
   const [questions, setQuestions] = useState<string[]>([]);
   useEffect(() => {
     let cancelled = false;
     let timer: number | undefined;
-    let polls = 0;
+    let wait = SUGGESTION_POLL_MS;
+    const stopAt = Date.now() + SUGGESTION_POLL_FOR_MS;
     const load = (): void => {
       getComplianceSuggestions()
         .then((result) => {
           if (cancelled) return;
           if (result.questions.length > 0) setQuestions(shuffled(result.questions));
-          else if (result.status === "pending" && polls++ < SUGGESTION_POLLS) {
-            timer = window.setTimeout(load, SUGGESTION_POLL_MS);
+          else if (result.status === "pending" && Date.now() + wait < stopAt) {
+            timer = window.setTimeout(load, wait);
+            wait = Math.min(wait * 2, SUGGESTION_POLL_MAX_MS);
           }
         })
         .catch(() => {
@@ -163,7 +169,7 @@ export function ComplianceAsk(): JSX.Element {
         </h2>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           Answers cite the document section they come from, or say the documents do not cover
-          the question. Each question is recorded in the security log without its text.
+          the question.
         </p>
       </div>
       <form onSubmit={onSubmit} className="composer-frame">

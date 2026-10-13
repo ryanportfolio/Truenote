@@ -30,7 +30,7 @@ import { getObjectStorage, type ObjectStorage } from "../storage/object-storage.
 import { retrieveCompliance, type ComplianceRetrievalDeps } from "./ask.js";
 import { COMPLIANCE_CHUNKER_VERSION, type CompliancePassage } from "./chunking.js";
 import { COMPLIANCE_KEY_PREFIX } from "./documents.js";
-import type { ComplianceSearchIndex } from "./search-index.js";
+import { waitFor, type ComplianceSearchIndex } from "./search-index.js";
 
 /** Bump when the prompt or the checks change: it is part of the cache key. */
 const SUGGESTIONS_VERSION = 1;
@@ -45,6 +45,8 @@ const CHECK_CONCURRENCY = 4;
 const MODEL_TIMEOUT_MS = 60_000;
 /** After a failed run, the next request waits this long before trying again. */
 const RETRY_AFTER_MS = 10 * 60_000;
+/** Upper bound on one whole run: storage, settings, model calls and checks. */
+const GENERATION_TIMEOUT_MS = 8 * 60_000;
 
 export type SuggestionsStatus = "ready" | "pending" | "unavailable";
 
@@ -172,21 +174,25 @@ export interface SuggestionDeps {
   /** Overrides the compliance chain for tests. */
   chain?: ApprovedModelRoute[];
   completion?: UtilityCompletionDeps;
+  /** Overrides GENERATION_TIMEOUT_MS for tests. */
+  generationTimeoutMs?: number;
 }
 
 async function writeQuestions(
   passages: CompliancePassage[],
   chain: ApprovedModelRoute[],
-  deps: SuggestionDeps
+  deps: SuggestionDeps,
+  signal: AbortSignal
 ): Promise<Array<{ question: string; slug: string }>> {
   const out: Array<{ question: string; slug: string }> = [];
   for (let offset = 0; offset < passages.length; offset += PASSAGES_PER_CALL) {
     const batch = passages.slice(offset, offset + PASSAGES_PER_CALL);
     const prompt = buildSuggestionPrompt(batch);
     for (const route of chain) {
+      signal.throwIfAborted();
       try {
         const reply = await runUtilityCompletionDetailed(
-          { ...prompt, timeoutMs: MODEL_TIMEOUT_MS, maxRetries: 0, json: true },
+          { ...prompt, timeoutMs: MODEL_TIMEOUT_MS, maxRetries: 0, json: true, signal },
           { ...deps.completion, route }
         );
         const questions = parseSuggestionReply(reply.text ?? "");
@@ -197,6 +203,7 @@ async function writeQuestions(
         }
         break;
       } catch (error) {
+        if (signal.aborted) throw signal.reason;
         // Text-free: the error names the route and outcome, never the reply.
         void recordAppError({
           severity: "warning",
@@ -223,7 +230,8 @@ async function writeQuestions(
 async function checkQuestions(
   candidates: Array<{ question: string; slug: string }>,
   index: ComplianceSearchIndex,
-  deps: SuggestionDeps
+  deps: SuggestionDeps,
+  runSignal: AbortSignal
 ): Promise<string[]> {
   const seen = new Set<string>();
   const unique = candidates.flatMap((candidate) => {
@@ -233,41 +241,63 @@ async function checkQuestions(
     return [{ question, slug: candidate.slug }];
   });
   const kept: boolean[] = new Array(unique.length).fill(false);
+  // The first failed check stops handing out work and cancels the checks in
+  // flight; the call returns only after every lane has stopped.
+  const lanes = new AbortController();
+  const signal = AbortSignal.any([runSignal, lanes.signal]);
   let next = 0;
+  let failure: { error: unknown } | null = null;
   const lane = async (): Promise<void> => {
-    while (next < unique.length) {
+    while (failure === null && next < unique.length) {
       const position = next++;
       const candidate = unique[position]!;
-      const retrieval = await retrieveCompliance(candidate.question, index, deps.retrieval);
-      kept[position] =
-        !retrieval.refused &&
-        retrieval.passages
-          .filter((item) => !item.neighbor)
-          .slice(0, 3)
-          .some((item) => item.passage.slug === candidate.slug);
+      try {
+        const retrieval = await retrieveCompliance(candidate.question, index, { ...deps.retrieval, signal });
+        kept[position] =
+          !retrieval.refused &&
+          retrieval.passages
+            .filter((item) => !item.neighbor)
+            .slice(0, 3)
+            .some((item) => item.passage.slug === candidate.slug);
+      } catch (error) {
+        if (failure === null) {
+          failure = { error };
+          lanes.abort(error);
+        }
+        return;
+      }
     }
   };
   await Promise.all(Array.from({ length: Math.min(CHECK_CONCURRENCY, unique.length) }, lane));
+  if (failure !== null) throw (failure as { error: unknown }).error;
   return unique.filter((_, position) => kept[position]).map((candidate) => candidate.question).slice(0, MAX_SUGGESTIONS);
 }
 
-async function generate(index: ComplianceSearchIndex, deps: SuggestionDeps): Promise<string[]> {
+async function generate(
+  index: ComplianceSearchIndex,
+  deps: SuggestionDeps,
+  signal: AbortSignal
+): Promise<string[]> {
   const storage = deps.storage ?? getObjectStorage();
   const key = complianceSuggestionsKey(index.manifestHash);
-  if (await storage.exists(key)) {
+  if (await waitFor(storage.exists(key), signal)) {
     try {
-      const cached = JSON.parse((await storage.get(key)).toString("utf8")) as { questions?: unknown };
+      const cached = JSON.parse((await waitFor(storage.get(key), signal)).toString("utf8")) as {
+        questions?: unknown;
+      };
       if (Array.isArray(cached.questions)) {
         return cached.questions.filter((question): question is string => typeof question === "string");
       }
-    } catch {
+    } catch (error) {
+      if (signal.aborted) throw error;
       // Unreadable cache: write it again.
     }
   }
-  const chain = deps.chain ?? (await getActiveModelChain("compliance"));
-  const candidates = await writeQuestions(pickPassages(index.passages), chain, deps);
-  const questions = await checkQuestions(candidates, index, deps);
+  const chain = deps.chain ?? (await waitFor(getActiveModelChain("compliance"), signal));
+  const candidates = await writeQuestions(pickPassages(index.passages), chain, deps, signal);
+  const questions = await checkQuestions(candidates, index, deps, signal);
   if (questions.length === 0) throw new Error("no example question passed the checks");
+  signal.throwIfAborted();
   await storage.put(
     key,
     Buffer.from(JSON.stringify({ schemaVersion: 1, questions }), "utf8"),
@@ -294,8 +324,13 @@ export function getComplianceSuggestions(
   if (failed?.manifestHash === manifestHash && Date.now() - failed.at < RETRY_AFTER_MS) {
     return { status: "unavailable", questions: [] };
   }
-  const promise = generate(index, deps).then(
+  // One deadline for the whole run, storage reads included: a stalled run
+  // fails, clears `running` and is retried after RETRY_AFTER_MS, and its
+  // late result is never published.
+  const signal = AbortSignal.timeout(deps.generationTimeoutMs ?? GENERATION_TIMEOUT_MS);
+  const promise: Promise<void> = waitFor(generate(index, deps, signal), signal).then(
     (questions) => {
+      if (running?.promise !== promise) return;
       ready = { manifestHash, questions };
       failed = null;
     },

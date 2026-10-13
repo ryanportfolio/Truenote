@@ -122,6 +122,36 @@ describe("getComplianceSuggestions", () => {
     expect(calls.completions.length).toBe(completionsBefore);
   });
 
+  it("fails a run stalled on storage at its deadline instead of staying pending", async () => {
+    const storage = new InMemoryObjectStorage();
+    storage.exists = () => new Promise<boolean>(() => undefined);
+    const deps = { storage, chain, generationTimeoutMs: 50 };
+    const passages = [passage("plan", 0)];
+    expect(suggestions.getComplianceSuggestions(index(passages), deps).status).toBe("pending");
+    await vi.waitFor(() =>
+      expect(suggestions.getComplianceSuggestions(index(passages), deps).status).toBe("unavailable")
+    );
+    expect(calls.completions).toEqual([]);
+  });
+
+  it("stops checking questions after one check fails", async () => {
+    const storage = new InMemoryObjectStorage();
+    let checks = 0;
+    calls.retrieval = () => {
+      checks += 1;
+      if (checks === 1) throw new Error("rerank down");
+      return { refused: false, slug: "plan" };
+    };
+    const deps = { storage, chain };
+    const passages = Array.from({ length: 40 }, (_, i) => passage("plan", i));
+    suggestions.getComplianceSuggestions(index(passages), deps);
+    await vi.waitFor(() =>
+      expect(suggestions.getComplianceSuggestions(index(passages), deps).status).toBe("unavailable")
+    );
+    // At most the four checks already in flight ran, not all 40.
+    expect(checks).toBeLessThanOrEqual(4);
+  });
+
   it("reports unavailable after a failed run and does not retry at once", async () => {
     const storage = new InMemoryObjectStorage();
     calls.retrieval = () => ({ refused: true, slug: "plan" });
