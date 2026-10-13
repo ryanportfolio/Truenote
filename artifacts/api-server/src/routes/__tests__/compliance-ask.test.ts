@@ -74,8 +74,24 @@ vi.mock("openai", () => ({
     chat = {
       completions: {
         create: async (request: { messages: Array<{ role: string; content: string }> }) => {
+          const system = request.messages.find((message) => message.role === "system")?.content ?? "";
+          if (system.includes("example questions")) {
+            // Suggestion writer: one question per excerpt, built from its words.
+            const questions = request.messages
+              .filter((message) => message.role === "user")
+              .map((message, i) => {
+                const body = message.content.split("\n").slice(1).join(" ");
+                const words = body
+                  .replace(/[^A-Za-z ]/g, " ")
+                  .split(/\s+/)
+                  .filter((word) => word.length > 3)
+                  .slice(0, 6);
+                return { excerpt: `P${i + 1}`, question: `What about ${words.join(" ")}?` };
+              });
+            return { choices: [{ message: { content: JSON.stringify({ questions }) } }], usage: null };
+          }
           llm.calls += 1;
-          llm.system = request.messages.find((message) => message.role === "system")?.content ?? "";
+          llm.system = system;
           const user = request.messages.find((message) => message.role === "user")?.content ?? "";
           const content = typeof llm.reply === "function" ? llm.reply(user) : llm.reply;
           return { choices: [{ message: { content } }], usage: null };
@@ -126,6 +142,7 @@ vi.mock("../../lib/compliance/providers.js", async (importOriginal) => {
 const { complianceRouter } = await import("../compliance.js");
 const { resetDeadlineConfigForTests } = await import("../../lib/deadlines.js");
 const { __resetComplianceSearchIndexForTests } = await import("../../lib/compliance/search-index.js");
+const { __resetComplianceSuggestionsForTests } = await import("../../lib/compliance/suggestions.js");
 
 // A fresh id per user keeps each test inside its own 10-a-minute ask budget.
 let userCounter = 0;
@@ -240,6 +257,7 @@ beforeEach(async () => {
   storage = new InMemoryObjectStorage();
   __resetObjectStorageForTests(storage);
   __resetComplianceSearchIndexForTests();
+  await __resetComplianceSuggestionsForTests();
   audit.events = [];
   audit.fail = false;
   audit.during = null;
@@ -530,6 +548,41 @@ describe("POST /api/compliance/ask rate limit", () => {
       expect((await ask("What is the capital of France?")).status).toBe(200);
     }
     expect((await ask("What is the capital of France?")).status).toBe(429);
+  });
+});
+
+describe("GET /api/compliance/suggestions", () => {
+  async function suggestions(): Promise<{ status: number; body: any }> {
+    const response = await fetch(`${baseUrl}/api/compliance/suggestions`);
+    return { status: response.status, body: await response.json() };
+  }
+
+  it.each(["csr", "supervisor", "manager", "senior_manager"] as const)("returns 403 to a %s", async (role) => {
+    actor = userWith(role);
+    expect((await suggestions()).status).toBe(403);
+    expect(providers.embedCalls).toEqual([]);
+  });
+
+  it("answers pending without waiting, then returns checked questions and records the read", async () => {
+    expect((await suggestions()).body).toEqual({ status: "pending", questions: [] });
+    let result = await suggestions();
+    for (let i = 0; i < 50 && result.body.status === "pending"; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      result = await suggestions();
+    }
+    expect(result.body.status).toBe("ready");
+    expect(result.body.questions.length).toBeGreaterThan(0);
+    for (const question of result.body.questions) expect(question.endsWith("?")).toBe(true);
+    expect(audit.events.at(-1)).toMatchObject({
+      action: "compliance.suggestions_read",
+      outcome: "success",
+      details: { count: result.body.questions.length }
+    });
+  });
+
+  it("answers unavailable when nothing is uploaded", async () => {
+    await storage.delete(COMPLIANCE_MANIFEST_KEY);
+    expect((await suggestions()).body).toEqual({ status: "unavailable", questions: [] });
   });
 });
 

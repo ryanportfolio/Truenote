@@ -1343,6 +1343,12 @@ export interface ComplianceSource {
   source_end: number;
 }
 
+/** GET /api/compliance/suggestions: example questions written from the documents. */
+export interface ComplianceSuggestionsResponse {
+  status: "ready" | "pending" | "unavailable";
+  questions: string[];
+}
+
 export interface ComplianceAskResponse {
   answer: string;
   refused: boolean;

@@ -16,9 +16,11 @@ import {
   readComplianceManifest
 } from "../lib/compliance/documents.js";
 import { ComplianceProviderError } from "../lib/compliance/providers.js";
+import { getComplianceSuggestions } from "../lib/compliance/suggestions.js";
 import {
   complianceManifestHash,
   getComplianceSearchIndex,
+  peekComplianceSearchIndex,
   waitFor,
   warmComplianceIndex
 } from "../lib/compliance/search-index.js";
@@ -61,6 +63,45 @@ complianceRouter.get("/documents", complianceReadLimit, async (_req, res, next) 
         pdfSize: pdf ? pdf.size : null
       }))
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Example questions for the question box (lib/compliance/suggestions.ts).
+ * Never waits: while the index or the questions are being built it answers
+ * "pending" and starts the work. Questions are written from the documents,
+ * so returning them records a security event first, like a document read.
+ */
+complianceRouter.get("/suggestions", complianceReadLimit, async (req, res, next) => {
+  try {
+    const user = authedUser(req);
+    const manifest = await readComplianceManifest();
+    if (manifest.documents.length === 0) {
+      res.json({ status: "unavailable", questions: [] });
+      return;
+    }
+    const index = peekComplianceSearchIndex(manifest);
+    if (!index) {
+      warmComplianceIndex(manifest);
+      res.json({ status: "pending", questions: [] });
+      return;
+    }
+    const suggestions = getComplianceSuggestions(index);
+    if (suggestions.questions.length > 0) {
+      await recordSecurityEvent({
+        action: "compliance.suggestions_read",
+        outcome: "success",
+        actor: user,
+        resourceType: "compliance_suggestions",
+        resourceId: index.manifestHash.slice(0, 16),
+        sourceIp: clientIpFrom(req),
+        details: { count: suggestions.questions.length, manifestHash: index.manifestHash }
+      });
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.json(suggestions);
   } catch (error) {
     next(error);
   }

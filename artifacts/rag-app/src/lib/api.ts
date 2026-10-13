@@ -6,6 +6,7 @@ import type {
   BulkCreateUsersResponse,
   ChangePasswordResponse,
   ComplianceAskResponse,
+  ComplianceSuggestionsResponse,
   ComplianceDocumentListResponse,
   ComplianceDocumentResponse,
   CreateUserRequest,
@@ -1500,6 +1501,12 @@ export async function downloadComplianceDocumentPdf(slug: string): Promise<void>
     // Revoke after the click has handed the blob to the download manager.
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
+}
+
+/** Example questions for the compliance question box, or a status while they are written. */
+export async function getComplianceSuggestions(): Promise<ComplianceSuggestionsResponse> {
+  const response = await fetch("/api/compliance/suggestions", withDefaults({}, { background: true }));
+  return asJson<ComplianceSuggestionsResponse>(response);
 }
 
 /** Ask a question about the compliance documents: a cited answer or the refusal. */

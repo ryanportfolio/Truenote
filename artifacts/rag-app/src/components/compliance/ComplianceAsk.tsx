@@ -2,9 +2,56 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { Link } from "wouter";
 import { BookOpen, X } from "lucide-react";
 import { AnswerMarkdown } from "@/components/chat/AnswerMarkdown";
-import { UnauthorizedError, askCompliance } from "@/lib/api";
+import { UnauthorizedError, askCompliance, getComplianceSuggestions } from "@/lib/api";
 import { complianceCitationHref } from "@/lib/complianceAccess";
 import type { ComplianceAskResponse, ComplianceSource, Source } from "@/types/api";
+import { useTypewriter } from "./useTypewriter";
+
+const FALLBACK_PLACEHOLDER = "Ask about the compliance documents";
+const SUGGESTION_POLL_MS = 15_000;
+const SUGGESTION_POLLS = 8;
+
+/** Shuffled once per visit so the box does not open on the same question. */
+function shuffled(lines: readonly string[]): string[] {
+  const out = [...lines];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}
+
+/**
+ * Example questions written from the current documents. The server answers
+ * "pending" while it writes them, so this asks again a few times.
+ */
+function useComplianceSuggestions(): string[] {
+  const [questions, setQuestions] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+    let polls = 0;
+    const load = (): void => {
+      getComplianceSuggestions()
+        .then((result) => {
+          if (cancelled) return;
+          if (result.questions.length > 0) setQuestions(shuffled(result.questions));
+          else if (result.status === "pending" && polls++ < SUGGESTION_POLLS) {
+            timer = window.setTimeout(load, SUGGESTION_POLL_MS);
+          }
+        })
+        .catch(() => {
+          // The fixed placeholder stays; the box works without examples.
+        });
+    };
+    load();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, []);
+  return questions;
+}
 
 /**
  * Questions about the compliance documents. Answers come from the server
@@ -48,6 +95,10 @@ export function ComplianceAsk(): JSX.Element {
   const [question, setQuestion] = useState("");
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [busy, setBusy] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const suggestions = useComplianceSuggestions();
+  // Types example questions into the empty box; stops while it has focus.
+  const example = useTypewriter(suggestions, focused || question.length > 0);
   const nextId = useRef(1);
   const abortRef = useRef<AbortController | null>(null);
   // One citation panel for the whole section, whichever answer it came from.
@@ -125,9 +176,11 @@ export function ComplianceAsk(): JSX.Element {
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
           onKeyDown={onKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           maxLength={1000}
           rows={2}
-          placeholder="Which controls are open in the plan of action?"
+          placeholder={suggestions.length > 0 ? example : FALLBACK_PLACEHOLDER}
           className="composer-input placeholder:opacity-90"
         />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
