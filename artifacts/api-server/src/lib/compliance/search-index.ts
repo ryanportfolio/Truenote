@@ -20,6 +20,7 @@
  * not match the passages exactly is ignored and rebuilt.
  */
 import { createHash } from "node:crypto";
+import { recordAppError } from "../observability/error-log.js";
 import { getObjectStorage, type ObjectStorage } from "../storage/object-storage.js";
 import { buildBm25Index, type Bm25Index } from "./bm25.js";
 import {
@@ -30,6 +31,7 @@ import {
 import {
   COMPLIANCE_KEY_PREFIX,
   readComplianceDocumentBody,
+  readComplianceManifest,
   type ComplianceManifest
 } from "./documents.js";
 import {
@@ -245,6 +247,29 @@ export function waitFor<T>(promise: Promise<T>, signal: AbortSignal | undefined)
       }
     );
   });
+}
+
+/**
+ * Build the index in the background so the first question after a deploy or
+ * an upload does not wait for every passage to be embedded. Called when the
+ * web service starts and when the Compliance page lists the documents; with
+ * the vector cache in place a warm start is a storage read. Failures are
+ * logged and the next question builds again.
+ */
+export function warmComplianceIndex(
+  manifest?: ComplianceManifest,
+  deps: ComplianceIndexDeps = {}
+): void {
+  void (manifest ? Promise.resolve(manifest) : readComplianceManifest(deps.storage))
+    .then((listed) => (listed.documents.length > 0 ? getComplianceSearchIndex(listed, deps) : null))
+    .catch((error: unknown) => {
+      void recordAppError({
+        severity: "warning",
+        source: "compliance",
+        operation: "compliance-index-warm",
+        error
+      });
+    });
 }
 
 export function __resetComplianceSearchIndexForTests(): void {

@@ -410,6 +410,16 @@ describe("POST /api/compliance/ask answers", () => {
 });
 
 describe("POST /api/compliance/ask follows uploads", () => {
+  it("builds the index when the document list loads, so the first question does not", async () => {
+    const list = await fetch(`${baseUrl}/api/compliance/documents`);
+    expect(list.status).toBe(200);
+    await vi.waitFor(() => expect(providers.embedCalls.filter((call) => call.kind === "document")).toHaveLength(1));
+    llm.reply = citing("access reviews", "Access reviews are scheduled.");
+    expect((await ask("How often are access reviews performed?")).status).toBe(200);
+    expect(providers.embedCalls.filter((call) => call.kind === "document")).toHaveLength(1);
+  });
+
+
   it("rebuilds the index when the manifest changes and cites only the new version", async () => {
     llm.reply = citing("access reviews", "Access reviews are scheduled.");
     const first = await ask("How often are access reviews performed?");
