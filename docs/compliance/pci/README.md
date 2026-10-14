@@ -96,8 +96,10 @@ and evidence sufficiency.
    pinned the threat model after the generation-excerpt firewall change and the
    SIEM outbox retirement, and the catalog verifier after that retirement.
    [`verification-record-2026-10-12.md`](./verification-record-2026-10-12.md)
+   pinned the threat model after the Replit deployment was unpublished.
+   [`verification-record-2026-10-14.md`](./verification-record-2026-10-14.md)
    is the current record the evidence gate reads; it pins the threat model after
-   the Replit deployment was unpublished.
+   the domain moved to Namecheap.
 15. [`change-record-2026-07-16-security-readiness.md`](./change-record-2026-07-16-security-readiness.md)
    is the populated pre-release Requirement 6.5 record for this tranche; its
    unchecked approval, hosted-check, deployment, and runtime gates block closure.
