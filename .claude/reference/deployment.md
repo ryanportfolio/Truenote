@@ -279,7 +279,25 @@ The owner switched DNS on 2026-10-07 at about 19:50 EDT (23:50 UTC) in Replit's 
 
 Certificates issued: Let's Encrypt, at about 23:57 UTC (19:57 EDT) on 2026-10-07, a few minutes after the switch (Railway showed `VALIDATING_OWNERSHIP` until then). `truenote.org` from issuer YR2, `www.truenote.org` from issuer YE2; both valid until 2027-01-05, served over TLS 1.3, each with 2 SCTs.
 
-Railway asked for CNAMEs to `wh7hdrd8.up.railway.app` (apex) and `8v3dq8ce.up.railway.app` (`www`); the A values are those hosts' addresses at the switch. Railway's edge IPs are not guaranteed stable, so check from time to time that the targets still resolve to these addresses; a registrar with ALIAS records removes that risk. Leave the existing `replit-verify` TXT in place until Replit is retired.
+Railway asked for CNAMEs to `wh7hdrd8.up.railway.app` (apex) and `8v3dq8ce.up.railway.app` (`www`); the A values are those hosts' addresses at the switch.
+
+### Namecheap (since 2026-10-14)
+
+The domain transferred from Name.com (through Replit) to Namecheap; the registry recorded the transfer at 00:21 UTC on 2026-10-14. Name.com stopped serving the zone at the transfer, and the site was down until the owner set Namecheap BasicDNS (`dns1.registrar-servers.com`, `dns2.registrar-servers.com`) at about 16:59 UTC; the `.org` servers published the new delegation at 17:05 UTC and public resolvers followed (the `.org` delegation TTL is 3600 s). DNSSEC is off (no DS record). Records in Namecheap's Advanced DNS tab, read from Namecheap's servers on 2026-10-14:
+
+| Type | Host | Value |
+|---|---|---|
+| A or ALIAS | `@` | answers `69.46.46.101` (`wh7hdrd8.up.railway.app`) |
+| CNAME | `www` | `8v3dq8ce.up.railway.app` |
+| TXT | `_railway-verify`, `_railway-verify.www` | values as in the table above |
+| TXT | `resend._domainkey` | Resend DKIM key |
+| MX | `send` | `feedback-smtp.us-east-1.amazonses.com`, priority 10 |
+| TXT | `send` | `v=spf1 include:amazonses.com ~all` |
+| CNAME | `rsend` | `send.forge.rmta.net` |
+| TXT | `_dmarc` | `v=DMARC1; p=none;` |
+| TXT | `@` | `v=spf1 -all` (Namecheap default; the apex sends no mail) |
+
+If the apex is a plain A record, check from time to time that `wh7hdrd8.up.railway.app` still resolves to `69.46.46.101`; Railway's edge IPs are not guaranteed stable, and an ALIAS record to that host removes the risk. After the switch the certificates (unchanged), `/health`, the `www` 308, the `http` 301, the demo CSR login, two cited answers and the foreign-Origin 403 were checked again. A machine that looked up the domain during the outage can keep the failure cached: `ipconfig /flushdns`, and in Chrome `chrome://net-internals/#dns` → Clear host cache.
 
 Checked after issuance on `https://truenote.org`: `/health`, `/`, `/about`, `/security`, `/security/pci` and an SPA route return 200; `/api/me` returns 401 without a session; `https://www.truenote.org/<path>` answers 308 to `https://truenote.org/<path>` with the query kept; `http://` on both hosts answers 301 to `https`; responses carry `Server: railway-hikari` and `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`; the demo CSR login returns 200 with a `Secure`, `HttpOnly`, `SameSite` cookie; two questions returned cited answers; a POST with a foreign `Origin` returns 403; a fresh headless Chrome profile loads both hosts. Browsers that visited before issuance can keep showing certificate errors from cached state (`pitfalls.md`, 2026-10-07).
 
@@ -290,4 +308,4 @@ Rollback: none since 2026-10-12. The owner unpublished the Replit deployment tha
 - `CORS_ALLOWED_ORIGINS` (the Railway URL) stays set for now; remove it once nobody uses the Railway URL.
 - Backups: decided on 2026-10-10 ("Production" table, row Backups). The `pgvector` public TCP proxy was closed on 2026-10-08 (owner decision); after the deletion `/health` answered 200 on both hosts, `pgvector` was not redeployed, and the worker's `pgboss` connections over the private network stayed up.
 - Connection logging: on 2026-10-09 (owner decision) `ALTER SYSTEM SET log_connections = 'receipt,authentication,authorization'` plus `pg_reload_conf()` on `pgvector`; no restart. The value lives in `postgresql.auto.conf` on the volume. `railway logs -s pgvector` shows `connection received`, `connection authenticated` and `connection authorized` lines. The Railway variables `PGHOST` and `PGPORT` on `pgvector` now resolve empty and `DATABASE_URL` has no host, but the running container (not redeployed since 2026-10-08) still holds the deleted proxy host, which now answers as an unrelated Postgres server. A `pgvector` redeploy, which restarts the database, clears it; until then, and always, pass `-h localhost -p 5432` inside the container.
-- Email: `RESEND_API_KEY` on `web` and `worker` was replaced on 2026-10-07 and went live with the 988bf12 deploy; Resend accepts it (`GET /domains` returns 200). `RESEND_FROM_EMAIL` is `no-reply@corewise.video`, a verified Resend domain. `truenote.org` is added in Resend but not verified (status `not_started`, no DKIM records), so mail cannot be sent from a `truenote.org` address yet. No password-reset email has been sent end to end since the change.
+- Email: `RESEND_API_KEY` on `web` and `worker` was replaced on 2026-10-07 and went live with the 988bf12 deploy; Resend accepts it (`GET /domains` returns 200). `truenote.org` was verified in Resend on 2026-10-14 (DKIM, SPF MX, SPF TXT and the `rsend` CNAME all `verified`) after the Namecheap records went live, and `RESEND_FROM_EMAIL` on `web` and `worker` went back to `no-reply@truenote.org` the same day (from `no-reply@corewise.video`, used 2026-10-08 to 2026-10-14 while Replit's DNS screen could not hold MX or CNAME records). A test send from `no-reply@truenote.org` to Resend's `delivered@resend.dev` returned 200. No password-reset email has been sent end to end since the change.
