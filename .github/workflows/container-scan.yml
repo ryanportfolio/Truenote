@@ -220,8 +220,8 @@ jobs:
           severity-cutoff: high
           output-format: table
 
-  # The backup service image: the pgvector base plus age, rclone, git and curl
-  # (Dockerfile.backup). It is not started here: its default command runs a
+  # The backup service image: the pgvector base plus git and curl from Debian
+  # and upstream rclone and age (Dockerfile.backup). It is not started here: its default command runs a
   # backup and needs the service's database URL and storage credentials.
   backup-image:
     name: Grype scan of the backup image
@@ -236,7 +236,9 @@ jobs:
           persist-credentials: false
       - name: Build the backup image
         run: |
-          base_image=$(awk '/^FROM / { print $2; exit }' Dockerfile.backup)
+          # The last FROM is the final image's base; the first is the stage
+          # that fetches rclone and builds age.
+          base_image=$(awk '/^FROM / { image = $2 } END { print image }' Dockerfile.backup)
           echo "BASE_IMAGE=${base_image}" >> "$GITHUB_ENV"
           docker pull "$base_image"
           docker build --file Dockerfile.backup --tag "truenote-backup:${GITHUB_SHA}" .
