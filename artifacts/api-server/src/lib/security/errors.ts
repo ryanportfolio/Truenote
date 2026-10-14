@@ -2,11 +2,12 @@
  * Security-control DDL is intentionally applied outside the application by
  * an operator (lib/db/sql, .claude/reference/deployment.md). This error lets routes distinguish "run the reviewed
  * setup DDL" from an ordinary database outage without exposing schema detail.
+ * The default message reaches any caller, so it names no tables, DDL or setup
+ * step; the error name in the error log and the response code identify the cause.
  */
 export class SecurityControlsNotReadyError extends Error {
   constructor(
-    message =
-      "Security controls are not initialized. Ask an administrator to apply the P0/P1 security DDL."
+    message = "This service is temporarily unavailable. Try again later or contact an administrator."
   ) {
     super(message);
     this.name = "SecurityControlsNotReadyError";
