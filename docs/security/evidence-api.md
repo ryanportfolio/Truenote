@@ -28,7 +28,7 @@ All routes under `/api/admin/evidence` require a signed-in `super_user` session 
 
 `result` is `pass`, `fail` or `error`. `error` means the check could not run: no evidence, not a pass. `controls` use the SSP's unpadded labels; `objectives` use NIST's SP 800-53A labels exactly (`AC-02a.[01]`, `AU-09(04)`).
 
-A receipt counts for a catalog check only when its `kind` equals that check's kind in `GET /catalog`. `GET /controls`, `GET /failures`, `GET /chain`, `GET /summaries` and the monthly summary ignore a receipt that names a catalog check id under another kind. `GET /receipts` filters by `checkId` alone and lists such a receipt with its own `kind`.
+A receipt counts for a catalog check only when its `kind` equals that check's kind in `GET /catalog`. `GET /controls`, `GET /failures`, `GET /chain`, `GET /summaries` and the monthly summary ignore a receipt that names a catalog check id under another kind, and a receipt whose check id is not in the catalog; the monthly summary also leaves out known-gap links to such ids. `GET /receipts` filters by `checkId` alone and lists such a receipt with its own `kind`.
 
 ## Routes
 

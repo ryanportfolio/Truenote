@@ -8,18 +8,7 @@ import {
   type StoredReceipt
 } from "./receipts.js";
 import {
-  checkBranchRuleset,
-  checkCodeSecuritySettings,
-  checkCredentialExpiry,
-  checkOpenAlerts,
-  checkSecurityWorkflow,
-  GithubConfigError,
-  githubClientFromEnv,
-  type GithubClient
-} from "./checks/github.js";
-import {
   checkCsp,
-  checkDnsCaa,
   checkHealth,
   checkRedirects,
   checkSecurityHeaders,
@@ -68,27 +57,30 @@ function timeoutFor(check: CheckDefinition): number {
 }
 
 interface RunContext {
-  github: () => GithubClient;
   /** Throws SyntheticConfigError when EVIDENCE_SYNTHETIC_ACCOUNTS is missing or bad. */
   synthetic: () => SyntheticConfig;
   syntheticDeps: () => SyntheticDeps;
 }
 
+/** Checks removed from the catalog; queued manual runs may still name them. */
+export const RETIRED_CHECK_IDS: ReadonlySet<string> = new Set([
+  "github.branch-ruleset",
+  "github.code-security-settings",
+  "github.open-alerts",
+  "github.security-workflow",
+  "github.credential-expiry",
+  "external.dns-caa"
+]);
+
 /** `signal` aborts when the check's time limit passes. */
 type Runner = (ctx: RunContext, signal: AbortSignal) => Promise<CheckOutcome>;
 
 export const CHECK_RUNNERS: Record<string, Runner> = {
-  "github.branch-ruleset": (ctx) => checkBranchRuleset(ctx.github()),
-  "github.code-security-settings": (ctx) => checkCodeSecuritySettings(ctx.github()),
-  "github.open-alerts": (ctx) => checkOpenAlerts(ctx.github()),
-  "github.security-workflow": (ctx) => checkSecurityWorkflow(ctx.github()),
-  "github.credential-expiry": (ctx) => checkCredentialExpiry(ctx.github()),
   "external.tls": () => checkTls(),
   "external.http-redirect": () => checkRedirects(),
   "external.security-headers": () => checkSecurityHeaders(),
   "external.csp": () => checkCsp(),
   "external.security-txt": () => checkSecurityTxt(),
-  "external.dns-caa": () => checkDnsCaa(),
   "external.health": () => checkHealth(),
   "database.runtime-role": () => checkRuntimeRole(),
   "database.audit-triggers": () => checkAuditTriggers(),
@@ -134,7 +126,7 @@ export function errorOutcome(error: unknown): CheckOutcome {
   return {
     result: "error",
     summary:
-      error instanceof GithubConfigError || error instanceof SyntheticConfigError
+      error instanceof SyntheticConfigError
         ? `Not configured: ${message}`
         : "The check could not complete; no evidence for this run.",
     failures: [message.slice(0, 500)],
@@ -165,13 +157,11 @@ export async function runOneCheck(
 /** Run the automated checks (all, or the listed ids) and return what was recorded. */
 export async function runEvidenceChecks(onlyIds?: string[]): Promise<{ runId: string; entries: RunEntry[] }> {
   const runId = randomUUID();
-  let client: GithubClient | undefined;
   // Parsed once per run; a bad config is remembered so each synthetic check
   // records the same "Not configured" error.
   let synthetic: { config: SyntheticConfig } | { error: unknown } | undefined;
   let syntheticDeps: SyntheticDeps | undefined;
   const ctx: RunContext = {
-    github: () => (client ??= githubClientFromEnv()),
     synthetic: () => {
       if (!synthetic) {
         try {
@@ -191,10 +181,16 @@ export async function runEvidenceChecks(onlyIds?: string[]): Promise<{ runId: st
     syntheticDeps: () => (syntheticDeps ??= syntheticDepsFromDb())
   };
   const checks = onlyIds
-    ? onlyIds.map((id) => {
+    ? onlyIds.flatMap((id) => {
+        // A manual run queued before these checks left the catalog still
+        // names them; skip those and run the rest.
+        if (RETIRED_CHECK_IDS.has(id)) {
+          console.warn(`[evidence] skipping retired check ${id}`);
+          return [];
+        }
         const check = getCheck(id);
         if (!check) throw new Error(`unknown check ${id}`);
-        return check;
+        return [check];
       })
     : EVIDENCE_CHECKS.filter((check) => CHECK_RUNNERS[check.id]);
   const entries: RunEntry[] = [];

@@ -95,10 +95,10 @@ const RECEIPT_COLUMNS = sql`
 /**
  * A receipt counts for a catalog check only under that check's catalog kind,
  * so a receipt naming a catalog check id under another kind is ignored.
- * Receipts whose check id is not in the catalog (retired checks) are kept as
- * they are and attributed to no catalog check.
+ * Receipts whose check id is not in the catalog stay in the chain and in
+ * GET /receipts, but count for no check here.
  */
-const ATTRIBUTABLE = sql`(${catalogCheckMatch(EVIDENCE_CHECKS)} OR check_id NOT IN ${EVIDENCE_CHECKS.map((check) => check.id)})`;
+const ATTRIBUTABLE = catalogCheckMatch(EVIDENCE_CHECKS);
 
 async function latestPerCheck(): Promise<ReceiptRow[]> {
   const result = await db.execute(sql`

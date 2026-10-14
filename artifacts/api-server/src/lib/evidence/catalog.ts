@@ -18,7 +18,6 @@ import { canonicalJson, sha256Hex } from "./canonical.js";
  */
 
 export type CheckKind =
-  | "github"
   | "external"
   | "database"
   | "synthetic"
@@ -49,84 +48,6 @@ export const ASSESSMENT_STATEMENT =
   "independent assessment (CA-2(1)) is not met.";
 
 export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
-  {
-    id: "github.branch-ruleset",
-    kind: "github",
-    title: "Default-branch ruleset requires pull requests and CI",
-    controls: ["CM-3", "CM-3(2)", "CM-5", "SA-10"],
-    objectives: [
-      "CM-03b.[01]",
-      "CM-03c.",
-      "CM-03(02)[01]",
-      "CM-03(02)[02]",
-      "CM-05[06]",
-      "SA-10b.[03]",
-      "SA-10c."
-    ],
-    cadence: "daily",
-    cadenceStatus: "proposed",
-    passCondition:
-      "An active ruleset targets the default branch with deletion, non_fast_forward, pull_request " +
-      "and required_status_checks rules; every required check in REQUIRED_STATUS_CHECKS is listed; " +
-      "no bypass actor has bypass_mode 'always'.",
-    limits:
-      "Shows the rules GitHub enforces, not that every merged change was reviewed; " +
-      "required approvals are recorded but not required (single maintainer)."
-  },
-  {
-    id: "github.code-security-settings",
-    kind: "github",
-    title: "Secret scanning, push protection and Dependabot alerts are on",
-    controls: ["RA-5", "SI-2"],
-    objectives: ["RA-05a.[01]", "RA-05f.", "SI-02a.[01]"],
-    cadence: "daily",
-    cadenceStatus: "proposed",
-    passCondition:
-      "Repository security_and_analysis reports secret_scanning and secret_scanning_push_protection " +
-      "enabled, and the vulnerability-alerts endpoint returns 204 (Dependabot alerts enabled). " +
-      "Dependabot security updates and other optional settings are recorded, not required."
-  },
-  {
-    id: "github.open-alerts",
-    kind: "github",
-    title: "No overdue critical or high alerts",
-    controls: ["RA-5", "SI-2"],
-    objectives: ["RA-05c.", "RA-05d.", "SI-02a.[03]", "SI-02c.[01]"],
-    cadence: "daily",
-    cadenceStatus: "proposed",
-    passCondition:
-      "No open secret-scanning alert, and no open critical or high Dependabot or code-scanning alert " +
-      "older than ALERT_REMEDIATION_DAYS (proposed value 30) days. Counts by severity and age are recorded.",
-    limits: "The remediation window is a proposed parameter value until approved."
-  },
-  {
-    id: "github.security-workflow",
-    kind: "github",
-    title: "Security workflow runs on schedule and passes",
-    controls: ["CA-7", "SA-11", "RA-5"],
-    objectives: ["CA-07c.", "CA-07d.", "SA-11c.[01]", "SA-11c.[02]", "RA-05a.[02]"],
-    cadence: "daily",
-    cadenceStatus: "proposed",
-    passCondition:
-      "The latest completed scheduled run of .github/workflows/security.yml on the default branch " +
-      "concluded success and started within the last 8 days, and the latest completed push run on " +
-      "the default branch concluded success. Runs still in progress, and cancelled runs that a newer " +
-      "run on the same branch superseded, are skipped; a cancelled newest run fails. If no completed " +
-      "run is found in the latest 100, the check records error."
-  },
-  {
-    id: "github.credential-expiry",
-    kind: "github",
-    title: "Harness GitHub token is valid for 30 more days",
-    controls: ["CA-7"],
-    objectives: ["CA-07[02]"],
-    cadence: "daily",
-    cadenceStatus: "proposed",
-    passCondition:
-      "The read-only token answers GET /repos/{repo} and its github-authentication-token-expiration " +
-      "header (when present) is at least 30 days away.",
-    limits: "Proves the harness can keep collecting GitHub evidence; proves nothing about the repository."
-  },
   {
     id: "external.tls",
     kind: "external",
@@ -190,18 +111,6 @@ export const EVIDENCE_CHECKS: readonly CheckDefinition[] = [
     passCondition:
       "https://truenote.org/.well-known/security.txt answers 200 with a Contact field and an Expires " +
       "date at least 30 days away."
-  },
-  {
-    id: "external.dns-caa",
-    kind: "external",
-    title: "CAA records limit certificate issuance",
-    controls: ["SC-17", "CM-6"],
-    objectives: ["SC-17a.", "CM-06b."],
-    cadence: "daily",
-    cadenceStatus: "proposed",
-    passCondition:
-      "truenote.org has at least one CAA issue record. The records and the A, AAAA and CNAME answers " +
-      "for the public hosts are recorded."
   },
   {
     id: "external.health",

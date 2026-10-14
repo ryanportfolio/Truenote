@@ -8,7 +8,7 @@
  *    last receipt is older than the stale limit or the endpoint is down: the
  *    harness cannot report its own silence.
  * 2. Repeats the passive public checks (TLS, redirects, headers, CSP,
- *    security.txt, DNS, /health) and prints the results. These are facts any
+ *    security.txt, /health) and prints the results. These are facts any
  *    visitor can see, so they are safe in a public log; they do not change
  *    the exit code. Production receipts come from the worker.
  *
@@ -16,7 +16,6 @@
  */
 import {
   checkCsp,
-  checkDnsCaa,
   checkHealth,
   checkRedirects,
   checkSecurityHeaders,
@@ -31,7 +30,6 @@ const CHECKS = {
   "external.security-headers": checkSecurityHeaders,
   "external.csp": checkCsp,
   "external.security-txt": checkSecurityTxt,
-  "external.dns-caa": checkDnsCaa,
   "external.health": checkHealth
 };
 
