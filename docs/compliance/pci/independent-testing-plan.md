@@ -82,8 +82,10 @@ The final scope and report must map every applicable stable ID in
 [`threat-model.md`](./threat-model.md). At minimum:
 
 - Workstream A covers TN-TM-001 through TN-TM-007, TN-TM-010, TN-TM-015,
-  TN-TM-018 through TN-TM-020, TN-TM-025, and TN-TM-026.
-- Workstream B covers TN-TM-008, TN-TM-009, and TN-TM-011 through TN-TM-014,
+  TN-TM-018 through TN-TM-020, TN-TM-025, TN-TM-026, TN-TM-028, TN-TM-029, and
+  TN-TM-032 through TN-TM-034.
+- Workstream B covers TN-TM-008, TN-TM-009, TN-TM-011 through TN-TM-014, and
+  TN-TM-027, TN-TM-030 and TN-TM-031 (the compliance question flow),
   including bypass, obfuscation, false-positive, fail-closed, and downstream
   receipt testing of the local OpenAI/Cohere pre-OpenRouter firewall plus the
   still-uncovered contextual name/address classes.

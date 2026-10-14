@@ -113,8 +113,9 @@ and evidence sufficiency.
     exercises, final-scope/release binding, and a fail-closed validator. The
     [`Markdown companion`](./production-control-verification-record-template.md)
     is for human review notes only.
-18. [`threat-model.md`](./threat-model.md) maps 26 application, AI, provider,
-   supply-chain, insider, and CDE-impact threats across nine trust boundaries.
+18. [`threat-model.md`](./threat-model.md) maps 34 application, AI, provider,
+   supply-chain, insider, CDE-impact and compliance question-and-answer threats
+   across ten trust boundaries.
 19. [`threat-review-record-template.md`](./threat-review-record-template.md)
    defines the named review, disposition, ownership, due-date, and sign-off record
    required before the engineering model becomes operational evidence.

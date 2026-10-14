@@ -16,7 +16,8 @@ production.
 
 In scope: browser/frontend, API, worker, object storage, PostgreSQL, authentication,
 authorization, document ingestion, retrieval, generation, providers, audit/alerting,
-GitHub/CI, deployment configuration, and any path that could affect a CDE.
+GitHub/CI, deployment configuration, the compliance question-and-answer flow, and
+any path that could affect a CDE.
 
 Current assumptions requiring owner approval:
 
@@ -48,6 +49,9 @@ Primary assets include account credentials and sessions, authorization/program
 assignments, document source/content/classification, retrieval chunks, prompts and
 conversation history, citations, model/provider configuration, security/audit
 events, the exported log copy and its Railway token, secrets, source/CI artifacts, database definitions,
+Truenote's own compliance documents (system security plan, plan of action and
+milestones, assessment results), which describe controls and open weaknesses,
+together with their passage vectors and the questions asked about them,
 and CDE connectivity or segmentation controls.
 
 ## Actors
@@ -59,6 +63,77 @@ and CDE connectivity or segmentation controls.
 - malicious document or prompt author;
 - compromised provider, dependency, CI action, or maintainer account; and
 - accidental operator/configuration error.
+
+## Compliance question-and-answer flow
+
+Super users can ask questions about Truenote's own compliance documents on the
+Compliance page and get a cited answer or the standard refusal. The documents are
+the system security plan, the plan of action and milestones and assessment
+results. They name controls, owners, dates and open weaknesses, so the flow treats
+them as security-sensitive and keeps them out of the public repository, out of
+PostgreSQL and away from customer retrieval. Trust boundary TB-10 and threats
+TN-TM-027 to TN-TM-034 cover it.
+
+1. **Documents.** The owner uploads Markdown (and optional PDF) files with
+   `scripts/src/upload-compliance-docs.ts`, using the web service's object-storage
+   credentials. Each version is stored under a content-addressed key
+   `compliance/documents/<slug>/<sha256>.md`; `compliance/manifest.json` is written
+   last and lists every document's slug, title, version, date and SHA-256
+   (`artifacts/api-server/src/lib/compliance/documents.ts`).
+2. **Request.** `POST /api/compliance/ask` takes a question of 1 to 1,000
+   characters behind `requireAuth`, `requireFreshPassword` and
+   `requireComplianceReader` (minimum role `COMPLIANCE_MIN_ROLE`, `super_user`),
+   with a limit of 10 questions a minute per user
+   (`artifacts/api-server/src/routes/compliance.ts`,
+   `artifacts/api-server/src/middleware/current-user.ts`,
+   `artifacts/api-server/src/lib/security/route-rate-limit.ts`). One deadline
+   bounds the whole request, index build included, and a closed connection
+   aborts it.
+3. **Index.** The web process holds the search index in memory, keyed by a hash
+   of the manifest's document list. Every question reads the manifest first and
+   rebuilds the index when the hash differs. Each document is checked against its
+   manifest SHA-256 before it is split into passages. Passage vectors are cached
+   in object storage at `compliance/index/<hash>.json`, keyed by the manifest
+   hash, chunker version and embedding route; the cache holds vectors and passage
+   hashes only, and an entry that does not match the passages exactly is ignored
+   (`artifacts/api-server/src/lib/compliance/search-index.ts`).
+4. **Retrieval.** The question is embedded, scored by cosine similarity and BM25
+   (top 40 each), merged, and reranked to the top 8. When the top rerank score is
+   below `COMPLIANCE_RERANK_THRESHOLD` (default 0.5) the answer is the refusal and
+   no generation call is made (`artifacts/api-server/src/lib/compliance/ask.ts`).
+5. **Providers.** Embedding (`openai/text-embedding-3-small` on Azure) and rerank
+   (`qwen/qwen3-reranker-8b` on Fireworks) go through OpenRouter, each request
+   pinned to one provider with `zdr=true`, `data_collection=deny` and
+   `allow_fallbacks=false`. The typed question passes the full local provider
+   firewall; document text gets the blocking classes (secrets, SSNs, payment
+   cards) (`artifacts/api-server/src/lib/compliance/providers.ts`). Generation
+   uses the compliance model chain, which holds only routes from the approved
+   ZDR-pinned allowlist (`artifacts/api-server/src/lib/generation/model-routing.ts`,
+   `artifacts/api-server/src/lib/generation/answer.ts`).
+6. **Answer.** The compliance system prompt treats excerpts as untrusted data and
+   forbids outside knowledge and invented control ids, dates, owners or statuses.
+   The shared answer gates refuse an answer without valid inline citations, with
+   a figure absent from its cited excerpt, or with blocked sensitive content. An
+   answer whose citations resolve to no passage is returned as the refusal.
+7. **Record, then deliver.** The route records a `compliance.question` security
+   event with the question's SHA-256 and length (never its text), the refused
+   flag, the cited documents (slug, SHA-256, version), the passage count, the
+   manifest hash and the generation path. The answer is sent only after that
+   write succeeds, and only if the manifest is unchanged before and after the
+   write. A changed manifest returns 409 (ask again); an embedding or rerank
+   failure, a cancelled request or a passed deadline returns 503; each of these
+   attempts a best-effort failure event. A rejected audit write returns 500, sends
+   no answer and raises the alert outside the database. When every generation
+   route fails, the user gets the refusal, recorded as a `compliance.question`
+   event with `generationPath` `fallback-failed`
+   (`artifacts/api-server/src/routes/compliance.ts`,
+   `artifacts/api-server/src/lib/security/audit.ts`).
+
+Example questions for the question box are written by the compliance model chain
+from document passages, kept only when the compliance retrieval answers them from
+the same document and the provider firewall would redact nothing, and cached at
+`compliance/suggestions/`. Returning them records `compliance.suggestions_read`
+(`artifacts/api-server/src/lib/compliance/suggestions.ts`).
 
 ## Trust boundaries
 
@@ -73,6 +148,7 @@ and CDE connectivity or segmentation controls.
 | TB-07 API/database → logs, alert email and log copy | Security metadata in worker log lines, alert emails through Resend, and a daily export to a private GitHub repository | Audit integrity, incident evidence, the Railway token used by the export | Hash chain, ordered cursor over committed events, alert rules, audit-write-failure alert outside the database, uptime check | Ten of eleven alert rules tested in production on 2026-10-10 (break-glass waits for SSO); retention period open; daily log export running since 2026-10-10 |
 | TB-08 GitHub/CI and operator workstation → Railway deployment | Source, dependencies, workflows, approvals, artifacts; `railway up` uploads of an operator's local checkout | Production code/configuration and evidence | Locked dependencies, scans, SBOM, PR template, evidence gate | Branch protection, CODEOWNER, named reviewer and current hosted receipts missing. Deploys are `railway up` uploads from an operator workstation; merging to `main` deploys nothing. Nothing ties the deployed bytes to a CI-verified `main` commit |
 | TB-09 Railway/Replit/providers ↔ CDE | Hosting, network paths, administrator access: Railway `web` and `worker` services, Railway Postgres 18 with pgvector, Railway Bucket object storage; Namecheap as registrar and DNS host for `truenote.org` since 2026-10-14; Replit holds no production role (its deployment was unpublished on 2026-10-12); AI providers | CDE reachability and segmentation | Scope/data-flow and independent-test plan | Boundary/applicability unsigned; no independent segmentation evidence |
+| TB-10 Super user, object storage and ZDR providers ↔ compliance question flow | Typed question from a signed-in super user; compliance document text read from object storage; question and passages sent to OpenRouter ZDR endpoints; model text returned as an answer | Truenote's compliance documents, which describe controls and open weaknesses; questions that can quote them; passage vectors and example questions cached in object storage | Role and fresh-password gates, per-user limit, manifest SHA-256 checks, index separate from PostgreSQL, ZDR-pinned provider requests, cite-or-refuse and figure gates, audit event recorded before delivery | No compliance eval set and an untuned rerank threshold; no deterministic prompt-injection scan of compliance documents; provider ZDR is third-party evidence; a holder of the bucket credentials can replace documents and manifest together |
 
 ## Risk method
 
@@ -112,6 +188,14 @@ risk acceptance. Grades use the exact evidence vocabulary in
 | TN-TM-024 | Availability / Integrity | Backup is absent, corrupt, over-retained, or cannot restore securely | TB-02/TB-09; High | Responsibility/evidence requirement documented; `docs/compliance/pci/evidence-index.md`, `docs/compliance/pci/third-party-responsibility-matrix.md` | Operational evidence required | Approve RTO/RPO/retention/encryption; perform isolated restore and access/integrity test — Platform/database owner |
 | TN-TM-025 | Insider / Tampering | Authorized uploader/admin activates malicious content, changes security settings, or abuses purge/reset capability | TB-01/TB-02/TB-05; Critical | Role gates, lifecycle constraints, demo-write blocks, audit events and negative tests; `artifacts/api-server/src/routes/documents.ts`, `artifacts/api-server/src/lib/security/__tests__/negative-controls.test.ts` | Implemented, unverified | Approve separation/risk rules, monitor privileged actions, recertify access, independently test abuse cases — Security/Data/IAM owners |
 | TN-TM-026 | Race / Business logic | Concurrent approval, revocation, purge, queue, evaluation, or user-role changes defeat checked state | TB-01/TB-02; High | Conditional SQL updates, lease fencing, one-active-run constraints, TOCTOU tests; `artifacts/api-server/src/lib/eval/persistence.ts`, `artifacts/api-server/src/lib/security/__tests__/negative-controls.test.ts` | Verified | Multi-replica concurrency tests for lifecycle/user/evaluation paths and deployed database constraints — Product Security/Platform |
+| TN-TM-027 | AI prompt injection | Text in a compliance document or the typed question tells the model to ignore its rules, reveal the prompt or other excerpts, or emit a link or image that carries document text to an outside host | TB-10/TB-06; High | Compliance system prompt treats excerpts as untrusted data and forbids outside knowledge; answers need valid inline citations and grounded figures; answer Markdown renders links as plain text and the content security policy allows images only from `'self'`, `data:` and `blob:`; documents enter only through the owner's upload script, not user upload; `artifacts/api-server/src/lib/compliance/ask.ts`, `artifacts/rag-app/src/components/chat/AnswerMarkdown.tsx`, `artifacts/api-server/src/middleware/browser-security.ts` | Implemented, unverified | Run injection cases against the compliance corpus (instructions inside a document, encoded text, requests for other documents or the prompt) and keep the results; compliance documents get no deterministic injection-pattern scan. Accountable: Product Security |
+| TN-TM-028 | Information disclosure / Elevation | A user below the compliance role, a user who must reset a password, or a customer query reaches compliance text that describes controls and weaknesses | TB-01/TB-10; Critical | `requireAuth`, `requireFreshPassword` and `requireComplianceReader` (`COMPLIANCE_MIN_ROLE` `super_user`) on every `/api/compliance` route; the index lives in the web process and object storage, never PostgreSQL; compliance passages carry scope `compliance`, which customer scope filtering drops; import-isolation and per-role 401/403/423 tests; `artifacts/api-server/src/routes/compliance.ts`, `artifacts/api-server/src/middleware/current-user.ts`, `artifacts/api-server/src/lib/compliance/__tests__/isolation.test.ts`, `artifacts/api-server/src/routes/__tests__/compliance-routes.test.ts` | Verified | Independent access test on the deployed service; review super-user accounts, since every super user reads every compliance document; widening `COMPLIANCE_MIN_ROLE` changes this model. Accountable: IAM owner/Product Security |
+| TN-TM-029 | Information disclosure | Question or answer text, which can quote weaknesses, lands in security events, the application error log, provider error messages or cached objects | TB-07/TB-10; High | `compliance.question` stores the question's SHA-256 and length, not its text; generation diagnostics run with `omitAnswerText`; provider errors keep only stage and HTTP status; the vector cache holds vectors and passage hashes only; manifest parse errors name field paths only; `artifacts/api-server/src/routes/compliance.ts`, `artifacts/api-server/src/lib/compliance/providers.ts`, `artifacts/api-server/src/lib/compliance/search-index.ts`, `artifacts/api-server/src/routes/__tests__/compliance-ask.test.ts` | Implemented, unverified | Production log and error-log canary with a synthetic compliance question; include `compliance/` objects in the bucket access review. Accountable: SecOps |
+| TN-TM-030 | Third-party disclosure | Embedding, rerank or generation provider retains, trains on or reroutes compliance passages or questions | TB-10; High | Every compliance provider call goes through OpenRouter pinned to one provider with `zdr=true`, `data_collection=deny`, `allow_fallbacks=false`; the compliance chain holds only allowlisted ZDR routes; the question gets the full local firewall, document text the blocking classes; provider tests check the request body; `artifacts/api-server/src/lib/compliance/providers.ts`, `artifacts/api-server/src/lib/generation/model-routing.ts`, `artifacts/api-server/src/lib/compliance/__tests__/providers.test.ts` | Third-party evidence required | OpenRouter account ZDR settings and the retention terms of Azure, Fireworks and each generation provider; re-check the ZDR endpoint index before any re-pin. Accountable: Vendor-risk owner |
+| TN-TM-031 | Integrity / AI hallucination | Answer misstates a control, status, owner, date or remediation, or cites a superseded document version | TB-06/TB-10; High | Cosine plus BM25 retrieval, rerank and a confidence gate that refuses with no model call; prompt forbids invented control ids, dates, owners and statuses; cite-or-refuse, figure-grounding and empty-citation refusal; manifest re-read before and after the record, so a changed manifest returns 409 instead of an answer; `artifacts/api-server/src/lib/compliance/ask.ts`, `artifacts/api-server/src/lib/generation/answer.ts`, `artifacts/api-server/src/routes/__tests__/compliance-ask.test.ts` | Implemented, unverified | No compliance eval set exists and the 0.5 rerank threshold is not tuned against labeled questions; an answer restates the documents and does not prove a control operates. Accountable: Compliance owner/Product Security |
+| TN-TM-032 | Tampering | A compliance document, the manifest or the vector cache is altered in object storage, or a partial upload is served | TB-10; High | Content-addressed keys and a strict manifest schema; manifest written last; each document checked against its manifest SHA-256, and a mismatch withholds every passage and records a failure event; index rebuilt when the manifest hash changes; cache entries used only when passage ids and hashes match, and passage text never comes from the cache; `artifacts/api-server/src/lib/compliance/documents.ts`, `artifacts/api-server/src/lib/compliance/search-index.ts`, `scripts/src/upload-compliance-docs.ts` | Implemented, unverified | The hashes catch corruption and partial writes, not a holder of the bucket credentials, who can replace documents and manifest together; restrict and review those credentials. Accountable: Platform/Compliance owner |
+| TN-TM-033 | Denial of service / Cost | A signed-in super user or stolen session floods questions to run up provider cost or stall the web process | TB-01/TB-10; High | 10 questions and 60 reads a minute per user; strict 1 to 1,000 character schema; one deadline over the whole request; client close aborts; one shared index build; embedding batches of 100 with four in flight and cancel-on-first-failure; rerank failure returns 503 rather than unranked passages; `artifacts/api-server/src/lib/security/route-rate-limit.ts`, `artifacts/api-server/src/routes/compliance.ts`, `artifacts/api-server/src/lib/compliance/providers.ts` | Implemented, unverified | Capacity test of a cold index build under load and an OpenRouter spend alert. Accountable: Platform |
+| TN-TM-034 | Repudiation | A compliance question is answered, or a compliance document read, with no audit record | TB-07/TB-10; High | The answer goes out only after `compliance.question` (refused flag included) is recorded within the request deadline; document and example-question reads are recorded before delivery; integrity failures, manifest changes, embedding or rerank failures and cancellations attempt a best-effort failure event; a generation outage is recorded as a refused answer with `generationPath` `fallback-failed`; a rejected audit write returns 500 with no answer and raises an alert outside the database; `artifacts/api-server/src/routes/compliance.ts`, `artifacts/api-server/src/lib/security/audit.ts`, `artifacts/api-server/src/routes/__tests__/compliance-ask.test.ts` | Implemented, unverified | Deployed exercise showing the event and a forced audit-write failure; the event holds a hash, so an investigator can confirm a known question but cannot read an unknown one. Accountable: SecOps |
 
 ## Priority treatment plan
 
@@ -126,8 +210,9 @@ risk acceptance. Grades use the exact evidence vocabulary in
    `main`, and tie each Railway deployment to a CI-verified `main` commit.
 4. **TN-TM-016/TN-TM-017:** Verify production database/audit/monitoring definitions and
    end-to-end operation.
-5. **TN-TM-008/TN-TM-009/TN-TM-010/TN-TM-013:** Commission adversarial prompt,
-   document, file, and output testing with retest closure.
+5. **TN-TM-008/TN-TM-009/TN-TM-010/TN-TM-013/TN-TM-027:** Commission adversarial
+   prompt, document, file, and output testing with retest closure, including the
+   compliance corpus.
 
 ### Required operational evidence
 
@@ -137,6 +222,13 @@ risk acceptance. Grades use the exact evidence vocabulary in
 - Logging/retention canaries for TN-TM-020.
 - Hosted supply-chain receipts for TN-TM-021.
 - Restore exercise for TN-TM-024.
+- Deployed compliance access test, super-user account review and bucket
+  credential review for TN-TM-028/032.
+- Log canary and audit-write failure exercise for the compliance flow for
+  TN-TM-029/034.
+- Provider retention evidence for the compliance embedding, rerank and generation
+  routes for TN-TM-030.
+- Capacity test and spend alert for TN-TM-033.
 
 ## Review triggers
 
@@ -148,6 +240,8 @@ Re-review before release when any of these changes:
 - upload type/size, document lifecycle, classification, source approval, retrieval,
   citation/refusal, prompt or output handling;
 - security DDL, audit schema, rate-limit scope/threshold, queue/concurrency behavior;
+- who may read compliance documents (`COMPLIANCE_MIN_ROLE`), how they are stored,
+  or the providers and gates of the compliance question flow;
 - dependency/CI action, branch/release process, secret/artifact retention; or
 - a vulnerability, incident, penetration test, material abuse case or recurring
   control failure.
