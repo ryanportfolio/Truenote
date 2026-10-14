@@ -279,10 +279,10 @@ function ComplianceList(): JSX.Element {
               <table className="w-full text-sm tabular-nums">
                 <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-2 font-medium">Document</th>
-                    <th className="px-4 py-2 font-medium">Version</th>
-                    <th className="hidden px-4 py-2 font-medium sm:table-cell">Date</th>
-                    <th className="hidden px-4 py-2 font-medium md:table-cell">SHA-256</th>
+                    <th className="px-4 py-2 font-bold">Document</th>
+                    <th className="px-4 py-2 font-bold">Version</th>
+                    <th className="hidden px-4 py-2 font-bold sm:table-cell">Date</th>
+                    <th className="hidden px-4 py-2 font-bold md:table-cell">SHA-256</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -569,7 +569,7 @@ function ComplianceMarkdown({ markdown, citedSpan = null }: { markdown: string; 
           return <tr {...attributes} className={citedClass}>{children}</tr>;
         },
         th: ({ children }) => (
-          <th className="border-b border-border px-2 py-1.5 text-left font-medium">{children}</th>
+          <th className="border-b border-border px-2 py-1.5 text-left font-bold">{children}</th>
         ),
         td: ({ children }) => <td className="border-t border-border px-2 py-1.5 align-top">{children}</td>,
         // Keep the attributes react-markdown generates (footnote ids, aria and
