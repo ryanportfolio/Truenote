@@ -139,24 +139,29 @@ export const loginIpLimiter = new SlidingWindowLimiter({
 });
 
 /**
- * Best-effort client IP. Reads X-Forwarded-For first since Railway's
- * proxy sits in front of us; falls back to req.ip (Express's own
- * resolution) for direct-connection dev. Takes only the FIRST entry
- * in XFF — that's the originating client per the RFC; later entries
- * are intermediate proxies under varying levels of trust.
+ * Client address for sign-in rate limits, failed-login alerts and audit
+ * records (POAM-2026-027). Every call site uses this helper.
  *
- * In a header-untrusted environment an attacker can claim any IP by
- * forging XFF, evading the per-IP counter. The mitigation is the
- * per-email counter (silent suppression, independent of IP) and the
- * fact that Railway's edge proxy overwrites XFF with the real client
- * address. If we ever sit behind an untrusted proxy this needs to
- * change.
+ * Railway's edge sets X-Real-IP. Its public networking specs list
+ * "`X-Real-IP` for identifying client's remote IP."
+ * (https://docs.railway.com/networking/public-networking/specs-and-limits).
+ * That page does not say whether a client-sent copy is replaced; a Railway
+ * employee confirmed on 2026-10-05 that "Our HTTP edge overwrites
+ * caller-supplied X-Real-IP and X-Forwarded-For on every request it handles"
+ * (https://station.railway.com/questions/need-authoritative-client-ip-proxy-tru-090eac86).
+ *
+ * X-Forwarded-For is not read: Railway's docs do not describe it, and staff
+ * say the number of Railway hops in it "is not fixed", so neither its first
+ * nor a fixed right-most entry is a reliable client address. Express
+ * `trust proxy` is left off for the same reason.
+ *
+ * Without X-Real-IP (local runs and tests, no Railway edge) this falls back
+ * to req.ip, which with `trust proxy` off is the socket peer address.
+ * Requests over *.railway.internal skip the edge and can set any X-Real-IP;
+ * no code in this repo calls the web service that way.
  */
 export function clientIpFrom(req: import("express").Request): string {
-  const xff = req.header("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
+  const realIp = req.header("x-real-ip")?.trim();
+  if (realIp) return realIp;
   return req.ip ?? "unknown";
 }

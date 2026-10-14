@@ -34,14 +34,19 @@ import {
   recordSecurityEventBestEffort
 } from "../lib/security/audit.js";
 import { oidcIpLimit } from "../lib/security/route-rate-limit.js";
+import { targetIdentifier, targetUser } from "../lib/security/sign-in-target.js";
 
 export const oidcRouter = Router();
 
 type OidcUser = Pick<User, "id" | "email" | "role" | "programId" | "isActive">;
 
-/** A policy refusal; `reason` is the short code recorded in the audit event. */
+/**
+ * A policy refusal; `reason` is the short code recorded in the audit event.
+ * `email` is the token's email claim, recorded only as a hash when no
+ * account was found (lib/security/sign-in-target.ts).
+ */
 class OidcRefusal extends Error {
-  constructor(readonly reason: string, readonly user?: OidcUser) {
+  constructor(readonly reason: string, readonly user?: OidcUser, readonly email?: string) {
     super(`OIDC login refused: ${reason}`);
   }
 }
@@ -173,13 +178,13 @@ oidcRouter.get("/callback", oidcIpLimit, async (req, res) => {
       // Later logins: the binding decides the account. The token's email
       // claims are mutable and play no part here.
       user = await loadUser(eq(users.id, bound.userId));
-      if (!user) throw new OidcRefusal("no_account");
+      if (!user) throw new OidcRefusal("no_account", undefined, identity.email);
       assertEligible(user, config.allowedProgramIds);
       await recordIdentityLogin(bound.id);
     } else {
       // First login: an existing account is matched once by email, then bound.
       user = await loadUser(eq(users.email, identity.email));
-      if (!user) throw new OidcRefusal("no_account");
+      if (!user) throw new OidcRefusal("no_account", undefined, identity.email);
       if (identity.claims.xms_edov === false || identity.claims.xms_edov === "false") {
         throw new OidcRefusal("email_domain_unverified", user);
       }
@@ -251,7 +256,11 @@ oidcRouter.get("/callback", oidcIpLimit, async (req, res) => {
         programId: error.user?.programId ?? null,
         resourceType: "session",
         sourceIp: clientIpFrom(req),
-        details: { reason: error.reason, authMethod: "oidc" }
+        details: {
+          reason: error.reason,
+          authMethod: "oidc",
+          ...(error.user ? targetUser(error.user.id) : targetIdentifier(error.email))
+        }
       });
     } else if (error instanceof OidcReauthError) {
       // The token was valid but not fresh; no account is resolved yet.

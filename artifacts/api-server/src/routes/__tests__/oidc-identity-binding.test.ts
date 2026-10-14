@@ -1,4 +1,4 @@
-import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import type { Request, Response } from "express";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -308,6 +308,12 @@ function expectSignedIn(user: FakeUser, location: string) {
   }));
 }
 
+function deniedDetails() {
+  return fake.recordSecurityEventBestEffort.mock.calls
+    .map(([event]) => event)
+    .find((event) => event.action === "auth.oidc.login" && event.outcome === "denied")?.details;
+}
+
 function expectRefused(location: string, reason?: string) {
   expect(location).toBe("/login?sso_error=1");
   expect(fake.createSession).not.toHaveBeenCalled();
@@ -316,7 +322,7 @@ function expectRefused(location: string, reason?: string) {
     expect(fake.recordSecurityEventBestEffort).toHaveBeenCalledWith(expect.objectContaining({
       action: "auth.oidc.login",
       outcome: "denied",
-      details: { reason, authMethod: "oidc" }
+      details: expect.objectContaining({ reason, authMethod: "oidc" })
     }));
     const recorded = JSON.stringify(fake.recordSecurityEventBestEffort.mock.calls);
     expect(recorded).not.toContain("synthetic-auth-code");
@@ -386,12 +392,21 @@ describe("OIDC identity binding: first link", () => {
     const { location } = await callback({ sub: "subject-stranger", email: "stranger@example.com" });
     expectRefused(location, "no_account");
     expect(fake.identities).toEqual([]);
+    // No account: the record names the target by a hash of the email claim only.
+    const denied = deniedDetails();
+    expect(denied).toEqual({
+      reason: "no_account",
+      authMethod: "oidc",
+      targetIdentifierSha256: createHash("sha256").update("stranger@example.com").digest("hex")
+    });
+    expect(JSON.stringify(fake.recordSecurityEventBestEffort.mock.calls)).not.toContain("stranger@example.com");
   });
 
   it("refuses a user already bound to another subject at this issuer", async () => {
     bind(person, "subject-original");
     const { location } = await callback({ sub: "subject-intruder", email: person.email });
     expectRefused(location, "already_bound");
+    expect(deniedDetails()).toEqual({ reason: "already_bound", authMethod: "oidc", targetUserId: person.id });
     expect(fake.identities).toHaveLength(1);
     expect(fake.identities[0]!.subject).toBe("subject-original");
   });

@@ -126,7 +126,7 @@ function forgot(email: string) {
     body: { email },
     ip,
     protocol: "https",
-    header: ((name: string) => (name === "x-forwarded-for" ? ip : undefined)) as Request["header"],
+    header: ((name: string) => (name === "x-real-ip" ? ip : undefined)) as Request["header"],
     get: (() => undefined) as unknown as Request["get"]
   });
 }

@@ -1,5 +1,6 @@
 import { rateLimit, type RateLimitRequestHandler } from "express-rate-limit";
 import { clientIpFrom } from "../auth/rate-limit.js";
+import { noteSignInTarget, submittedIdentifier } from "./sign-in-target.js";
 
 /**
  * Per-user request limits for authenticated API routes.
@@ -111,7 +112,10 @@ export const loginPasswordIpLimit = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => clientIpFrom(req),
   validate: false,
-  handler: (_req, res) => {
+  handler: (req, res) => {
+    // The refusal does no account lookup, so the audit record names the
+    // target by the hash of the submitted email (lib/security/sign-in-target.ts).
+    noteSignInTarget(res, submittedIdentifier(req.body));
     res.status(429).json({ error: "Too many login attempts. Try again in a few minutes." });
   }
 });

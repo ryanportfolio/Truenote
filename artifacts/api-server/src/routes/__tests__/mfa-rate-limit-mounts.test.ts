@@ -93,7 +93,7 @@ describe("limiter placement", () => {
 
 describe("over the limit", () => {
   it("answers 429 on both login-step routes once one IP used 2000 requests", async () => {
-    const ip = { "x-forwarded-for": "198.51.100.23" };
+    const ip = { "x-real-ip": "198.51.100.23" };
     let statuses: number[] = [];
     for (let batch = 0; batch < 20; batch += 1) {
       const replies = await Promise.all(
@@ -112,7 +112,7 @@ describe("over the limit", () => {
     }
 
     // Another address keeps its own budget.
-    expect((await send("POST", "/passkey", { "x-forwarded-for": "198.51.100.24" })).status).toBe(401);
+    expect((await send("POST", "/passkey", { "x-real-ip": "198.51.100.24" })).status).toBe(401);
   }, 60_000);
 
   it("answers 429 on every management route after 30 requests a minute from one user", async () => {

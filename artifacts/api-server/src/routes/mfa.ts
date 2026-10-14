@@ -48,6 +48,7 @@ import { clientIpFrom, loginIpLimiter } from "../lib/auth/rate-limit.js";
 import { mfaLoginIpLimit, mfaManageLimit } from "../lib/security/route-rate-limit.js";
 import { authedUser, requireAuth, requireFreshPassword, requireSuperUser } from "../middleware/current-user.js";
 import { appendSecurityEvent, recordSecurityEventBestEffort } from "../lib/security/audit.js";
+import { noteSignInTarget, targetUser } from "../lib/security/sign-in-target.js";
 
 /**
  * Second factor for local password login, mounted at /api/auth/mfa.
@@ -188,6 +189,9 @@ async function pendingLogin(req: Request, res: Response): Promise<PendingLogin |
     res.status(401).json(EXPIRED);
     return null;
   }
+  // The challenge names the account this sign-in targets
+  // (lib/security/sign-in-target.ts).
+  noteSignInTarget(res, targetUser(challenge.userId));
   const user = await loadUser(challenge.userId);
   if (
     !user ||
@@ -209,7 +213,7 @@ function auditFailure(user: MfaUser, factor: MfaFactor, ip: string | null, reaso
     programId: user.programId,
     resourceType: "session",
     sourceIp: ip,
-    details: { authMethod: "local", factor, reason }
+    details: { authMethod: "local", factor, reason, ...targetUser(user.id) }
   });
 }
 

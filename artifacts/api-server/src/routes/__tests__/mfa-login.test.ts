@@ -637,7 +637,7 @@ describe("login with an enrolled passkey", () => {
     expect(fake.audit).toHaveBeenCalledWith(expect.objectContaining({
       action: "auth.mfa.verify",
       outcome: "denied",
-      details: { authMethod: "local", factor: "passkey", reason: "webauthn_unconfigured" }
+      details: { authMethod: "local", factor: "passkey", reason: "webauthn_unconfigured", targetUserId: SUPER.id }
     }));
 
     // A recovery code completes the sign-in.
@@ -1452,7 +1452,7 @@ describe("passkey row checks under lock", () => {
     expect(fake.audit).toHaveBeenCalledWith(expect.objectContaining({
       action: "auth.mfa.verify",
       outcome: "denied",
-      details: { authMethod: "local", factor: "passkey", reason }
+      details: { authMethod: "local", factor: "passkey", reason, targetUserId: SUPER.id }
     }));
   }
 
@@ -1594,7 +1594,7 @@ describe("lockout rechecked under the user row lock", () => {
     expect(fake.audit).toHaveBeenCalledWith(expect.objectContaining({
       action: "auth.local.login",
       outcome: "denied",
-      details: { authMethod: "local", reason: "account_locked" }
+      details: { authMethod: "local", reason: "account_locked", targetUserId: SUPER.id }
     }));
     expect(fake.audit).not.toHaveBeenCalledWith(expect.objectContaining({ outcome: "success" }));
     expectStillLocked();
