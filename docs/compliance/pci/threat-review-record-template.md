@@ -20,7 +20,7 @@ or private findings to the repository copy.
 
 ## Review result
 
-- [ ] System scope, assets, actors and all nine trust boundaries match the deployed
+- [ ] System scope, assets, actors and all ten trust boundaries match the deployed
       architecture.
 - [ ] Every threat row has a supported control grade and evidence scope.
 - [ ] Repository controls were traced to current code/tests/DDL.
