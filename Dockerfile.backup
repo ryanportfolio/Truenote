@@ -1,13 +1,49 @@
 # Image for the `backup` cron service (scripts/backup/run-backup.sh) and for
 # the database of a restore test (scripts/backup/restore-offsite.sh, run inside
-# it over `railway ssh`). Base: the exact image production's `pgvector`
-# service runs (digest read from Railway's deployment metadata on 2026-10-10),
-# so pg_dump, pg_restore and the restore-test server match production. Production
-# builds Dockerfile.pgvector from the same digest; keep the two equal.
-FROM pgvector/pgvector@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+# it over `railway ssh`).
+#
+# rclone and age come from upstream, not Debian: bookworm builds both with Go
+# 1.19, whose standard library has fixable High and Critical CVEs. rclone is the
+# official release binary (built with Go 1.26.9). age is built here from its
+# release source, because the v1.3.2 release binary uses Go 1.27.0, which has
+# fixable ones too. Every download is checked against the SHA-256 below.
+FROM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS tools
+ARG RCLONE_VERSION=v1.75.2
+# From https://downloads.rclone.org/v1.75.2/SHA256SUMS (PGP signature checked).
+ARG RCLONE_SHA256=349ac8fba6ff65d6247043f1750cdcb518ec5d500ef91463a10d37c0ccdf3702
+ARG AGE_VERSION=v1.3.2
+# age-v1.3.2-source.tar.gz; matches the digest GitHub lists for the release.
+ARG AGE_SOURCE_SHA256=c160d6f907992561413a28818f7d7585b35977cdbc449f3e96c4f8c99d22d21e
 RUN apt-get update \
- && apt-get install -y --no-install-recommends age rclone git ca-certificates curl \
+ && apt-get install -y --no-install-recommends unzip \
  && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+# The age source tarball vendors its modules, so the build needs no network.
+RUN curl -fsSLo rclone.zip "https://downloads.rclone.org/${RCLONE_VERSION}/rclone-${RCLONE_VERSION}-linux-amd64.zip" \
+ && echo "${RCLONE_SHA256}  rclone.zip" | sha256sum -c - \
+ && unzip -j rclone.zip "rclone-${RCLONE_VERSION}-linux-amd64/rclone" -d /out \
+ && curl -fsSLo age.tar.gz "https://github.com/FiloSottile/age/releases/download/${AGE_VERSION}/age-${AGE_VERSION}-source.tar.gz" \
+ && echo "${AGE_SOURCE_SHA256}  age.tar.gz" | sha256sum -c - \
+ && mkdir age \
+ && tar -xzf age.tar.gz -C age --strip-components=1 \
+ && cd age \
+ && GOTOOLCHAIN=local GOFLAGS=-mod=vendor GOPROXY=off CGO_ENABLED=0 \
+    go build -trimpath -ldflags "-X main.Version=${AGE_VERSION}" -o /out/ ./cmd/age ./cmd/age-keygen
+
+# Base: the exact image production's `pgvector` service runs (digest read from
+# Railway's deployment metadata on 2026-10-10), so pg_dump, pg_restore and the
+# restore-test server match production. Production builds Dockerfile.pgvector
+# from the same digest; keep the two equal. As in Dockerfile.pgvector, the
+# PostgreSQL and libpq packages stay held so pg_dump and pg_restore keep
+# production's version; other OS packages get the Debian security updates
+# published since the base image was built.
+FROM pgvector/pgvector@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+RUN apt-mark hold $(dpkg-query -W -f '${db:Status-Abbrev} ${Package}\n' 'postgresql*' 'libpq*' | awk '$1 == "ii" { print $2 }') \
+ && apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && apt-get install -y --no-install-recommends git ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=tools /out/rclone /out/age /out/age-keygen /usr/local/bin/
 COPY scripts/backup/ /opt/truenote-backup/
 # The backup service runs this. A restore-test database service overrides the
 # start command with `docker-entrypoint.sh postgres` (runbook section 4.7).

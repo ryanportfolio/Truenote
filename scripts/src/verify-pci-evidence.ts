@@ -201,9 +201,12 @@ export function verifySecurityWorkflow(workflow: string): string[] {
       issues.push("CodeQL security-events write permission is missing from the CodeQL job");
     }
     const steps = workflowSteps(codeqlJob);
-    const analyze = steps.find((step) => step.includes("uses: github/codeql-action/analyze@v4"));
+    const analyze = steps.find((step) => step.includes("uses: github/codeql-action/analyze@"));
     if (!analyze || !/^\s+upload:\s*always\s*$/m.test(analyze)) {
       issues.push("CodeQL analyze step is not configured to upload always");
+    }
+    if (analyze && !/uses: github\/codeql-action\/analyze@[0-9a-f]{40}(\s|$)/.test(analyze)) {
+      issues.push("CodeQL analyze step is not pinned to a full commit SHA");
     }
     const retain = steps.find((step) => step.includes("name: Retain CodeQL SARIF evidence"));
     if (!retain || !retain.split("\n").some((line) => line.trim() === "if: always()")) {

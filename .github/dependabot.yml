@@ -12,8 +12,8 @@ updates:
     open-pull-requests-limit: 5
     versioning-strategy: increase-if-necessary
   - package-ecosystem: docker
-    # The scanner image pins its ClamAV and Node bases by digest; Dependabot
-    # proposes new digests when the upstream images are rebuilt.
+    # Dockerfile.railway and the scanner image pin their bases by digest;
+    # Dependabot proposes new digests when the upstream images are rebuilt.
     directories: ["/", "/services/scanner"]
     schedule:
       interval: weekly

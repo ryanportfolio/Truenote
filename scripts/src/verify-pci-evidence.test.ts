@@ -84,7 +84,7 @@ jobs:
     permissions:
       security-events: write
     steps:
-      - uses: github/codeql-action/analyze@v4
+      - uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           upload: always
       - name: Retain CodeQL SARIF evidence
@@ -133,6 +133,7 @@ jobs:
     assert.ok(issues.includes("managed-release vulnerability gate is not a verify-job step"));
     assert.ok(issues.includes("branch-enforcement evidence gate is not a verify-job step"));
     assert.ok(issues.includes("CodeQL analyze step is not configured to upload always"));
+    assert.ok(issues.includes("CodeQL analyze step is not pinned to a full commit SHA"));
     assert.ok(issues.includes("SARIF retention step is not unconditional"));
   });
 });
