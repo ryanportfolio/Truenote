@@ -9,7 +9,7 @@ Plan approved by the owner on 2026-10-10. The API contract for the gated complia
 ## How it works
 
 1. The check catalog (`artifacts/api-server/src/lib/evidence/catalog.ts`) lists every check: the controls and 800-53A objectives it covers, how often it runs, and its exact pass condition. Objective labels are copied from NIST's OSCAL Moderate baseline (Rev. 5.2.0) into `nist-800-53r5-moderate.json` by `scripts/src/evidence-nist-ids.ts`, and a unit test rejects any label the baseline does not contain.
-2. A daily pg-boss job in the `worker` service (`evidence-run`, 05:23 UTC) runs every automated check and appends one receipt per check. Each check has a time limit, 90 seconds or 380 seconds for a synthetic check, and one that runs out records `error`. The job expires after 90 minutes; a run in which all 23 checks hit their limits takes about 59 minutes (`artifacts/api-server/src/lib/evidence/queue.ts` has the arithmetic).
+2. A daily pg-boss job in the `worker` service (`evidence-run`, 05:23 UTC) runs every automated check and appends one receipt per check. Each check has a time limit, 90 seconds or 380 seconds for a synthetic check, and one that runs out records `error`. The job expires after 90 minutes; a run in which all 17 checks hit their limits takes about 50 minutes (`artifacts/api-server/src/lib/evidence/queue.ts` has the arithmetic).
 3. A receipt records the check id, its controls and objectives, the catalog version, start and finish times, the deployed commit, what the check read (inputs), what it observed (outputs), and `pass`, `fail` or `error`. `error` means the check could not run, so there is no evidence for that day.
 4. Receipts go to the append-only `evidence_receipts` table (`lib/db/sql/0012_evidence_receipts.sql`). A database function computes the hash chain, so an edited, removed or reordered receipt breaks every later hash:
 
@@ -26,8 +26,7 @@ Plan approved by the owner on 2026-10-10. The API contract for the gated complia
 
 | Type | Runs | Source | Phase |
 |---|---|---|---|
-| GitHub posture | worker, daily | GitHub REST API with a read-only fine-grained token | 1 |
-| Public site | worker, daily; repeated by the watch Action | HTTPS, TLS and DNS requests any visitor can make | 1 |
+| Public site | worker, daily; repeated by the watch Action | HTTPS and TLS requests any visitor can make | 1 |
 | Database posture | worker, daily | Catalog queries and rolled-back refusal probes as `truenote_app` | 1 |
 | Integrity | worker, daily | Chain recomputation and RFC 3161 timestamp | 1 |
 | Production behavior | worker, daily | Two synthetic CSR accounts and the published demo account over HTTPS, and the audit log | 2 |
@@ -35,11 +34,11 @@ Plan approved by the owner on 2026-10-10. The API contract for the gated complia
 | Attestations | owner, on reminder | Uploaded proof (screenshots, reports) | 3 |
 | Monthly summary | worker, first run of each month | Receipts of the month and the chain head | 3 |
 
-The catalog lists 29 checks: 18 from phase 1, 5 from phase 2 and 6 from phase 3 (four attestations, the operator check and the monthly summary). The worker runs the 23 automated ones; the phase 3 checks have no runner.
+The catalog lists 23 checks: 12 from phase 1, 5 from phase 2 and 6 from phase 3 (four attestations, the operator check and the monthly summary). The worker runs the 17 automated ones; the phase 3 checks have no runner.
 
 ### Why the worker and not GitHub Actions
 
-The repository is public, so Action logs and artifacts are public. GitHub posture results (open alert counts, which protections are off) are weakness details. Running the checks in the worker keeps them in the production database, readable only by a super_user, and keeps any production write credential out of GitHub. The only public part is the heartbeat and the passive public checks, which show nothing a visitor cannot already see.
+The repository is public, so Action logs and artifacts are public. Failure details are weakness details. Running the checks in the worker keeps their results in the production database, readable only by a super_user, and keeps any production write credential out of GitHub. The only public part is the heartbeat and the passive public checks, which show nothing a visitor cannot already see.
 
 ### Known gaps
 
@@ -136,15 +135,13 @@ Known limits:
 
 ## Cadence
 
-All cadences are proposals until the owner approves the organization-defined parameter values (`cadenceStatus: "proposed"` in the catalog). Automated checks run daily. The remediation window used by the open-alerts check (30 days for critical and high) is also a proposed value.
+All cadences are proposals until the owner approves the organization-defined parameter values (`cadenceStatus: "proposed"` in the catalog). Automated checks run daily.
 
 ## Configuration
 
 | Variable | Service | Purpose |
 |---|---|---|
-| `EVIDENCE_GITHUB_TOKEN` | worker | Fine-grained token, Truenote repository only, read-only: Administration, Actions, Code scanning alerts, Dependabot alerts, Secret scanning alerts, Metadata. Maximum one-year expiry; the `github.credential-expiry` check fails 30 days before. |
 | `EVIDENCE_ALERT_EMAIL` | worker | Optional, comma-separated. Where evidence alerts, attestation reminders and monthly summaries go; defaults to the security monitor's `SECURITY_ALERT_EMAIL` (`docs/security/monitoring.md`). With neither set, alerts stay pending. |
-| `EVIDENCE_GITHUB_REPO` | worker | Optional; defaults to `ryanportfolio/Truenote`. |
 | `EVIDENCE_SYNTHETIC_ACCOUNTS` | worker | JSON written by the provisioning script: `{"csrA":{"email","password"},"csrB":{"email","password"},"canaries":{"a":{"documentId","token"},"b":{...},"aConfidential":{...}}}`. Both emails must end in `.invalid` and differ, so the harness can never log in as a real person; the three canaries need distinct UUID document ids and distinct tokens. Holds passwords: set it from the file over stdin, never on a command line. Missing or invalid, the four account checks record `error` ("Not configured"), and the error never quotes the value. |
 | `EVIDENCE_SYNTHETIC_BASE_URL` | worker | Optional; defaults to `https://truenote.org`. Where the synthetic checks send their requests; http or https. |
 | `EVIDENCE_WATCH_ENABLED` | GitHub repository variable | `true` turns on the daily schedule of the watch Action. |
@@ -162,11 +159,10 @@ Each step changes production and waits for the owner's go.
    $env:DATABASE_URL = 'postgresql://postgres@127.0.0.1:5434/railway'
    corepack pnpm --filter @workspace/scripts run pgboss:install
    ```
-3. Create the GitHub token and set `EVIDENCE_GITHUB_TOKEN` on the worker (alerts use `SECURITY_ALERT_EMAIL` unless `EVIDENCE_ALERT_EMAIL` is set).
-4. Deploy web and worker from the same commit, with `.release-commit` written first.
-5. Trigger a run (`POST /api/admin/evidence/runs` as a super_user) and check: 18 receipts, every one with a `release.commit`; `GET /api/admin/evidence/chain` shows both integrity checks passing and a timestamp token; `/api/evidence/heartbeat` reports `stale: false`.
-6. Link the expected demo-phase failures to their POA&M items (`POST /api/admin/evidence/gaps`).
-7. Set the repository variable `EVIDENCE_WATCH_ENABLED=true` and run the watch Action once by hand.
+3. Deploy web and worker from the same commit, with `.release-commit` written first. Alerts go to `SECURITY_ALERT_EMAIL` unless `EVIDENCE_ALERT_EMAIL` is set on the worker.
+4. Trigger a run (`POST /api/admin/evidence/runs` as a super_user) and check: 12 receipts, every one with a `release.commit`; `GET /api/admin/evidence/chain` shows both integrity checks passing and a timestamp token; `/api/evidence/heartbeat` reports `stale: false`.
+5. Link the expected demo-phase failures to their POA&M items (`POST /api/admin/evidence/gaps`).
+6. Set the repository variable `EVIDENCE_WATCH_ENABLED=true` and run the watch Action once by hand.
 
 ## Turning on phase 2
 
@@ -251,7 +247,7 @@ Done on 2026-10-11 up to step 5: 0020 applied, `3e40f84f` deployed, the evidence
 
 ## Status
 
-Phase 1 runs in production since 2026-10-10: `0012_evidence_receipts.sql` applied at 05:07 UTC, `evidence-run` queue created, web and worker deployed from `0e2035df`. The first run (05:11 UTC) wrote 18 receipts, each naming that commit: 12 pass, the CAA check fails (linked to its POA&M item until the record is added after the domain transfer), and the five GitHub checks record `error` until `EVIDENCE_GITHUB_TOKEN` is set. Both chains verified (801 security events) and FreeTSA's token verified to its pinned root. The watch Action is on (`EVIDENCE_WATCH_ENABLED=true`) and its first run passed.
+Phase 1 runs in production since 2026-10-10: `0012_evidence_receipts.sql` applied at 05:07 UTC, `evidence-run` queue created, web and worker deployed from `0e2035df`. The first run (05:11 UTC) wrote a receipt for every phase 1 check, each naming that commit. Both chains verified (801 security events) and FreeTSA's token verified to its pinned root. The watch Action is on (`EVIDENCE_WATCH_ENABLED=true`) and its first run passed.
 
 Phase 2 is built and partly on. Steps 1 and 2 of "Turning on phase 2" are done: `0019_synthetic_fence.sql` was applied on 2026-10-10 at 17:53 UTC (`schema_migrations` sha256 `d456fab7b42fa96e56ca98c690292d3253b4840c9f7e5f20fe0a6f7cc7bdb216`), and `pgboss:install` ran again the same day and raised the stored `evidence-run` expiry to 5400 s. Still pending: the deploy (the deployed code has none of the five synthetic checks), the synthetic accounts and canaries, and `EVIDENCE_SYNTHETIC_ACCOUNTS`.
 

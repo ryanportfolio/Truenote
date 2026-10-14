@@ -21,14 +21,14 @@ export const EVIDENCE_RUN_CRON = "23 5 * * *";
  * expireInSeconds must outlast the slowest possible run, or pg-boss marks a
  * run still in progress as failed and retries it 600 s later as a second
  * run. Worst case, every check hits its time limit in runner.ts
- * (timeoutFor): 18 non-synthetic checks (5 github, 7 external, 3 database,
- * 3 integrity) at 90 s = 1,620 s, plus 5 synthetic checks at 380 s
+ * (timeoutFor): 12 non-synthetic checks (6 external, 3 database,
+ * 3 integrity) at 90 s = 1,080 s, plus 5 synthetic checks at 380 s
  * (SYNTHETIC_HTTP_WORST_CASE_MS 320 s + 60 s; synthetic.login-windows reads
- * only the database but gets the synthetic limit) = 1,900 s. Total 3,520 s,
- * about 59 minutes, before receipt writes, the alert email, the attestation
+ * only the database but gets the synthetic limit) = 1,900 s. Total 2,980 s,
+ * about 50 minutes, before receipt writes, the alert email, the attestation
  * reminder email and the monthly summary (a few queries, one receipt and one
  * email at 30 s per recipient; attestation and summary checks have no runner
- * and add no check time). 90 minutes leaves about 31 minutes for those.
+ * and add no check time). 90 minutes leaves about 40 minutes for those.
  * Recount when a check is added or a time limit changes.
  *
  * pg-boss stores these options when the queue is created; a change here

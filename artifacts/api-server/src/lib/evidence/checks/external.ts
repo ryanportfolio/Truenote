@@ -1,10 +1,9 @@
-import { promises as dns } from "node:dns";
 import tls from "node:tls";
 import type { CheckOutcome } from "../receipts.js";
 
 /**
  * Passive checks of the public site: TLS, redirects, response headers, CSP,
- * security.txt, DNS and /health. Only requests any visitor could make; no
+ * security.txt and /health. Only requests any visitor could make; no
  * active scanning. No database or app imports, so the outside-vantage
  * watcher (scripts/src/evidence-outside.ts, run by a scheduled GitHub
  * Action) runs the same code from GitHub's network.
@@ -306,44 +305,6 @@ export function evaluateSecurityTxt(status: number, body: string, now = new Date
 export async function checkSecurityTxt(): Promise<CheckOutcome> {
   const response = await get(`${PUBLIC_ORIGIN}/.well-known/security.txt`);
   return evaluateSecurityTxt(response.status, (await response.text()).slice(0, 8_000));
-}
-
-// --------------------------------------------------------------------- DNS
-
-async function resolveOrEmpty<T>(lookup: () => Promise<T[]>): Promise<T[] | { error: string }> {
-  try {
-    return await lookup();
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENODATA" || code === "ENOTFOUND") return [];
-    return { error: code ?? String(error) };
-  }
-}
-
-export function evaluateDnsCaa(caa: Array<Record<string, unknown>> | { error: string }, records: Record<string, unknown>): CheckOutcome {
-  if (!Array.isArray(caa)) {
-    return { result: "error", summary: `CAA lookup failed: ${caa.error}`, failures: [caa.error], outputs: { records } };
-  }
-  // issuewild restricts wildcard certificates only; the public hosts need an
-  // issue record. Wildcard restrictions are recorded with the records.
-  const issuers = caa.filter((r) => typeof r.issue === "string");
-  const failures = issuers.length === 0 ? ["no CAA issue record for truenote.org"] : [];
-  return outcome(failures, "CAA records limit certificate issuance.", { caa, records }, { domain: "truenote.org" });
-}
-
-export async function checkDnsCaa(): Promise<CheckOutcome> {
-  const caa = await resolveOrEmpty(
-    async () => (await dns.resolveCaa("truenote.org")).map((record) => ({ ...record }) as Record<string, unknown>)
-  );
-  const records: Record<string, unknown> = {};
-  for (const host of PUBLIC_HOSTS) {
-    records[host] = {
-      a: await resolveOrEmpty(() => dns.resolve4(host)),
-      aaaa: await resolveOrEmpty(() => dns.resolve6(host)),
-      cname: await resolveOrEmpty(() => dns.resolveCname(host))
-    };
-  }
-  return evaluateDnsCaa(caa, records);
 }
 
 // ------------------------------------------------------------------ health

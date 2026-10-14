@@ -175,6 +175,7 @@ async function buildOutputs(
     SELECT check_id, poam_id, expires_on::text AS expires_on
     FROM evidence_known_gaps
     WHERE retired_at IS NULL AND (expires_on IS NULL OR expires_on >= ${today}::date)
+      AND check_id IN ${checks.map((check) => check.id)}
     ORDER BY check_id, poam_id
   `);
   const attestationIds = checks.filter((check) => check.kind === "attestation").map((check) => check.id);
