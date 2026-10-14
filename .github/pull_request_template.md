@@ -20,6 +20,7 @@
 - CDE impact: `none` / `possible` / `in scope`
 - CDE-impact rationale: `<why, including segmentation/security impact>`
 - Security impact and threat considered: `<authentication, authorization, isolation, sensitive data, audit, retention, providers, CDE, and threat IDs>`
+- Privacy impact: `<personal data affected, purpose, retention or provider flow changes; "none" with reason>`
 
 ## PCI DSS 6.5 change controls
 
