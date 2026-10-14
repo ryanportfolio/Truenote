@@ -72,7 +72,7 @@ Done on 2026-10-11 with the owner's go, steps 1 to 10:
 - `scanner` deployed `9f4d2b87` from a temporary LF checkout (deployment `1cdcf326`; its Railway message reads `9f4d2b87d0a1` by mistake, the commit is `9f4d2b8703d9`). The first start logged the seeding line, updated `daily` from 28136 to 28149 and listened on 8080. Inside the container clamd, freshclam and node run as uid 1000 with `NoNewPrivs: 1`, and the files in `/data/clamav` belong to uid 1000. From `worker`, `/health` answered 200 with `ClamAV 1.4.6 signatures 28149`.
 - `MALWARE_SCANNER_*` set on `web` and `worker`, then `worker` (`de8a601b`) and `web` (`f94e4b8c`) deployed `9f4d2b87` through the deploy workflow.
 - Railway showed the scanner `SLEEPING` about 6 minutes after its last traffic. An EICAR text upload and a clean demo PDF, as the agent account, then woke it: the worker logged that it waited 10 s for the scanner, the scanner restarted without the seeding line, EICAR ended `quarantined` (`infected`, `Eicar-Test-Signature`) and the PDF `clean`. Both test documents were retired. A super user's clean upload is activated at once, so retire such test documents right away.
-- "Scan them now" queued 37 versions: 31 became `clean`, none infected; 6 failed with `NoSuchKey` (originals left in the Replit bucket) and keep `scan_status = 'disabled'`. All 6 are inactive (2 revoked, 2 retired, 2 rejected).
+- "Scan them now" queued 37 versions: 31 became `clean`, none infected; 6 failed with `NoSuchKey` (originals left in the Replit bucket, which was deleted with the Replit project by 2026-10-14) and keep `scan_status = 'disabled'`. All 6 are inactive (2 revoked, 2 retired, 2 rejected).
 
 ### pgvector image
 
@@ -262,7 +262,7 @@ Reset-link completion (`POST /api/auth/reset-password`) applies the login policy
 - Dump from inside `pgvector` (`pg_dump` 18.6, read-only transaction, custom format, `--no-owner --no-acl`), excluding the `_system` and `pgboss` schemas and the data of `sessions` and `password_reset_tokens`. `CREATE EXTENSION` for `vector`, `pg_trgm`, `pgcrypto` ran first; `pg_restore --single-transaction --exit-on-error` succeeded. The dump was deleted from the container afterwards.
 - Checked: exact row counts equal in 18 of 19 public tables (`sessions` 3 → 0 by design); check, foreign-key, primary-key and unique constraint definitions hash-identical; `append_security_event` body identical; index count 58 = 58. Postgres 18 adds 106 `NOT NULL` rows to `pg_constraint` that 16 does not list.
 - Every user signs in again. The pg-boss schema was recreated empty by the first boot.
-- Stored files: not copied (owner decision, 2026-10-07). The database references 8 objects under `uploads/` (2 demo PDFs, 4 versions each) that stay in the Replit bucket. Answers and citations still work because they come from the database, but a rescan or re-ingest of those 8 versions fails on Railway. A new demo set (`docs/demo-kb/`) was uploaded through the app to replace them.
+- Stored files: not copied (owner decision, 2026-10-07). The database references 8 objects under `uploads/` (2 demo PDFs, 4 versions each) that stayed in the Replit bucket; the owner reported on 2026-10-14 that the Replit project and its bucket no longer exist, so those 8 originals are gone. Answers and citations still work because they come from the database, but a rescan or re-ingest of those 8 versions fails on Railway. A new demo set (`docs/demo-kb/`) was uploaded through the app to replace them.
 
 ## Cutover
 
