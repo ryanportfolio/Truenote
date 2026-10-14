@@ -7,7 +7,7 @@
 | Check | Result |
 |---|---|
 | Production verifier source identity | `production-control-verification.sql` SHA-256 `A6ECF082FD5F358A17F2A9CCCCD81495C28600A8699AABDFC2560732A9C77EC9`; unchanged since the 2026-10-12 record; source only, not an execution receipt |
-| Threat-model source identity | `threat-model.md` SHA-256 `9B071A16A3F63B86B4D6C33AE7F19D904631E1FEBEB9F62C63B124853CAA6F4D`; includes both changes; engineering source only, not a signed review or risk acceptance |
+| Threat-model source identity | `threat-model.md` SHA-256 `5F24BAAE91328B4A714357D6A4962F3EA8BBB012C2B16F15C697CDA814AD667F`; includes both changes; engineering source only, not a signed review or risk acceptance |
 
 This record supersedes
 [`verification-record-2026-10-12.md`](./verification-record-2026-10-12.md) as the
