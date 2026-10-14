@@ -62,6 +62,16 @@ interface RunContext {
   syntheticDeps: () => SyntheticDeps;
 }
 
+/** Checks removed from the catalog; queued manual runs may still name them. */
+export const RETIRED_CHECK_IDS: ReadonlySet<string> = new Set([
+  "github.branch-ruleset",
+  "github.code-security-settings",
+  "github.open-alerts",
+  "github.security-workflow",
+  "github.credential-expiry",
+  "external.dns-caa"
+]);
+
 /** `signal` aborts when the check's time limit passes. */
 type Runner = (ctx: RunContext, signal: AbortSignal) => Promise<CheckOutcome>;
 
@@ -171,10 +181,16 @@ export async function runEvidenceChecks(onlyIds?: string[]): Promise<{ runId: st
     syntheticDeps: () => (syntheticDeps ??= syntheticDepsFromDb())
   };
   const checks = onlyIds
-    ? onlyIds.map((id) => {
+    ? onlyIds.flatMap((id) => {
+        // A manual run queued before these checks left the catalog still
+        // names them; skip those and run the rest.
+        if (RETIRED_CHECK_IDS.has(id)) {
+          console.warn(`[evidence] skipping retired check ${id}`);
+          return [];
+        }
         const check = getCheck(id);
         if (!check) throw new Error(`unknown check ${id}`);
-        return check;
+        return [check];
       })
     : EVIDENCE_CHECKS.filter((check) => CHECK_RUNNERS[check.id]);
   const entries: RunEntry[] = [];
