@@ -18,7 +18,7 @@ Truenote has one essential function: a CSR asks a question during a call and get
 | Bucket `truenote-storage` (original files) | No | Railway (Tigris) | Rescans and re-ingests fail; existing answers keep working |
 | Parsing of uploads | No | LandingAI | Uploads wait |
 | Email (password reset, invitations) | No | Resend | Admins reset passwords from the Users page |
-| DNS for `truenote.org` | Yes, for the custom domain | Name.com, edited through Replit's DNS screen | The Railway URL keeps working |
+| DNS for `truenote.org` | Yes, for the custom domain | Namecheap (registrar and BasicDNS) since 2026-10-14 | The Railway URL keeps working |
 | Source code | For any rebuild | GitHub | Local clones, plus the code bundle in each off-site copy |
 | Off-site copy | For recovery only | Backblaze B2, separate account | Railway volume backups still cover database failure |
 
@@ -86,7 +86,7 @@ Provider security and support contacts are in the incident response plan, sectio
 |---|---|---|
 | Railway | Hosts production; volume backups; restore-test projects | Pro plan support through Central Station (incident response plan, section 2) |
 | Backblaze B2 | Holds the encrypted off-site copy in an account separate from Railway | [Backblaze support](https://help.backblaze.com/) |
-| Name.com, through Replit's DNS screen | Holds the `truenote.org` DNS records | deployment.md, "Cutover" |
+| Namecheap | Registrar and DNS host for `truenote.org` since 2026-10-14 | deployment.md, "Namecheap (since 2026-10-14)" |
 | GitHub | Source code and deploy source | incident response plan, section 2 |
 
 The age private key that decrypts the off-site copy is held by the maintainer outside Railway and Backblaze (runbook, section 1). Without it, the off-site copy cannot be restored; losing it means scenario C has no recovery path until a new copy is made with a new key.
