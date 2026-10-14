@@ -34,6 +34,8 @@ Set per service (values never in git or chat; the owner's source file is `Deskto
 
 `railway variable set KEY --stdin --skip-deploys -p <project> -e <env> -s <service>` batches changes without a redeploy; `railway variable delete` always redeploys.
 
+Every production variable or service-setting change waits for the owner's go and gets a change record: a `docs/release-register.csv` row with status `CONFIG` whose message names the service and the variable or setting, never its value, or the change record of the pull request that ships it.
+
 The monitoring change went live on 2026-10-10: `0011` applied at 05:01 UTC, `SECURITY_ALERT_EMAIL` set on both services with `--skip-deploys`, then `worker` (`7b7be223`) and `web` (`e317aa3d`) deployed from `ed228fca` (#216). Checks and alert tests: `docs/security/monitoring.md`. Follow-ups went live the same day: `0013` applied at 15:49 UTC, `SECURITY_ALERT_QUIET_LOGINS` set on `worker` with `--skip-deploys`, then `web` (`4bf3c4af`) and `worker` (`8f069112`) deployed from `15141354` (#223, #232, #233, #234) by the "Deploy production" workflow (run 38066006937; the first run, 38065836663, refused because `main` moved while it waited for approval).
 
 Evidence harness alerts (`docs/security/evidence-harness.md`) go to `SECURITY_ALERT_EMAIL` unless `EVIDENCE_ALERT_EMAIL` is set on `worker`.

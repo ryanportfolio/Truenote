@@ -31,6 +31,7 @@ export const CHANGE_RECORD_FIELDS = [
   "CDE impact",
   "CDE-impact rationale",
   "Security impact and threat considered",
+  "Privacy impact",
   "6.5.1 bespoke/custom security testing",
   "6.5.1 evidence or rationale",
   "6.5.2 completion revalidation",
@@ -103,7 +104,8 @@ function parseFields(markdown: string): { fields: Map<string, string>; issues: s
   const fields = new Map<string, string>();
   const issues: string[] = [];
   for (const label of CHANGE_RECORD_FIELDS) {
-    const pattern = new RegExp(`^- ${escapeRegExp(label)}:\\s*(.*)$`, "gm");
+    // [ \t]* rather than \s*: an empty field must not capture the next line as its value.
+    const pattern = new RegExp(`^- ${escapeRegExp(label)}:[ \\t]*(.*)$`, "gm");
     const matches = [...markdown.matchAll(pattern)];
     if (matches.length === 0) {
       issues.push(`missing field: ${label}`);

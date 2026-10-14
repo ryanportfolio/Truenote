@@ -22,6 +22,7 @@ function validRecord(overrides: Record<string, string> = {}): string {
     "CDE impact": "possible",
     "CDE-impact rationale": "Change may affect software entering the assessed CDE.",
     "Security impact and threat considered": "Prevents incomplete change evidence from merging.",
+    "Privacy impact": "None: no personal data, purpose, retention or provider flow changes.",
     "6.5.1 bespoke/custom security testing": "completed",
     "6.5.1 evidence or rationale": "Scripts test receipt in this pull request.",
     "6.5.2 completion revalidation": "planned",
@@ -59,17 +60,17 @@ function validRecord(overrides: Record<string, string> = {}): string {
     CHANGE_RECORD_HEADINGS[1],
     ...CHANGE_RECORD_FIELDS.slice(7, 9).map((label) => `- ${label}: ${values[label]}`),
     CHANGE_RECORD_HEADINGS[2],
-    ...CHANGE_RECORD_FIELDS.slice(9, 12).map((label) => `- ${label}: ${values[label]}`),
+    ...CHANGE_RECORD_FIELDS.slice(9, 13).map((label) => `- ${label}: ${values[label]}`),
     CHANGE_RECORD_HEADINGS[3],
-    ...CHANGE_RECORD_FIELDS.slice(12, 24).map((label) => `- ${label}: ${values[label]}`),
+    ...CHANGE_RECORD_FIELDS.slice(13, 25).map((label) => `- ${label}: ${values[label]}`),
     CHANGE_RECORD_HEADINGS[4],
-    ...CHANGE_RECORD_FIELDS.slice(24, 28).map((label) => `- ${label}: ${values[label]}`),
+    ...CHANGE_RECORD_FIELDS.slice(25, 29).map((label) => `- ${label}: ${values[label]}`),
     CHANGE_RECORD_HEADINGS[5],
-    ...CHANGE_RECORD_FIELDS.slice(28, 30).map((label) => `- ${label}: ${values[label]}`),
+    ...CHANGE_RECORD_FIELDS.slice(29, 31).map((label) => `- ${label}: ${values[label]}`),
     CHANGE_RECORD_HEADINGS[6],
-    ...CHANGE_RECORD_FIELDS.slice(30, 37).map((label) => `- ${label}: ${values[label]}`),
+    ...CHANGE_RECORD_FIELDS.slice(31, 38).map((label) => `- ${label}: ${values[label]}`),
     CHANGE_RECORD_HEADINGS[7],
-    ...CHANGE_RECORD_FIELDS.slice(37).map((label) => `- ${label}: ${values[label]}`)
+    ...CHANGE_RECORD_FIELDS.slice(38).map((label) => `- ${label}: ${values[label]}`)
   ].join("\n");
 }
 
@@ -90,6 +91,26 @@ describe("PCI change-record gate", () => {
     assert.ok(issues.includes("missing section: ## Verification"));
     assert.ok(issues.includes("field is incomplete: Purpose"));
     assert.ok(issues.some((issue) => issue.startsWith("CDE impact must be exactly one of")));
+  });
+
+  it("requires a privacy impact assessment", () => {
+    const missing = validRecord().replace(/^- Privacy impact:.*\n/m, "");
+    assert.ok(verifyChangeRecord(missing).issues.includes("missing field: Privacy impact"));
+
+    const placeholder = validRecord({
+      "Privacy impact": "`<personal data affected, purpose, retention or provider flow changes; \"none\" with reason>`"
+    });
+    assert.ok(verifyChangeRecord(placeholder).issues.includes("field is incomplete: Privacy impact"));
+    assert.ok(verifyChangeRecord(validRecord({ "Privacy impact": "" })).issues.includes(
+      "field is incomplete: Privacy impact"
+    ));
+  });
+
+  it("accepts a filled privacy impact assessment", () => {
+    const filled = validRecord({
+      "Privacy impact": "`Adds CSR email to audit events for 90 days; no new provider receives it.`"
+    });
+    assert.deepEqual(verifyChangeRecord(filled), { changeId: "TN-CHG-2026-001", issues: [] });
   });
 
   it("rejects author self-review and incomplete significant-change revalidation", () => {
