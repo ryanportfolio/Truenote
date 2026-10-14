@@ -3,9 +3,14 @@
 # it over `railway ssh`). Base: the exact image production's `pgvector`
 # service runs (digest read from Railway's deployment metadata on 2026-10-10),
 # so pg_dump, pg_restore and the restore-test server match production. Production
-# builds Dockerfile.pgvector from the same digest; keep the two equal.
+# builds Dockerfile.pgvector from the same digest; keep the two equal. As in
+# Dockerfile.pgvector, the PostgreSQL and libpq packages stay held so pg_dump
+# and pg_restore keep production's version; other OS packages get the Debian
+# security updates published since the base image was built.
 FROM pgvector/pgvector@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
-RUN apt-get update \
+RUN apt-mark hold $(dpkg-query -W -f '${db:Status-Abbrev} ${Package}\n' 'postgresql*' 'libpq*' | awk '$1 == "ii" { print $2 }') \
+ && apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends age rclone git ca-certificates curl \
  && rm -rf /var/lib/apt/lists/*
 COPY scripts/backup/ /opt/truenote-backup/
