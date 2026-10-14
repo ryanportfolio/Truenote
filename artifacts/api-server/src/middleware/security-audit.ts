@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { clientIpFrom } from "../lib/auth/rate-limit.js";
 import { recordSecurityEventBestEffort } from "../lib/security/audit.js";
+import { signInTargetOf } from "../lib/security/sign-in-target.js";
 
 /**
  * Mount points for securityAuditMiddleware. app.ts passes this list to
@@ -78,7 +79,9 @@ export function securityAuditMiddleware(
       details: {
         status: res.statusCode,
         durationMs: Date.now() - startedAt,
-        ...(rawPath === path ? {} : { rawPath })
+        ...(rawPath === path ? {} : { rawPath }),
+        // Sign-in routes note the targeted account (lib/security/sign-in-target.ts).
+        ...signInTargetOf(res)
       }
     });
   });

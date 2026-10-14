@@ -216,7 +216,7 @@ describe("local login lockout", () => {
       resourceType: "user",
       resourceId: fake.account.id,
       sourceIp: "203.0.113.7",
-      details: { factor: "password", threshold: 5, lockMinutes: 30 }
+      details: { factor: "password", threshold: 5, lockMinutes: 30, targetUserId: fake.account.id }
     });
     expect(JSON.stringify(fake.audit.mock.calls)).not.toMatch(/correct-password|wrong-password|stored-password-hash/);
   });
@@ -341,7 +341,7 @@ describe("lockout rechecked under the user row lock", () => {
     expect(fake.audit).toHaveBeenCalledWith(expect.objectContaining({
       action: "auth.local.login",
       outcome: "denied",
-      details: { authMethod: "local", reason: "account_locked" }
+      details: { authMethod: "local", reason: "account_locked", targetUserId: fake.account.id }
     }));
 
     // The lock still refuses the next correct attempt.

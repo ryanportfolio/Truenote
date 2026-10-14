@@ -3,6 +3,7 @@ import { users } from "@workspace/db/schema";
 import type { UserRole } from "@workspace/db/schema";
 import { db } from "../db-client.js";
 import { recordSecurityEventBestEffort } from "../security/audit.js";
+import { targetUser } from "../security/sign-in-target.js";
 import { isDemoEmail } from "./demo-accounts.js";
 
 /**
@@ -185,7 +186,8 @@ export async function recordAuthFailure(
       factor: context.factor,
       threshold,
       lockMinutes: minutes,
-      lockedUntil: row.lockedUntil ? row.lockedUntil.toISOString() : null
+      lockedUntil: row.lockedUntil ? row.lockedUntil.toISOString() : null,
+      ...targetUser(account.id)
     }
   });
   return { locked: true, lockedNow: true, lockedUntil: row.lockedUntil };

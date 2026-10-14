@@ -338,11 +338,25 @@ export interface OidcClaims {
 }
 
 /**
+ * The identity a signed id_token names, read after its signature, issuer,
+ * audience, expiry and nonce checks passed. Used only to name the targeted
+ * account in the audit record of a refused sign-in.
+ */
+export interface OidcRefusedIdentity {
+  issuer: string;
+  subject: string | null;
+  email: string | null;
+}
+
+/**
  * A sign-in after an idle expiry whose id_token does not show a fresh
  * authentication. `reason` is the short code recorded in the audit event.
  */
 export class OidcReauthError extends Error {
-  constructor(readonly reason: "auth_time_missing" | "auth_time_stale") {
+  constructor(
+    readonly reason: "auth_time_missing" | "auth_time_stale",
+    readonly identity?: OidcRefusedIdentity
+  ) {
     super(
       reason === "auth_time_missing"
         ? "OIDC id_token has no auth_time; add the auth_time optional claim to the ID token"
@@ -378,6 +392,14 @@ function readJwtPart<T>(value: string): T {
 function includesAudience(audience: unknown, clientId: string): boolean {
   return audience === clientId ||
     (Array.isArray(audience) && audience.some((item) => item === clientId));
+}
+
+/** The first of email, preferred_username, upn that looks like an email, lowercased. */
+function emailClaim(claims: OidcClaims): string | null {
+  const raw = [claims.email, claims.preferred_username, claims.upn].find(
+    (value): value is string => typeof value === "string" && value.includes("@")
+  );
+  return raw ? raw.trim().toLowerCase() : null;
 }
 
 export async function verifyOidcIdToken(input: {
@@ -444,11 +466,18 @@ export async function verifyOidcIdToken(input: {
   if (input.authenticatedAfter !== undefined) {
     // prompt=login was sent; a silent SSO sign-in carries the auth_time of
     // the earlier Entra sign-in. Same 60-second clock allowance as exp/nbf.
+    // The signature, issuer, audience, expiry and nonce are checked above,
+    // so the refusal can name the account the token is for.
+    const refused = (): OidcRefusedIdentity => ({
+      issuer: input.discovery.issuer,
+      subject: typeof claims.sub === "string" && claims.sub.trim() !== "" ? claims.sub : null,
+      email: emailClaim(claims)
+    });
     if (typeof claims.auth_time !== "number") {
-      throw new OidcReauthError("auth_time_missing");
+      throw new OidcReauthError("auth_time_missing", refused());
     }
     if (claims.auth_time < input.authenticatedAfter - 60) {
-      throw new OidcReauthError("auth_time_stale");
+      throw new OidcReauthError("auth_time_stale", refused());
     }
   }
   // `sub` is the stable per-app identifier the account binding keys on.
@@ -468,11 +497,8 @@ export async function verifyOidcIdToken(input: {
   if (input.config.requireMfa && !amr.includes("mfa")) {
     throw new Error("OIDC token does not contain MFA evidence");
   }
-  const rawEmail = [claims.email, claims.preferred_username, claims.upn].find(
-    (value): value is string => typeof value === "string" && value.includes("@")
-  );
-  if (!rawEmail) throw new Error("OIDC token has no email claim");
-  const email = rawEmail.trim().toLowerCase();
+  const email = emailClaim(claims);
+  if (!email) throw new Error("OIDC token has no email claim");
   if (input.config.allowedDomains.length > 0) {
     const domain = email.split("@")[1] ?? "";
     if (!input.config.allowedDomains.includes(domain)) {

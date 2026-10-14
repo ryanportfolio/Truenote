@@ -29,9 +29,10 @@ import {
   listPasskeys,
   lockPasskeySignCount,
   lockUserAccount,
-  MFA_COOKIE_NAME,
+  mfaCookieToken,
   MfaAccountRefused,
   MfaChallengeGone,
+  throttledMfaTarget,
   transportsCsv,
   type MfaChallenge,
   type MfaFactor,
@@ -48,6 +49,7 @@ import { clientIpFrom, loginIpLimiter } from "../lib/auth/rate-limit.js";
 import { mfaLoginIpLimit, mfaManageLimit } from "../lib/security/route-rate-limit.js";
 import { authedUser, requireAuth, requireFreshPassword, requireSuperUser } from "../middleware/current-user.js";
 import { appendSecurityEvent, recordSecurityEventBestEffort } from "../lib/security/audit.js";
+import { noteSignInTarget, targetUser } from "../lib/security/sign-in-target.js";
 
 /**
  * Second factor for local password login, mounted at /api/auth/mfa.
@@ -180,14 +182,14 @@ interface PendingLogin {
  * in locally: deactivated, refused by LOCAL_LOGIN_MODE, or locked (INVALID).
  */
 async function pendingLogin(req: Request, res: Response): Promise<PendingLogin | null> {
-  const token = typeof req.cookies?.[MFA_COOKIE_NAME] === "string"
-    ? (req.cookies[MFA_COOKIE_NAME] as string)
-    : undefined;
-  const challenge = await findLoginChallenge(token);
+  const challenge = await findLoginChallenge(mfaCookieToken(req));
   if (!challenge) {
     res.status(401).json(EXPIRED);
     return null;
   }
+  // The challenge names the account this sign-in targets
+  // (lib/security/sign-in-target.ts).
+  noteSignInTarget(res, targetUser(challenge.userId));
   const user = await loadUser(challenge.userId);
   if (
     !user ||
@@ -201,6 +203,16 @@ async function pendingLogin(req: Request, res: Response): Promise<PendingLogin |
   return { challenge, user };
 }
 
+/**
+ * The in-handler loginIpLimiter refusal. Like mfaLoginIpLimit's, its audit
+ * record names the account of a valid pending challenge (one read, no
+ * factor checked) and the reply is the same either way.
+ */
+async function refuseThrottled(req: Request, res: Response): Promise<void> {
+  noteSignInTarget(res, await throttledMfaTarget(req));
+  res.status(429).json({ error: "Too many login attempts. Try again in a few minutes." });
+}
+
 function auditFailure(user: MfaUser, factor: MfaFactor, ip: string | null, reason: string): void {
   recordSecurityEventBestEffort({
     action: "auth.mfa.verify",
@@ -209,7 +221,7 @@ function auditFailure(user: MfaUser, factor: MfaFactor, ip: string | null, reaso
     programId: user.programId,
     resourceType: "session",
     sourceIp: ip,
-    details: { authMethod: "local", factor, reason }
+    details: { authMethod: "local", factor, reason, ...targetUser(user.id) }
   });
 }
 
@@ -272,7 +284,7 @@ mfaRouter.post("/passkey", mfaLoginIpLimit, async (req, res, next) => {
   try {
     const ip = clientIpFrom(req);
     if (!loginIpLimiter.hit(ip)) {
-      res.status(429).json({ error: "Too many login attempts. Try again in a few minutes." });
+      await refuseThrottled(req, res);
       return;
     }
     const pending = await pendingLogin(req, res);
@@ -337,7 +349,7 @@ mfaRouter.post("/recovery-code", mfaLoginIpLimit, async (req, res, next) => {
   try {
     const ip = clientIpFrom(req);
     if (!loginIpLimiter.hit(ip)) {
-      res.status(429).json({ error: "Too many login attempts. Try again in a few minutes." });
+      await refuseThrottled(req, res);
       return;
     }
     const pending = await pendingLogin(req, res);

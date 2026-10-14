@@ -64,7 +64,7 @@ afterAll(async () => {
 async function login(ip: string) {
   const res = await fetch(`${base}/api/auth/login`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-forwarded-for": ip },
+    headers: { "content-type": "application/json", "x-real-ip": ip },
     body: "{}"
   });
   const text = await res.text();
@@ -73,7 +73,7 @@ async function login(ip: string) {
 
 async function sso(path: string, ip: string) {
   const res = await fetch(`${base}/api/auth/oidc${path}`, {
-    headers: { "x-forwarded-for": ip },
+    headers: { "x-real-ip": ip },
     redirect: "manual"
   });
   await res.arrayBuffer();

@@ -135,7 +135,8 @@ describe("recordAuthFailure", () => {
         factor: "password",
         threshold: 5,
         lockMinutes: 30,
-        lockedUntil: "2026-10-10T12:30:00.000Z"
+        lockedUntil: "2026-10-10T12:30:00.000Z",
+        targetUserId: account.id
       }
     });
     expect(JSON.stringify(event)).not.toMatch(/password_hash|passwordHash/);

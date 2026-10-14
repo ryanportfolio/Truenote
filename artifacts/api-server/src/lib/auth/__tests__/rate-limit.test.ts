@@ -1,5 +1,34 @@
+import type { Request } from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SlidingWindowLimiter } from "../rate-limit.js";
+import { clientIpFrom, SlidingWindowLimiter } from "../rate-limit.js";
+
+function request(headers: Record<string, string>, ip = "100.64.0.9"): Request {
+  const lower = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+  return { ip, header: (name: string) => lower[name.toLowerCase()] } as unknown as Request;
+}
+
+// POAM-2026-027: the address comes from the X-Real-IP header Railway's edge
+// sets, never from client-supplied X-Forwarded-For entries.
+describe("clientIpFrom", () => {
+  it("ignores a spoofed first X-Forwarded-For entry", () => {
+    const real = { "X-Real-IP": "203.0.113.50" };
+    const honest = clientIpFrom(request({ ...real, "X-Forwarded-For": "203.0.113.50" }));
+    const spoofed = clientIpFrom(request({ ...real, "X-Forwarded-For": "198.51.100.1, 203.0.113.50" }));
+    const otherSpoof = clientIpFrom(request({ ...real, "X-Forwarded-For": "10.0.0.1, 192.0.2.7, 203.0.113.50" }));
+    expect(honest).toBe("203.0.113.50");
+    expect(spoofed).toBe("203.0.113.50");
+    expect(otherSpoof).toBe("203.0.113.50");
+  });
+
+  it("does not take X-Forwarded-For when X-Real-IP is absent", () => {
+    expect(clientIpFrom(request({ "X-Forwarded-For": "198.51.100.1" }, "127.0.0.1"))).toBe("127.0.0.1");
+  });
+
+  it("trims the X-Real-IP value and falls back to the socket address when it is blank", () => {
+    expect(clientIpFrom(request({ "X-Real-IP": " 2001:db8::1 " }))).toBe("2001:db8::1");
+    expect(clientIpFrom(request({ "X-Real-IP": "  " }, "127.0.0.1"))).toBe("127.0.0.1");
+  });
+});
 
 describe("SlidingWindowLimiter", () => {
   beforeEach(() => {

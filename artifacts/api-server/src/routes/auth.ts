@@ -58,14 +58,21 @@ import {
 } from "../lib/email/templates.js";
 import { recordSecurityEventBestEffort } from "../lib/security/audit.js";
 import { loginPasswordIpLimit } from "../lib/security/route-rate-limit.js";
+import {
+  noteSignInTarget,
+  signInEmail,
+  submittedIdentifier,
+  targetUser
+} from "../lib/security/sign-in-target.js";
 
 export const authRouter = Router();
 
 const LoginBody = z.object({
   // .trim() matches the CreateBody convention in routes/admin/users.ts
   // — without it, a paste with trailing whitespace fails zod's
-  // .email() validation rather than normalizing transparently.
-  email: z.string().trim().email().max(254),
+  // .email() validation rather than normalizing transparently. Shared with
+  // the denied sign-in audit record, which fingerprints only a valid email.
+  email: signInEmail,
   password: z.string().min(1).max(1024)
 });
 
@@ -137,6 +144,14 @@ function getDummyHash(): Promise<string> {
  */
 authRouter.post("/login", loginPasswordIpLimit, async (req, res, next) => {
   try {
+    // Every denied attempt's audit record names the targeted account: the
+    // hash of the submitted email (only when it is a valid email address)
+    // until the account is found, then its id
+    // (lib/security/sign-in-target.ts). Nothing here is awaited or touches
+    // the database, and the response is unchanged, so neither timing nor
+    // response tells a missing account from an existing one.
+    noteSignInTarget(res, submittedIdentifier(req.body));
+
     // Per-IP throttle BEFORE any Argon2 work, so a flood can't force
     // unbounded verifications from one source. Very generous (see
     // loginIpLimiter) so a shared-office IP is never locked out. A 429
@@ -188,7 +203,13 @@ authRouter.post("/login", loginPasswordIpLimit, async (req, res, next) => {
       res.status(401).json({ error: "Invalid credentials" });
     };
 
-    if (!row || !row.isActive) {
+    if (!row) {
+      await refuse();
+      return;
+    }
+    const target = targetUser(row.id);
+    noteSignInTarget(res, target);
+    if (!row.isActive) {
       await refuse();
       return;
     }
@@ -205,7 +226,8 @@ authRouter.post("/login", loginPasswordIpLimit, async (req, res, next) => {
         details: {
           authMethod: "local",
           reason: "local_login_mode",
-          localLoginMode: oidc.localLoginMode
+          localLoginMode: oidc.localLoginMode,
+          ...target
         }
       });
       await refuse();
@@ -220,7 +242,7 @@ authRouter.post("/login", loginPasswordIpLimit, async (req, res, next) => {
         programId: row.programId,
         resourceType: "session",
         sourceIp: ip,
-        details: { authMethod: "local", reason: "account_locked" }
+        details: { authMethod: "local", reason: "account_locked", ...target }
       });
       await refuse();
       return;
@@ -295,7 +317,7 @@ authRouter.post("/login", loginPasswordIpLimit, async (req, res, next) => {
         programId: row.programId,
         resourceType: "session",
         sourceIp: ip,
-        details: { authMethod: "local", reason: "no_passkey" }
+        details: { authMethod: "local", reason: "no_passkey", ...target }
       });
       res.status(401).json({ error: "Invalid credentials" });
       return;
@@ -337,7 +359,7 @@ authRouter.post("/login", loginPasswordIpLimit, async (req, res, next) => {
           programId: row.programId,
           resourceType: "session",
           sourceIp: ip,
-          details: { authMethod: "local", reason: "account_locked" }
+          details: { authMethod: "local", reason: "account_locked", ...target }
         });
       }
       res.status(401).json({ error: "Invalid credentials" });
