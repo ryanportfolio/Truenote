@@ -14,6 +14,7 @@ import {
   getOidcConfig,
   loadOidcDiscovery,
   OidcReauthError,
+  type OidcRefusedIdentity,
   openOidcState,
   safeReturnTo,
   sealOidcState,
@@ -34,7 +35,11 @@ import {
   recordSecurityEventBestEffort
 } from "../lib/security/audit.js";
 import { oidcIpLimit } from "../lib/security/route-rate-limit.js";
-import { targetIdentifier, targetUser } from "../lib/security/sign-in-target.js";
+import {
+  targetIdentifier,
+  targetUser,
+  type SignInTarget
+} from "../lib/security/sign-in-target.js";
 
 export const oidcRouter = Router();
 
@@ -75,6 +80,31 @@ function assertEligible(user: OidcUser, allowedProgramIds: string[]): void {
   if (!isSsoProgramAllowed(allowedProgramIds, user.programId)) {
     throw new OidcRefusal("program_not_allowed", user);
   }
+}
+
+/**
+ * The account an auth_time refusal targeted, found the way /callback finds
+ * it: the subject's identity binding at this issuer, else the account with
+ * the token's email. Reads only: nothing is bound and no session is made.
+ * Falls back to the email fingerprint when no account resolves or the
+ * lookup fails (lib/security/sign-in-target.ts).
+ */
+async function reauthTarget(
+  identity: OidcRefusedIdentity | undefined
+): Promise<SignInTarget | null> {
+  if (!identity?.subject) return identity ? targetIdentifier(identity.email) : null;
+  try {
+    const bound = await findIdentityBySubject(identity.issuer, identity.subject);
+    const user = bound
+      ? await loadUser(eq(users.id, bound.userId))
+      : identity.email
+        ? await loadUser(eq(users.email, identity.email))
+        : undefined;
+    if (user) return targetUser(user.id);
+  } catch (error) {
+    console.warn("[oidc] refused sign-in target lookup failed:", error instanceof Error ? error.message : error);
+  }
+  return targetIdentifier(identity.email);
 }
 
 const STATE_COOKIE = "truenote_oidc_state";
@@ -263,7 +293,9 @@ oidcRouter.get("/callback", oidcIpLimit, async (req, res) => {
         }
       });
     } else if (error instanceof OidcReauthError) {
-      // The token was valid but not fresh; no account is resolved yet.
+      // The token was signed and valid but not fresh. The record names the
+      // account it is for; the sign-in itself stays refused.
+      const target = await reauthTarget(error.identity);
       recordSecurityEventBestEffort({
         action: "auth.oidc.login",
         outcome: "denied",
@@ -271,7 +303,7 @@ oidcRouter.get("/callback", oidcIpLimit, async (req, res) => {
         programId: null,
         resourceType: "session",
         sourceIp: clientIpFrom(req),
-        details: { reason: `reauth_${error.reason}`, authMethod: "oidc" }
+        details: { reason: `reauth_${error.reason}`, authMethod: "oidc", ...target }
       });
     }
     console.warn("[oidc] callback failed:", error instanceof Error ? error.message : error);

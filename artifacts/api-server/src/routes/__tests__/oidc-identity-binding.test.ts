@@ -608,6 +608,51 @@ describe("OIDC re-authentication after an idle expiry", () => {
     );
   });
 
+  it.each([
+    ["stale", 0, "reauth_auth_time_stale"],
+    ["missing", undefined, "reauth_auth_time_missing"]
+  ])("names a bound account in the %s auth_time refusal without signing it in", async (_label, authTime, reason) => {
+    bind(person, "subject-person");
+    const before = fake.identities.map((row) => ({ ...row }));
+    const { location } = await callback(
+      { sub: "subject-person", email: "renamed@example.com", auth_time: authTime },
+      { reauthenticate: true }
+    );
+    expectRefused(location, reason);
+    // The binding decides the account, as on a sign-in; nothing is written.
+    expect(deniedDetails()).toEqual({ reason, authMethod: "oidc", targetUserId: person.id });
+    expect(fake.identities).toEqual(before);
+    expect(fake.userUpdates).toEqual([]);
+  });
+
+  it("names an unbound account by its email in the refusal without binding it", async () => {
+    const { location } = await callback(
+      { sub: "subject-person", email: person.email, auth_time: 0 },
+      { reauthenticate: true }
+    );
+    expectRefused(location, "reauth_auth_time_stale");
+    expect(deniedDetails()).toEqual({
+      reason: "reauth_auth_time_stale",
+      authMethod: "oidc",
+      targetUserId: person.id
+    });
+    expect(fake.identities).toEqual([]);
+  });
+
+  it("names an unknown account in the refusal by the email hash only", async () => {
+    const { location } = await callback(
+      { sub: "subject-stranger", email: "stranger@example.com", auth_time: 0 },
+      { reauthenticate: true }
+    );
+    expectRefused(location, "reauth_auth_time_stale");
+    expect(deniedDetails()).toEqual({
+      reason: "reauth_auth_time_stale",
+      authMethod: "oidc",
+      targetIdentifierSha256: createHash("sha256").update("stranger@example.com").digest("hex")
+    });
+    expect(JSON.stringify(fake.recordSecurityEventBestEffort.mock.calls)).not.toContain("stranger@example.com");
+  });
+
   it("refuses a stale first login before binding the identity", async () => {
     const { location } = await callback(
       { sub: "subject-person", email: person.email, auth_time: 0 },

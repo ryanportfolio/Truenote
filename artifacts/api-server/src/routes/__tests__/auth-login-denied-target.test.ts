@@ -135,14 +135,37 @@ describe("denied sign-in audit record", () => {
     expect(recorded).not.toContain(PASSWORD.toLowerCase());
   });
 
-  it("never records a password typed into the email field", async () => {
+  it("records no digest of a password typed into the email field", async () => {
     const reply = await login({ email: PASSWORD, password: "x" });
     expect(reply.status).toBe(400);
-    expect(mutationEvent().details).toMatchObject({
-      status: 400,
-      targetIdentifierSha256: sha256(PASSWORD.toLowerCase())
-    });
-    expect(JSON.stringify(fake.audit.mock.calls).toLowerCase()).not.toContain(PASSWORD.toLowerCase());
+    const details = mutationEvent().details;
+    expect(details).toMatchObject({ status: 400, targetIdentifierMalformed: true });
+    expect(details).not.toHaveProperty("targetIdentifierSha256");
+    expect(details).not.toHaveProperty("targetUserId");
+    // Neither the text nor an offline-checkable digest of it is recorded.
+    const recorded = JSON.stringify(fake.audit.mock.calls).toLowerCase();
+    expect(recorded).not.toContain(PASSWORD.toLowerCase());
+    expect(recorded).not.toContain(sha256(PASSWORD.toLowerCase()));
+    expect(recorded).not.toContain(sha256(PASSWORD));
+  });
+
+  it.each([
+    ["an address-like string with a space", "pass word@example.com"],
+    ["text without an @", "hunter2hunter2"],
+    ["an over-long address", `${"a".repeat(250)}@example.com`]
+  ])("records only the malformed flag for %s", async (_label, identifier) => {
+    await login({ email: identifier, password: "x" });
+    const details = mutationEvent().details;
+    expect(details).toMatchObject({ targetIdentifierMalformed: true });
+    expect(details).not.toHaveProperty("targetIdentifierSha256");
+  });
+
+  it("records nothing about the target when no email string was sent", async () => {
+    await login({ password: "x" });
+    const details = mutationEvent().details;
+    expect(details).not.toHaveProperty("targetIdentifierSha256");
+    expect(details).not.toHaveProperty("targetIdentifierMalformed");
+    expect(details).not.toHaveProperty("targetUserId");
   });
 
   it("answers an unknown and an existing account the same way", async () => {

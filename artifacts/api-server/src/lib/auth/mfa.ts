@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { Response } from "express";
+import type { Request, Response } from "express";
 import { eq, sql, type SQL } from "drizzle-orm";
 import {
   generateAuthenticationOptions,
@@ -10,6 +10,7 @@ import { users, type UserRole } from "@workspace/db/schema";
 import { db } from "../db-client.js";
 import { recordAppError } from "../observability/error-log.js";
 import { recordSecurityEventBestEffort } from "../security/audit.js";
+import { targetUser, type SignInTarget } from "../security/sign-in-target.js";
 import { isAccountLocked, recordAuthSuccess } from "./lockout.js";
 import type { LocalLoginMode } from "./oidc.js";
 import { createSession, setSessionCookie } from "./sessions.js";
@@ -289,6 +290,29 @@ export async function findLoginChallenge(token: string | undefined): Promise<Mfa
     LIMIT 1
   `);
   return toChallenge(result.rows[0]);
+}
+
+/** The MFA cookie token of a login-step request, if any. */
+export function mfaCookieToken(req: Request): string | undefined {
+  const token: unknown = req.cookies?.[MFA_COOKIE_NAME];
+  return typeof token === "string" ? token : undefined;
+}
+
+/**
+ * The account a throttled login-step request targets, for its audit record
+ * (lib/security/sign-in-target.ts): the user of the pending challenge its
+ * MFA cookie names. One indexed read (findLoginChallenge), and only on the
+ * 429 path; no factor is checked and nothing is written. Null when there is
+ * no valid challenge or the read fails.
+ */
+export async function throttledMfaTarget(req: Request): Promise<SignInTarget | null> {
+  try {
+    const challenge = await findLoginChallenge(mfaCookieToken(req));
+    return challenge ? targetUser(challenge.userId) : null;
+  } catch (err) {
+    console.warn("[auth] MFA target lookup failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 /**

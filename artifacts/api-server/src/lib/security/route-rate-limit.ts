@@ -1,5 +1,6 @@
 import { rateLimit, type RateLimitRequestHandler } from "express-rate-limit";
 import { clientIpFrom } from "../auth/rate-limit.js";
+import { throttledMfaTarget } from "../auth/mfa.js";
 import { noteSignInTarget, submittedIdentifier } from "./sign-in-target.js";
 
 /**
@@ -114,7 +115,8 @@ export const loginPasswordIpLimit = rateLimit({
   validate: false,
   handler: (req, res) => {
     // The refusal does no account lookup, so the audit record names the
-    // target by the hash of the submitted email (lib/security/sign-in-target.ts).
+    // target by the hash of the submitted email, when it is a valid email
+    // address (lib/security/sign-in-target.ts).
     noteSignInTarget(res, submittedIdentifier(req.body));
     res.status(429).json({ error: "Too many login attempts. Try again in a few minutes." });
   }
@@ -149,7 +151,9 @@ export const oidcIpLimit = rateLimit({
  * loginIpLimiter keys it (clientIpFrom). 2000 per 10 minutes, the same as
  * loginIpLimiter, so a call center behind one shared address is never
  * blocked; the per-account lockout bounds guessing on a single account.
- * The two routes share the budget.
+ * The two routes share the budget. The 429 waits for one read of the
+ * pending challenge so its audit record names the targeted account
+ * (throttledMfaTarget); the reply is the same with or without a challenge.
  */
 export const mfaLoginIpLimit = rateLimit({
   windowMs: 10 * 60_000,
@@ -158,7 +162,8 @@ export const mfaLoginIpLimit = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => clientIpFrom(req),
   validate: false,
-  handler: (_req, res) => {
+  handler: async (req, res) => {
+    noteSignInTarget(res, await throttledMfaTarget(req));
     res.status(429).json({ error: "Too many login attempts. Try again in a few minutes." });
   }
 });
