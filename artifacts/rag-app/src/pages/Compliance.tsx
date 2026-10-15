@@ -12,6 +12,7 @@ import {
   getComplianceDocuments
 } from "@/lib/api";
 import { canReadCompliance, readComplianceCitation } from "@/lib/complianceAccess";
+import { SSP_SLUG, controlAnchor, controlFromHash, remarkControlLinks } from "@/lib/complianceControls";
 import { cn } from "@/lib/utils";
 import type {
   ComplianceDocumentResponse,
@@ -379,6 +380,31 @@ function ComplianceDocumentView({ slug }: { slug: string }): JSX.Element {
     return () => cancelAnimationFrame(frame);
   }, [citedSpan?.start, citedSpan?.end, state]);
 
+  // A control link (#control-ia-2-1) marks that control's row and scrolls to it, both
+  // on arrival from another document and on a link within the plan.
+  const [targetControl, setTargetControl] = useState<string | null>(null);
+  useEffect(() => {
+    if (state.status !== "ready") return;
+    let frame = 0;
+    const show = () => {
+      const id = controlFromHash(window.location.hash);
+      setTargetControl(id);
+      if (!id) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const row = document.getElementById(controlAnchor(id));
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        row?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
+      });
+    };
+    show();
+    window.addEventListener("hashchange", show);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("hashchange", show);
+    };
+  }, [state]);
+
   useEffect(() => {
     let cancelled = false;
     setState({ status: "loading" });
@@ -482,7 +508,12 @@ function ComplianceDocumentView({ slug }: { slug: string }): JSX.Element {
             ref={articleRef}
             className="min-w-0 rounded-lg border border-border bg-card p-5 text-sm leading-relaxed shadow-card"
           >
-            <ComplianceMarkdown markdown={state.document.markdown} citedSpan={citedSpan} />
+            <ComplianceMarkdown
+              markdown={state.document.markdown}
+              citedSpan={citedSpan}
+              isSsp={state.document.slug === SSP_SLUG}
+              targetControl={targetControl}
+            />
           </article>
         </>
       )}
@@ -513,15 +544,28 @@ function citedAttributes(node: PositionedNode | undefined, span: CitedSpan) {
     : { citedClass: undefined };
 }
 
-/** The knowledge base reader's Markdown recipe, marking a cited passage when given one. */
-function ComplianceMarkdown({ markdown, citedSpan = null }: { markdown: string; citedSpan?: CitedSpan }): JSX.Element {
+interface ComplianceMarkdownProps {
+  markdown: string;
+  citedSpan?: CitedSpan;
+  /** The system security plan: its control rows get anchors and NIST links. */
+  isSsp: boolean;
+  /** Control whose row a control link points at, marked like a cited passage. */
+  targetControl: string | null;
+}
+
+/**
+ * The knowledge base reader's Markdown recipe, marking a cited passage when given one.
+ * Control ids link to their row in the system security plan.
+ */
+function ComplianceMarkdown({ markdown, citedSpan = null, isSsp, targetControl }: ComplianceMarkdownProps): JSX.Element {
   const mark = (node: PositionedNode | undefined) => {
     const { citedClass, ...attributes } = citedAttributes(node, citedSpan);
     return { attributes, citedClass };
   };
+  const targetAnchor = targetControl ? controlAnchor(targetControl) : null;
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, [remarkControlLinks, { isSsp, sspHref: `/compliance/${SSP_SLUG}` }]]}
       components={{
         h1: ({ node, children }) => {
           const { attributes, citedClass } = mark(node);
@@ -564,9 +608,13 @@ function ComplianceMarkdown({ markdown, citedSpan = null }: { markdown: string; 
         ),
         // Rows, not the whole table: a long table is cited in pieces, and the
         // page scrolls to the first cited row.
-        tr: ({ node, children }) => {
+        tr: ({ node, id, children }) => {
           const { attributes, citedClass } = mark(node);
-          return <tr {...attributes} className={citedClass}>{children}</tr>;
+          return (
+            <tr {...attributes} id={id} className={cn(id && "scroll-mt-24", citedClass ?? (id && id === targetAnchor && CITED_CLASS))}>
+              {children}
+            </tr>
+          );
         },
         th: ({ children }) => (
           <th className="border-b border-border px-2 py-1.5 text-left font-bold">{children}</th>
@@ -574,9 +622,20 @@ function ComplianceMarkdown({ markdown, citedSpan = null }: { markdown: string; 
         td: ({ children }) => <td className="border-t border-border px-2 py-1.5 align-top">{children}</td>,
         // Keep the attributes react-markdown generates (footnote ids, aria and
         // data attributes) so footnote references and backlinks pair up; only
-        // external links open a new tab.
+        // external links open a new tab; links to another compliance document stay in the app.
         a: ({ node: _node, href, className, children, ...generated }) => {
           const external = typeof href === "string" && /^https?:\/\//i.test(href);
+          if (typeof href === "string" && href.startsWith("/compliance/")) {
+            return (
+              <Link
+                {...generated}
+                href={href}
+                className={cn("text-primary underline underline-offset-2 hover:text-primary/80", className)}
+              >
+                {children}
+              </Link>
+            );
+          }
           return (
             <a
               {...generated}
