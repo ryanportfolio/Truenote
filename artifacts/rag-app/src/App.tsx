@@ -316,9 +316,9 @@ const AUTH_PATHS = new Set([
 /**
  * Snapshot the current URL for "send the user back here after login."
  * Returns null when the current path is itself an auth page or `/` —
- * those would be no-op or loop targets. Includes search params so
- * deep-linked filters (`/admin/users?role=manager`) survive the round
- * trip; drops hash (no current usage and adds complexity).
+ * those would be no-op or loop targets. Includes search params and hash so
+ * deep-linked filters (`/admin/users?role=manager`) and compliance control
+ * links (`#control-ia-2-1`) survive the round trip.
  *
  * Same-origin only: we only read window.location, so the returned
  * value is a relative path. An `open-redirect`-style attack would
@@ -329,7 +329,7 @@ function captureRedirectTarget(): string | null {
   const path = window.location.pathname;
   if (AUTH_PATHS.has(path)) return null;
   if (path === "/" || path === "") return null;
-  return path + window.location.search;
+  return path + window.location.search + window.location.hash;
 }
 
 export function App(): JSX.Element {

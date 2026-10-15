@@ -2039,9 +2039,9 @@ const COMPLIANCE_FIXTURES = [
       "",
       "| Item | Controls | Status | Target date |",
       "| --- | --- | --- | --- |",
-      "| FX-1 | AC-2, AC-2(1) | Open | 2026-12-01 |",
-      "| FX-2 | AU-6 | In progress | 2027-01-15 |",
-      "| FX-3 | CP-9 | Closed | 2026-09-30 |",
+      "| FX-1 | Example access control (AC-2, AC-2(1)) | Open | 2026-12-01 |",
+      "| FX-2 | Example logging control (AU-6) | In progress | 2027-01-15 |",
+      "| FX-3 | Example backup control (CP-9) | Closed | 2026-09-30 |",
       "",
       "## Notes",
       "",
@@ -2065,7 +2065,7 @@ const COMPLIANCE_FIXTURES = [
       "| **Control** | **Name** | **Status** | **Statement** |",
       "| --- | --- | --- | --- |",
       ...["AC-2", "AC-2(1)", "AU-6", "CP-9", "IA-2(1)"].map(
-        (id) => `| ${id} | Fixture name | Implemented | Invented statement for ${id}; see AC-2 and SC-7(5). |`
+        (id) => `| ${id} | Fixture name | Implemented | Invented statement for ${id}; see AC-2 and CP-9. |`
       ),
       ""
     ].join("\n")
