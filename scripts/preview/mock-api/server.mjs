@@ -2037,11 +2037,11 @@ const COMPLIANCE_FIXTURES = [
       "",
       "Invented rows for the local preview. No real weakness is described here.",
       "",
-      "| Item | Control | Status | Target date |",
+      "| Item | Controls | Status | Target date |",
       "| --- | --- | --- | --- |",
-      "| FX-1 | Example access control | Open | 2026-12-01 |",
-      "| FX-2 | Example logging control | In progress | 2027-01-15 |",
-      "| FX-3 | Example backup control | Closed | 2026-09-30 |",
+      "| FX-1 | Example access control (AC-2, AC-2(1)) | Open | 2026-12-01 |",
+      "| FX-2 | Example logging control (AU-6) | In progress | 2027-01-15 |",
+      "| FX-3 | Example backup control (CP-9) | Closed | 2026-09-30 |",
       "",
       "## Notes",
       "",
@@ -2056,7 +2056,19 @@ const COMPLIANCE_FIXTURES = [
     title: "Fixture system security plan",
     version: "0.2",
     date: "2026-10-08",
-    markdown: "# Fixture system security plan\n\nPlaceholder text for the local preview."
+    // Control rows in the real layout, so control links and row anchors can be checked.
+    markdown: [
+      "# Fixture system security plan",
+      "",
+      "Placeholder text for the local preview. Review of audit records is in AU-6.",
+      "",
+      "| **Control** | **Name** | **Status** | **Statement** |",
+      "| --- | --- | --- | --- |",
+      ...["AC-2", "AC-2(1)", "AU-6", "CP-9", "IA-2(1)"].map(
+        (id) => `| ${id} | Fixture name | Implemented | Invented statement for ${id}; see AC-2 and CP-9. |`
+      ),
+      ""
+    ].join("\n")
   }
 ].map((doc) => {
   const body = Buffer.from(doc.markdown, "utf8");
