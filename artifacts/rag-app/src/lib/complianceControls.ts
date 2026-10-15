@@ -40,8 +40,15 @@ interface MdNode {
 // Text in these nodes stays as written: links already point somewhere, and code is literal.
 const SKIP = new Set(["link", "linkReference", "inlineCode", "code", "html", "definition"]);
 
+// whitespace-nowrap keeps an id such as PS-2 on one line in the narrow id column.
 function link(url: string, title: string, text: string): MdNode {
-  return { type: "link", url, title, children: [{ type: "text", value: text }] };
+  return {
+    type: "link",
+    url,
+    title,
+    children: [{ type: "text", value: text }],
+    data: { hProperties: { className: "whitespace-nowrap" } }
+  };
 }
 
 function splitText(value: string, href: (id: string) => string): MdNode[] {
