@@ -16,7 +16,7 @@
     "@node-rs/argon2": "^2.0.2",
     "@simplewebauthn/server": "^14.0.3",
     "@workspace/db": "workspace:*",
-    "cohere-ai": "^7.14.0",
+    "cohere-ai": "^8.1.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "drizzle-orm": "catalog:",
