@@ -7,7 +7,7 @@
 # official release binary (built with Go 1.26.9). age is built here from its
 # release source, because the v1.3.2 release binary uses Go 1.27.0, which has
 # fixable ones too. Every download is checked against the SHA-256 below.
-FROM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS tools
+FROM golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS tools
 ARG RCLONE_VERSION=v1.75.2
 # From https://downloads.rclone.org/v1.75.2/SHA256SUMS (PGP signature checked).
 ARG RCLONE_SHA256=349ac8fba6ff65d6247043f1750cdcb518ec5d500ef91463a10d37c0ccdf3702
