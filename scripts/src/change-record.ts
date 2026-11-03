@@ -265,6 +265,36 @@ export function isAutomatedDependencyUpdate(author: string, changedFiles: readon
   );
 }
 
+const AGENT_SKILL_FILE_PATTERNS = [
+  /^\.claude\/skills\/.+/,
+  /^\.agents\/skills\/.+/,
+  /^\.agents\/skill-modes\.json$/,
+  /^\.agents\/skill-sources\.json$/,
+  /^\.agents\/CODEX-SKILL-COMPATIBILITY\.md$/
+];
+
+/**
+ * An agent-skill sync (secure change control, section 6.5.1): a pull request
+ * the repository owner opens from a `harness-sync/` branch (Harness Console's
+ * skill sync) that touches only agent skill folders and their registries. Those
+ * files are outside the Docker build context, so they never reach an image or
+ * production; the pull request itself is the record and the merge is the
+ * approval.
+ */
+export function isAgentSkillSync(
+  author: string,
+  owner: string,
+  headRef: string,
+  changedFiles: readonly string[]
+): boolean {
+  return (
+    author === owner &&
+    headRef.startsWith("harness-sync/") &&
+    changedFiles.length > 0 &&
+    changedFiles.every((file) => AGENT_SKILL_FILE_PATTERNS.some((pattern) => pattern.test(file)))
+  );
+}
+
 export function verifyChangeRecordTemplate(markdown: string): string[] {
   const issues: string[] = [];
   for (const heading of CHANGE_RECORD_HEADINGS) {

@@ -99,6 +99,16 @@ Dependabot attaches, and the CI test, audit and image-scan results), and the
 owner's merge is the approval. The production deploy that ships it still
 follows the normal deploy record.
 
+Agent-skill syncs are a second exception: a pull request the repository owner
+opens from a `harness-sync/` branch (Harness Console's skill sync) that changes
+only `.claude/skills/`, `.agents/skills/`, `.agents/skill-modes.json`,
+`.agents/skill-sources.json` or `.agents/CODEX-SKILL-COMPATIBILITY.md` passes
+the change-record check without it. Those files are coding-agent instructions
+and helper scripts; the Docker build-context whitelist (`.dockerignore`,
+`.railwayignore`) excludes them, so they never reach an image or production.
+The pull request (diff and CI results) is the record, and the owner's merge is
+the approval. All four required checks still run.
+
 ### 6.5.2 Significant-change completion
 
 The record identifies significance. Applicable PCI DSS requirements and affected

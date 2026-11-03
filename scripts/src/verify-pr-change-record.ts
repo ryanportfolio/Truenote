@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
-import { isAutomatedDependencyUpdate, verifyChangeRecord } from "./change-record.js";
+import { isAgentSkillSync, isAutomatedDependencyUpdate, verifyChangeRecord } from "./change-record.js";
 
 interface PullRequestEvent {
-  pull_request?: { body?: unknown; user?: { login?: unknown } };
+  pull_request?: { body?: unknown; user?: { login?: unknown }; head?: { ref?: unknown } };
+  repository?: { owner?: { login?: unknown } };
 }
 
 function argument(name: string): string | undefined {
@@ -42,6 +43,19 @@ function main(): void {
   if (typeof author === "string" && isAutomatedDependencyUpdate(author, readChangedFiles())) {
     console.log(
       "Pull-request change record not required: automated dependency update (configuration management procedure, section 6.1)."
+    );
+    return;
+  }
+  const owner = event?.repository?.owner?.login;
+  const headRef = event?.pull_request?.head?.ref;
+  if (
+    typeof author === "string" &&
+    typeof owner === "string" &&
+    typeof headRef === "string" &&
+    isAgentSkillSync(author, owner, headRef, readChangedFiles())
+  ) {
+    console.log(
+      "Pull-request change record not required: agent-skill sync (secure change control, section 6.5.1)."
     );
     return;
   }
