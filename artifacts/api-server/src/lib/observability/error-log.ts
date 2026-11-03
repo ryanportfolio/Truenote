@@ -172,6 +172,7 @@ export function prepareErrorLog(input: ErrorLogInput): PreparedErrorLog {
       : readString(record, "stack");
   const requestId =
     readString(record, "request_id") ??
+    readString(record, "requestID") ??
     readString(record, "requestId") ??
     readString(record, "x-request-id");
 
