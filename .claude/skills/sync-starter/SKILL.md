@@ -1,8 +1,8 @@
 ---
-description: Use when the user asks to pull template improvements into a spawned repo, compare starter drift, or push a generic improvement back to the starter.
+description: "Pull template improvements into a spawned repo, compare starter drift, or push a generic improvement back to the starter."
 ---
 
-# sync-starter: two-way sync with the Harness-Firmware template
+# sync-starter — two-way sync with the claude-starter template
 
 Spawned projects freeze the template at spawn date; the template keeps improving. This skill closes the gap in both directions. Template repo: `ryanportfolio/Harness-Firmware` (formerly `claude-starter`; the old URL redirects, but use the new one).
 
@@ -53,7 +53,7 @@ inherited `writing-skills: disabled` entry may remain inert. Confirm no retired
 name retains a SKILL.md in either root before running the sync check. A retirement never
 removes a locked skill; report it instead.
 
-For `settings.json`: merge, don't overwrite — the project may have its own permission additions. Read both, union the `allow` lists, keep project-specific hooks.
+For `settings.json`: merge, don't overwrite — the project may have its own permission additions. Read both, union the `allow` lists, keep project-specific hooks. A template hook whose command differs from a project hook only in quoting replaces that hook; never keep both.
 
 After any skill, sync script, compatibility matrix, or `skillOverrides` change, run
 `node .claude/scripts/sync-codex-skills.mjs --write` (it deletes leftover generated
@@ -63,7 +63,7 @@ and `node .claude/scripts/test-codex-contract.mjs`. Stage
 
 ### Step 5: Ship
 
-Only when shipping is authorized, branch, stage exactly the selected pulled paths plus `.agents/skill-sources.json` and deleted adapter paths, commit (`Sync from Harness-Firmware: <what>`), push, and open a PR, per the project's git rule.
+Only when shipping is authorized, branch, stage exactly the selected pulled paths plus `.agents/skill-sources.json` and deleted adapter paths, commit (`Sync from claude-starter: <what>`), push, and open a PR, per the project's git rule.
 
 ## Direction B: Push a generic improvement back to the template
 
