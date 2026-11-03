@@ -27,7 +27,7 @@
     "multer": "^2.5.0",
     "openai": "^7.46.0",
     "pg": "^8.13.0",
-    "pg-boss": "^10.1.5",
+    "pg-boss": "^12.38.0",
     "resend": "^6.32.1",
     "tsx": "catalog:",
     "zod": "catalog:"
