@@ -18,11 +18,11 @@ const CitationMetadataSchema = z
 
 export const LinkedSourceSchema = z
   .object({
-    chunk_id: z.string().uuid(),
+    chunk_id: z.guid(),
     doc_title: z.string(),
     excerpt: z.string(),
-    doc_id: z.string().uuid().nullable(),
-    document_version_id: z.string().uuid().nullable(),
+    doc_id: z.guid().nullable(),
+    document_version_id: z.guid().nullable(),
     version_number: z.number().int().positive().nullable(),
     citation_index: z.number().int().nonnegative(),
     /** UTF-16 offsets into the cited version's parsed_markdown. */

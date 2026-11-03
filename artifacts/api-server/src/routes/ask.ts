@@ -132,7 +132,7 @@ const AskBody = z.object({
    * belongs to the same user AND program; anything else silently starts
    * a fresh session (no cross-user/-program stitching).
    */
-  sessionId: z.string().uuid().optional()
+  sessionId: z.guid().optional()
 });
 
 /**
@@ -761,7 +761,7 @@ askRouter.post("/ask/stream", async (req, res, next) => {
 });
 
 const FeedbackBody = z.object({
-  queryLogId: z.string().uuid(),
+  queryLogId: z.guid(),
   feedback: z.union([z.literal(-1), z.literal(0), z.literal(1)])
 });
 
@@ -810,7 +810,7 @@ askRouter.post("/feedback", answerFeedbackWriteLimit, async (req, res, next) => 
 });
 
 const FlagMissingBody = z.object({
-  queryLogId: z.string().uuid()
+  queryLogId: z.guid()
 });
 
 /**

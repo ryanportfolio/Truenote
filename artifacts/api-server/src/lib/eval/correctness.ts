@@ -64,7 +64,7 @@ export async function judgeAnswerCorrectness(
     ],
     response_format: zodResponseFormat(CorrectnessSchema, "correctness")
   };
-  const completion = await client.beta.chat.completions.parse(
+  const completion = await client.chat.completions.parse(
     { ...request, provider: JUDGE_PROVIDER } as typeof request & JudgeProviderField,
     {
       timeout: faithfulness.timeoutMs,

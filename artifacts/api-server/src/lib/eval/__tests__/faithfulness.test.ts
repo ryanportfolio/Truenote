@@ -22,13 +22,11 @@ describe("judgeFaithfulness provider-input firewall", () => {
   it("redacts sensitive excerpt and answer content before the prompt reaches the provider", async () => {
     const sent: Array<{ messages: Array<{ role: string; content: string }> }> = [];
     const fakeClient = {
-      beta: {
-        chat: {
-          completions: {
-            parse: async (request: { messages: Array<{ role: string; content: string }> }) => {
-              sent.push(request);
-              return { choices: [{ message: { parsed: { claims: [] } } }] };
-            }
+      chat: {
+        completions: {
+          parse: async (request: { messages: Array<{ role: string; content: string }> }) => {
+            sent.push(request);
+            return { choices: [{ message: { parsed: { claims: [] } } }] };
           }
         }
       }
