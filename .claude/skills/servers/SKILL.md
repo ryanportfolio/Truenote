@@ -1,6 +1,6 @@
 ---
 name: servers
-description: "Use on /servers, after starting a dev server, or when the user asks what is running, which port is which, why browsers are open, or to close old servers and browsers."
+description: "/servers, after starting a dev server, or user asks what's running, which port is which, why browsers are open, or to close old servers and browsers."
 ---
 
 # Servers and automation browsers
@@ -15,7 +15,7 @@ Script paths below are from the repository root; when this skill came from a plu
 node .claude/skills/servers/scripts/servers.mjs register --port 5173 --purpose "menu page preview"
 ```
 
-A placed-window launcher, if the project has one (`launchPlacedChrome()` in `scripts/lib/launch-chrome.mjs`), records its browsers itself; pass `purpose` to label them. Without one, launch Chrome with `--window-position=-2400,-2400` and a fresh `--user-data-dir` (a new folder per session; without it, Chrome hands the window to an already-running browser and the launched process exits) and record it with `register --pid <pid> --kind browser --purpose "..."`.
+`launchPlacedChrome()` records its browsers itself; pass `purpose` to label them.
 
 **List.** `node .claude/skills/servers/scripts/servers.mjs` prints port, pid, age, folder, purpose and flags; `--here` limits it to this repository, `--json` gives data. Flags:
 
