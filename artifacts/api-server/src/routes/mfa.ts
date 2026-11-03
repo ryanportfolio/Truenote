@@ -94,7 +94,7 @@ const AssertionBody = z.object({
     signature: z.string().min(1).max(8192),
     userHandle: z.string().max(1024).optional()
   }).passthrough(),
-  clientExtensionResults: z.record(z.unknown()).default({}),
+  clientExtensionResults: z.record(z.string(), z.unknown()).default({}),
   authenticatorAttachment: z.string().max(40).optional()
 }).passthrough();
 
@@ -113,7 +113,7 @@ const RegistrationBody = z.object({
       clientDataJSON: z.string().min(1).max(16384),
       attestationObject: z.string().min(1).max(65536)
     }).passthrough(),
-    clientExtensionResults: z.record(z.unknown()).default({})
+    clientExtensionResults: z.record(z.string(), z.unknown()).default({})
   }).passthrough()
 });
 

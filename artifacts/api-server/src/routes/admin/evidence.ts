@@ -205,7 +205,7 @@ evidenceRouter.get("/receipts", evidenceReadLimit, async (req, res, next) => {
 });
 
 evidenceRouter.get("/receipts/:id", evidenceReadLimit, async (req, res, next) => {
-  if (!z.string().uuid().safeParse(req.params.id).success) {
+  if (!z.guid().safeParse(req.params.id).success) {
     res.status(400).json({ error: "Invalid receipt id" });
     return;
   }
@@ -403,7 +403,7 @@ evidenceRouter.post("/gaps", evidenceWriteLimit, async (req, res, next) => {
 });
 
 evidenceRouter.post("/gaps/:id/retire", evidenceWriteLimit, async (req, res, next) => {
-  if (!z.string().uuid().safeParse(req.params.id).success) {
+  if (!z.guid().safeParse(req.params.id).success) {
     res.status(400).json({ error: "Invalid gap id" });
     return;
   }
@@ -577,7 +577,7 @@ evidenceRouter.post(
 );
 
 evidenceRouter.get("/receipts/:id/attachments/:index", evidenceReadLimit, async (req, res, next) => {
-  if (!z.string().uuid().safeParse(req.params.id).success) {
+  if (!z.guid().safeParse(req.params.id).success) {
     res.status(400).json({ error: "Invalid receipt id" });
     return;
   }
