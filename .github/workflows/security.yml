@@ -53,7 +53,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: List pull-request changed files
         if: github.event_name == 'pull_request'
-        run: git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed-files.txt"
+        # --no-renames lists both sides of a move, so a file moved into an
+        # exempt path still counts as a change to the path it left.
+        run: git diff --name-only --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/changed-files.txt"
       - name: Verify pull-request change record
         if: github.event_name == 'pull_request'
         run: corepack pnpm --filter @workspace/scripts run verify:change-record -- --event "$GITHUB_EVENT_PATH" --changed-files "$RUNNER_TEMP/changed-files.txt" --allow-pending
