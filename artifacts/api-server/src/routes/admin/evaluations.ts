@@ -49,7 +49,7 @@ evaluationsRouter.use(
   blockDemoWrites
 );
 
-const Uuid = z.string().uuid();
+const Uuid = z.guid();
 const Phrase = z.string().trim().min(1).max(500);
 
 export const EvalQuestionBody = z

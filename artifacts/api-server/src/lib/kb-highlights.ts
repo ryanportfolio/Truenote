@@ -6,7 +6,7 @@ const MAX_POSTGRES_INTEGER = 2_147_483_647;
 
 export const createHighlightSchema = z
   .object({
-    documentVersionId: z.string().uuid(),
+    documentVersionId: z.guid(),
     highlightedText: z
       .string()
       .min(1)

@@ -35,7 +35,7 @@ modelRoutingRouter.use(
 const UpdateBody = z.object({
   order: z.array(ApprovedModelRouteIdSchema).min(1),
   purpose: z.enum(["answers", "gaps", "compliance"]).default("answers"),
-  efforts: z.record(z.string()).optional()
+  efforts: z.record(z.string(), z.string()).optional()
 });
 
 function responseFor(

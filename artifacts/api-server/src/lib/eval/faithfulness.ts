@@ -132,7 +132,7 @@ export async function judgeFaithfulness(
     ],
     response_format: zodResponseFormat(FaithfulnessSchema, "faithfulness")
   };
-  const completion = await client.beta.chat.completions.parse(
+  const completion = await client.chat.completions.parse(
     { ...request, provider: JUDGE_PROVIDER } as typeof request & JudgeProviderField,
     {
       timeout: faithfulness.timeoutMs,

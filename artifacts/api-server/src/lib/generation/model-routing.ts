@@ -199,7 +199,7 @@ const CACHE_TTL_MS = 30_000;
 const StoredOrderSchema = z.object({
   order: z.array(z.string()).min(1),
   /** Route id → chosen effort; absent or unsupported entries use the default. */
-  efforts: z.record(z.string()).optional()
+  efforts: z.record(z.string(), z.string()).optional()
 });
 /** Legacy shape from before ordered fallback chains: a single primary id.
  *  Still read-compatible so an existing app_settings row keeps working — the

@@ -48,15 +48,14 @@ export function teamUserFilterSql(scope: string[] | null, column: SQL): SQL {
   return sql`AND ${column}::text = ANY(${ids})`;
 }
 
-const uuid = z.string().uuid();
+const uuid = z.guid();
 
 /** PUT /api/admin/teams/assignments. `supervisorId: null` unassigns. */
 export const assignmentBodySchema = z
   .object({
     csrIds: z
       .array(uuid, {
-        required_error: "Pick at least one CSR.",
-        invalid_type_error: "Send a list of ids."
+        error: (issue) => (issue.input === undefined ? "Pick at least one CSR." : "Send a list of ids.")
       })
       .min(1, "Pick at least one CSR.")
       .max(MAX_TEAM_ASSIGNMENT, `Move at most ${MAX_TEAM_ASSIGNMENT} CSRs at a time.`)

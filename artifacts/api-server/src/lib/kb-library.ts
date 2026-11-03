@@ -31,17 +31,12 @@ export const MAX_DOCUMENT_TAGS = 30;
 export const MAX_FEATURED = 12;
 export const MAX_SIBLING_ORDER = 500;
 
-const uuid = z.string().uuid();
-const color = z.enum(LIBRARY_COLORS, {
-  errorMap: () => ({ message: "Pick one of the listed colors." })
-});
+const uuid = z.guid();
+const color = z.enum(LIBRARY_COLORS, { error: "Pick one of the listed colors." });
 
 function boundedName(max: number, label: string) {
   return z
-    .string({
-      required_error: `Enter a ${label} name.`,
-      invalid_type_error: `Enter a ${label} name.`
-    })
+    .string({ error: `Enter a ${label} name.` })
     .transform((value) => value.trim())
     .pipe(
       z
@@ -58,7 +53,9 @@ function capitalize(value: string): string {
 /** Array of unique uuids, at most `max` long. */
 function uniqueIdList(max: number, tooMany: string) {
   return z
-    .array(uuid, { invalid_type_error: "Send a list of ids." })
+    .array(uuid, {
+      error: (issue) => (issue.input === undefined ? undefined : "Send a list of ids.")
+    })
     .max(max, tooMany)
     .refine((ids) => new Set(ids.map((id) => id.toLowerCase())).size === ids.length, {
       message: "The list has the same item more than once."
@@ -67,13 +64,15 @@ function uniqueIdList(max: number, tooMany: string) {
 }
 
 export const pinSchema = z
-  .object({ pinned: z.boolean({ required_error: "Say whether to pin or unpin." }) })
+  .object({ pinned: z.boolean({
+      error: (issue) => (issue.input === undefined ? "Say whether to pin or unpin." : undefined)
+    }) })
   .strict();
 
 export const noteSchema = z
   .object({
     note: z
-      .string({ required_error: "Send the note text.", invalid_type_error: "Send the note text." })
+      .string({ error: "Send the note text." })
       .transform((value) => value.trim())
       .pipe(z.string().max(MAX_NOTE_CHARS, `Notes can be at most ${MAX_NOTE_CHARS} characters.`))
   })
@@ -100,10 +99,7 @@ export const MAX_LABEL_NAME_CHARS = 40;
 export const colorLabelSchema = z
   .object({
     name: z
-      .string({
-        required_error: "Enter a label name, or send null to remove it.",
-        invalid_type_error: "Enter a label name, or send null to remove it."
-      })
+      .string({ error: "Enter a label name, or send null to remove it." })
       .transform((value) => value.trim())
       .pipe(
         z
@@ -259,9 +255,8 @@ export function validationMessage(error: ZodError, fallback: string): string {
   const issue = error.issues[0];
   if (!issue) return fallback;
   if (issue.code === "unrecognized_keys") return fallback;
-  if (issue.code === "invalid_type" && issue.message === "Required") return fallback;
-  if (issue.code === "invalid_type" && issue.message.startsWith("Expected ")) return fallback;
-  if (issue.code === "invalid_string") return fallback;
+  if (issue.code === "invalid_type" && issue.message.startsWith("Invalid input")) return fallback;
+  if (issue.code === "invalid_format") return fallback;
   return issue.message;
 }
 
