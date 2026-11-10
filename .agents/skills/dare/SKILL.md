@@ -1,6 +1,6 @@
 ---
 name: "dare"
-description: "Use for $dare, first principles, or questioning the problem: four fresh stages decompose, audit, recombine and test, preserving immutable goals and constraints."
+description: "First principles, questioning the problem: 4 fresh stages decompose, audit, recombine, test; immutable goals + constraints kept."
 ---
 
 # dare: first-principles chain with fresh-context steps
@@ -10,7 +10,7 @@ D.A.R.E. = Decompose, Audit, Recombine, Experiment. One problem, four steps, eac
 ## When to use, when not
 
 - Use for problems where the inherited approach may itself be the problem: strategy calls, architecture choices, "we've always done it this way" processes, stuck problems where variations on the standard answer keep failing.
-- Skip for well-specified build tasks (build directly, or use `$long-horizon` when the work spans sessions), open design exploration (`$deep-plan`), or challenging a single recommendation (`$why`). Never auto-fire on an ordinary task.
+- Skip for well-specified build tasks (`$writing-plans`), open design exploration (`$brainstorming`), or challenging a single recommendation (`$why`). Never auto-fire on an ordinary task.
 
 ## Orchestration
 
@@ -28,7 +28,7 @@ Artifact chain: problem statement, decomposition tree, audit table, surviving bl
 
 Input: the immutable contract and the user's problem statement, verbatim.
 
-Dispatch instructions: decomposition only; advice, solutions, assumptions, and standard playbooks are out of scope and count against you. First check whether the stated problem hides a deeper objective; if so, name it in one sentence and stop there. Otherwise break the problem into its smallest useful parts: a clear hierarchy, also called an issue tree (problem, major components, elements inside each), using only dimensions that matter here (people, process steps, time, resources, costs). For each component: what it contains and how it connects upward. Stop splitting when each part can be examined on its own for hidden assumptions; that is what the parts are for. Mark every point where a choice will eventually be required (a smoothing approach, a data store, a boundary) as an open decision, without naming a winner: flagged decision points are the map's most valuable annotations. Temporal and process structure count as decomposition when the problem contains them (steps and their ordering as they exist); a prescribed action order is a plan and out of scope. No choosing, no evaluation, no fact-versus-assumption labels, no recommendations.
+Dispatch instructions: decomposition only; advice, solutions, assumptions, and standard playbooks are out of scope. First check whether the stated problem hides a deeper objective; if so, name it in one sentence and stop there. Otherwise break the problem into its smallest useful parts: a clear hierarchy, also called an issue tree (problem, major components, elements inside each), using only dimensions that matter here (people, process steps, time, resources, costs). For each component: what it contains and how it connects upward. Stop splitting when each part can be examined on its own for hidden assumptions; that is what the parts are for. Mark every point where a choice will eventually be required (a smoothing approach, a data store, a boundary) as an open decision, without naming a winner: flagged decision points are the map's most valuable annotations. Temporal and process structure count as decomposition when the problem contains them (steps and their ordering as they exist); a prescribed action order is a plan and out of scope. No choosing, no evaluation, no fact-versus-assumption labels, no recommendations.
 
 Gate: if a deeper problem surfaced, ask the user directly, as a plain numbered question or through the current input tool, which problem to decompose, and do not continue until they choose. Never silently reframe. Rerun D on the chosen problem if it changed.
 
@@ -58,7 +58,7 @@ Handoff: tests runnable within existing authorization execute through the `$fabl
 
 The orchestrator ends with one consolidated report: the chosen problem, the audit table, the solutions with their failure points, the test plan, and the single next action. No step's agent addresses the user directly.
 
-When the downstream goal is a build plan, the decomposition tree and audit table hand off to `$deep-plan` as its inputs, the same way E's runnable tests hand off to `$fable-mode` verification: dare interrogates the map, deep-plan settles the build decisions and hands them to a `$long-horizon` contract or `$enhance-prompt`, which commit to mechanisms, order, and gates.
+When the downstream goal is a build plan, the decomposition tree and audit table hand off to `$writing-plans` as its inputs, the same way E's runnable tests hand off to `$fable-mode` verification: dare interrogates the map, writing-plans commits to mechanisms, order, and gates.
 
 ## Boundaries
 
