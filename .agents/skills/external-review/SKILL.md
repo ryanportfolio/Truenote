@@ -1,6 +1,6 @@
 ---
 name: "external-review"
-description: "Use on explicit $external-review invocation or when a launcher prompt names this file. Single-context leaf review of an exact diff scope: no agents, nested reviews, or edits."
+description: "Explicit $external-review, or a launcher prompt naming this file. Single-context leaf review of exact diff scope: no agents, nested reviews, or edits."
 ---
 
 # External leaf review
@@ -46,6 +46,12 @@ code passed.
 
 Report credible uncertain findings with their uncertainty. Do not invent issues or promote
 style preferences into correctness findings. Finding nothing is valid.
+
+Grade severity against the change's goal, taken from the launcher's prompt or else the
+commit messages and the diff. A finding limited to another code path, a rare input, a small
+performance cost, or extra compatibility is P3 unless it breaks that goal; security, auth,
+and data-loss findings keep their impact severity. Report code, tests, guards, or options the
+goal does not need as P3 findings whose fix is the smaller version.
 
 ## Hard limits
 

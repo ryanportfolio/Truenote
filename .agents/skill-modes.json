@@ -40,6 +40,21 @@
     "writing": "native",
     "deep-plan": "native",
     "external-review": "native",
-    "opus-fullreview": "native"
+    "opus-fullreview": "native",
+    "apply-firmware": "native",
+    "cache-loop": "native",
+    "climb-loop": "native",
+    "codex-image-gen": "disabled",
+    "conversion-ux": "native",
+    "design-prototypes": "native",
+    "gauntlet": "disabled",
+    "motion-design": "native",
+    "product-walkthrough": "native",
+    "redesign-concepts": "native",
+    "security-loop": "native",
+    "seo-loop": "native",
+    "ui-quality": "native",
+    "untangle": "native",
+    "wow-animation": "native"
   }
 }
