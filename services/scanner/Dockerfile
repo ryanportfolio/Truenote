@@ -11,7 +11,7 @@
 # Build context: the repository root (RAILWAY_DOCKERFILE_PATH=services/scanner/Dockerfile).
 FROM node:24-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66 AS node
 
-FROM clamav/clamav-debian:1.4.6@sha256:6d0680780fd29855cb7018f68272cb520821f614259e2066f8ec669069ac91b3
+FROM clamav/clamav-debian:1.4.6@sha256:806639a6e3a45ae1d6f3932722c3e016e5b93452f93d444538f697c39d6af16b
 # Debian security fixes released after the base image was built.
 RUN apt-get update \
  && apt-get upgrade -y --no-install-recommends \
